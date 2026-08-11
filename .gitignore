@@ -1,0 +1,18 @@
+node_modules
+.next/
+out/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.DS_Store
+
+# Go sidecar build artifacts
+backend-go/bin/
+backend-go/*.exe
+backend-go/bifrost
+src-tauri/binaries/
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/
