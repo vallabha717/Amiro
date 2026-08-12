@@ -25,6 +25,7 @@ tauri = { version = "2.11.3", features = [] }
 tauri-plugin-log = "2"
 tauri-plugin-shell = "2"
 rand = "0.8"
+dotenv = "0.15"
 
 [target.'cfg(unix)'.dependencies]
 signal-hook = "0.3"

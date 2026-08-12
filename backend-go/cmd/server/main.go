@@ -73,25 +73,16 @@ func main() {
 
 	authService := auth.NewService(gdb)
 
-	// Desktop builds (sqlite driver) auto-provision and auto-login a single
-	// local user so there is no login screen by default -- plan section 3's
-	// resolved decision. A real web deployment (postgres driver) skips this
-	// and always requires the real register/login flow.
-	if cfg.DatabaseDriver == db.DialectSQLite {
-		_, session, err := authService.EnsureDesktopDefaultUser(context.Background())
-		if err != nil {
-			log.Fatalf("auth: desktop auto-login: %v", err)
-		}
-		// Rust reads this exact line off the child's stdout (same
-		// convention as the PORT= line below) and injects it into the
-		// webview as window.__BACKEND_SESSION_TOKEN__ so the desktop build
-		// can auto-login without ever showing a sign-in screen (plan
-		// section 3's resolved decision). Also echoed to stderr for
-		// manual/dev inspection, matching BETTERCHATBOT_AUTH_TOKEN's own
-		// dev-fallback line above.
-		fmt.Printf("SESSION_TOKEN=%s\n", session.Token)
-		fmt.Fprintf(os.Stderr, "dev mode: desktop auto-login session token: %s\n", session.Token)
-	}
+	// Desktop builds (sqlite driver) now require sign-up/login -- auto-login disabled.
+	// Users must create an account and authenticate before accessing the app.
+	// if cfg.DatabaseDriver == db.DialectSQLite {
+	// 	_, session, err := authService.EnsureDesktopDefaultUser(context.Background())
+	// 	if err != nil {
+	// 		log.Fatalf("auth: desktop auto-login: %v", err)
+	// 	}
+	// 	fmt.Printf("SESSION_TOKEN=%s\n", session.Token)
+	// 	fmt.Fprintf(os.Stderr, "dev mode: desktop auto-login session token: %s\n", session.Token)
+	// }
 
 	// Phase 3: secrets.KeyStore + bifrostai.Client wiring. desktop (sqlite
 	// driver) reads provider keys from the OS keychain, a web deploy

@@ -45,8 +45,30 @@ type openAICompatibleProvider struct {
 // key, but the real code (create-openai-compatiable.ts) passes it straight
 // through as the literal key value; this ports the real behavior, not the
 // stale doc comment.
+// stripDotenvQuotes removes one matching pair of surrounding single or
+// double quotes. The value in .env is necessarily quoted (`OPENAI_
+// COMPATIBLE_DATA='[{...}]'`) because the JSON contains spaces and shell
+// metacharacters, and a naive `line.split("=", 1)[1]` line reader -- which
+// is exactly what scripts/dev-backend.{sh,ps1} do -- hands those quotes
+// straight through into the env var. json.Unmarshal then fails on the
+// leading `'` and every custom provider is silently dropped, which is how
+// a correctly-configured model went missing from the chat model picker.
+// The scripts are fixed too, but stripping here means any other loader
+// (a future one, or a user exporting the var by hand from the same quoted
+// line) can't reintroduce the same failure.
+func stripDotenvQuotes(raw string) string {
+	if len(raw) < 2 {
+		return raw
+	}
+	first, last := raw[0], raw[len(raw)-1]
+	if first == last && (first == '\'' || first == '"') {
+		return raw[1 : len(raw)-1]
+	}
+	return raw
+}
+
 func loadOpenAICompatibleProviders() []providerEntry {
-	raw := os.Getenv("OPENAI_COMPATIBLE_DATA")
+	raw := stripDotenvQuotes(strings.TrimSpace(os.Getenv("OPENAI_COMPATIBLE_DATA")))
 	if raw == "" {
 		return nil
 	}

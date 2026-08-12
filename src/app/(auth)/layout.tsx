@@ -1,14 +1,18 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { FlipWords } from "ui/flip-words";
-import { BackgroundPaths } from "ui/background-paths";
+import { GrowingTree } from "@/components/auth/growing-tree";
 import { RedirectIfAuthed } from "@/lib/backend/auth-gate";
 import { VrndaLogo } from "@/components/layouts/vrnda-logo";
 
 // Was a Server Component calling getSession()+redirect() -- now a client
 // gate (RedirectIfAuthed) since there's no server-side session to read
 // without a round trip to the sidecar (see auth-gate.tsx's doc comment).
+//
+// RedirectIfAuthed deliberately wraps only {children}, not the whole shell:
+// it renders null while the session request is in flight, so wrapping the
+// outer <main> made the entire page blank-then-pop on every load. Keeping
+// the branding panel outside the gate means only the form area waits.
 export default function AuthLayout({
   children,
 }: {
@@ -16,29 +20,34 @@ export default function AuthLayout({
 }) {
   const t = useTranslations("Auth.Intro");
   return (
-    <RedirectIfAuthed>
-      <main className="relative w-full flex flex-col h-screen">
-        <div className="flex-1">
-          <div className="flex min-h-screen w-full">
-            <div className="hidden lg:flex lg:w-1/2 bg-muted border-r flex-col p-18 relative">
-              <div className="absolute inset-0 w-full h-full">
-                <BackgroundPaths />
-              </div>
-              <h1 className="text-xl font-semibold flex items-center gap-1.5 animate-in fade-in duration-1000">
-                <VrndaLogo className="size-8" />
-                <span>Amiro</span>
-              </h1>
-              <div className="flex-1" />
-              <FlipWords
-                words={[t("description")]}
-                className=" mb-4 text-muted-foreground"
-              />
-            </div>
-
-            <div className="w-full lg:w-1/2 p-6">{children}</div>
+    // h-dvh + overflow-hidden on one element only. The previous h-screen
+    // <main> wrapping a min-h-screen child guaranteed the content box was
+    // at least as tall as the viewport *inside* an already-viewport-tall
+    // parent, so the page gained and lost a scrollbar as the auth form
+    // changed height -- the layout half of the reported "glitching".
+    <main className="relative w-full h-dvh overflow-hidden">
+      <div className="flex h-full w-full">
+        <div className="hidden lg:flex lg:w-1/2 bg-muted border-r flex-col p-12 xl:p-16 relative overflow-hidden">
+          {/* Inset on all four sides: the crown wants clearance from the
+              panel edges, and the trunk needs to stop above the caption
+              rather than running behind it. */}
+          <div className="pointer-events-none absolute inset-x-8 top-[9%] bottom-[13%] text-foreground/70">
+            <GrowingTree className="h-full w-full" />
           </div>
+          <h1 className="relative z-10 text-xl font-semibold flex items-center gap-1.5 animate-in fade-in duration-1000">
+            <VrndaLogo className="size-8" />
+            <span>Amiro</span>
+          </h1>
+          <div className="flex-1" />
+          <p className="relative z-10 mb-4 max-w-sm text-muted-foreground px-2">
+            {t("description")}
+          </p>
         </div>
-      </main>
-    </RedirectIfAuthed>
+
+        <div className="w-full lg:w-1/2 h-full overflow-y-auto">
+          <RedirectIfAuthed>{children}</RedirectIfAuthed>
+        </div>
+      </div>
+    </main>
   );
 }

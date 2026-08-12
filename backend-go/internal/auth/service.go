@@ -43,6 +43,24 @@ func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
 }
 
+// IsFirstUser reports whether the instance has no accounts at all yet, so
+// the sign-in screen can skip straight to sign-up instead of offering
+// credentials that cannot possibly match anything. Ports better-chatbot's
+// getIsFirstUser() (lib/auth/auth-instance.ts), which the TS app read
+// server-side at render time; here it needs a route of its own because the
+// frontend is fully client-rendered (see src/lib/backend/auth-gate.tsx).
+//
+// Deliberately not cached the way the TS version memoizes a `false`: this
+// counts one indexed table on a local SQLite file, and a cache would have
+// to be invalidated by Register anyway.
+func (s *Service) IsFirstUser(ctx context.Context) (bool, error) {
+	var count int64
+	if err := s.db.WithContext(ctx).Model(&models.User{}).Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count == 0, nil
+}
+
 func (s *Service) Register(ctx context.Context, name, email, password string) (*models.User, error) {
 	email = normalizeEmail(email)
 
@@ -60,12 +78,23 @@ func (s *Service) Register(ctx context.Context, name, email, password string) (*
 		return nil, err
 	}
 
+	// First account created on a fresh instance becomes the admin, matching
+	// better-chatbot's user-creation hook (auth-instance.ts). Without this
+	// nothing ever sets role="admin", so the (chat)/(admin) route group and
+	// every RequireAdmin route were permanently unreachable.
+	role := "user"
+	if first, err := s.IsFirstUser(ctx); err != nil {
+		return nil, err
+	} else if first {
+		role = "admin"
+	}
+
 	user := &models.User{
 		Name:          name,
 		Email:         email,
 		EmailVerified: false,
 		Password:      &hash,
-		Role:          "user",
+		Role:          role,
 	}
 	if err := s.db.WithContext(ctx).Create(user).Error; err != nil {
 		return nil, err

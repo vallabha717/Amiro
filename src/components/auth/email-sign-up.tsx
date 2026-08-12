@@ -21,15 +21,21 @@ import { register } from "@/lib/backend/session-context";
 import { ApiError } from "@/lib/backend/client";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { useAuthStatus } from "@/hooks/queries/use-auth-status";
 
-// isFirstUser (the "you're the admin" framing) and the pre-password
-// email-existence check are dropped: internal/auth (Phase 2) has no
-// "first user becomes admin" concept and no standalone
-// existsByEmail-over-HTTP route -- POST /api/auth/register already
-// reports a taken email with a clear 409, surfaced as a toast on submit
-// instead of a step-1 pre-check.
+// The pre-password email-existence check is still dropped: there is no
+// standalone existsByEmail-over-HTTP route -- POST /api/auth/register
+// already reports a taken email with a clear 409, surfaced as a toast on
+// submit instead of a step-1 pre-check.
+//
+// isFirstUser *is* back (it was dropped when internal/auth had no "first
+// user becomes admin" concept): auth.Service.Register now assigns
+// role="admin" to the first account on a fresh instance, so the "you're the
+// admin" framing here is accurate again.
 export default function EmailSignUp() {
   const t = useTranslations();
+  const { data: authStatus } = useAuthStatus();
+  const isFirstUser = authStatus?.isFirstUser ?? false;
   const [step, setStep] = useState(1);
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
@@ -115,7 +121,7 @@ export default function EmailSignUp() {
     <Card className="w-full md:max-w-md bg-background border-none mx-auto gap-0 shadow-none animate-in fade-in duration-1000">
       <CardHeader>
         <CardTitle className="text-2xl text-center ">
-          {t("Auth.SignUp.title")}
+          {isFirstUser ? t("Auth.SignUp.titleAdmin") : t("Auth.SignUp.title")}
         </CardTitle>
         <CardDescription className="py-12">
           <div className="flex flex-col gap-2">

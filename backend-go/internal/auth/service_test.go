@@ -292,3 +292,49 @@ func TestEnsureDesktopDefaultUser_IsIdempotentAndClearsOldSessions(t *testing.T)
 		t.Fatalf("second session should still validate: %v", err)
 	}
 }
+
+func TestIsFirstUser_TrueOnAnEmptyInstanceAndFalseOnceAnAccountExists(t *testing.T) {
+	service := newTestService(t)
+	ctx := context.Background()
+
+	first, err := service.IsFirstUser(ctx)
+	if err != nil {
+		t.Fatalf("IsFirstUser: %v", err)
+	}
+	if !first {
+		t.Fatal("IsFirstUser = false on an empty instance, want true")
+	}
+
+	if _, err := service.Register(ctx, "Ada", "ada@example.com", "hunter2"); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	first, err = service.IsFirstUser(ctx)
+	if err != nil {
+		t.Fatalf("IsFirstUser: %v", err)
+	}
+	if first {
+		t.Fatal("IsFirstUser = true after an account exists, want false")
+	}
+}
+
+func TestRegister_MakesTheFirstAccountAdminAndEveryLaterOneAPlainUser(t *testing.T) {
+	service := newTestService(t)
+	ctx := context.Background()
+
+	first, err := service.Register(ctx, "Ada", "ada@example.com", "hunter2")
+	if err != nil {
+		t.Fatalf("Register (first): %v", err)
+	}
+	if first.Role != "admin" {
+		t.Fatalf("first user Role = %q, want %q", first.Role, "admin")
+	}
+
+	second, err := service.Register(ctx, "Bob", "bob@example.com", "hunter2")
+	if err != nil {
+		t.Fatalf("Register (second): %v", err)
+	}
+	if second.Role != "user" {
+		t.Fatalf("second user Role = %q, want %q", second.Role, "user")
+	}
+}

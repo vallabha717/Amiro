@@ -70,6 +70,7 @@ func New(cfg config.Config, h Handlers) http.Handler {
 	})
 
 	if h.Auth != nil {
+		mux.HandleFunc("GET /api/auth/status", authapi.Status(h.Auth))
 		mux.HandleFunc("POST /api/auth/register", authapi.Register(h.Auth))
 		mux.HandleFunc("POST /api/auth/login", authapi.Login(h.Auth))
 		mux.Handle("POST /api/auth/logout", auth.RequireSession(h.Auth)(authapi.Logout(h.Auth)))

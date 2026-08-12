@@ -34,7 +34,14 @@ path = sys.argv[1]
 with open(path) as f:
     for line in f:
         if line.startswith("OPENAI_COMPATIBLE_DATA="):
-            print(line.rstrip("\n").split("=", 1)[1])
+            value = line.rstrip("\n").split("=", 1)[1].strip()
+            # The value is necessarily quoted (the JSON has spaces and shell
+            # metacharacters); print the JSON, not the quotes, or the Go
+            # side json.Unmarshal fails on the leading quote and silently
+            # drops every custom provider.
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                value = value[1:-1]
+            print(value)
             break
 ' "$DESKTOP_ENV")"
   export OPENAI_COMPATIBLE_DATA

@@ -38,6 +38,22 @@ func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]string{"error": message})
 }
 
+// Status handles GET /api/auth/status. Unauthenticated by design -- it is
+// the one thing the sign-in screen needs to know *before* anyone can sign
+// in, and it leaks only "does this instance have any account yet", which is
+// exactly what the sign-in form already reveals by accepting or rejecting a
+// login attempt.
+func Status(service *auth.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		isFirstUser, err := service.IsFirstUser(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to read registration status")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"isFirstUser": isFirstUser})
+	}
+}
+
 // Register handles POST /api/auth/register.
 func Register(service *auth.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

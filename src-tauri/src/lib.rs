@@ -31,6 +31,10 @@ fn generate_token() -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Load .env file from project root for local development
+    let _ = dotenv::from_path("../.env");
+    let _ = dotenv::from_path("./.env");
+
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
@@ -62,11 +66,25 @@ pub fn run() {
             // "binaries/backend" panicked with ENOENT (it was looking for
             // a literal "binaries/" subfolder next to the exe, which
             // doesn't exist).
-            let (mut rx, child) = app
+            let allowed_origin = if cfg!(dev) {
+                "http://localhost:3210"
+            } else {
+                "http://tauri.localhost"
+            };
+
+            let mut sidecar = app
                 .shell()
                 .sidecar("backend")
                 .expect("backend sidecar binary not found next to the app executable")
                 .env("BETTERCHATBOT_AUTH_TOKEN", &shared_secret)
+                .env("BETTERCHATBOT_ALLOWED_ORIGIN", allowed_origin);
+
+            // Pass environment variables to backend sidecar
+            if let Ok(openai_compat_data) = std::env::var("OPENAI_COMPATIBLE_DATA") {
+                sidecar = sidecar.env("OPENAI_COMPATIBLE_DATA", openai_compat_data);
+            }
+
+            let (mut rx, child) = sidecar
                 .spawn()
                 .expect("failed to spawn backend sidecar");
 
@@ -99,11 +117,15 @@ pub fn run() {
             let (port, session_token) = tauri::async_runtime::block_on(async move {
                 let mut port: Option<u16> = None;
                 let mut session_token: Option<String> = None;
+                let mut stdout_buf = String::new();
                 while let Some(event) = rx.recv().await {
                     match event {
                         CommandEvent::Stdout(line) => {
-                            let text = String::from_utf8_lossy(&line);
-                            for l in text.lines() {
+                            stdout_buf.push_str(&String::from_utf8_lossy(&line));
+                            while let Some(pos) = stdout_buf.find('\n') {
+                                let line_str = stdout_buf[..pos].to_string();
+                                stdout_buf = stdout_buf[pos + 1..].to_string();
+                                let l = line_str.trim();
                                 if let Some(p) = l.strip_prefix("PORT=") {
                                     port = p.trim().parse::<u16>().ok();
                                 } else if let Some(t) = l.strip_prefix("SESSION_TOKEN=") {

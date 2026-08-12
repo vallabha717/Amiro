@@ -16,3 +16,7 @@ src-tauri/binaries/
 # Tauri
 src-tauri/target/
 src-tauri/gen/
+
+# Local build logs and the rustup installer setup-and-run.ps1 downloads
+build.log
+rustup-init.exe

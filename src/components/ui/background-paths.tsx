@@ -2,6 +2,15 @@
 
 import { motion } from "framer-motion";
 
+// Durations were `20 + Math.random() * 10` evaluated inline in the JSX
+// below -- i.e. re-rolled on every render, and different on the server than
+// on the client, so hydration mismatched and each re-render restarted every
+// path's animation at a new speed. Derived from the path index instead:
+// still varied, but stable across renders and identical on both sides.
+function pathDuration(i: number) {
+  return 20 + ((i * 7) % 10);
+}
+
 function FloatingPaths({ position }: { position: number }) {
   const paths = Array.from({ length: 36 }, (_, i) => ({
     id: i,
@@ -38,7 +47,7 @@ function FloatingPaths({ position }: { position: number }) {
               pathOffset: [0, 1, 0],
             }}
             transition={{
-              duration: 20 + Math.random() * 10,
+              duration: pathDuration(path.id),
               repeat: Number.POSITIVE_INFINITY,
               ease: "linear",
             }}
