@@ -39,7 +39,7 @@ with open(path) as f:
             # metacharacters); print the JSON, not the quotes, or the Go
             # side json.Unmarshal fails on the leading quote and silently
             # drops every custom provider.
-            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in ("\"", chr(39)):
                 value = value[1:-1]
             print(value)
             break

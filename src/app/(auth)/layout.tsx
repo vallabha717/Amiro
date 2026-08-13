@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { GrowingTree } from "@/components/auth/growing-tree";
+import { GrowingTreeImage } from "@/components/auth/growing-tree-image";
 import { RedirectIfAuthed } from "@/lib/backend/auth-gate";
 import { VrndaLogo } from "@/components/layouts/vrnda-logo";
 
@@ -32,11 +32,11 @@ export default function AuthLayout({
               panel edges, and the trunk needs to stop above the caption
               rather than running behind it. */}
           <div className="pointer-events-none absolute inset-x-8 top-[9%] bottom-[13%] text-foreground/70">
-            <GrowingTree className="h-full w-full" />
+            <GrowingTreeImage className="h-full w-full" />
           </div>
           <h1 className="relative z-10 text-xl font-semibold flex items-center gap-1.5 animate-in fade-in duration-1000">
-            <VrndaLogo className="size-8" />
-            <span>Amiro</span>
+            <VrndaLogo className="size-6" />
+            <span className="font-brand">Amiro</span>
           </h1>
           <div className="flex-1" />
           <p className="relative z-10 mb-4 max-w-sm text-muted-foreground px-2">

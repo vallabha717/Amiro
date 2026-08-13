@@ -436,7 +436,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
       <div
         className={cn(
           "flex min-w-0 h-full",
-          isWorkflowViewActive && "gap-3 p-3 bg-muted/20",
+          isWorkflowViewActive && "gap-2 p-1.5 bg-muted/20",
         )}
       >
         {isWorkflowViewActive && (
@@ -446,7 +446,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
         )}
         <div
           className={cn(
-            emptyMessage && "justify-center pb-24",
+            emptyMessage ? "justify-center pb-24" : "justify-end",
             "flex flex-col min-w-0 relative h-full z-40",
             isWorkflowViewActive &&
               "w-[380px] shrink-0 rounded-xl border border-border shadow-xl overflow-hidden bg-background",
@@ -471,7 +471,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
             <>
               <div
                 className={
-                  "flex flex-col gap-2 overflow-y-auto py-6 z-10 [scrollbar-gutter:stable_both-edges]"
+                  "flex flex-col gap-2 overflow-y-auto pt-6 pb-40 z-10 [scrollbar-gutter:stable_both-edges]"
                 }
                 ref={containerRef}
                 onScroll={handleScroll}
@@ -496,7 +496,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
                         message.role != "user" &&
                         !space &&
                         (message.parts?.length ?? 0) > 1
-                          ? "min-h-[calc(55dvh-40px)]"
+                          ? "min-h-[calc(5dvh-40px)]"
                           : ""
                       }
                     />
@@ -509,12 +509,12 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
                         <Think />
                       </div>
                     </div>
-                    <div className="min-h-[calc(55dvh-56px)]" />
+                    <div className="min-h-[calc(5dvh-56px)]" />
                   </>
                 )}
 
                 {error && <ErrorMessage error={error} />}
-                <div className="min-w-0 min-h-52" />
+                <div className="min-w-0 min-h-16" />
               </div>
             </>
           )}

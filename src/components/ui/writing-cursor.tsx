@@ -38,8 +38,8 @@ export function WritingCursor() {
       />
 
       {/* Tilted, wiggling Leaf Logo acting as a pen */}
-      <motion.div
-        className="origin-bottom-left text-primary fill-current"
+      <motion.span
+        className="inline-block origin-bottom-left text-primary fill-current"
         animate={{
           rotate: [0, -8, 6, 0],
           x: [0, 2, -1, 0],
@@ -55,7 +55,7 @@ export function WritingCursor() {
         }}
       >
         <VrndaLogo className="size-5" />
-      </motion.div>
+      </motion.span>
     </span>
   );
 }

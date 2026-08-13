@@ -102,7 +102,7 @@ export function AppHeader() {
   }, [currentPaths, searchParams]);
 
   return (
-    <header className="sticky top-0 z-50 flex items-center px-3 py-2">
+    <header className="sticky top-0 z-50 flex items-center px-3 py-1">
       <Tooltip>
         <TooltipTrigger asChild>
           <Button

@@ -54,6 +54,27 @@ func TestAccount_GetKeysForProviderReturnsAPlaceholderKeyForOllamaWithNoKeySet(t
 	}
 }
 
+func TestAccount_GetKeysForProviderReturnsAPlaceholderKeyForOllamaWhenTheStoreErrors(t *testing.T) {
+	a := newAccount(erroringStore{})
+	keys, err := a.GetKeysForProvider(context.Background(), schemas.Ollama)
+	if err != nil {
+		t.Fatalf("GetKeysForProvider: %v -- a keyring/secret-service error must not fail an AlwaysConfigured provider that never needed the store", err)
+	}
+	if len(keys) != 1 {
+		t.Fatalf("got %d keys, want 1", len(keys))
+	}
+	if keys[0].OllamaKeyConfig == nil || keys[0].OllamaKeyConfig.URL.String() == "" {
+		t.Fatalf("OllamaKeyConfig.URL not set -- Bifrost's key validator silently skips Ollama keys missing it, so every Ollama chat request would fail with \"no keys found\"")
+	}
+}
+
+func TestAccount_GetKeysForProviderPropagatesStoreErrorsForNonAlwaysConfiguredProviders(t *testing.T) {
+	a := newAccount(erroringStore{})
+	if _, err := a.GetKeysForProvider(context.Background(), schemas.Anthropic); err == nil {
+		t.Fatalf("GetKeysForProvider: want the store error surfaced for a provider that actually needs a stored key")
+	}
+}
+
 func TestAccount_GetConfigForProviderSetsOllamaBaseURL(t *testing.T) {
 	t.Setenv("OLLAMA_BASE_URL", "http://example.invalid:1234/api")
 	a := newAccount(fakeStore{})

@@ -3,6 +3,8 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"time"
 
 	bifrostai "betterchatbot/backend/internal/ai/bifrost"
 	"betterchatbot/backend/internal/ai/tools"
@@ -12,6 +14,23 @@ import (
 
 // maxToolSteps ports route.ts's `stopWhen: stepCountIs(10)`.
 const maxToolSteps = 10
+
+// modelStepTimeout bounds a single StreamStep call (one full model turn,
+// including every streamed chunk). bifrost/core deliberately imposes no
+// deadline of its own here (schemas.NoDeadline -- see stream_step.go's
+// bctx construction), trusting the caller's ctx alone, and this app's ctx
+// otherwise has no deadline either: an httpserver request context only
+// gets canceled by client disconnect, never by a timeout. Found live: a
+// tool-augmented follow-up turn (model + tool history round-tripped back
+// to the provider) against a custom OpenAI-compatible endpoint hung with
+// no data ever arriving and no way to recover -- not an MCP problem at
+// all, since a plain single-step chat against the same model completed
+// normally. Generous on purpose: this bounds total call duration, not
+// idle time between chunks, so it must comfortably exceed a real slow-but-
+// actively-streaming response.
+// A var, not a const, so tests can shrink it instead of waiting out the
+// real duration.
+var modelStepTimeout = 120 * time.Second
 
 // toolLoopResult is what running the multi-step tool loop produced, ready
 // for route.go to fold into an assistant models.ChatMessage the same way a
@@ -66,9 +85,14 @@ func runToolLoop(
 			_ = sw.TextDelta(textID, delta)
 		}
 
-		result, err := engine.StreamStep(ctx, resolved, system, messages, specs, onTextDelta)
+		stepCtx, cancel := context.WithTimeout(ctx, modelStepTimeout)
+		result, err := engine.StreamStep(stepCtx, resolved, system, messages, specs, onTextDelta)
+		cancel()
 		if err != nil {
 			_ = sw.FinishStep()
+			if stepCtx.Err() == context.DeadlineExceeded {
+				return toolLoopResult{}, fmt.Errorf("model call timed out after %s: %w", modelStepTimeout, err)
+			}
 			return toolLoopResult{}, err
 		}
 		if started {
@@ -99,7 +123,33 @@ func runToolLoop(
 			}
 
 			def, found := tools.FindByName(activeTools, tc.Name)
-			if !found || def.Execute == nil {
+			// A tool name the model invented/mis-typed and one this turn
+			// genuinely offered but left client-executed (nil Execute --
+			// e.g. code.go's JS/Python tools) look similar but are not:
+			// the latter is a real, expected pause (the frontend resubmits
+			// with a result, matching the TS route's
+			// sendAutomaticallyWhen). !found has no such contract on
+			// either side -- nothing will ever resubmit for it. Found
+			// live: a model called a plausible-but-nonexistent MCP tool
+			// name, and treating it as the same "pause and wait" case
+			// left the chat stuck forever with no way to recover (Stop
+			// included, since the request had already completed
+			// normally from the server's point of view).
+			if !found {
+				_ = sw.ToolInputAvailable(tc.ID, tc.Name, input)
+				errMsg := "unknown tool: " + tc.Name
+				_ = sw.ToolOutputError(tc.ID, errMsg)
+				messages = append(messages, bifrostai.Message{
+					Role:      bifrostai.RoleAssistant,
+					ToolCalls: []bifrostai.ToolCall{{ID: tc.ID, Name: tc.Name, Arguments: string(input)}},
+				})
+				messages = append(messages, bifrostai.Message{Role: bifrostai.RoleTool, ToolCallID: tc.ID, Text: errMsg})
+				parts = append(parts, map[string]any{
+					"type": "tool-" + tc.Name, "toolCallId": tc.ID, "state": "output-error", "input": input, "errorText": errMsg,
+				})
+				continue
+			}
+			if def.Execute == nil {
 				_ = sw.ToolInputAvailable(tc.ID, tc.Name, input)
 				parts = append(parts, map[string]any{
 					"type": "tool-" + tc.Name, "toolCallId": tc.ID, "state": "input-available", "input": input,

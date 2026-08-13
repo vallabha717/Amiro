@@ -57,20 +57,34 @@ func (a *account) GetKeysForProvider(ctx context.Context, providerKey schemas.Mo
 	}
 
 	key, found, err := a.store.Get(ctx, entry.Key)
-	if err != nil {
+	if err != nil && !entry.AlwaysConfigured {
 		return nil, err
 	}
-	if !found || key == "" {
+	if err != nil || !found || key == "" {
 		if entry.AlwaysConfigured {
 			// Ollama needs no API key -- register one placeholder key so
 			// Bifrost routes to it instead of reporting "no keys found".
-			return []schemas.Key{{
+			// A keyring/secret-service error (e.g. no D-Bus secret service
+			// on a headless box) must not block this provider either: it
+			// never needed the store in the first place.
+			placeholder := schemas.Key{
 				ID:     "local-" + entry.Key,
 				Name:   entry.Key,
 				Value:  *schemas.NewSecretVar(""),
 				Models: schemas.WhiteList{"*"},
 				Weight: 1,
-			}}, nil
+			}
+			if entry.Key == "ollama" {
+				// Bifrost's key validator requires every Ollama key to carry
+				// its own OllamaKeyConfig.URL (per-key routing/round-robin
+				// across Ollama instances) and silently skips keys that omit
+				// it -- without this, GetKeysForProvider's placeholder key
+				// is always dropped and every Ollama chat request fails with
+				// "no keys found that support model: <id>", regardless of
+				// the keyring outcome above.
+				placeholder.OllamaKeyConfig = &schemas.OllamaKeyConfig{URL: *schemas.NewSecretVar(ollamaBaseURL())}
+			}
+			return []schemas.Key{placeholder}, nil
 		}
 		return nil, nil
 	}

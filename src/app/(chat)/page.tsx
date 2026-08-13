@@ -25,17 +25,39 @@ function HomePageContent() {
   const router = useRouter();
   const newId = useMemo(() => generateUUID(), []);
 
+  // chat-bot.tsx's prepareSendMessagesRequest syncs the URL to
+  // `?thread=<id>` as soon as the first message of a brand-new chat is
+  // sent, purely via a raw history.replaceState (not a real navigation) --
+  // just so the URL is shareable/reloadable. But Next's router patches
+  // history globally, so that URL change still re-renders this component.
+  // Without this check, that flips us into the SWR branch below, which
+  // returns null while `isLoading` is true -- and since the thread's
+  // messages aren't persisted server-side until its streamed response
+  // fully finishes (route.go's Chat handler upserts them only at the very
+  // end), that null unmounts the live ChatBot mid-response, discarding the
+  // in-flight reply the user is watching (the backend still finishes and
+  // persists it, which is why the thread's title updates regardless -- the
+  // reply just silently vanishes from the UI until something else reloads
+  // the thread). Recognizing "the URL now points at the very thread we
+  // ourselves just created" and continuing to render that same `newId`
+  // instance sidesteps the refetch entirely: its conversation is already
+  // correct in memory, nothing needs to be loaded from the server.
+  const isOwnNewThread = threadId === newId;
+
   const {
     data: thread,
     error,
     isLoading,
-  } = useSWR(threadId ? `/api/thread/${threadId}` : null, fetcher);
+  } = useSWR(
+    threadId && !isOwnNewThread ? `/api/thread/${threadId}` : null,
+    fetcher,
+  );
 
   useEffect(() => {
     if (error) router.replace("/");
   }, [error, router]);
 
-  if (!threadId) {
+  if (!threadId || isOwnNewThread) {
     return <ChatBot initialMessages={[]} threadId={newId} key={newId} />;
   }
 

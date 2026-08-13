@@ -3,21 +3,51 @@ package thread
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"betterchatbot/backend/internal/api/httpjson"
 	"betterchatbot/backend/internal/auth"
 	"betterchatbot/backend/internal/db/models"
+
+	"gorm.io/datatypes"
 )
 
 // threadWithMessagesResponse ports selectThreadWithMessagesAction's return
 // shape (chat/actions.ts:69): the thread's own fields spread alongside a
 // messages array, not nested under a "thread" key.
 type threadWithMessagesResponse struct {
-	ID        string               `json:"id"`
-	Title     string               `json:"title"`
-	UserID    string               `json:"userId"`
-	CreatedAt json.RawMessage      `json:"createdAt"`
-	Messages  []models.ChatMessage `json:"messages"`
+	ID        string            `json:"id"`
+	Title     string            `json:"title"`
+	UserID    string            `json:"userId"`
+	CreatedAt json.RawMessage   `json:"createdAt"`
+	Messages  []messageResponse `json:"messages"`
+}
+
+// messageResponse is models.ChatMessage's wire shape -- the persistence
+// model (chat_message.go) carries only gorm tags by design, so callers that
+// serialize it to JSON (only this one) convert through this struct rather
+// than adding json tags to a type meant for the DB layer. Field names match
+// frontend's ChatMessage type (types/chat.ts) exactly; the model's own
+// PascalCase field names, serialized as-is, silently didn't (every message
+// loaded from a saved thread had message.id/.role/.parts undefined).
+type messageResponse struct {
+	ID        string         `json:"id"`
+	ThreadID  string         `json:"threadId"`
+	Role      string         `json:"role"`
+	Parts     datatypes.JSON `json:"parts"`
+	Metadata  datatypes.JSON `json:"metadata,omitempty"`
+	CreatedAt time.Time      `json:"createdAt"`
+}
+
+func toMessageResponse(m models.ChatMessage) messageResponse {
+	return messageResponse{
+		ID:        m.ID,
+		ThreadID:  m.ThreadID,
+		Role:      m.Role,
+		Parts:     m.Parts,
+		Metadata:  m.Metadata,
+		CreatedAt: m.CreatedAt,
+	}
 }
 
 // Get ports selectThreadWithMessagesAction: the thread this chat page
@@ -49,10 +79,15 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	messageResponses := make([]messageResponse, len(messages))
+	for i, m := range messages {
+		messageResponses[i] = toMessageResponse(m)
+	}
+
 	createdAt, _ := json.Marshal(thread.CreatedAt)
 	httpjson.OK(w, threadWithMessagesResponse{
 		ID: thread.ID, Title: thread.Title, UserID: thread.UserID,
-		CreatedAt: createdAt, Messages: messages,
+		CreatedAt: createdAt, Messages: messageResponses,
 	})
 }
 

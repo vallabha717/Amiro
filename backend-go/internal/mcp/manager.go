@@ -138,7 +138,7 @@ func (m *Manager) Save(ctx context.Context, input SaveInput) (*models.McpServer,
 		return nil, err
 	}
 
-	if err := m.connect(ctx, server); err != nil {
+	if err := m.connectBounded(ctx, server); err != nil {
 		if errors.Is(err, ErrAuthorizationRequired) {
 			// Not a failure: beginOAuthFlow already left the server
 			// "authorizing" -- the caller (frontend) surfaces the
@@ -288,7 +288,7 @@ func (m *Manager) Refresh(ctx context.Context, id string) (*models.McpServer, er
 	if server == nil {
 		return nil, ErrNotFound
 	}
-	if err := m.connect(ctx, server); err != nil {
+	if err := m.connectBounded(ctx, server); err != nil {
 		if errors.Is(err, ErrAuthorizationRequired) {
 			return server, nil
 		}
@@ -411,7 +411,7 @@ func (m *Manager) Get(ctx context.Context, id string) (*ServerInfo, error) {
 	}
 
 	if !m.hasLiveState(id) && !isAuthorizing(server) {
-		_ = m.connect(ctx, server)
+		_ = m.connectBounded(ctx, server)
 	}
 
 	info := ServerInfo{
@@ -500,11 +500,50 @@ func (m *Manager) CallTool(ctx context.Context, id, toolName string, args json.R
 		if isAuthorizing(server) {
 			return bifrostai.MCPToolCallResult{IsError: true, Error: ErrAuthorizationRequired.Error()}
 		}
-		if err := m.connect(ctx, server); err != nil {
+		if err := m.connectBounded(ctx, server); err != nil {
 			return bifrostai.MCPToolCallResult{IsError: true, Error: err.Error()}
 		}
 	}
 	return m.engine.CallMCPTool(ctx, id, toolName, args)
+}
+
+// mcpConnectTimeout bounds connectBounded's wait for a first-time connect
+// mid tool-call -- generous enough for a real `npx` package fetch, but
+// short enough that a stuck one doesn't out-wait a user's patience. Kept
+// under bifrost/core's own DefaultToolExecutionTimeout (30s) so, once
+// connected, the actual tool call still gets to run within the request's
+// remaining budget rather than this timeout eating all of it. A var, not a
+// const, so tests can shrink it instead of waiting out the real duration.
+var mcpConnectTimeout = 20 * time.Second
+
+// connectBounded runs connect on its own goroutine and returns as soon as
+// it finishes, ctx is canceled, or mcpConnectTimeout elapses -- whichever
+// comes first. This exists because connect()'s STDIO transport spawns the
+// server subprocess on bifrost/core's own un-timed "long-lived" context,
+// deliberately decoupled from the request context so the connection can
+// outlive a single chat request -- which also means a stalled `npx`
+// (network hang, zombie child, ...) never returns from connect() and
+// never notices ctx cancellation either. Found live: a chat request
+// against a tool name the server didn't expose triggered exactly this,
+// and the UI's Stop button couldn't recover it because nothing was
+// watching a deadline on this specific path (every other call in the MCP
+// chain is already bounded, by bifrost/core's own tool-execution timeout
+// or by ctx). The connect() goroutine itself keeps running to completion
+// in the background either way -- we can't kill what the vendored
+// library won't let us cancel -- but the caller, and therefore the user's
+// chat request, is no longer held hostage by it.
+func (m *Manager) connectBounded(ctx context.Context, server *models.McpServer) error {
+	done := make(chan error, 1)
+	go func() { done <- m.connect(ctx, server) }()
+
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(mcpConnectTimeout):
+		return fmt.Errorf("mcp: connecting to server %q timed out after %s", server.Name, mcpConnectTimeout)
+	}
 }
 
 // CallToolByServerName ports toolCallByServerName (create-mcp-clients-manager.ts:300).
@@ -543,7 +582,7 @@ func (m *Manager) Init(ctx context.Context) {
 				// just kick off a redundant new one via beginOAuthFlow.
 				return
 			}
-			if err := m.connect(ctx, &s); err != nil && !errors.Is(err, ErrAuthorizationRequired) {
+			if err := m.connectBounded(ctx, &s); err != nil && !errors.Is(err, ErrAuthorizationRequired) {
 				_ = m.repo.UpdateConnectionStatus(ctx, s.ID, "error")
 			}
 		}()

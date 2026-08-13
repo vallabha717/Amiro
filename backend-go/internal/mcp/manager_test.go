@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	bifrostai "betterchatbot/backend/internal/ai/bifrost"
 	"betterchatbot/backend/internal/db"
@@ -21,9 +22,21 @@ type fakeMCPEngine struct {
 	addErr      error
 	addErrForID map[string]error
 	callResult  bifrostai.MCPToolCallResult
+
+	// addBlock, when non-nil, makes AddMCPClient block reading from it
+	// before doing anything else -- and, deliberately, without selecting on
+	// the passed context either. This mirrors bifrost/core's real STDIO
+	// transport, which spawns the server subprocess on its own long-lived
+	// context rather than the caller's, so a stalled child process can't be
+	// unblocked by context cancellation alone. Tests that never close this
+	// channel are simulating exactly that stall.
+	addBlock chan struct{}
 }
 
 func (f *fakeMCPEngine) AddMCPClient(_ context.Context, cfg bifrostai.MCPClientConfig) error {
+	if f.addBlock != nil {
+		<-f.addBlock
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.addErrForID != nil {
@@ -322,6 +335,66 @@ func TestManager_CallToolConnectsLazilyWhenNotCurrentlyLive(t *testing.T) {
 	}
 	if _, ok := engine.added[server.ID]; !ok {
 		t.Fatal("expected CallTool to have reconnected the client lazily")
+	}
+}
+
+func TestManager_CallToolTimesOutInsteadOfHangingForeverWhenConnectStalls(t *testing.T) {
+	m, engine, u := newTestManager(t)
+	ctx := context.Background()
+	server, err := m.Save(ctx, stdioInput("", "my-server", u.ID))
+	if err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	orig := mcpConnectTimeout
+	mcpConnectTimeout = 50 * time.Millisecond
+	t.Cleanup(func() { mcpConnectTimeout = orig })
+
+	_ = engine.RemoveMCPClient(server.ID)
+	engine.addBlock = make(chan struct{}) // never closed: simulates a stalled `npx` spawn
+
+	start := time.Now()
+	result := m.CallTool(ctx, server.ID, "add", nil)
+	elapsed := time.Since(start)
+
+	if !result.IsError {
+		t.Fatalf("got success result %+v, want an error once connectBounded's timeout fires", result)
+	}
+	if elapsed > time.Second {
+		t.Fatalf("CallTool took %s, want it bounded by mcpConnectTimeout instead of hanging on the stalled connect", elapsed)
+	}
+}
+
+func TestManager_CallToolReturnsPromptlyWhenContextIsCanceledDuringConnect(t *testing.T) {
+	m, engine, u := newTestManager(t)
+	ctx := context.Background()
+	server, err := m.Save(ctx, stdioInput("", "my-server", u.ID))
+	if err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	orig := mcpConnectTimeout
+	mcpConnectTimeout = time.Minute // long enough that only cancellation can end the test
+	t.Cleanup(func() { mcpConnectTimeout = orig })
+
+	_ = engine.RemoveMCPClient(server.ID)
+	engine.addBlock = make(chan struct{}) // never closed
+
+	callCtx, cancel := context.WithCancel(ctx)
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		cancel() // simulates the user clicking Stop, which aborts the fetch and cancels r.Context()
+	}()
+
+	start := time.Now()
+	result := m.CallTool(callCtx, server.ID, "add", nil)
+	elapsed := time.Since(start)
+
+	if !result.IsError {
+		t.Fatalf("got success result %+v, want an error once ctx is canceled", result)
+	}
+	if elapsed > time.Second {
+		t.Fatalf("CallTool took %s, want it to return promptly on context cancellation instead of waiting out mcpConnectTimeout", elapsed)
 	}
 }
 

@@ -43,7 +43,9 @@ export function AppSidebar({
         title={
           <span className="flex items-center gap-1.5">
             <VrndaLogo className="size-6" />
-            Amiro
+            <span className="font-brand font-bold text-xl tracking-tight text-foreground">
+              Amiro
+            </span>
           </span>
         }
         href="/"
@@ -54,7 +56,7 @@ export function AppSidebar({
         }}
       />
 
-      <SidebarContent className="mt-2 overflow-hidden relative">
+      <SidebarContent className="overflow-hidden relative">
         <div className="flex flex-col overflow-y-auto">
           <AppSidebarMenus user={user} />
           <AppSidebarAgents userRole={userRole} />
