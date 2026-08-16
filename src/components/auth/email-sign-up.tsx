@@ -103,7 +103,7 @@ export default function EmailSignUp() {
     )
       .ifOk(() => {
         toast.success(t("Auth.SignUp.title"));
-        router.push("/");
+        router.push("/onboarding");
       })
       .ifFail((e) => {
         toast.error(

@@ -87,10 +87,14 @@ export default function MentionInput({
     text: string;
   } | null>(null);
 
+  // Read at mount only -- see the dependency note on this memo.
+  const disabledRef = useRef(disabled);
+  disabledRef.current = disabled;
+
   // Memoize editor configuration
   const editorConfig = useMemo<UseEditorOptions>(() => {
     return {
-      editable: !disabled,
+      editable: !disabledRef.current,
       immediatelyRender: false,
       extensions: [
         StarterKit.configure({
@@ -197,7 +201,16 @@ export default function MentionInput({
         },
       },
     };
-  }, [disabled, MentionItem, suggestionChar, onChange]);
+    // `disabled` is deliberately not a dependency, and is read through a ref
+    // above instead. Tiptap reconfigures the editor whenever this options
+    // object changes identity, and rebuilding it rebuilds the extensions array
+    // with it -- so tying it to `disabled` churned the entire editor every time
+    // a reply started or stopped streaming. Each churn dispatches transactions,
+    // each transaction wakes every useSyncExternalStore subscriber, and in the
+    // production build that hit React's nested-update cap: "Maximum update
+    // depth exceeded", twice per message, exactly at the two transitions.
+    // Editability changes are applied by the targeted setEditable effect below.
+  }, [MentionItem, suggestionChar, onChange]);
 
   const editor = useEditor(editorConfig);
 
@@ -208,9 +221,12 @@ export default function MentionInput({
     }
   }, [editor]);
 
+  // Needs `editor` in the deps: on the first pass it is still null (the config
+  // sets immediatelyRender: false), so without it a mount that starts disabled
+  // would stay editable.
   useEffect(() => {
     editor?.setEditable(!disabled);
-  }, [disabled]);
+  }, [disabled, editor]);
 
   // Memoize handlers
   const handleKeyDown = useCallback(

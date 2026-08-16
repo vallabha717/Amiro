@@ -328,7 +328,6 @@ function DrawerTemporaryContent({
           const isLastMessage = messages.length - 1 === index;
           return (
             <PreviewMessage
-              messageIndex={index}
               key={index}
               message={message}
               status={status}

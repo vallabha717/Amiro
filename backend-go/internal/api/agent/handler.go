@@ -20,11 +20,11 @@ import (
 	"net/http"
 	"time"
 
-	bifrostai "betterchatbot/backend/internal/ai/bifrost"
-	"betterchatbot/backend/internal/api/httpjson"
-	"betterchatbot/backend/internal/db/models"
-	"betterchatbot/backend/internal/db/repository"
-	"betterchatbot/backend/internal/mcp"
+	bifrostai "amiro/backend/internal/ai/bifrost"
+	"amiro/backend/internal/api/httpjson"
+	"amiro/backend/internal/db/models"
+	"amiro/backend/internal/db/repository"
+	"amiro/backend/internal/mcp"
 )
 
 // Engine is the subset of *bifrostai.Client the generation route calls,

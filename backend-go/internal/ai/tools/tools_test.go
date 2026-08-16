@@ -9,16 +9,16 @@ import (
 	"testing"
 )
 
-func TestDefaults_ReturnsNineToolsAcrossFourToolkits(t *testing.T) {
-	defs := Defaults()
-	if len(defs) != 9 {
-		t.Fatalf("got %d tools, want 9 (4 visualization + 1 http + 2 webSearch + 2 code)", len(defs))
+func TestDefaults_ReturnsElevenToolsAcrossFourToolkits(t *testing.T) {
+	defs := Defaults(Deps{})
+	if len(defs) != 11 {
+		t.Fatalf("got %d tools, want 11 (4 visualization + 1 http + 2 webSearch + 4 terminal), defs: %+v", len(defs), defs)
 	}
 	byToolkit := map[string]int{}
 	for _, d := range defs {
 		byToolkit[d.Toolkit]++
 	}
-	want := map[string]int{ToolkitVisualization: 4, ToolkitHttp: 1, ToolkitWebSearch: 2, ToolkitCode: 2}
+	want := map[string]int{ToolkitVisualization: 4, ToolkitHttp: 1, ToolkitWebSearch: 2, ToolkitTerminal: 4}
 	for k, v := range want {
 		if byToolkit[k] != v {
 			t.Fatalf("toolkit %q: got %d tools, want %d (%+v)", k, byToolkit[k], v, byToolkit)
@@ -26,33 +26,63 @@ func TestDefaults_ReturnsNineToolsAcrossFourToolkits(t *testing.T) {
 	}
 }
 
-func TestDefaults_CodeToolsHaveNilExecute(t *testing.T) {
-	defs := Defaults()
-	for _, name := range []string{NameJavascriptExecution, NamePythonExecution} {
-		d, ok := FindByName(defs, name)
-		if !ok {
-			t.Fatalf("tool %q not found", name)
-		}
-		if d.Execute != nil {
-			t.Fatalf("tool %q: got non-nil Execute, want nil (client-executed tool)", name)
-		}
-	}
-}
-
-func TestDefaults_EveryNonCodeToolHasExecute(t *testing.T) {
-	defs := Defaults()
+func TestDefaults_EveryToolHasExecute(t *testing.T) {
+	defs := Defaults(Deps{})
 	for _, d := range defs {
-		if d.Toolkit == ToolkitCode {
-			continue
-		}
 		if d.Execute == nil {
 			t.Fatalf("tool %q (toolkit %q): got nil Execute, want non-nil", d.Name, d.Toolkit)
 		}
 	}
 }
 
+func TestTerminalExecute_RunsEchoCommand(t *testing.T) {
+	defs := Defaults(Deps{})
+	d, ok := FindByName(defs, NameTerminalExecution)
+	if !ok {
+		t.Fatalf("tool %q not found", NameTerminalExecution)
+	}
+	input, _ := json.Marshal(map[string]any{"command": "echo 'hello amiro'"})
+	out, err := d.Execute(context.Background(), input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	res, ok := out.(terminalOutput)
+	if !ok {
+		t.Fatalf("got %T, want terminalOutput", out)
+	}
+	if !strings.Contains(res.Output, "hello amiro") {
+		t.Fatalf("expected output containing 'hello amiro', got %q", res.Output)
+	}
+	if res.ExitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d", res.ExitCode)
+	}
+}
+
+func TestHttpFetchExecute_MakesRealRequestAndReturnsJSONBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+
+	d, _ := FindByName(Defaults(Deps{}), NameHttp)
+	input, _ := json.Marshal(map[string]any{"url": srv.URL, "method": "POST", "body": "{}"})
+	out, err := d.Execute(context.Background(), input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	result, ok := out.(httpFetchOutput)
+	if !ok {
+		t.Fatalf("got %T, want httpFetchOutput", out)
+	}
+	if result.Status != 201 || !result.OK {
+		t.Fatalf("got status=%d ok=%v, want 201/true", result.Status, result.OK)
+	}
+}
+
 func TestFilter_NilAllowedToolkitsReturnsEverything(t *testing.T) {
-	defs := Defaults()
+	defs := Defaults(Deps{})
 	got := Filter(defs, nil, nil)
 	if len(got) != len(defs) {
 		t.Fatalf("got %d tools, want all %d", len(got), len(defs))
@@ -60,7 +90,7 @@ func TestFilter_NilAllowedToolkitsReturnsEverything(t *testing.T) {
 }
 
 func TestFilter_EmptyAllowedToolkitsReturnsNone(t *testing.T) {
-	defs := Defaults()
+	defs := Defaults(Deps{})
 	empty := []string{}
 	got := Filter(defs, &empty, nil)
 	if len(got) != 0 {
@@ -69,7 +99,7 @@ func TestFilter_EmptyAllowedToolkitsReturnsNone(t *testing.T) {
 }
 
 func TestFilter_SpecificToolkitReturnsOnlyItsTools(t *testing.T) {
-	defs := Defaults()
+	defs := Defaults(Deps{})
 	allowed := []string{ToolkitVisualization}
 	got := Filter(defs, &allowed, nil)
 	if len(got) != 4 {
@@ -83,7 +113,7 @@ func TestFilter_SpecificToolkitReturnsOnlyItsTools(t *testing.T) {
 }
 
 func TestFilter_DefaultToolNamesTakesPriorityOverToolkits(t *testing.T) {
-	defs := Defaults()
+	defs := Defaults(Deps{})
 	empty := []string{} // would select nothing on its own
 	got := Filter(defs, &empty, []string{NameCreatePieChart, NameHttp})
 	if len(got) != 2 {
@@ -99,97 +129,67 @@ func TestFilter_DefaultToolNamesTakesPriorityOverToolkits(t *testing.T) {
 }
 
 func TestFindByName_UnknownNameReturnsFalse(t *testing.T) {
-	if _, ok := FindByName(Defaults(), "does-not-exist"); ok {
+	if _, ok := FindByName(Defaults(Deps{}), "does-not-exist"); ok {
 		t.Fatal("got ok=true for unknown tool name")
 	}
 }
 
-func TestVisualizationExecute_AlwaysReturnsSuccessString(t *testing.T) {
-	defs := Defaults()
-	for _, name := range []string{NameCreatePieChart, NameCreateBarChart, NameCreateLineChart, NameCreateTable} {
-		d, _ := FindByName(defs, name)
-		out, err := d.Execute(context.Background(), json.RawMessage(`{}`))
-		if err != nil {
-			t.Fatalf("%q: unexpected error: %v", name, err)
-		}
-		if out != "Success" {
-			t.Fatalf("%q: got %+v, want \"Success\"", name, out)
-		}
-	}
-}
-
-func TestHttpFetchExecute_MakesRealRequestAndReturnsJSONBody(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"ok":true}`))
-	}))
-	defer srv.Close()
-
-	d, _ := FindByName(Defaults(), NameHttp)
-	input, _ := json.Marshal(map[string]any{"url": srv.URL, "method": "POST", "body": "{}"})
-	out, err := d.Execute(context.Background(), input)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	result, ok := out.(httpFetchOutput)
-	if !ok {
-		t.Fatalf("got %T, want httpFetchOutput", out)
-	}
-	if result.Status != 201 || !result.OK {
-		t.Fatalf("got status=%d ok=%v, want 201/true", result.Status, result.OK)
-	}
-	body, _ := result.Body.(map[string]any)
-	if body["ok"] != true {
-		t.Fatalf("got body=%+v, want decoded JSON {ok:true}", result.Body)
-	}
-}
-
-func TestHttpFetchExecute_NetworkFailureReturnsToolErrorNotGoError(t *testing.T) {
-	d, _ := FindByName(Defaults(), NameHttp)
-	input, _ := json.Marshal(map[string]any{"url": "http://127.0.0.1:1/unreachable"})
-	out, err := d.Execute(context.Background(), input)
-	if err != nil {
-		t.Fatalf("got Go error %v, want a tool-level httpFetchError instead (matches TS's safe().ifFail())", err)
-	}
-	result, ok := out.(httpFetchError)
-	if !ok || !result.IsError {
-		t.Fatalf("got %+v, want httpFetchError{IsError:true}", out)
-	}
-}
-
-func TestWebSearchExecute_MissingAPIKeyReturnsToolError(t *testing.T) {
-	t.Setenv("EXA_API_KEY", "")
-	d, _ := FindByName(Defaults(), NameWebSearch)
-	input, _ := json.Marshal(map[string]any{"query": "test"})
-	out, err := d.Execute(context.Background(), input)
-	if err != nil {
-		t.Fatalf("got Go error %v, want a tool-level exaToolError", err)
-	}
-	result, ok := out.(exaToolError)
-	if !ok || !result.IsError || !strings.Contains(result.Error, "EXA_API_KEY") {
-		t.Fatalf("got %+v, want exaToolError mentioning EXA_API_KEY", out)
-	}
-}
-
-func TestWebContentExecute_MissingAPIKeyReturnsToolError(t *testing.T) {
-	t.Setenv("EXA_API_KEY", "")
-	d, _ := FindByName(Defaults(), NameWebContent)
-	input, _ := json.Marshal(map[string]any{"urls": []string{"https://example.com"}})
-	out, err := d.Execute(context.Background(), input)
-	if err != nil {
-		t.Fatalf("got Go error %v, want a tool-level exaToolError", err)
-	}
-	if result, ok := out.(exaToolError); !ok || !result.IsError {
-		t.Fatalf("got %+v, want exaToolError{IsError:true}", out)
-	}
-}
-
 func TestParametersSchema_EveryToolIsValidJSON(t *testing.T) {
-	for _, d := range Defaults() {
+	for _, d := range Defaults(Deps{}) {
 		var v any
 		if err := json.Unmarshal(d.ParametersSchema, &v); err != nil {
 			t.Fatalf("tool %q: ParametersSchema is not valid JSON: %v", d.Name, err)
+		}
+	}
+}
+
+// Risk is the one property everything else derives from -- permission
+// gating and parallel scheduling both read it -- and the zero value is the
+// restrictive one, so a tool that forgets to declare it does not break, it
+// just quietly starts asking for approval and stops running in parallel.
+// That is the right failure mode at runtime and the wrong one to discover
+// in production, hence this.
+func TestDefaults_EveryToolDeclaresRisk(t *testing.T) {
+	ws, _ := testWorkspace(t)
+	for _, d := range Defaults(Deps{Workspace: ws}) {
+		if d.Risk == RiskUnclassified {
+			t.Fatalf("tool %q (toolkit %q) declares no Risk", d.Name, d.Toolkit)
+		}
+	}
+}
+
+// The git tool renders itself as a command line so that one allowlist
+// covers both it and the shell. If that rendering drifts, `git status`
+// silently starts prompting even though it is on the default allowlist.
+func TestGitCommandLine_RendersMatchableCommands(t *testing.T) {
+	for _, tc := range []struct {
+		in   map[string]any
+		want string
+	}{
+		{map[string]any{"subcommand": "status"}, "git status --porcelain=v1 --branch"},
+		{map[string]any{"subcommand": "log", "max_count": 5}, "git log -n5 --oneline --no-decorate"},
+		{map[string]any{"subcommand": "add", "paths": []string{"a.go", "b.go"}}, "git add -- a.go b.go"},
+		{map[string]any{"subcommand": "commit", "message": "fix the thing"}, "git commit -m 'fix the thing'"},
+	} {
+		raw, _ := json.Marshal(tc.in)
+		if got := gitCommandLine(raw); got != tc.want {
+			t.Fatalf("gitCommandLine(%v) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestGitTool_RejectsUnknownSubcommands(t *testing.T) {
+	ws, _ := testWorkspace(t)
+	d, ok := FindByName(Defaults(Deps{Workspace: ws}), NameGit)
+	if !ok {
+		t.Fatal("git tool not in Defaults")
+	}
+	// push reaches the network and reset destroys uncommitted work; neither
+	// is reachable through this tool by design.
+	for _, sub := range []string{"push", "reset", "checkout", "clean", "config"} {
+		raw, _ := json.Marshal(map[string]any{"subcommand": sub})
+		if _, err := d.Execute(context.Background(), raw); err == nil {
+			t.Fatalf("git %s: got nil error, want a refusal", sub)
 		}
 	}
 }

@@ -3,8 +3,8 @@ package export
 import (
 	"net/http"
 
-	"betterchatbot/backend/internal/api/httpjson"
-	"betterchatbot/backend/internal/auth"
+	"amiro/backend/internal/api/httpjson"
+	"amiro/backend/internal/auth"
 )
 
 // List ports export/route.ts's GET: every export the caller made.

@@ -22,8 +22,10 @@ export class ApiError extends Error {
  * routes like GET /api/export/{id} when no session exists yet.
  */
 function authHeaders(): HeadersInit {
+  const secret = getBackendSharedSecret();
   const headers: Record<string, string> = {
-    "X-BetterChatbot-Token": getBackendSharedSecret(),
+    "X-Amiro-Token": secret,
+    "X-BetterChatbot-Token": secret,
   };
   const token = getSessionToken();
   if (token) {

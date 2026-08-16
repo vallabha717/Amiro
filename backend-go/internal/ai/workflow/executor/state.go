@@ -3,8 +3,8 @@ package executor
 import (
 	"sync"
 
-	"betterchatbot/backend/internal/ai/workflow"
-	"betterchatbot/backend/internal/db/models"
+	"amiro/backend/internal/ai/workflow"
+	"amiro/backend/internal/db/models"
 )
 
 // State ports WorkflowRuntimeState (graph-store.ts:8). Unlike the TS store,

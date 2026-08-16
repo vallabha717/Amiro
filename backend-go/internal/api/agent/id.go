@@ -6,9 +6,9 @@ import (
 
 	"gorm.io/datatypes"
 
-	"betterchatbot/backend/internal/api/httpjson"
-	"betterchatbot/backend/internal/auth"
-	"betterchatbot/backend/internal/db/repository"
+	"amiro/backend/internal/api/httpjson"
+	"amiro/backend/internal/auth"
+	"amiro/backend/internal/db/repository"
 )
 
 // Get ports agent/[id]/route.ts's GET.

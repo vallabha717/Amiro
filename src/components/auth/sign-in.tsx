@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +27,7 @@ import { useAuthStatus } from "@/hooks/queries/use-auth-status";
 // no OAuth provider wiring -- see auth/client.ts's doc comment.
 export default function SignIn() {
   const t = useTranslations();
+  const router = useRouter();
 
   const [loading, setLoading] = useState(false);
   // Ports better-chatbot's `isFirstUser` gate (its sign-in page passed the
@@ -51,7 +53,10 @@ export default function SignIn() {
             toast.error(ctx.error.message || ctx.error.statusText);
           },
         },
-      ),
+      ).then((res) => {
+        router.push("/onboarding");
+        return res;
+      })
     )
       .watch(() => setLoading(false))
       .unwrap();

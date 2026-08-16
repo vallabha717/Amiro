@@ -14,21 +14,21 @@ import (
 
 	"gorm.io/gorm"
 
-	bifrostai "betterchatbot/backend/internal/ai/bifrost"
-	agentapi "betterchatbot/backend/internal/api/agent"
-	archiveapi "betterchatbot/backend/internal/api/archive"
-	bookmarkapi "betterchatbot/backend/internal/api/bookmark"
-	exportapi "betterchatbot/backend/internal/api/export"
-	storageapi "betterchatbot/backend/internal/api/storage"
-	threadapi "betterchatbot/backend/internal/api/thread"
-	userapi "betterchatbot/backend/internal/api/user"
-	"betterchatbot/backend/internal/auth"
-	"betterchatbot/backend/internal/db"
-	"betterchatbot/backend/internal/db/models"
-	"betterchatbot/backend/internal/db/repository"
-	"betterchatbot/backend/internal/mcp"
-	"betterchatbot/backend/internal/middleware"
-	"betterchatbot/backend/internal/storage"
+	bifrostai "amiro/backend/internal/ai/bifrost"
+	agentapi "amiro/backend/internal/api/agent"
+	archiveapi "amiro/backend/internal/api/archive"
+	bookmarkapi "amiro/backend/internal/api/bookmark"
+	exportapi "amiro/backend/internal/api/export"
+	storageapi "amiro/backend/internal/api/storage"
+	threadapi "amiro/backend/internal/api/thread"
+	userapi "amiro/backend/internal/api/user"
+	"amiro/backend/internal/auth"
+	"amiro/backend/internal/db"
+	"amiro/backend/internal/db/models"
+	"amiro/backend/internal/db/repository"
+	"amiro/backend/internal/mcp"
+	"amiro/backend/internal/middleware"
+	"amiro/backend/internal/storage"
 )
 
 // fakeObjectEngine is a canned agentapi.Engine -- same rationale as
@@ -94,12 +94,12 @@ func newPhase6Env(t *testing.T) phase6Env {
 
 	authService := auth.NewService(gdb)
 	chatRepo := repository.NewChatRepository(gdb)
+	exportRepo := repository.NewChatExportRepository(gdb, chatRepo)
 	engine := &fakeObjectEngine{}
 	store, err := storage.NewLocalStorage(dir, []byte("signing-secret"), "http://127.0.0.1:9999")
 	if err != nil {
 		t.Fatalf("NewLocalStorage: %v", err)
 	}
-
 	handler := New(testConfig(), Handlers{
 		Auth: authService,
 		Agent: agentapi.NewHandler(
@@ -109,7 +109,7 @@ func newPhase6Env(t *testing.T) phase6Env {
 		),
 		Archive:  archiveapi.NewHandler(repository.NewArchiveRepository(gdb)),
 		Bookmark: bookmarkapi.NewHandler(repository.NewBookmarkRepository(gdb)),
-		Export:   exportapi.NewHandler(repository.NewChatExportRepository(gdb, chatRepo)),
+		Export:   exportapi.NewHandler(exportRepo),
 		Thread:   threadapi.NewHandler(chatRepo),
 		User:     userapi.NewHandler(repository.NewUserRepository(gdb), authService),
 		Storage:  storageapi.NewHandler(store),
@@ -754,6 +754,13 @@ func TestPhase6Routes_UserDetailsNeverIncludesAPasswordField(t *testing.T) {
 
 func TestPhase6Routes_UserDetailsByIDIsSelfOrAdminOnly(t *testing.T) {
 	env := newPhase6Env(t)
+
+	// env.userID is the instance's first account, which auth.Service.Register
+	// auto-promotes to admin -- so the "not an admin" half of this test has
+	// to strip that role first, or it proves nothing.
+	if err := env.db.Model(&models.User{}).Where("id = ?", env.userID).Update("role", "user").Error; err != nil {
+		t.Fatalf("demote: %v", err)
+	}
 
 	if own := env.do(t, http.MethodGet, "/api/user/details/"+env.userID, nil, env.token); own.Code != http.StatusOK {
 		t.Fatalf("own details: status %d", own.Code)

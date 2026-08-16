@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	bifrostai "betterchatbot/backend/internal/ai/bifrost"
-	"betterchatbot/backend/internal/db/models"
+	bifrostai "amiro/backend/internal/ai/bifrost"
+	"amiro/backend/internal/db/models"
 )
 
 func rawParts(t *testing.T, parts ...map[string]any) []json.RawMessage {
@@ -117,7 +117,13 @@ func TestUIMessage_ToEngineMessagesSkipsPendingToolCall(t *testing.T) {
 	}
 }
 
-func TestUIMessage_ToEngineMessagesPreservesOrderAroundToolCall(t *testing.T) {
+// The text an assistant said before calling a tool belongs on the same
+// message as the tool call, the way OpenAI models one assistant turn
+// (content + tool_calls together). Emitting it as a separate preceding turn
+// replays as two turns, and models re-narrate and re-issue the tool call on
+// the next step -- which surfaced as the assistant repeating itself and
+// running a client-executed tool twice.
+func TestUIMessage_ToEngineMessagesKeepsPreambleOnTheToolCallTurn(t *testing.T) {
 	m := uiMessage{Role: "assistant", Parts: rawParts(t,
 		map[string]any{"type": "text", "text": "Let me check."},
 		map[string]any{"type": "tool-http", "toolCallId": "call_1", "state": "output-available",
@@ -125,14 +131,20 @@ func TestUIMessage_ToEngineMessagesPreservesOrderAroundToolCall(t *testing.T) {
 		map[string]any{"type": "text", "text": "Done."},
 	)}
 	got := m.toEngineMessages()
-	if len(got) != 4 {
-		t.Fatalf("got %d messages, want 4 (text, tool-call, tool-result, text): %+v", len(got), got)
+	if len(got) != 3 {
+		t.Fatalf("got %d messages, want 3 (assistant[text+tool-call], tool-result, text): %+v", len(got), got)
 	}
-	if got[0].Text != "Let me check." || len(got[0].ToolCalls) != 0 {
-		t.Fatalf("got first message %+v, want the leading text turn", got[0])
+	if got[0].Text != "Let me check." || len(got[0].ToolCalls) != 1 {
+		t.Fatalf("got first message %+v, want one assistant turn carrying both the preamble and the tool call", got[0])
 	}
-	if got[3].Text != "Done." || got[3].Role != bifrostai.RoleAssistant {
-		t.Fatalf("got last message %+v, want the trailing text turn", got[3])
+	if got[0].ToolCalls[0].ID != "call_1" {
+		t.Fatalf("got tool call %+v, want call_1", got[0].ToolCalls[0])
+	}
+	if got[1].Role != bifrostai.RoleTool || got[1].ToolCallID != "call_1" {
+		t.Fatalf("got second message %+v, want the tool result for call_1", got[1])
+	}
+	if got[2].Text != "Done." || got[2].Role != bifrostai.RoleAssistant {
+		t.Fatalf("got last message %+v, want the trailing text turn", got[2])
 	}
 }
 

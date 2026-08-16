@@ -3,9 +3,9 @@ package archive
 import (
 	"net/http"
 
-	"betterchatbot/backend/internal/api/httpjson"
-	"betterchatbot/backend/internal/auth"
-	"betterchatbot/backend/internal/db/models"
+	"amiro/backend/internal/api/httpjson"
+	"amiro/backend/internal/auth"
+	"amiro/backend/internal/db/models"
 )
 
 // List ports archive/route.ts's GET.

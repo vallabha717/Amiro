@@ -1,9 +1,9 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { GrowingTreeImage } from "@/components/auth/growing-tree-image";
 import { RedirectIfAuthed } from "@/lib/backend/auth-gate";
 import { VrndaLogo } from "@/components/layouts/vrnda-logo";
+import { AnimatedAuthTree } from "@/components/auth/animated-auth-tree";
 
 // Was a Server Component calling getSession()+redirect() -- now a client
 // gate (RedirectIfAuthed) since there's no server-side session to read
@@ -28,11 +28,9 @@ export default function AuthLayout({
     <main className="relative w-full h-dvh overflow-hidden">
       <div className="flex h-full w-full">
         <div className="hidden lg:flex lg:w-1/2 bg-muted border-r flex-col p-12 xl:p-16 relative overflow-hidden">
-          {/* Inset on all four sides: the crown wants clearance from the
-              panel edges, and the trunk needs to stop above the caption
-              rather than running behind it. */}
-          <div className="pointer-events-none absolute inset-x-8 top-[9%] bottom-[13%] text-foreground/70">
-            <GrowingTreeImage className="h-full w-full" />
+          {/* Animated tree container with organic breathing and mouse parallax */}
+          <div className="pointer-events-auto absolute inset-x-8 top-[8%] bottom-[12%] text-foreground/75">
+            <AnimatedAuthTree />
           </div>
           <h1 className="relative z-10 text-xl font-semibold flex items-center gap-1.5 animate-in fade-in duration-1000">
             <VrndaLogo className="size-6" />

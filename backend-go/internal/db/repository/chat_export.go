@@ -8,7 +8,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"betterchatbot/backend/internal/db/models"
+	"amiro/backend/internal/db/models"
 )
 
 // ChatExportRepository ports chat-export-repository.pg.ts: the exportChat

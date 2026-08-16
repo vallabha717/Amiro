@@ -9,16 +9,15 @@ import (
 	"path/filepath"
 	"testing"
 
-	bifrostai "betterchatbot/backend/internal/ai/bifrost"
-	aiapi "betterchatbot/backend/internal/api/ai"
-	chatapi "betterchatbot/backend/internal/api/chat"
-	threadapi "betterchatbot/backend/internal/api/thread"
-	"betterchatbot/backend/internal/auth"
-	"betterchatbot/backend/internal/db"
-	"betterchatbot/backend/internal/db/models"
-	"betterchatbot/backend/internal/db/repository"
-	"betterchatbot/backend/internal/middleware"
-	"betterchatbot/backend/internal/secrets"
+	bifrostai "amiro/backend/internal/ai/bifrost"
+	aiapi "amiro/backend/internal/api/ai"
+	chatapi "amiro/backend/internal/api/chat"
+	threadapi "amiro/backend/internal/api/thread"
+	"amiro/backend/internal/auth"
+	"amiro/backend/internal/db"
+	"amiro/backend/internal/db/models"
+	"amiro/backend/internal/db/repository"
+	"amiro/backend/internal/middleware"
 
 	"gorm.io/gorm"
 )
@@ -36,7 +35,11 @@ func (f fakeGenerateObjectEngine) Stream(context.Context, bifrostai.ResolvedMode
 	panic("not used by phase7 tests")
 }
 
-func (f fakeGenerateObjectEngine) StreamStep(context.Context, bifrostai.ResolvedModel, string, []bifrostai.Message, []bifrostai.ToolSpec, func(string)) (*bifrostai.StepResult, error) {
+func (f fakeGenerateObjectEngine) StreamStep(context.Context, bifrostai.ResolvedModel, string, []bifrostai.Message, []bifrostai.ToolSpec, bifrostai.StepHooks) (*bifrostai.StepResult, error) {
+	panic("not used by phase7 tests")
+}
+
+func (f fakeGenerateObjectEngine) TestStep(context.Context, bifrostai.ResolvedModel, string, []bifrostai.Message, []bifrostai.ToolSpec) (*bifrostai.StepResult, error) {
 	panic("not used by phase7 tests")
 }
 
@@ -65,9 +68,10 @@ func newPhase7TestEnv(t *testing.T, engine interface {
 	authService := auth.NewService(gdb)
 	chatRepo := repository.NewChatRepository(gdb)
 	exportRepo := repository.NewChatExportRepository(gdb, chatRepo)
-	chatHandler := chatapi.NewHandler(chatRepo, exportRepo, engine, nil, secrets.NewEnvStore(), nil, nil, nil, nil, nil)
+	providerRepo := repository.NewProviderRepository(gdb)
+	chatHandler := chatapi.NewHandler(chatRepo, exportRepo, engine, nil, nil, nil, nil, nil, nil, providerRepo)
 	threadHandler := threadapi.NewHandler(chatRepo)
-	aiHandler := aiapi.NewHandler(engine)
+	aiHandler := aiapi.NewHandler(engine, providerRepo)
 	handler := New(testConfig(), Handlers{Auth: authService, Chat: chatHandler, Thread: threadHandler, AI: aiHandler})
 
 	env := phase7TestEnv{handler: handler, db: gdb, chatRepo: chatRepo}

@@ -10,6 +10,12 @@ export type ChatMetadata = {
   toolChoice?: "auto" | "none" | "manual";
   toolCount?: number;
   agentId?: string;
+  /**
+   * Milliseconds the turn spent working, summed across every round an
+   * approval split it into and excluding the waits in between. Sent by the
+   * server because a reopened thread has nothing to measure.
+   */
+  durationMs?: number;
 };
 
 export type ChatModel = {
@@ -103,6 +109,11 @@ export const chatApiSchemaRequestBodySchema = z.object({
     })
     .optional(),
   toolChoice: z.enum(["auto", "none", "manual"]),
+  permissionMode: z
+    .enum(["plan", "manual", "interactive", "edit", "auto"])
+    .optional(),
+  workspaceRoot: z.string().optional(),
+  projectDir: z.string().optional(),
   mentions: z.array(ChatMentionSchema).optional(),
   imageTool: z.object({ model: z.string().optional() }).optional(),
   allowedMcpServers: z.record(z.string(), AllowedMCPServerZodSchema).optional(),
@@ -164,6 +175,19 @@ export type ChatRepository = {
   ): Promise<ChatMessage[]>;
 };
 
+/**
+ * The answer to an approval prompt, sent back as a suspended tool call's
+ * output. The backend recognizes the tag, runs (or refuses) the call for
+ * real, and replaces this with the tool's actual result --
+ * backend-go/internal/api/chat/approvals.go.
+ *
+ * `scope` distinguishes "yes, this once" from "yes, and stop asking". The
+ * backend decides what "always" is scoped *to*: the exact command line for
+ * a command-shaped call, otherwise the tool. It has to be that side's
+ * choice, because it is the side that knows a tool's shape -- approving one
+ * `go test` run must never widen into approving the shell.
+ */
 export const ManualToolConfirmTag = tag<{
   confirm: boolean;
+  scope?: "once" | "always";
 }>("manual-tool-confirm");

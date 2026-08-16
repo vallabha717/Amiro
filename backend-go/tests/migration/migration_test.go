@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"betterchatbot/backend/internal/db"
-	"betterchatbot/backend/internal/db/models"
+	"amiro/backend/internal/db"
+	"amiro/backend/internal/db/models"
 )
 
 // roundTrip exercises a representative FK chain (user -> session,

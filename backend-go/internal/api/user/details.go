@@ -3,11 +3,14 @@ package user
 import (
 	"net/http"
 	"net/mail"
+	"strconv"
 	"strings"
+	"time"
 
-	"betterchatbot/backend/internal/api/httpjson"
-	"betterchatbot/backend/internal/auth"
-	"betterchatbot/backend/internal/db/models"
+	"amiro/backend/internal/api/httpjson"
+	"amiro/backend/internal/auth"
+	"amiro/backend/internal/db/models"
+	"amiro/backend/internal/db/repository"
 )
 
 // Details ports user/details/route.ts's GET: the caller's own record.
@@ -18,6 +21,53 @@ func (h *Handler) Details(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.writeUser(w, r, authedUser.ID)
+}
+
+// Stats returns the caller's own usage statistics for the requested date range.
+func (h *Handler) Stats(w http.ResponseWriter, r *http.Request) {
+	authedUser, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		httpjson.Unauthorized(w)
+		return
+	}
+
+	opts := parseStatsQueryOptions(r)
+	stats, err := h.users.GetUserStats(r.Context(), authedUser.ID, opts)
+	if err != nil {
+		httpjson.ServerError(w, err)
+		return
+	}
+	httpjson.OK(w, stats)
+}
+
+func parseStatsQueryOptions(r *http.Request) repository.UserStatsOptions {
+	q := r.URL.Query()
+	var opts repository.UserStatsOptions
+
+	if daysStr := q.Get("days"); daysStr != "" {
+		if d, err := strconv.Atoi(daysStr); err == nil && d >= 0 {
+			opts.Days = &d
+		}
+	}
+
+	if fromStr := q.Get("from"); fromStr != "" {
+		if t, err := time.Parse(time.RFC3339, fromStr); err == nil {
+			opts.From = &t
+		} else if t, err := time.Parse("2006-01-02", fromStr); err == nil {
+			opts.From = &t
+		}
+	}
+
+	if toStr := q.Get("to"); toStr != "" {
+		if t, err := time.Parse(time.RFC3339, toStr); err == nil {
+			opts.To = &t
+		} else if t, err := time.Parse("2006-01-02", toStr); err == nil {
+			endOfDay := time.Date(t.Year(), t.Month(), t.Day(), 23, 59, 59, 999999999, t.Location())
+			opts.To = &endOfDay
+		}
+	}
+
+	return opts
 }
 
 // DetailsByID ports user/details/[id]/route.ts's GET, gated by

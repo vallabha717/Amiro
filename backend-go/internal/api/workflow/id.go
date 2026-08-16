@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"betterchatbot/backend/internal/auth"
+	"amiro/backend/internal/auth"
 )
 
 // Get ports workflow/[id]/route.ts's GET handler.

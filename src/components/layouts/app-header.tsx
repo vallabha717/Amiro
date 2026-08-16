@@ -88,14 +88,25 @@ export function AppHeader() {
     if (currentPaths === "/" && searchParams.get("thread")) {
       return <ThreadDropdownComponent />;
     }
+    if (currentPaths === "/admin/usage/detail") {
+      const searchPageParams = searchParams.get("searchPageParams");
+      const returnUrl = buildReturnUrl("/admin/usage", searchPageParams || "");
+      return (
+        <BackButton
+          data-testid="admin-usage-back-button"
+          returnUrl={returnUrl}
+          title={t("Admin.Usage.backToUsage")}
+        />
+      );
+    }
     if (currentPaths === "/admin/users/detail") {
       const searchPageParams = searchParams.get("searchPageParams");
-      const returnUrl = buildReturnUrl("/admin/users", searchPageParams || "");
+      const returnUrl = buildReturnUrl("/admin/usage", searchPageParams || "");
       return (
         <BackButton
           data-testid="admin-users-back-button"
           returnUrl={returnUrl}
-          title={t("Admin.Users.backToUsers")}
+          title={t("Admin.Usage.backToUsage")}
         />
       );
     }

@@ -5,8 +5,8 @@ import (
 	"errors"
 	"net/http"
 
-	"betterchatbot/backend/internal/auth"
-	"betterchatbot/backend/internal/mcp"
+	"amiro/backend/internal/auth"
+	"amiro/backend/internal/mcp"
 )
 
 // saveRequest ports McpServerTable's insert shape (mcp/route.ts:23):

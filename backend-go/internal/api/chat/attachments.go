@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	bifrostai "betterchatbot/backend/internal/ai/bifrost"
+	bifrostai "amiro/backend/internal/ai/bifrost"
 )
 
 // maxAttachmentFetchBytes mirrors internal/api/storage's own multipart

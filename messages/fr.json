@@ -126,7 +126,9 @@
       "searchOptionsDescription": "Vous pouvez passer des options de recherche au chatbot, comme le nombre maximum de résultats de recherche, la date de recherche, etc.",
       "defaultToolKit": {
         "visualization": "Visualisation de données",
-        "webSearch": "Rechercher sur le le Web"
+        "webSearch": "Rechercher sur le le Web",
+        "file": "Fichiers et code",
+        "memory": "Notes de l'espace de travail"
       },
       "agent": "Agent",
       "mention": "Mention",
@@ -142,7 +144,15 @@
       "manual": "Manuel",
       "none": "Aucun",
       "mentionOnly": "@mention uniquement",
-      "noToolsAvailable": "Aucun outil disponible"
+      "noToolsAvailable": "Aucun outil disponible",
+      "permissionMode": "Mode d'autorisation",
+      "permissionModeDescription": "Ce que l'agent peut faire à vos fichiers et au terminal sans demander.",
+      "planMode": "Plan",
+      "planModeDescription": "Lecture seule. Il peut explorer et proposer des modifications, mais pas écrire de fichiers ni exécuter de commandes.",
+      "interactiveMode": "Interactif",
+      "interactiveModeDescription": "Les lectures s'exécutent librement ; les écritures et les commandes vous demandent d'abord.",
+      "autoPermissionMode": "Automatique",
+      "autoPermissionModeDescription": "Exécute tout sans demander. Toujours limité au dossier de l'espace de travail."
     },
     "VoiceChat": {
       "title": "Mode Chat Vocal",
@@ -161,7 +171,6 @@
     },
     "Thread": {
       "chat": "Chat",
-
       "renameChat": "Renommer",
       "deleteChat": "Supprimer le Chat",
       "deleteUnarchivedChats": "Supprimer Tous les Chats Non Archivés",
@@ -181,7 +190,6 @@
       "createLink": "Créer le Lien",
       "linkCopied": "Lien copié"
     },
-
     "ChatPreferences": {
       "title": "Préférences de Chat",
       "whatShouldWeCallYou": "Comment devrions-nous vous appeler ?",
@@ -204,7 +212,8 @@
       "mcpInstructions": "Instructions MCP",
       "mcpInstructionsDescription": "Personnalisez les instructions du serveur MCP.",
       "userSettings": "Paramètres Utilisateur"
-    }
+    },
+    "contextCompacted": "Contexte antérieur compacté — {count} messages résumés, ~{saved}k jetons libérés"
   },
   "Layout": {
     "toggleSidebar": "Basculer la Barre Latérale",
@@ -249,7 +258,6 @@
     "theme": "Thème",
     "signOut": "Se déconnecter",
     "language": "Langue",
-
     "showAllChats": "Voir Tous les Chats",
     "showLessChats": "Afficher moins",
     "reportAnIssue": "Signaler un problème",

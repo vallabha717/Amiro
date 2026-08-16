@@ -9,8 +9,8 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
-	"betterchatbot/backend/internal/db"
-	"betterchatbot/backend/internal/db/models"
+	"amiro/backend/internal/db"
+	"amiro/backend/internal/db/models"
 )
 
 func newTestChatRepo(t *testing.T) (*ChatRepository, *gorm.DB, *models.User) {

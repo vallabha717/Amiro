@@ -46,6 +46,11 @@ func httpFetchTool() Definition {
 	return Definition{
 		Name:    NameHttp,
 		Toolkit: ToolkitHttp,
+		// External, not read: the model picks the method and the body, so
+		// this tool can PUT and DELETE against anything reachable. That is
+		// a different kind of thing from web_search, which can only ever
+		// look something up.
+		Risk: RiskExternal,
 		Description: "Make HTTP requests to any URL. Can be used to fetch data from APIs, send data to " +
 			"servers, or interact with web services.",
 		ParametersSchema: json.RawMessage(`{

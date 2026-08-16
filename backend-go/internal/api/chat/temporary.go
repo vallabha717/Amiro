@@ -5,12 +5,12 @@ import (
 	"net/http"
 	"strings"
 
-	bifrostai "betterchatbot/backend/internal/ai/bifrost"
-	"betterchatbot/backend/internal/ai/prompts"
-	"betterchatbot/backend/internal/ai/uimessage"
-	"betterchatbot/backend/internal/auth"
-	"betterchatbot/backend/internal/db/models"
-	"betterchatbot/backend/internal/user"
+	bifrostai "amiro/backend/internal/ai/bifrost"
+	"amiro/backend/internal/ai/prompts"
+	"amiro/backend/internal/ai/uimessage"
+	"amiro/backend/internal/auth"
+	"amiro/backend/internal/db/models"
+	"amiro/backend/internal/user"
 )
 
 type temporaryRequest struct {

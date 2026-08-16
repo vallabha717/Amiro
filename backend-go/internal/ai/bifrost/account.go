@@ -4,30 +4,19 @@ import (
 	"context"
 
 	"github.com/maximhq/bifrost/core/schemas"
-
-	"betterchatbot/backend/internal/secrets"
 )
 
-// account implements schemas.Account (the interface Phase 0's spike proved
-// out) over a secrets.KeyStore instead of the spike's single hardcoded env
-// var -- every catalog provider is registered, not just OpenAI.
-//
-// Every provider is always reported as "configured" (GetConfiguredProviders
-// never filters on key presence), matching how models.ts always defines a
-// LanguageModel for every static entry regardless of hasAPIKey and only
-// fails at call time with a missing-key error. GetKeysForProvider returns
-// an empty key list for a provider with nothing in the KeyStore; Bifrost
-// surfaces that as "no keys found for provider" on the actual request
-// rather than at Init.
 type account struct {
-	store secrets.KeyStore
+	repo ProviderFetcher
 }
 
-func newAccount(store secrets.KeyStore) *account {
-	return &account{store: store}
+func newAccount(repo ProviderFetcher) *account {
+	return &account{repo: repo}
 }
 
 func (a *account) GetConfiguredProviders() ([]schemas.ModelProvider, error) {
+	// Bifrost core only strictly needs this for initialization verification of static providers,
+	// Since we handle dynamic routing via DB, we can just return the static list.
 	providers := make([]schemas.ModelProvider, 0, len(catalog))
 	for _, p := range catalog {
 		providers = append(providers, p.Provider)
@@ -36,100 +25,54 @@ func (a *account) GetConfiguredProviders() ([]schemas.ModelProvider, error) {
 }
 
 func (a *account) GetKeysForProvider(ctx context.Context, providerKey schemas.ModelProvider) ([]schemas.Key, error) {
-	entry, ok := providerByBifrostKey(providerKey)
-	if !ok {
-		return nil, nil
-	}
+	id := string(providerKey)
 
-	if entry.IsCustom {
-		// Never looked up via secrets.KeyStore -- the key (if any) came
-		// straight from OPENAI_COMPATIBLE_DATA's own apiKey field
-		// (openai_compatible.go). Same placeholder-key trick as Ollama's
-		// AlwaysConfigured branch below when there isn't one, so Bifrost
-		// routes to it instead of reporting "no keys found for provider".
-		return []schemas.Key{{
-			ID:     "custom-" + entry.Key,
-			Name:   entry.Key,
-			Value:  *schemas.NewSecretVar(entry.CustomAPIKey),
-			Models: schemas.WhiteList{"*"},
-			Weight: 1,
-		}}, nil
-	}
-
-	key, found, err := a.store.Get(ctx, entry.Key)
-	if err != nil && !entry.AlwaysConfigured {
-		return nil, err
-	}
-	if err != nil || !found || key == "" {
-		if entry.AlwaysConfigured {
-			// Ollama needs no API key -- register one placeholder key so
-			// Bifrost routes to it instead of reporting "no keys found".
-			// A keyring/secret-service error (e.g. no D-Bus secret service
-			// on a headless box) must not block this provider either: it
-			// never needed the store in the first place.
-			placeholder := schemas.Key{
-				ID:     "local-" + entry.Key,
-				Name:   entry.Key,
-				Value:  *schemas.NewSecretVar(""),
+	if fetcher, ok := a.repo.(singleConfigFetcher); ok {
+		_, _, key, err := fetcher.GetProviderBaseURLAndKey(ctx, id)
+		if err == nil && key != "" {
+			return []schemas.Key{{
+				ID:     id + "-key",
+				Name:   id,
+				Value:  *schemas.NewSecretVar(key),
 				Models: schemas.WhiteList{"*"},
 				Weight: 1,
-			}
-			if entry.Key == "ollama" {
-				// Bifrost's key validator requires every Ollama key to carry
-				// its own OllamaKeyConfig.URL (per-key routing/round-robin
-				// across Ollama instances) and silently skips keys that omit
-				// it -- without this, GetKeysForProvider's placeholder key
-				// is always dropped and every Ollama chat request fails with
-				// "no keys found that support model: <id>", regardless of
-				// the keyring outcome above.
-				placeholder.OllamaKeyConfig = &schemas.OllamaKeyConfig{URL: *schemas.NewSecretVar(ollamaBaseURL())}
-			}
-			return []schemas.Key{placeholder}, nil
+			}}, nil
 		}
-		return nil, nil
 	}
+	return nil, nil
+}
 
-	return []schemas.Key{{
-		ID:     entry.Key + "-key",
-		Name:   entry.Key,
-		Value:  *schemas.NewSecretVar(key),
-		Models: schemas.WhiteList{"*"},
-		Weight: 1,
-	}}, nil
+// Helper interface to get config by ID
+type singleConfigFetcher interface {
+	GetProviderBaseURLAndKey(ctx context.Context, id string) (provider string, baseURL string, apiKey string, err error)
 }
 
 func (a *account) GetConfigForProvider(providerKey schemas.ModelProvider) (*schemas.ProviderConfig, error) {
-	entry, ok := providerByBifrostKey(providerKey)
-	if ok && entry.Key == "ollama" {
-		return &schemas.ProviderConfig{
-			NetworkConfig: schemas.NetworkConfig{BaseURL: ollamaBaseURL()},
-		}, nil
-	}
-	if ok && entry.IsCustom {
-		// BaseProviderType: OpenAI -- every OPENAI_COMPATIBLE_DATA entry is,
-		// by definition, an OpenAI-request/response-shaped API (the "Azure
-		// OpenAI" TS special case isn't ported, see openai_compatible.go).
-		// IsKeyLess mirrors whether the config actually supplied a key,
-		// so Bifrost doesn't demand one for a genuinely keyless self-hosted
-		// endpoint -- the placeholder key GetKeysForProvider still returns
-		// either way is what actually carries the base URL's auth header
-		// when CustomAPIKey is set.
-		return &schemas.ProviderConfig{
-			NetworkConfig: schemas.NetworkConfig{BaseURL: entry.CustomBaseURL},
-			CustomProviderConfig: &schemas.CustomProviderConfig{
-				BaseProviderType: schemas.OpenAI,
-				IsKeyLess:        entry.CustomAPIKey == "",
-			},
-		}, nil
-	}
-	return &schemas.ProviderConfig{}, nil
-}
+	id := string(providerKey)
+	baseURL := ""
+	var baseProviderType schemas.ModelProvider = schemas.OpenAI
 
-func providerByBifrostKey(providerKey schemas.ModelProvider) (providerEntry, bool) {
-	for _, p := range catalog {
-		if p.Provider == providerKey {
-			return p, true
+	if a.repo != nil {
+		if fetcher, ok := a.repo.(singleConfigFetcher); ok {
+			if provider, url, _, err := fetcher.GetProviderBaseURLAndKey(context.Background(), id); err == nil {
+				if url != "" {
+					baseURL = normalizeBaseURL(url)
+				}
+				if p, found := findProvider(provider); found {
+					baseProviderType = p.Provider
+				}
+			}
 		}
 	}
-	return providerEntry{}, false
+
+	cfg := &schemas.ProviderConfig{
+		NetworkConfig: schemas.NetworkConfig{BaseURL: baseURL, AllowPrivateNetwork: true},
+	}
+
+	// Wrap in CustomProviderConfig to tell Bifrost core which protocol to use
+	cfg.CustomProviderConfig = &schemas.CustomProviderConfig{
+		BaseProviderType: baseProviderType,
+	}
+
+	return cfg, nil
 }

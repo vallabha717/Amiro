@@ -6,9 +6,9 @@ import (
 
 	"gorm.io/datatypes"
 
-	"betterchatbot/backend/internal/api/httpjson"
-	"betterchatbot/backend/internal/auth"
-	"betterchatbot/backend/internal/db/models"
+	"amiro/backend/internal/api/httpjson"
+	"amiro/backend/internal/auth"
+	"amiro/backend/internal/db/models"
 )
 
 // ListComments ports export/[id]/comments/route.ts's GET. The session is

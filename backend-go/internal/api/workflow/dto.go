@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"betterchatbot/backend/internal/db/models"
-	"betterchatbot/backend/internal/db/repository"
+	"amiro/backend/internal/db/models"
+	"amiro/backend/internal/db/repository"
 )
 
 // internal/db/models has no json tags anywhere in this codebase (see

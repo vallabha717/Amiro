@@ -76,6 +76,8 @@ pub fn run() {
                 .shell()
                 .sidecar("backend")
                 .expect("backend sidecar binary not found next to the app executable")
+                .env("AMIRO_AUTH_TOKEN", &shared_secret)
+                .env("AMIRO_ALLOWED_ORIGIN", allowed_origin)
                 .env("BETTERCHATBOT_AUTH_TOKEN", &shared_secret)
                 .env("BETTERCHATBOT_ALLOWED_ORIGIN", allowed_origin);
 

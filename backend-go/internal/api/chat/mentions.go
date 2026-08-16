@@ -13,10 +13,10 @@ import (
 	"errors"
 	"sort"
 
-	"betterchatbot/backend/internal/ai/prompts"
-	"betterchatbot/backend/internal/ai/tools"
-	"betterchatbot/backend/internal/ai/workflow/executor"
-	"betterchatbot/backend/internal/mcp"
+	"amiro/backend/internal/ai/prompts"
+	"amiro/backend/internal/ai/tools"
+	"amiro/backend/internal/ai/workflow/executor"
+	"amiro/backend/internal/mcp"
 )
 
 // agentInstructionsDTO reads Agent.Instructions (AgentInstructionsSchema,
@@ -160,7 +160,13 @@ func (h *Handler) loadMCPTools(ctx context.Context, userID string, mentions []me
 			}
 			serverID, toolName, toolInfo := srv.ID, t.Name, t
 			out.Defs = append(out.Defs, tools.Definition{
-				Name:             mcp.ToolID(srv.Name, t.Name),
+				Name: mcp.ToolID(srv.Name, t.Name),
+				// External: an MCP tool's side effects happen on someone
+				// else's machine, and nothing here can see what they are.
+				// That classification is what makes Plan mode actually
+				// read-only -- without it, "read-only" would mean "reads no
+				// local files while posting to Jira".
+				Risk:             tools.RiskExternal,
 				Description:      toolInfo.Description,
 				ParametersSchema: toolInfo.InputSchema,
 				Execute: func(ctx context.Context, input json.RawMessage) (any, error) {
@@ -214,7 +220,11 @@ func (h *Handler) loadWorkflowTools(ctx context.Context, mentions []mentionDTO) 
 			description = info.Name + " " + *info.Description
 		}
 		defs = append(defs, tools.Definition{
-			Name:             mcp.SanitizeFunctionName(info.Name),
+			Name: mcp.SanitizeFunctionName(info.Name),
+			// A workflow is a graph the user authored, and its nodes can
+			// make HTTP calls and invoke tools of their own. External is the
+			// honest floor: we cannot look inside and promise less.
+			Risk:             tools.RiskExternal,
 			Description:      description,
 			ParametersSchema: info.Schema,
 			Execute: func(ctx context.Context, input json.RawMessage) (any, error) {

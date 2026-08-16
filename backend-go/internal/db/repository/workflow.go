@@ -11,8 +11,8 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
-	"betterchatbot/backend/internal/ai/workflow"
-	"betterchatbot/backend/internal/db/models"
+	"amiro/backend/internal/ai/workflow"
+	"amiro/backend/internal/db/models"
 )
 
 // WorkflowRepository ports workflow-repository.pg.ts's WorkflowRepository

@@ -6,10 +6,10 @@ import (
 	"regexp"
 	"strings"
 
-	"betterchatbot/backend/internal/ai/ingest"
-	"betterchatbot/backend/internal/api/httpjson"
-	"betterchatbot/backend/internal/auth"
-	"betterchatbot/backend/internal/storage"
+	"amiro/backend/internal/ai/ingest"
+	"amiro/backend/internal/api/httpjson"
+	"amiro/backend/internal/auth"
+	"amiro/backend/internal/storage"
 )
 
 // ingestRequest ports storage/ingest/route.ts's Body type (route.ts:6).

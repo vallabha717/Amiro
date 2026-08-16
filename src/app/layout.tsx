@@ -9,6 +9,7 @@ import {
 import { Toaster } from "ui/sonner";
 import { LocaleProvider } from "@/components/layouts/locale-provider";
 import { BackendSessionProvider } from "@/lib/backend/session-context";
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],

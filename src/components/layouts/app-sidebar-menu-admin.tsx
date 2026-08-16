@@ -9,7 +9,7 @@ import {
 import { Tooltip } from "ui/tooltip";
 import { SidebarMenuItem } from "ui/sidebar";
 import { SidebarMenuButton } from "ui/sidebar";
-import { Shield, Users } from "lucide-react";
+import { Shield, TrendingUp, Settings2 } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 
@@ -23,11 +23,18 @@ const AppSidebarAdmin = () => {
   const adminNavItems = useMemo(
     () => [
       {
-        id: "users",
-        title: t("Users.title"),
-        url: "/admin",
-        icon: Users,
-        isActive: pathname.startsWith("/admin/users"),
+        id: "providers",
+        title: t("Providers.title"),
+        url: "/admin/providers",
+        icon: Settings2,
+        isActive: pathname.startsWith("/admin/providers"),
+      },
+      {
+        id: "usage",
+        title: t("Usage.title"),
+        url: "/admin/usage",
+        icon: TrendingUp,
+        isActive: pathname.startsWith("/admin/usage") || pathname.startsWith("/admin/users"),
       },
     ],
     [t, pathname],

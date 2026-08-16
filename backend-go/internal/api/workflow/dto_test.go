@@ -7,8 +7,8 @@ import (
 
 	"gorm.io/datatypes"
 
-	"betterchatbot/backend/internal/db/models"
-	"betterchatbot/backend/internal/db/repository"
+	"amiro/backend/internal/db/models"
+	"amiro/backend/internal/db/repository"
 )
 
 func TestToWorkflowResponse_CamelCaseWireShape(t *testing.T) {

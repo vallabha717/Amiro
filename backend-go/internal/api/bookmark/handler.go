@@ -5,9 +5,9 @@ package bookmark
 import (
 	"net/http"
 
-	"betterchatbot/backend/internal/api/httpjson"
-	"betterchatbot/backend/internal/auth"
-	"betterchatbot/backend/internal/db/repository"
+	"amiro/backend/internal/api/httpjson"
+	"amiro/backend/internal/auth"
+	"amiro/backend/internal/db/repository"
 )
 
 type Handler struct {

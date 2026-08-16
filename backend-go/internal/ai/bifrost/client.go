@@ -8,8 +8,6 @@ import (
 
 	bifrost "github.com/maximhq/bifrost/core"
 	"github.com/maximhq/bifrost/core/schemas"
-
-	"betterchatbot/backend/internal/secrets"
 )
 
 // MessageRole is the subset of schemas.ChatMessageRole a chat/title/
@@ -92,10 +90,40 @@ type Client struct {
 	bf *bifrost.Bifrost
 }
 
+// We use ProviderFetcher defined in catalog.go instead of BaseURLFetcher
+
 // NewClient calls bifrost.Init with an Account backed by store, registering
 // every catalog provider (account.go).
-func NewClient(ctx context.Context, store secrets.KeyStore) (*Client, error) {
-	bf, err := bifrost.Init(ctx, schemas.BifrostConfig{Account: newAccount(store)})
+//
+// DisableAutoToolInject is the important setting here. By default Bifrost's
+// MCP tool manager appends every connected MCP server's tools to every chat
+// request it sees. This app does its own MCP tool loading -- the chat route
+// resolves which servers and tools a turn is actually allowed to use
+// (mentions, allowedMcpServers, per-tool customizations) and passes them as
+// explicit ToolSpecs, then executes the calls itself. Letting Bifrost also
+// inject them meant:
+//
+//   - every request carried the full tool catalogue whether or not the user
+//     asked for it (~2.4k extra prompt tokens per call with one small MCP
+//     server connected, on every title generation and workflow node too);
+//   - the user's own per-server/per-tool permissions were bypassed, since
+//     the injected copy is unfiltered;
+//   - the workflow LLM node silently produced empty output -- handed tools
+//     it never asked for, the model answered with a tool call instead of
+//     text, and a text-mode node has nowhere to put that.
+//
+// With auto-injection off, MCP tools reach a request only when we put them
+// there.
+func NewClient(ctx context.Context, repo ProviderFetcher) (*Client, error) {
+	acc := newAccount(repo)
+	bf, err := bifrost.Init(ctx, schemas.BifrostConfig{
+		Account: acc,
+		MCPConfig: &schemas.MCPConfig{
+			ToolManagerConfig: &schemas.MCPToolManagerConfig{
+				DisableAutoToolInject: true,
+			},
+		},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("bifrost.Init: %w", err)
 	}
@@ -115,10 +143,16 @@ func (c *Client) Shutdown() {
 // route handlers.
 func (c *Client) Stream(ctx context.Context, resolved ResolvedModel, system string, messages []Message) (<-chan Chunk, error) {
 	bctx := schemas.NewBifrostContext(ctx, schemas.NoDeadline)
+	includeUsage := true
 	req := &schemas.BifrostChatRequest{
 		Provider: resolved.Provider,
 		Model:    resolved.BifrostModel,
 		Input:    toBifrostMessages(system, messages),
+		Params: &schemas.ChatParameters{
+			StreamOptions: &schemas.ChatStreamOptions{
+				IncludeUsage: &includeUsage,
+			},
+		},
 	}
 
 	stream, bErr := c.bf.ChatCompletionStreamRequest(bctx, req)
@@ -129,6 +163,7 @@ func (c *Client) Stream(ctx context.Context, resolved ResolvedModel, system stri
 	out := make(chan Chunk)
 	go func() {
 		defer close(out)
+		defer bctx.Cancel()
 		for sc := range stream {
 			if sc == nil {
 				continue
@@ -154,6 +189,12 @@ func (c *Client) Stream(ctx context.Context, resolved ResolvedModel, system stri
 					CompletionTokens: u.CompletionTokens,
 					TotalTokens:      u.TotalTokens,
 				}}
+			}
+			// See stream_finish.go: a gateway that never sends [DONE] would
+			// otherwise keep this goroutine (and the caller's stream) alive
+			// long after the reply is complete.
+			if streamTurnFinished(sc.BifrostChatResponse) {
+				return
 			}
 		}
 	}()
@@ -191,8 +232,20 @@ func toBifrostMessage(m Message) schemas.ChatMessage {
 		calls := make([]schemas.ChatAssistantMessageToolCall, len(m.ToolCalls))
 		for i, tc := range m.ToolCalls {
 			id, name := tc.ID, tc.Name
+			// Type is a *string with `omitempty`, so leaving it nil drops
+			// "type" from the wire format entirely -- and every provider
+			// rejects the resulting turn. OpenAI/Azure answer "Missing
+			// required parameter: messages[N].tool_calls[0].type"; Anthropic
+			// is worse, because Bifrost's OpenAI->Anthropic conversion skips
+			// the typeless entry and the assistant message loses its
+			// tool_use block, so the following tool_result comes back as
+			// "unexpected tool_use_id ... must have a corresponding tool_use
+			// block". Either way the second step of every tool call fails,
+			// which means the model never sees a tool's output.
+			callType := "function"
 			calls[i] = schemas.ChatAssistantMessageToolCall{
 				Index: uint16(i),
+				Type:  &callType,
 				ID:    &id,
 				Function: schemas.ChatAssistantMessageToolCallFunction{
 					Name:      &name,
@@ -271,3 +324,38 @@ func toError(be *schemas.BifrostError) error {
 	}
 	return errors.New("bifrost: request failed")
 }
+
+// EstimatePromptTokens approximates the token count for a prompt.
+func EstimatePromptTokens(system string, messages []Message, tools []ToolSpec) int {
+	chars := len(system)
+	for _, m := range messages {
+		chars += len(m.Text)
+		chars += len(m.ToolCallID)
+		for _, tc := range m.ToolCalls {
+			chars += len(tc.ID) + len(tc.Name) + len(tc.Arguments)
+		}
+		chars += len(m.Attachments) * 4000
+	}
+	for _, t := range tools {
+		chars += len(t.Name) + len(t.Description) + len(t.ParametersSchema)
+	}
+	est := chars / 4
+	if est == 0 && chars > 0 {
+		return 1
+	}
+	return est
+}
+
+// EstimateCompletionTokens approximates the token count for a completion response.
+func EstimateCompletionTokens(text string, reasoning string, toolCalls []ToolCall) int {
+	chars := len(text) + len(reasoning)
+	for _, tc := range toolCalls {
+		chars += len(tc.ID) + len(tc.Name) + len(tc.Arguments)
+	}
+	est := chars / 4
+	if est == 0 && chars > 0 {
+		return 1
+	}
+	return est
+}
+

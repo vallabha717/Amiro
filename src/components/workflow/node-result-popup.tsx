@@ -12,24 +12,26 @@ import {
 
 import { NodeRuntimeHistory } from "lib/ai/workflow/workflow.interface";
 
-import { Badge } from "ui/badge";
+import { useCopy } from "@/hooks/use-copy";
+import { cn, errorToString } from "lib/utils";
 import {
   CheckIcon,
   CopyIcon,
   Loader2Icon,
   TriangleAlertIcon,
 } from "lucide-react";
-import JsonView from "ui/json-view";
-import { useCopy } from "@/hooks/use-copy";
-import { Button } from "ui/button";
-import { cn, errorToString } from "lib/utils";
-import { Alert, AlertDescription, AlertTitle } from "ui/alert";
 import { useTranslations } from "next-intl";
+import { Alert, AlertDescription, AlertTitle } from "ui/alert";
+import { Badge } from "ui/badge";
+import { Button } from "ui/button";
+import JsonView from "ui/json-view";
+import { getToolPresenter, statusFromNodeHistory } from "../tool-presenters";
 
 export function NodeResultPopup({
   history,
   children,
   disabled,
+  toolName,
 }: {
   history: Pick<
     NodeRuntimeHistory,
@@ -37,11 +39,20 @@ export function NodeResultPopup({
   >;
   children: ReactNode;
   disabled?: boolean;
+  /**
+   * The tool this node ran, when it ran one. Supplying it swaps the raw
+   * JSON dump for that tool's own presenter -- the same component chat
+   * renders -- and keeps the JSON behind a "raw" tab. Without it the
+   * dialog behaves exactly as it always has.
+   */
+  toolName?: string;
 }) {
   const { copy, copied } = useCopy();
   const t = useTranslations();
 
-  const [tab, setTab] = useState<"input" | "output">("output");
+  const [tab, setTab] = useState<"input" | "output" | "raw">("output");
+
+  const presenter = getToolPresenter(toolName);
 
   const duration = useMemo(() => {
     if (history.endedAt) {
@@ -124,9 +135,24 @@ export function NodeResultPopup({
               >
                 output
               </Button>
+              {presenter?.Expanded ? (
+                <Button
+                  key="raw"
+                  variant="ghost"
+                  className={cn(
+                    "rounded-none",
+                    tab == "raw" && "border-b border-primary",
+                  )}
+                  onClick={() => setTab("raw")}
+                >
+                  raw
+                </Button>
+              ) : null}
             </div>
             <div className="flex flex-col gap-2 w-full p-4 pt-2 min-w-0">
-              {tab == "output" && history.status === "fail" ? null : (
+              {tab == "output" &&
+              history.status === "fail" &&
+              !presenter ? null : (
                 <>
                   <Button
                     variant="ghost"
@@ -150,7 +176,16 @@ export function NodeResultPopup({
                   </Button>
                 </>
               )}
-              {tab == "output" && history.status === "fail" ? (
+              {tab == "output" && presenter?.Expanded ? (
+                <presenter.Expanded
+                  input={history.result?.input}
+                  output={history.result?.output}
+                  status={statusFromNodeHistory(history)}
+                  errorText={
+                    history.error ? errorToString(history.error) : undefined
+                  }
+                />
+              ) : tab == "output" && history.status === "fail" ? (
                 <Alert variant="destructive" className="flex flex-col gap-2">
                   <AlertTitle>Error</AlertTitle>
                   <AlertDescription>

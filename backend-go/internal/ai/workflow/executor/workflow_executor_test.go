@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"betterchatbot/backend/internal/ai/workflow"
-	"betterchatbot/backend/internal/db/models"
+	"amiro/backend/internal/ai/workflow"
+	"amiro/backend/internal/db/models"
 )
 
 func collectEvents(t *testing.T, ch <-chan Event) []Event {

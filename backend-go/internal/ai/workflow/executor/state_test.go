@@ -3,7 +3,7 @@ package executor
 import (
 	"testing"
 
-	"betterchatbot/backend/internal/ai/workflow"
+	"amiro/backend/internal/ai/workflow"
 )
 
 func TestState_SetGetOutput_RoundTrip(t *testing.T) {

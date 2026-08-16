@@ -7,20 +7,21 @@ import (
 	"github.com/maximhq/bifrost/core/schemas"
 )
 
-func TestAccount_GetConfiguredProvidersListsEveryCatalogProviderRegardlessOfKeys(t *testing.T) {
-	a := newAccount(fakeStore{})
+func TestAccount_GetConfiguredProvidersListsEveryCatalogProvider(t *testing.T) {
+	a := newAccount(fakeRepo{})
 	providers, err := a.GetConfiguredProviders()
 	if err != nil {
 		t.Fatalf("GetConfiguredProviders: %v", err)
 	}
 	if len(providers) != len(catalog) {
-		t.Fatalf("got %d providers, want %d (every provider is always \"configured\" -- see account.go's doc comment)", len(providers), len(catalog))
+		t.Fatalf("got %d providers, want %d (see account.go's doc comment)", len(providers), len(catalog))
 	}
 }
 
-func TestAccount_GetKeysForProviderReturnsTheStoredKey(t *testing.T) {
-	a := newAccount(fakeStore{"anthropic": "sk-real-key"})
-	keys, err := a.GetKeysForProvider(context.Background(), schemas.Anthropic)
+func TestAccount_GetKeysForProviderReturnsTheConnectionsStoredKey(t *testing.T) {
+	a := newAccount(fakeRepo{{id: "cfg-1", provider: "openai", apiKey: "sk-real-key"}})
+
+	keys, err := a.GetKeysForProvider(context.Background(), schemas.ModelProvider("cfg-1"))
 	if err != nil {
 		t.Fatalf("GetKeysForProvider: %v", err)
 	}
@@ -32,9 +33,10 @@ func TestAccount_GetKeysForProviderReturnsTheStoredKey(t *testing.T) {
 	}
 }
 
-func TestAccount_GetKeysForProviderReturnsEmptyWhenNoKeyIsSet(t *testing.T) {
-	a := newAccount(fakeStore{})
-	keys, err := a.GetKeysForProvider(context.Background(), schemas.Anthropic)
+func TestAccount_GetKeysForProviderReturnsNothingForAnUnknownConnection(t *testing.T) {
+	a := newAccount(fakeRepo{})
+
+	keys, err := a.GetKeysForProvider(context.Background(), schemas.ModelProvider("missing"))
 	if err != nil {
 		t.Fatalf("GetKeysForProvider: %v", err)
 	}
@@ -43,57 +45,38 @@ func TestAccount_GetKeysForProviderReturnsEmptyWhenNoKeyIsSet(t *testing.T) {
 	}
 }
 
-func TestAccount_GetKeysForProviderReturnsAPlaceholderKeyForOllamaWithNoKeySet(t *testing.T) {
-	a := newAccount(fakeStore{})
-	keys, err := a.GetKeysForProvider(context.Background(), schemas.Ollama)
+// The base URL is what makes one OpenAI-compatible gateway different from
+// another, and it is stored per connection -- so it has to come back keyed
+// by connection id, normalized the way the provider expects.
+func TestAccount_GetConfigForProviderAppliesTheConnectionsBaseURL(t *testing.T) {
+	a := newAccount(fakeRepo{{
+		id: "cfg-1", provider: "openai", apiKey: "sk-real",
+		baseURL: "https://inference-api.nousresearch.com/v1",
+	}})
+
+	cfg, err := a.GetConfigForProvider(schemas.ModelProvider("cfg-1"))
 	if err != nil {
-		t.Fatalf("GetKeysForProvider: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(keys) != 1 {
-		t.Fatalf("got %d keys, want 1 -- ollama needs no real API key but still needs a registered key so Bifrost routes to it", len(keys))
+	if cfg.NetworkConfig.BaseURL != "https://inference-api.nousresearch.com" {
+		t.Fatalf("BaseURL = %q, want the /v1 suffix stripped", cfg.NetworkConfig.BaseURL)
+	}
+	if cfg.CustomProviderConfig == nil || cfg.CustomProviderConfig.BaseProviderType != schemas.OpenAI {
+		t.Fatalf("BaseProviderType = %+v, want OpenAI for an openai-typed connection", cfg.CustomProviderConfig)
 	}
 }
 
-func TestAccount_GetKeysForProviderReturnsAPlaceholderKeyForOllamaWhenTheStoreErrors(t *testing.T) {
-	a := newAccount(erroringStore{})
-	keys, err := a.GetKeysForProvider(context.Background(), schemas.Ollama)
-	if err != nil {
-		t.Fatalf("GetKeysForProvider: %v -- a keyring/secret-service error must not fail an AlwaysConfigured provider that never needed the store", err)
-	}
-	if len(keys) != 1 {
-		t.Fatalf("got %d keys, want 1", len(keys))
-	}
-	if keys[0].OllamaKeyConfig == nil || keys[0].OllamaKeyConfig.URL.String() == "" {
-		t.Fatalf("OllamaKeyConfig.URL not set -- Bifrost's key validator silently skips Ollama keys missing it, so every Ollama chat request would fail with \"no keys found\"")
-	}
-}
+func TestAccount_GetConfigForProviderLeavesBaseURLEmptyWhenUnset(t *testing.T) {
+	a := newAccount(fakeRepo{{id: "cfg-1", provider: "anthropic", apiKey: "sk-real"}})
 
-func TestAccount_GetKeysForProviderPropagatesStoreErrorsForNonAlwaysConfiguredProviders(t *testing.T) {
-	a := newAccount(erroringStore{})
-	if _, err := a.GetKeysForProvider(context.Background(), schemas.Anthropic); err == nil {
-		t.Fatalf("GetKeysForProvider: want the store error surfaced for a provider that actually needs a stored key")
-	}
-}
-
-func TestAccount_GetConfigForProviderSetsOllamaBaseURL(t *testing.T) {
-	t.Setenv("OLLAMA_BASE_URL", "http://example.invalid:1234/api")
-	a := newAccount(fakeStore{})
-	cfg, err := a.GetConfigForProvider(schemas.Ollama)
+	cfg, err := a.GetConfigForProvider(schemas.ModelProvider("cfg-1"))
 	if err != nil {
-		t.Fatalf("GetConfigForProvider: %v", err)
-	}
-	if cfg.NetworkConfig.BaseURL != "http://example.invalid:1234/api" {
-		t.Fatalf("BaseURL = %q, want the OLLAMA_BASE_URL override", cfg.NetworkConfig.BaseURL)
-	}
-}
-
-func TestAccount_GetConfigForProviderLeavesOtherProvidersAtDefault(t *testing.T) {
-	a := newAccount(fakeStore{})
-	cfg, err := a.GetConfigForProvider(schemas.OpenAI)
-	if err != nil {
-		t.Fatalf("GetConfigForProvider: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
 	if cfg.NetworkConfig.BaseURL != "" {
-		t.Fatalf("BaseURL = %q, want empty (no override) for a non-ollama provider", cfg.NetworkConfig.BaseURL)
+		t.Fatalf("BaseURL = %q, want empty so the provider's own default is used", cfg.NetworkConfig.BaseURL)
+	}
+	if cfg.CustomProviderConfig.BaseProviderType != schemas.Anthropic {
+		t.Fatalf("BaseProviderType = %q, want Anthropic", cfg.CustomProviderConfig.BaseProviderType)
 	}
 }

@@ -10,10 +10,11 @@ import (
 	"strings"
 )
 
-const AuthHeader = "X-BetterChatbot-Token"
+const AuthHeader = "X-Amiro-Token"
+const LegacyAuthHeader = "X-BetterChatbot-Token"
 
-// RequireToken rejects any request whose X-BetterChatbot-Token header does
-// not match the per-launch shared secret. Constant-time compare so response
+// RequireToken rejects any request whose X-Amiro-Token (or legacy X-BetterChatbot-Token)
+// header does not match the per-launch shared secret. Constant-time compare so response
 // timing can't be used to brute-force the token.
 //
 // exemptPrefixes lists URL path prefixes that carry their own proof of
@@ -45,6 +46,9 @@ func RequireToken(token string, exemptPrefixes ...string) func(http.Handler) htt
 			}
 
 			got := []byte(r.Header.Get(AuthHeader))
+			if len(got) == 0 {
+				got = []byte(r.Header.Get(LegacyAuthHeader))
+			}
 			if len(got) != len(expected) || subtle.ConstantTimeCompare(got, expected) != 1 {
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return

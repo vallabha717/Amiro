@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"betterchatbot/backend/internal/auth"
+	"amiro/backend/internal/auth"
 )
 
 // List ports mcp/list/route.ts's GET handler.

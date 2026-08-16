@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"betterchatbot/backend/internal/api/httpjson"
-	"betterchatbot/backend/internal/storage"
+	"amiro/backend/internal/api/httpjson"
+	"amiro/backend/internal/storage"
 )
 
 // tokenResolver is what a backend must implement for the /storage/{token}

@@ -5,30 +5,35 @@ import {
   UINode,
   WorkflowToolKey,
 } from "lib/ai/workflow/workflow.interface";
-import { memo, useEffect, useMemo } from "react";
 import { InfoIcon, VariableIcon, WrenchIcon } from "lucide-react";
+import { memo, useEffect, useMemo } from "react";
 
-import { useEdges, useNodes, useReactFlow } from "@xyflow/react";
 import { appStore } from "@/app/store";
+import { useEdges, useNodes, useReactFlow } from "@xyflow/react";
 
-import { WorkflowToolSelect } from "../workflow-tool-select";
-import { isString, toAny } from "lib/utils";
-import { Separator } from "ui/separator";
-import { SelectModel } from "@/components/select-model";
-import { OutputSchemaMentionInput } from "../output-schema-mention-input";
 import { useWorkflowStore } from "@/app/store/workflow.store";
-import { MCPIcon } from "ui/mcp-icon";
-import { useTranslations } from "next-intl";
-import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
-import { useMcpList } from "@/hooks/queries/use-mcp-list";
-
+import { SelectModel } from "@/components/select-model";
 import {
-  exaSearchSchema,
-  exaSearchTool,
+  getToolPresenter,
+  statusFromNodeHistory,
+  toolGlance,
+} from "@/components/tool-presenters";
+import { useMcpList } from "@/hooks/queries/use-mcp-list";
+import { isString, toAny } from "lib/utils";
+import { useTranslations } from "next-intl";
+import { MCPIcon } from "ui/mcp-icon";
+import { Separator } from "ui/separator";
+import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
+import { OutputSchemaMentionInput } from "../output-schema-mention-input";
+import { WorkflowToolSelect } from "../workflow-tool-select";
+
+import { DefaultToolName } from "lib/ai/tools";
+import {
   exaContentsSchema,
   exaContentsTool,
+  exaSearchSchema,
+  exaSearchTool,
 } from "lib/ai/tools/web/web-search";
-import { DefaultToolName } from "lib/ai/tools";
 
 export const ToolNodeDataConfig = memo(function ({
   data,
@@ -213,6 +218,26 @@ export const ToolNodeStack = memo(function ({ data }: { data: ToolNodeData }) {
       </>
     );
   }, [data.tool]);
+  // Once the node has actually run, the useful thing to show on its face is
+  // what the tool *did* -- "src/lib/utils.ts . 120 lines" -- not which tool
+  // it is. Before Phase 2 every tool node looked identical here regardless
+  // of what it had done, which made a canvas of ten nodes unreadable.
+  const glance = useMemo(() => {
+    const toolId = data.tool?.id;
+    if (!toolId || !getToolPresenter(toolId)) return null;
+    const runtime = data as unknown as {
+      status?: string;
+      error?: unknown;
+      result?: { input?: unknown; output?: unknown };
+    };
+    if (!runtime.status) return null;
+    return toolGlance(toolId, {
+      input: runtime.result?.input,
+      output: runtime.result?.output,
+      status: statusFromNodeHistory(runtime),
+    });
+  }, [data]);
+
   return (
     <div className="flex flex-col gap-1 px-4 mt-4">
       {!data.tool ? (
@@ -224,6 +249,11 @@ export const ToolNodeStack = memo(function ({ data }: { data: ToolNodeData }) {
           {selectedToolLabel}
         </div>
       )}
+      {glance ? (
+        <div className="text-[10px] text-muted-foreground truncate px-0.5">
+          {glance}
+        </div>
+      ) : null}
     </div>
   );
 });

@@ -74,14 +74,18 @@ export function rewriteStorageUrl(url: string | undefined): string | undefined {
   }
 }
 
-const SESSION_TOKEN_STORAGE_KEY = "betterchatbot.session-token";
+const SESSION_TOKEN_STORAGE_KEY = "amiro.session-token";
+const LEGACY_SESSION_TOKEN_STORAGE_KEY = "betterchatbot.session-token";
 
 /** The per-user bearer session token (internal/auth's own token, distinct
  * from the shared secret above) -- issued by POST /api/auth/login|register,
  * persisted in localStorage so a page refresh doesn't sign the user out. */
 export function getSessionToken(): string | null {
   if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(SESSION_TOKEN_STORAGE_KEY);
+  return (
+    window.localStorage.getItem(SESSION_TOKEN_STORAGE_KEY) ||
+    window.localStorage.getItem(LEGACY_SESSION_TOKEN_STORAGE_KEY)
+  );
 }
 
 export function setSessionToken(token: string | null) {
@@ -90,5 +94,6 @@ export function setSessionToken(token: string | null) {
     window.localStorage.setItem(SESSION_TOKEN_STORAGE_KEY, token);
   } else {
     window.localStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
+    window.localStorage.removeItem(LEGACY_SESSION_TOKEN_STORAGE_KEY);
   }
 }

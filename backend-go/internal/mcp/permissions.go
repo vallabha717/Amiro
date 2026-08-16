@@ -1,6 +1,6 @@
 package mcp
 
-import "betterchatbot/backend/internal/db/models"
+import "amiro/backend/internal/db/models"
 
 // CanManage ports canManageMCPServer (lib/auth/permissions.ts): admins can
 // manage any server, everyone else only their own private ones.

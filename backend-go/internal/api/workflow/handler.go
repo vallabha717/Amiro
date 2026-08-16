@@ -18,8 +18,8 @@
 package workflow
 
 import (
-	"betterchatbot/backend/internal/ai/workflow/executor"
-	"betterchatbot/backend/internal/db/repository"
+	"amiro/backend/internal/ai/workflow/executor"
+	"amiro/backend/internal/db/repository"
 )
 
 // Handler holds every dependency the api/workflow/** routes need. bifrost/

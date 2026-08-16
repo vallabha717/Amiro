@@ -2,15 +2,17 @@
 // fixed set of built-in tools every chat request can opt into via
 // allowedAppDefaultToolkit, independent of any per-user MCP server config.
 // Names and toolkit groupings match DefaultToolName/AppDefaultToolkit
-// (lib/ai/tools/index.ts) exactly so a request built by the existing,
-// already-live frontend (desktop/src/lib/ai/tools/index.ts, prompt-input.tsx's
-// ToolSelectDropdown) needs no changes at all -- only the Go backend ever
-// lacked this toolkit.
+// (lib/ai/tools/index.ts) exactly so a request built by the frontend
+// needs no changes at all.
 package tools
 
 import (
 	"context"
 	"encoding/json"
+
+	"amiro/backend/internal/agent/lsp"
+	"amiro/backend/internal/agent/memory"
+	"amiro/backend/internal/agent/workspace"
 )
 
 // Toolkit names, matching AppDefaultToolkit's string values exactly.
@@ -18,54 +20,207 @@ const (
 	ToolkitVisualization = "visualization"
 	ToolkitWebSearch     = "webSearch"
 	ToolkitHttp          = "http"
-	ToolkitCode          = "code"
+	ToolkitTerminal      = "terminal"
+	ToolkitCode          = "terminal" // backwards-compatible alias
+	ToolkitFile          = "file"
+	ToolkitTodo          = "todo"
+	ToolkitTask          = "task"
+	ToolkitMemory        = "memory"
 )
 
-// Tool names, matching DefaultToolName's string values exactly (these are
-// wire identifiers: they become "tool-<Name>" UI part types the existing
-// frontend already switches on in message-parts.tsx).
+// Tool names, matching DefaultToolName's string values.
 const (
-	NameCreatePieChart      = "createPieChart"
-	NameCreateBarChart      = "createBarChart"
-	NameCreateLineChart     = "createLineChart"
-	NameCreateTable         = "createTable"
-	NameWebSearch           = "webSearch"
-	NameWebContent          = "webContent"
-	NameHttp                = "http"
-	NameJavascriptExecution = "mini-javascript-execution"
-	NamePythonExecution     = "python-execution"
+	NameCreatePieChart    = "createPieChart"
+	NameCreateBarChart    = "createBarChart"
+	NameCreateLineChart   = "createLineChart"
+	NameCreateTable       = "createTable"
+	NameWebSearch         = "webSearch"
+	NameWebContent        = "webContent"
+	NameHttp              = "http"
+	NameTerminalExecution = "terminal-execution"
+	NameRunShell          = "run_shell"
+	NameShellTaskOutput   = "shell_task_output"
+	NameShellTaskKill     = "shell_task_kill"
+
+	// File ACI (docs/agentic-loop-implementation-plan.md, Phase 2). These
+	// are only offered when a workspace root is configured -- see Defaults.
+	NameReadFile  = "read_file"
+	NameListDir   = "list_dir"
+	NameWriteFile = "write_file"
+	NameGlob      = "glob"
+	NameGrep      = "grep"
+	NameEditFile  = "edit_file"
+	NameMultiEdit = "multi_edit"
+	NameGit       = "git"
+
+	// Orientation and symbol intelligence (Phase 4 item 4 / Phase 5).
+	// repo_map always exists with a workspace; lsp only when a language
+	// server for a language this workspace actually uses is installed.
+	NameRepoMap = "repo_map"
+	NameLSP     = "lsp"
+
+	// Plan tracking (Phase 4). Session-scoped, so these only exist when the
+	// request carries a conversation id -- see Deps.
+	NameTodoWrite = "todo_write"
+	NameTodoRead  = "todo_read"
+
+	// Durable notes about a workspace (Phase 5). Only offered when both a
+	// workspace and an app data directory exist -- see Deps.Memory.
+	NameMemoryWrite  = "memory_write"
+	NameMemoryRead   = "memory_read"
+	NameMemoryForget = "memory_forget"
+
+	// NameTask is the subagent tool. Built in internal/api/chat rather than
+	// here -- it needs the engine and the resolved model -- so it never
+	// appears in Defaults.
+	NameTask = "task"
+)
+
+// Concurrency says whether a tool's calls may overlap with other tool calls
+// in the same model step. It is *derived* from Risk, never declared -- see
+// Definition.Concurrency.
+type Concurrency uint8
+
+const (
+	// Sequential tools run one at a time, in the order the model emitted
+	// them. Anything that writes (files, shell, HTTP verbs other than
+	// GET/HEAD) belongs here: ordering is part of their meaning.
+	Sequential Concurrency = iota
+
+	// Parallel tools may run concurrently with any other Parallel call in
+	// the same step. Their results are still merged back in the model's
+	// original call order, so history stays deterministic regardless of
+	// which finishes first.
+	Parallel
 )
 
 // Definition is one callable tool: its wire schema (Name/Description/
 // ParametersSchema, handed to Bifrost as a ChatTool) plus how to run it.
-// Execute nil marks a client-executed tool (JavaScript/Python execution --
-// see code.go's doc comment): the model's tool call is streamed to the
-// frontend as-is and the turn ends there, exactly like
-// pythonExecutionTool/jsExecutionTool having no `execute` in the TS source.
 type Definition struct {
 	Name             string
 	Toolkit          string
 	Description      string
 	ParametersSchema json.RawMessage
 	Execute          func(ctx context.Context, input json.RawMessage) (any, error)
+
+	// Risk is the tool's side-effect class. It drives both permission
+	// gating and Concurrency below; see risk.go. The zero value
+	// (RiskUnclassified) is the restrictive one.
+	Risk Risk
+
+	// CommandLine renders a call as the command line the permission
+	// engine matches its allowlist against, for tools whose consequential
+	// argument is a command rather than a path.
+	//
+	// nil means "read the input's `command` string field", which covers
+	// the shell tools. `git` sets it because its command is spread across
+	// a subcommand and an args array, and an allowlist entry of
+	// "git status" should match a call the same way it matches a shell
+	// invocation -- one allowlist, one matching rule, whatever tool the
+	// model reached for.
+	CommandLine func(input json.RawMessage) string
 }
 
-// Defaults returns every APP_DEFAULT_TOOL_KIT tool, freshly constructed per
-// call so a caller can't mutate the shared definitions (Execute closures
-// capture no request state, so this is cheap).
-func Defaults() []Definition {
-	return append(append(append(visualizationTools(), httpFetchTool()), webSearchTools()...), codeExecutionTools()...)
+// Concurrency reports whether this tool's calls may overlap with others in
+// the same step.
+//
+// This used to be a second field every tool declared by hand next to its
+// risk, which is one fact written twice: a tool that is safe to run
+// concurrently with itself is precisely a tool with no observable side
+// effects, and that is precisely RiskRead. OpenWorker's engine.py derives
+// it the same way (`risk_level == "low" and not requires_approval`), and
+// the parity doc called this out as the better design. Deriving it means a
+// new tool cannot be gated as a write while still running in parallel with
+// a read of the file it is about to change.
+//
+// The cost is real and worth naming: RiskExternal tools serialize, so three
+// `http` GETs that used to overlap now queue. Risk is static per definition
+// and `http` lets the model choose the method and body, so there is no
+// honest way to call it side-effect-free -- and ordering between two calls
+// that may both mutate remote state is part of their meaning.
+func (d Definition) Concurrency() Concurrency {
+	if d.Risk == RiskRead {
+		return Parallel
+	}
+	return Sequential
 }
 
-// Filter ports loadAppDefaultTools' selection logic (shared.chat.ts):
-//   - defaultToolNames non-empty (built from `mentions` entries of type
-//     "defaultTool") selects tools by exact name, ignoring toolkits
-//     entirely -- matches the TS `mentions.length` branch.
-//   - otherwise, allowedToolkits selects whole toolkits; nil means "every
-//     toolkit" (TS's `?? Object.values(AppDefaultToolkit)`), a non-nil
-//     pointer to an empty slice means none, matching how the frontend
-//     explicitly sends `allowedAppDefaultToolkit: []` while mentions are
-//     active (chat-bot.tsx's prepareSendMessagesRequest).
+// Deps is what the built-in toolkit needs from its caller.
+//
+// A struct rather than a growing parameter list because every field is
+// optional in the same way -- absent means "that toolkit is not offered
+// this turn", never "substitute a default". A tool that quietly falls back
+// to the process working directory, or to a shared global list, is worse
+// than a tool that is not there.
+type Deps struct {
+	// Workspace roots the file, search, edit and git tools. Nil omits them
+	// entirely rather than falling back to some default directory: "no root
+	// configured" must mean "no filesystem access", never "the process's
+	// working directory", which on the packaged desktop app is wherever the
+	// shell happened to launch the sidecar.
+	Workspace *workspace.Workspace
+
+	// Todos and SessionID together enable the plan tools. The session is
+	// supplied by the caller and never appears in a tool's parameters --
+	// a tool the model can point at a conversation id is a tool that can
+	// read another conversation's state by guessing one.
+	Todos     *TodoStore
+	SessionID string
+
+	// Memory holds durable notes about this workspace, surviving across
+	// conversations. Nil omits the memory tools -- and, importantly, means
+	// the system prompt carries no notes either, so the two halves of the
+	// feature are never half-present.
+	Memory *memory.Store
+
+	// LSP is a pool of running language servers, or nil when none is
+	// installed for a language this workspace uses. Nil is the common case
+	// and costs nothing: the `lsp` tool is simply never offered, and the
+	// model is never told about a tool that would fail on first call.
+	LSP *lsp.Pool
+}
+
+// Defaults returns every APP_DEFAULT_TOOL_KIT tool, freshly constructed per call.
+func Defaults(d Deps) []Definition {
+	ws := d.Workspace
+	defs := append(append(visualizationTools(), httpFetchTool()), webSearchTools()...)
+	defs = append(defs, terminalTools(ws)...)
+	defs = append(defs, fileTools(ws)...)
+	defs = append(defs, searchTools(ws)...)
+	defs = append(defs, editTools(ws)...)
+	if ws != nil {
+		defs = append(defs, gitTool(ws))
+		defs = append(defs, repoMapTool(ws))
+		if tool, ok := lspTool(d.LSP, ws); ok {
+			defs = append(defs, tool)
+		}
+	}
+	defs = append(defs, todoTools(d.Todos, d.SessionID)...)
+	defs = append(defs, memoryTools(d.Memory, d.SessionID)...)
+	return defs
+}
+
+// alwaysOffered are toolkits the per-request allowlist does not govern.
+//
+// The allowlist is a *user-facing capability* switch -- "may this agent
+// search the web / run commands / touch files" -- and the plan tools are
+// not a capability in that sense. They are the agent's own bookkeeping:
+// session-scoped, RiskSession, visible only as a checklist in the work log,
+// and useless to turn off. Leaving them subject to the allowlist meant they
+// were silently dropped from every real request, because the frontend
+// always sends an explicit list and no UI ever put "todo" on it. The tools
+// existed, the tests passed, and the model was never offered them.
+//
+// Deliberately not extended to `memory`: a durable note that changes the
+// agent's behaviour in future conversations is exactly the kind of thing a
+// user should be able to switch off, so it is a real toolkit with a real
+// toggle. `task` needs no entry because route.go appends it after this
+// filter runs, over whatever tools survived.
+var alwaysOffered = map[string]bool{
+	ToolkitTodo: true,
+}
+
+// Filter ports loadAppDefaultTools' selection logic:
 func Filter(defs []Definition, allowedToolkits *[]string, defaultToolNames []string) []Definition {
 	if len(defaultToolNames) > 0 {
 		wanted := make(map[string]bool, len(defaultToolNames))
@@ -91,15 +246,14 @@ func Filter(defs []Definition, allowedToolkits *[]string, defaultToolNames []str
 
 	out := make([]Definition, 0, len(defs))
 	for _, d := range defs {
-		if allowed == nil || allowed[d.Toolkit] {
+		if allowed == nil || alwaysOffered[d.Toolkit] || allowed[d.Toolkit] || (d.Toolkit == ToolkitTerminal && allowed["code"]) {
 			out = append(out, d)
 		}
 	}
 	return out
 }
 
-// FindByName returns the first definition whose Name matches, used by the
-// chat handler to look up a tool the model just called.
+// FindByName returns the first definition whose Name matches.
 func FindByName(defs []Definition, name string) (Definition, bool) {
 	for _, d := range defs {
 		if d.Name == name {

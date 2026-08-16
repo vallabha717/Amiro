@@ -126,7 +126,9 @@
       "searchOptionsDescription": "Puedes pasar opciones de búsqueda al chatbot, como el número máximo de resultados de búsqueda, la fecha de búsqueda, etc.",
       "defaultToolKit": {
         "visualization": "Visualización de datos",
-        "webSearch": "Buscar en la web"
+        "webSearch": "Buscar en la web",
+        "file": "Archivos y código",
+        "memory": "Notas del espacio de trabajo"
       },
       "agent": "Agente",
       "mention": "Mención",
@@ -142,7 +144,15 @@
       "manual": "Manual",
       "none": "Ninguno",
       "mentionOnly": "solo @mención",
-      "noToolsAvailable": "No hay herramientas disponibles"
+      "noToolsAvailable": "No hay herramientas disponibles",
+      "permissionMode": "Modo de permisos",
+      "permissionModeDescription": "Cuánto puede hacer el agente con tus archivos y la terminal sin preguntar.",
+      "planMode": "Plan",
+      "planModeDescription": "Solo lectura. Puede explorar y proponer cambios, pero no escribir archivos ni ejecutar comandos.",
+      "interactiveMode": "Interactivo",
+      "interactiveModeDescription": "Las lecturas se ejecutan libremente; las escrituras y los comandos te preguntan primero.",
+      "autoPermissionMode": "Automático",
+      "autoPermissionModeDescription": "Ejecuta todo sin preguntar. Sigue limitado a la carpeta del espacio de trabajo."
     },
     "VoiceChat": {
       "title": "Modo de Chat por Voz",
@@ -161,7 +171,6 @@
     },
     "Thread": {
       "chat": "Chat",
-
       "renameChat": "Renombrar",
       "deleteChat": "Eliminar Chat",
       "deleteUnarchivedChats": "Eliminar Todos los Chats No Archivados",
@@ -181,7 +190,6 @@
       "createLink": "Crear Enlace",
       "linkCopied": "Enlace copiado"
     },
-
     "ChatPreferences": {
       "title": "Preferencias de Chat",
       "whatShouldWeCallYou": "¿Cómo deberíamos llamarte?",
@@ -204,7 +212,8 @@
       "mcpInstructions": "Instrucciones MCP",
       "mcpInstructionsDescription": "Personaliza las instrucciones del servidor MCP.",
       "userSettings": "Configuración de Usuario"
-    }
+    },
+    "contextCompacted": "Contexto anterior compactado: {count} mensajes resumidos, ~{saved}k tokens liberados"
   },
   "Layout": {
     "toggleSidebar": "Alternar Barra Lateral",
@@ -249,7 +258,6 @@
     "theme": "Tema",
     "signOut": "Cerrar sesión",
     "language": "Idioma",
-
     "showAllChats": "Ver Todos los Chats",
     "showLessChats": "Mostrar menos",
     "reportAnIssue": "Reportar un problema",

@@ -3,7 +3,7 @@ package archive
 import (
 	"net/http"
 
-	"betterchatbot/backend/internal/api/httpjson"
+	"amiro/backend/internal/api/httpjson"
 )
 
 // Get ports archive/[id]/route.ts's GET: the archive plus its items.

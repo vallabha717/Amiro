@@ -7,9 +7,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	bifrostai "betterchatbot/backend/internal/ai/bifrost"
-	"betterchatbot/backend/internal/ai/workflow"
-	"betterchatbot/backend/internal/db/models"
+	bifrostai "amiro/backend/internal/ai/bifrost"
+	"amiro/backend/internal/ai/workflow"
+	"amiro/backend/internal/db/models"
 )
 
 type fakeEngine struct {

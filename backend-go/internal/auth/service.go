@@ -8,7 +8,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"betterchatbot/backend/internal/db/models"
+	"amiro/backend/internal/db/models"
 )
 
 var (
@@ -25,7 +25,10 @@ var (
 // auto-provision and auto-login on first run (plan section 3's resolved
 // decision) -- a fixed, well-known address rather than one derived from OS
 // username, so it stays stable across machines/rebuilds.
-const DesktopDefaultUserEmail = "local@betterchatbot.desktop"
+const (
+	DesktopDefaultUserEmail       = "local@amiro.desktop"
+	LegacyDesktopDefaultUserEmail = "local@betterchatbot.desktop"
+)
 
 // Service implements the one shared user/session model plan section 3
 // resolved on: bcrypt passwords, plain random session tokens, no
@@ -78,14 +81,12 @@ func (s *Service) Register(ctx context.Context, name, email, password string) (*
 		return nil, err
 	}
 
-	// First account created on a fresh instance becomes the admin, matching
-	// better-chatbot's user-creation hook (auth-instance.ts). Without this
-	// nothing ever sets role="admin", so the (chat)/(admin) route group and
-	// every RequireAdmin route were permanently unreachable.
-	role := "user"
-	if first, err := s.IsFirstUser(ctx); err != nil {
+	var count int64
+	if err := s.db.WithContext(ctx).Model(&models.User{}).Count(&count).Error; err != nil {
 		return nil, err
-	} else if first {
+	}
+	role := "user"
+	if count == 0 {
 		role = "admin"
 	}
 
@@ -219,7 +220,7 @@ func (s *Service) SetPassword(ctx context.Context, userID, currentPassword, newP
 // are cleared first so restarts don't pile up stale rows.
 func (s *Service) EnsureDesktopDefaultUser(ctx context.Context) (*models.User, *models.Session, error) {
 	var user models.User
-	err := s.db.WithContext(ctx).Where("email = ?", DesktopDefaultUserEmail).First(&user).Error
+	err := s.db.WithContext(ctx).Where("email = ? OR email = ?", DesktopDefaultUserEmail, LegacyDesktopDefaultUserEmail).First(&user).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		user = models.User{
 			Name:          "Local User",

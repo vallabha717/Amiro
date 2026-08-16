@@ -11,6 +11,7 @@ out/
 backend-go/bin/
 backend-go/*.exe
 backend-go/bifrost
+backend-go/server
 src-tauri/binaries/
 
 # Tauri

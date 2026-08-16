@@ -80,6 +80,7 @@ func webSearchTools() []Definition {
 				"neural search capabilities. Returns high-quality, relevant results with full content extraction.",
 			ParametersSchema: exaSearchSchema,
 			Execute:          executeWebSearch,
+			Risk:             RiskRead,
 		},
 		{
 			Name:    NameWebContent,
@@ -88,6 +89,7 @@ func webSearchTools() []Definition {
 				"content, metadata, and structured information from web pages with live crawling capabilities.",
 			ParametersSchema: exaContentsSchema,
 			Execute:          executeWebContent,
+			Risk:             RiskRead,
 		},
 	}
 }

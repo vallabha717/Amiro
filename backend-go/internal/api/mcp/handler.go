@@ -13,8 +13,8 @@
 package mcp
 
 import (
-	"betterchatbot/backend/internal/db/repository"
-	"betterchatbot/backend/internal/mcp"
+	"amiro/backend/internal/db/repository"
+	"amiro/backend/internal/mcp"
 )
 
 // Handler holds every dependency the api/mcp/** routes need.

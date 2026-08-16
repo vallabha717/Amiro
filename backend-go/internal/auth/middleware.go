@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"betterchatbot/backend/internal/db/models"
+	"amiro/backend/internal/db/models"
 )
 
 type contextKey int

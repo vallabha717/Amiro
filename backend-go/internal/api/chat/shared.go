@@ -7,11 +7,12 @@
 package chat
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
 
-	bifrostai "betterchatbot/backend/internal/ai/bifrost"
-	"betterchatbot/backend/internal/db/models"
+	bifrostai "amiro/backend/internal/ai/bifrost"
+	"amiro/backend/internal/db/models"
 )
 
 // chatModelDTO ports ChatModel (types/chat.ts:15).
@@ -129,6 +130,15 @@ func (m uiMessage) toEngineMessages() []bifrostai.Message {
 		}
 	}
 
+	// Attachments can't ride on a tool-call message (that message carries
+	// tool_calls, not content blocks), so they still flush as their own turn.
+	flushAttachmentsOnly := func() {
+		if len(pendingAttachments) > 0 {
+			out = append(out, bifrostai.Message{Role: role, Attachments: pendingAttachments})
+			pendingAttachments = nil
+		}
+	}
+
 	for _, raw := range m.Parts {
 		var p toolPart
 		if err := json.Unmarshal(raw, &p); err != nil {
@@ -159,7 +169,21 @@ func (m uiMessage) toEngineMessages() []bifrostai.Message {
 			continue
 		}
 
-		flushText()
+		// Any text the assistant said before calling the tool rides along on
+		// the tool-call message itself rather than being flushed as a
+		// separate assistant turn ahead of it.
+		//
+		// The OpenAI wire format models one assistant turn as a single
+		// message carrying both `content` and `tool_calls`. Splitting it into
+		// assistant(text) + assistant(tool_calls) is accepted by the API but
+		// reads back as two turns, and models replayed that history would
+		// re-narrate and re-issue the same tool call on the next step --
+		// visible in the UI as the assistant repeating its preamble and
+		// running a client-executed tool (JavaScript/Python) a second time.
+		leadingText := textBuf
+		textBuf = ""
+		flushAttachmentsOnly()
+
 		toolName := strings.TrimPrefix(p.Type, "tool-")
 		args := p.Input
 		if len(args) == 0 {
@@ -167,6 +191,7 @@ func (m uiMessage) toEngineMessages() []bifrostai.Message {
 		}
 		out = append(out, bifrostai.Message{
 			Role:      role,
+			Text:      leadingText,
 			ToolCalls: []bifrostai.ToolCall{{ID: p.ToolCallID, Name: toolName, Arguments: string(args)}},
 		})
 
@@ -180,11 +205,27 @@ func (m uiMessage) toEngineMessages() []bifrostai.Message {
 	return out
 }
 
+// uiOnlyPrefix marks output fields the browser renders and the model must
+// never be charged for.
+//
+// A tool's result has two readers with opposite budgets. The model needs the
+// smallest honest observation -- edit_file deliberately does not echo the
+// file back, because a full re-read per edit is how an agent burns its
+// context window. A reviewer needs the opposite: the whole file, to see the
+// change in the place it landed. One field prefix lets a tool serve both
+// without the UI having to re-fetch state that no longer exists (the "before"
+// side of an edit is gone from disk the moment it applies).
+//
+// This is the only chokepoint where a tool output becomes model-visible text,
+// which is what makes the convention enforceable rather than a rule each tool
+// has to remember.
+const uiOnlyPrefix = "ui_"
+
 // stringifyToolOutput renders a tool's output JSON as the plain text a
 // ChatMessageContent.ContentStr expects: a JSON string value (e.g.
 // visualization tools' `"Success"`) unwraps to its literal text; anything
 // else (an object, array, number) is forwarded as its raw JSON text, which
-// every provider accepts as tool-result content.
+// every provider accepts as tool-result content -- minus any `ui_` field.
 func stringifyToolOutput(raw json.RawMessage) string {
 	if len(raw) == 0 {
 		return ""
@@ -193,7 +234,39 @@ func stringifyToolOutput(raw json.RawMessage) string {
 	if err := json.Unmarshal(raw, &s); err == nil {
 		return s
 	}
-	return string(raw)
+	return string(stripUIOnlyFields(raw))
+}
+
+// stripUIOnlyFields removes top-level `ui_` keys from a JSON object.
+//
+// Prefiltered on the raw bytes so the overwhelming majority of tool results
+// -- which carry no such field -- never pay for a decode and re-encode.
+func stripUIOnlyFields(raw json.RawMessage) json.RawMessage {
+	if !bytes.Contains(raw, []byte(`"`+uiOnlyPrefix)) {
+		return raw
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return raw
+	}
+	found := false
+	for key := range fields {
+		if strings.HasPrefix(key, uiOnlyPrefix) {
+			delete(fields, key)
+			found = true
+		}
+	}
+	if !found {
+		return raw
+	}
+	// A failure here would send the model a Go error string in place of its
+	// tool result, which is far worse than sending it a few unnecessary
+	// tokens, so the original stands if re-encoding somehow fails.
+	stripped, err := json.Marshal(fields)
+	if err != nil {
+		return raw
+	}
+	return stripped
 }
 
 // dbMessageToEngines converts a persisted models.ChatMessage the same way,

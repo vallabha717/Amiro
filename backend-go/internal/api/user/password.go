@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net/http"
 
-	"betterchatbot/backend/internal/api/httpjson"
-	"betterchatbot/backend/internal/auth"
+	"amiro/backend/internal/api/httpjson"
+	"amiro/backend/internal/auth"
 )
 
 const minPasswordLength = 8

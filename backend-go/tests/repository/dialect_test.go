@@ -26,10 +26,10 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
-	"betterchatbot/backend/internal/db"
-	"betterchatbot/backend/internal/db/models"
-	"betterchatbot/backend/internal/db/repository"
-	"betterchatbot/backend/internal/user"
+	"amiro/backend/internal/db"
+	"amiro/backend/internal/db/models"
+	"amiro/backend/internal/db/repository"
+	"amiro/backend/internal/user"
 )
 
 func TestPhase6Queries_RunOnSQLite(t *testing.T) {

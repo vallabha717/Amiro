@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"betterchatbot/backend/internal/auth"
-	"betterchatbot/backend/internal/db/models"
-	"betterchatbot/backend/internal/db/repository"
+	"amiro/backend/internal/auth"
+	"amiro/backend/internal/db/models"
+	"amiro/backend/internal/db/repository"
 )
 
 // GetStructure ports workflow/[id]/structure/route.ts's GET handler.

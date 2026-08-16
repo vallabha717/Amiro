@@ -1,0 +1,327 @@
+"use client";
+
+import {
+  Box,
+  CloudDownload,
+  Eye,
+  EyeOff,
+  FlaskConical,
+  Loader,
+  Loader2,
+  Settings,
+  Trash2,
+} from "lucide-react";
+import { Badge } from "ui/badge";
+import { Button } from "ui/button";
+import { Card, CardContent, CardHeader } from "ui/card";
+import JsonView from "ui/json-view";
+import { Separator } from "ui/separator";
+import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
+import { WriteIcon } from "ui/write-icon";
+import { ModelProviderIcon } from "ui/model-provider-icon";
+import { handleErrorWithToast } from "ui/shared-toast";
+import { memo, useCallback, useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useSWRConfig } from "swr";
+import { safe } from "ts-safe";
+import { toast } from "sonner";
+import { useTranslations } from "next-intl";
+
+import {
+  PROVIDERS_KEY,
+  removeProvider,
+  syncProviderModels,
+  type ProviderConfig,
+} from "@/lib/backend/provider-api";
+
+/**
+ * One configured provider connection, laid out like MCPCard: identity and
+ * actions in the header, then the stored configuration on the left and what
+ * the connection actually gives you -- its models -- on the right.
+ */
+export const ProviderCard = memo(function ProviderCard({
+  id,
+  name,
+  provider,
+  configured,
+  apiKey,
+  baseUrl,
+  models,
+}: ProviderConfig) {
+  const t = useTranslations("Providers");
+  const router = useRouter();
+  const { mutate } = useSWRConfig();
+
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [revealKey, setRevealKey] = useState(false);
+
+  const modelList = models ?? [];
+
+  // The key is stored in the clear and is meant to be readable here, but it
+  // should not be sitting on screen by default -- this page is as likely to
+  // be open during a screen share as any other.
+  const configPreview = useMemo(() => {
+    const preview: Record<string, unknown> = { provider };
+    if (baseUrl) preview.baseUrl = baseUrl;
+    preview.apiKey = !apiKey
+      ? null
+      : revealKey
+        ? apiKey
+        : `${apiKey.slice(0, 6)}${"•".repeat(Math.max(apiKey.length - 6, 0))}`;
+    preview.models = modelList.length;
+    return preview;
+  }, [provider, baseUrl, apiKey, revealKey, modelList.length]);
+
+  const handleDelete = useCallback(async () => {
+    if (
+      !confirm(
+        `Delete "${name}"? Chats can no longer use its models until you add it back.`,
+      )
+    ) {
+      return;
+    }
+    await safe(() => setIsProcessing(true))
+      .ifOk(() => removeProvider(id))
+      .ifOk(() => mutate(PROVIDERS_KEY))
+      .ifOk(() => mutate("/api/chat/models"))
+      .ifOk(() => toast.success(t("providerDeleted")))
+      .ifFail(handleErrorWithToast)
+      .watch(() => setIsProcessing(false));
+  }, [id, name, mutate, t]);
+
+  const handleSync = useCallback(async () => {
+    await safe(() => setIsSyncing(true))
+      .map(() => syncProviderModels(id))
+      .ifOk((res) => {
+        mutate(PROVIDERS_KEY);
+        mutate("/api/chat/models");
+        toast.success(t("modelsSynced", { count: res.models.length }));
+      })
+      .ifFail(handleErrorWithToast)
+      .watch(() => setIsSyncing(false));
+  }, [id, mutate, t]);
+
+  const isLoading = isProcessing || isSyncing;
+
+  return (
+    <Card
+      className="relative hover:border-foreground/20 transition-colors bg-secondary/40"
+      data-testid="provider-card"
+      data-provider-id={id}
+    >
+      {isLoading && (
+        <div className="animate-pulse z-10 absolute inset-0 bg-background/50 flex items-center justify-center w-full h-full" />
+      )}
+
+      <CardHeader className="flex items-center gap-1 mb-2">
+        {isLoading && <Loader className="size-4 z-20 animate-spin mr-1" />}
+
+        <ModelProviderIcon provider={provider} className="size-4 mr-1.5" />
+        <h4 className="font-bold text-xs sm:text-lg flex items-center gap-2">
+          {name}
+          {configured ? (
+            <Badge
+              variant="secondary"
+              className="bg-green-500/10 text-green-600 dark:text-green-500 border-green-500/20 text-[10px] px-1.5"
+            >
+              {t("active")}
+            </Badge>
+          ) : (
+            <Badge variant="destructive" className="text-[10px] px-1.5">
+              {t("noKey")}
+            </Badge>
+          )}
+        </h4>
+
+        <div className="flex-1" />
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {isLoading || !configured ? (
+              <div className="hidden sm:block">
+                <Button variant="ghost" size="icon" disabled>
+                  <FlaskConical className="size-3.5" />
+                </Button>
+              </div>
+            ) : (
+              <Link
+                href={`/admin/providers/test?id=${encodeURIComponent(id)}`}
+                className="cursor-pointer hidden sm:block"
+                data-testid="provider-test-link"
+              >
+                <Button variant="ghost" size="icon">
+                  <FlaskConical className="size-3.5" />
+                </Button>
+              </Link>
+            )}
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{t("modelTest")}</p>
+          </TooltipContent>
+        </Tooltip>
+
+        <div className="h-4">
+          <Separator orientation="vertical" />
+        </div>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleSync}
+              disabled={isLoading || !configured}
+              data-testid="provider-sync-button"
+            >
+              {isSyncing ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <CloudDownload className="size-3.5" />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{t("syncModels")}</p>
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-muted-foreground hover:text-foreground"
+              disabled={isLoading}
+              onClick={() => router.push(`/admin/providers/modify?id=${id}`)}
+              data-testid="provider-edit-button"
+            >
+              <WriteIcon className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{t("edit")}</p>
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-muted-foreground hover:text-destructive"
+              disabled={isLoading}
+              onClick={handleDelete}
+              data-testid="provider-delete-button"
+            >
+              {isProcessing ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Trash2 className="size-4" />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{t("delete")}</p>
+          </TooltipContent>
+        </Tooltip>
+      </CardHeader>
+
+      <div className="relative hidden sm:flex w-full">
+        <CardContent className="flex min-w-0 w-full flex-row text-sm max-h-[320px] overflow-hidden border-r-0">
+          <div className="w-1/2 min-w-0 flex flex-col pr-2 border-r border-border">
+            <div className="flex items-center gap-2 mb-2 pt-2 pb-1 z-10">
+              <Settings size={14} className="text-muted-foreground" />
+              <h5 className="text-muted-foreground text-sm font-medium">
+                {t("configuration")}
+              </h5>
+              <div className="flex-1" />
+              {apiKey && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-6 text-muted-foreground hover:text-foreground"
+                      onClick={() => setRevealKey((v) => !v)}
+                      data-testid="provider-reveal-key"
+                    >
+                      {revealKey ? (
+                        <EyeOff className="size-3.5" />
+                      ) : (
+                        <Eye className="size-3.5" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{revealKey ? t("hideKey") : t("showKey")}</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <JsonView data={configPreview} />
+            </div>
+          </div>
+
+          <div className="w-1/2 min-w-0 flex flex-col pl-4">
+            <div className="flex items-center gap-2 mb-4 pt-2 pb-1 z-10">
+              <Box size={14} className="text-muted-foreground" />
+              <h5 className="text-muted-foreground text-sm font-medium">
+                {t("availableModels")}
+              </h5>
+              {modelList.length > 0 && (
+                <Badge variant="secondary" className="text-[10px] px-1.5">
+                  {modelList.length}
+                </Badge>
+              )}
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              {modelList.length > 0 ? (
+                <ModelsList providerId={id} models={modelList} />
+              ) : (
+                <div className="bg-secondary/30 rounded-md p-3 text-center">
+                  <p className="text-sm text-muted-foreground">
+                    {t("noModelsConfigured")}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </div>
+    </Card>
+  );
+});
+
+/**
+ * Each model links straight into the test page preloaded with that model --
+ * the equivalent of MCPCard's per-tool detail popup.
+ */
+const ModelsList = memo(
+  ({ providerId, models }: { providerId: string; models: string[] }) => (
+    <div className="space-y-2 pr-2">
+      {models.map((model) => (
+        <Link
+          key={model}
+          href={`/admin/providers/test?id=${encodeURIComponent(
+            providerId,
+          )}&model=${encodeURIComponent(model)}`}
+          className="flex items-center gap-2 bg-secondary rounded-md p-2 hover:bg-input transition-colors"
+          data-testid="provider-model-row"
+        >
+          <p className="font-medium text-sm truncate flex-1 min-w-0">{model}</p>
+          <FlaskConical
+            size={14}
+            className="text-muted-foreground shrink-0"
+            aria-hidden
+          />
+        </Link>
+      ))}
+    </div>
+  ),
+);
+
+ModelsList.displayName = "ModelsList";

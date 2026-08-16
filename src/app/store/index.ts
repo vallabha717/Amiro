@@ -28,6 +28,19 @@ export interface AppState {
   workflowToolList: WorkflowSummary[];
   currentThreadId: ChatThread["id"] | null;
   toolChoice: "auto" | "none" | "manual";
+  /**
+   * How much the agent may do without asking, sent with every chat request
+   * and enforced server-side (backend-go/internal/agent/permission).
+   *
+   * Persisted, and deliberately defaulted to "interactive" rather than
+   * "auto": this is the setting that decides whether a model can overwrite
+   * a file or run a shell command unattended, and a preference that
+   * silently comes back as the permissive one after a browser restart is
+   * not a safety control.
+   */
+  permissionMode: "plan" | "manual" | "interactive" | "edit" | "auto";
+  projectDirectory: string;
+  recentProjectDirectories: string[];
   allowedMcpServers?: Record<string, AllowedMCPServer>;
   allowedAppDefaultToolkit?: AppDefaultToolkit[];
   generatingTitleThreadIds: string[];
@@ -86,6 +99,9 @@ const initialState: AppState = {
   workflowToolList: [],
   currentThreadId: null,
   toolChoice: "auto",
+  permissionMode: "manual",
+  projectDirectory: "",
+  recentProjectDirectories: [],
   allowedMcpServers: undefined,
   openUserSettings: false,
   allowedAppDefaultToolkit: [
@@ -127,6 +143,10 @@ export const appStore = create<AppState & AppDispatch>()(
       partialize: (state) => ({
         chatModel: state.chatModel || initialState.chatModel,
         toolChoice: state.toolChoice || initialState.toolChoice,
+        permissionMode: state.permissionMode || initialState.permissionMode,
+        projectDirectory: state.projectDirectory || initialState.projectDirectory,
+        recentProjectDirectories:
+          state.recentProjectDirectories || initialState.recentProjectDirectories,
         allowedMcpServers:
           state.allowedMcpServers || initialState.allowedMcpServers,
         allowedAppDefaultToolkit: (

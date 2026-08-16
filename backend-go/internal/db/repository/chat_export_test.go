@@ -10,8 +10,8 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
-	"betterchatbot/backend/internal/db"
-	"betterchatbot/backend/internal/db/models"
+	"amiro/backend/internal/db"
+	"amiro/backend/internal/db/models"
 )
 
 func TestChatExportRepository_ExportChatSnapshotsThreadAndMessages(t *testing.T) {

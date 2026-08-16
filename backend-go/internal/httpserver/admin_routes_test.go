@@ -8,12 +8,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	adminapi "betterchatbot/backend/internal/api/admin"
-	"betterchatbot/backend/internal/auth"
-	"betterchatbot/backend/internal/db"
-	"betterchatbot/backend/internal/db/models"
-	"betterchatbot/backend/internal/db/repository"
-	"betterchatbot/backend/internal/middleware"
+	adminapi "amiro/backend/internal/api/admin"
+	"amiro/backend/internal/auth"
+	"amiro/backend/internal/db"
+	"amiro/backend/internal/db/models"
+	"amiro/backend/internal/db/repository"
+	"amiro/backend/internal/middleware"
 
 	"gorm.io/gorm"
 )
@@ -221,5 +221,30 @@ func TestAdminRoutes_Delete_RejectsSelf(t *testing.T) {
 	rec := env.do(t, http.MethodDelete, "/api/admin/users/"+env.adminID, nil, env.adminTok)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400 for self-delete, body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAdminRoutes_GetStats(t *testing.T) {
+	env := newAdminTestEnv(t)
+	rec := env.do(t, http.MethodGet, "/api/admin/users/"+env.memberID+"/stats", nil, env.adminTok)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		User  struct{ ID string } `json:"user"`
+		Stats struct {
+			ThreadCount int    `json:"threadCount"`
+			TotalTokens int64  `json:"totalTokens"`
+			Period      string `json:"period"`
+		} `json:"stats"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal stats response: %v", err)
+	}
+	if resp.User.ID != env.memberID {
+		t.Errorf("expected user ID %s, got %s", env.memberID, resp.User.ID)
+	}
+	if resp.Stats.Period != "Last 30 Days" {
+		t.Errorf("expected period 'Last 30 Days', got %s", resp.Stats.Period)
 	}
 }

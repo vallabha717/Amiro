@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	authsvc "betterchatbot/backend/internal/auth"
-	"betterchatbot/backend/internal/db"
+	authsvc "amiro/backend/internal/auth"
+	"amiro/backend/internal/db"
 )
 
 func newTestService(t *testing.T) *authsvc.Service {

@@ -1,31 +1,36 @@
 "use client";
 
-import { memo } from "react";
-import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { BarChart } from "@/components/tool-invocation/bar-chart";
+import { InteractiveTable } from "@/components/tool-invocation/interactive-table";
+import { LineChart } from "@/components/tool-invocation/line-chart";
+import { PieChart } from "@/components/tool-invocation/pie-chart";
+import { Handle, type NodeProps, Position } from "@xyflow/react";
+import {
+  ChatGraphNodeKind,
+  ChatGraphNode as ChatGraphNodeType,
+} from "app-types/chat-graph";
+import { DefaultToolName } from "lib/ai/tools";
+import { cn } from "lib/utils";
 import {
   BarChart3Icon,
   BotIcon,
   CheckCircle2Icon,
-  Code2Icon,
   FileTextIcon,
   GlobeIcon,
   InfoIcon,
   Loader2Icon,
   PlugIcon,
+  TerminalIcon,
   TriangleAlertIcon,
   UserIcon,
   WrenchIcon,
 } from "lucide-react";
-import { cn } from "lib/utils";
+import { memo } from "react";
 import {
-  ChatGraphNode as ChatGraphNodeType,
-  ChatGraphNodeKind,
-} from "app-types/chat-graph";
-import { PieChart } from "@/components/tool-invocation/pie-chart";
-import { BarChart } from "@/components/tool-invocation/bar-chart";
-import { LineChart } from "@/components/tool-invocation/line-chart";
-import { InteractiveTable } from "@/components/tool-invocation/interactive-table";
-import { DefaultToolName } from "lib/ai/tools";
+  DiffEditorViewCompact,
+  sectionsFromEditOutput,
+} from "ui/diff-editor-view";
+import { TerminalWindowCompact } from "ui/terminal-window";
 
 type Props = NodeProps<ChatGraphNodeType>;
 
@@ -70,8 +75,8 @@ const KIND_CONFIG: Record<ChatGraphNodeKind, NodeConfig> = {
     accentBg: "bg-cyan-500",
   },
   code: {
-    label: "CODE",
-    icon: Code2Icon,
+    label: "TERMINAL",
+    icon: TerminalIcon,
     badgeBg:
       "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
     borderColor: "border-emerald-500/40",
@@ -151,6 +156,11 @@ function FieldStack({ input }: { input: unknown }) {
     </div>
   );
 }
+
+const EDIT_TOOL_NAMES: string[] = [
+  DefaultToolName.EditFile,
+  DefaultToolName.MultiEdit,
+];
 
 export const ChatGraphNode = memo(function ChatGraphNode({
   data,
@@ -235,32 +245,100 @@ export const ChatGraphNode = memo(function ChatGraphNode({
       </div>
 
       {/* Main Card Content */}
-      <div className="flex flex-col p-3.5 gap-2 text-xs">
-        <div
-          className="font-semibold text-foreground truncate"
-          title={data.label}
-        >
-          {data.label}
-        </div>
+      <div
+        className={cn(
+          "flex flex-col gap-2 text-xs",
+          data.kind === "code" ? "p-0" : "p-3.5",
+        )}
+      >
+        {data.kind !== "code" && (
+          <div
+            className="font-semibold text-foreground truncate px-3.5 pt-3.5"
+            title={data.label}
+          >
+            {data.label}
+          </div>
+        )}
 
         {/* Text snippet for prompt/llm/response */}
         {(data.kind === "prompt" ||
           data.kind === "response" ||
           data.kind === "llm") &&
           data.text && (
-            <div className="rounded-md border border-border/40 bg-muted/30 p-2.5 text-muted-foreground line-clamp-3 leading-relaxed">
+            <div className="rounded-md border border-border/40 bg-muted/30 p-2.5 mx-3.5 text-muted-foreground line-clamp-3 leading-relaxed">
               {data.text}
             </div>
           )}
 
-        {/* Tool input fields stack */}
-        {(data.kind === "tool" ||
-          data.kind === "code" ||
-          data.kind === "http") && <FieldStack input={data.input} />}
+        {/* An edit_file/multi_edit node IS a diff, the same way a code node
+            IS a shell terminal below -- clicking it opens the full
+            side-by-side view in the big popup instead of the raw
+            old_string/new_string arguments FieldStack would otherwise dump. */}
+        {data.kind === "tool" &&
+        data.toolName &&
+        EDIT_TOOL_NAMES.includes(data.toolName) ? (
+          <div className="px-3.5 pb-3.5">
+            <DiffEditorViewCompact
+              path={
+                (data.output as { path?: string } | undefined)?.path ??
+                (data.input as { path?: string } | undefined)?.path ??
+                data.label
+              }
+              {...sectionsFromEditOutput(data.output)}
+              added={
+                (data.output as { added?: number } | undefined)?.added ?? 0
+              }
+              removed={
+                (data.output as { removed?: number } | undefined)?.removed ?? 0
+              }
+              status={
+                data.status === "fail"
+                  ? "error"
+                  : data.status === "running"
+                    ? "pending"
+                    : "success"
+              }
+              errorText={data.errorText}
+            />
+          </div>
+        ) : (
+          (data.kind === "tool" || data.kind === "http") && (
+            <div className="px-3.5 pb-3.5">
+              <FieldStack input={data.input} />
+            </div>
+          )
+        )}
+
+        {/* The node itself IS a terminal for code/shell execution nodes;
+            clicking anywhere on it opens the full terminal in a big popup. */}
+        {data.kind === "code" && (
+          <TerminalWindowCompact
+            className="rounded-none rounded-b-[10px] border-0 -mt-px"
+            command={
+              (data.input as { command?: string } | undefined)?.command ??
+              data.label
+            }
+            cwd={(data.output as { cwd?: string } | undefined)?.cwd}
+            status={
+              data.status === "fail"
+                ? "error"
+                : data.status === "running"
+                  ? "pending"
+                  : "success"
+            }
+            exitCode={
+              (data.output as { exit_code?: number } | undefined)?.exit_code
+            }
+            output={
+              (data.output as { output?: string } | undefined)?.output ??
+              data.errorText
+            }
+          />
+        )}
 
         {/* Interactive Chart preview inside node */}
         {isChart && data.status === "success" && (
-          <div className="mt-2 rounded-lg border border-border/50 bg-background/50 p-2 overflow-hidden">
+          <div className="mt-2 rounded-lg border border-border/50 bg-background/50 p-2 overflow-hidden mx-3.5 mb-3.5">
             <ChartPreview toolName={data.toolName} input={data.input} />
           </div>
         )}

@@ -127,7 +127,9 @@
       "searchOptionsDescription": "您可以向聊天机器人传递搜索选项，例如搜索结果的最大数量、搜索日期等。",
       "defaultToolKit": {
         "visualization": "数据可视化",
-        "webSearch": "网页搜寻"
+        "webSearch": "网页搜寻",
+        "file": "文件与代码",
+        "memory": "工作区笔记"
       },
       "agent": "智能体",
       "mention": "提及",
@@ -143,7 +145,15 @@
       "manual": "手动",
       "none": "无",
       "mentionOnly": "仅@提及",
-      "noToolsAvailable": "无可用工具"
+      "noToolsAvailable": "无可用工具",
+      "permissionMode": "权限模式",
+      "permissionModeDescription": "代理在不询问的情况下可以对你的文件和 shell 做多少事。",
+      "planMode": "计划",
+      "planModeDescription": "只读。可以浏览并提出更改建议，但不能写入文件或运行命令。",
+      "interactiveMode": "交互",
+      "interactiveModeDescription": "读取直接执行；写入和命令会先询问你。",
+      "autoPermissionMode": "自动",
+      "autoPermissionModeDescription": "不询问直接执行全部操作。仍限制在工作区文件夹内。"
     },
     "VoiceChat": {
       "title": "语音聊天模式",
@@ -203,7 +213,8 @@
       "mcpInstructions": "MCP 说明",
       "mcpInstructionsDescription": "自定义 MCP 服务器说明。",
       "userSettings": "用户设置"
-    }
+    },
+    "contextCompacted": "已压缩早期上下文 — 总结了 {count} 条消息，释放约 {saved}k tokens"
   },
   "Layout": {
     "toggleSidebar": "切换侧边栏",

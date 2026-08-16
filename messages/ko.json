@@ -127,7 +127,9 @@
       "searchOptionsDescription": "검색 결과의 최대 개수, 검색 날짜 등의 검색 옵션을 챗봇에 전달할 수 있습니다.",
       "defaultToolKit": {
         "visualization": "데이터 시각화",
-        "webSearch": "웹 검색"
+        "webSearch": "웹 검색",
+        "file": "파일 및 코드",
+        "memory": "워크스페이스 노트"
       },
       "agent": "에이전트",
       "mention": "멘션",
@@ -143,7 +145,15 @@
       "manual": "수동",
       "none": "없음",
       "mentionOnly": "@멘션만",
-      "noToolsAvailable": "사용 가능한 도구가 없습니다"
+      "noToolsAvailable": "사용 가능한 도구가 없습니다",
+      "permissionMode": "권한 모드",
+      "permissionModeDescription": "에이전트가 확인 없이 파일과 셸에 할 수 있는 범위입니다.",
+      "planMode": "플랜",
+      "planModeDescription": "읽기 전용. 탐색하고 변경을 제안할 수 있지만 파일을 쓰거나 명령을 실행할 수 없습니다.",
+      "interactiveMode": "대화형",
+      "interactiveModeDescription": "읽기는 바로 실행하고, 쓰기와 명령은 먼저 확인합니다.",
+      "autoPermissionMode": "자동",
+      "autoPermissionModeDescription": "확인 없이 모두 실행합니다. 작업 폴더 안으로는 계속 제한됩니다."
     },
     "VoiceChat": {
       "title": "음성 채팅 모드",
@@ -162,7 +172,6 @@
     },
     "Thread": {
       "chat": "채팅",
-
       "renameChat": "채팅 이름 변경",
       "deleteChat": "채팅 삭제",
       "deleteUnarchivedChats": "아카이브되지 않은 채팅 모두 삭제",
@@ -182,7 +191,6 @@
       "createLink": "링크 만들기",
       "linkCopied": "링크가 복사되었습니다"
     },
-
     "ChatPreferences": {
       "title": "채팅 환경설정",
       "whatShouldWeCallYou": "뭐라고 불러드릴까요?",
@@ -219,7 +227,8 @@
       "exportDeleted": "공유가 성공적으로 삭제되었습니다",
       "failedToDeleteExport": "공유 삭제에 실패했습니다",
       "userSettings": "사용자 설정"
-    }
+    },
+    "contextCompacted": "이전 컨텍스트를 압축했습니다 — 메시지 {count}개를 요약해 약 {saved}k 토큰을 확보"
   },
   "Layout": {
     "workflow": "워크플로우",

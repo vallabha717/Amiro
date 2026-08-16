@@ -39,8 +39,8 @@ func TestLoadMigrations_ReturnsAllTwentyInVersionOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadMigrations: %v", err)
 	}
-	if len(migrations) != 20 {
-		t.Fatalf("len(migrations) = %d, want 20", len(migrations))
+	if len(migrations) != 21 {
+		t.Fatalf("len(migrations) = %d, want 21", len(migrations))
 	}
 	for i, m := range migrations {
 		if m.Version != i+1 {
@@ -77,8 +77,8 @@ func TestMigrate_RunningTwiceIsANoOp(t *testing.T) {
 	if err := sqlDB.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("count schema_migrations: %v", err)
 	}
-	if count != 20 {
-		t.Fatalf("schema_migrations has %d rows, want 20 (re-run should not duplicate)", count)
+	if count != 21 {
+		t.Fatalf("schema_migrations has %d rows, want 21 (re-run should not duplicate)", count)
 	}
 }
 

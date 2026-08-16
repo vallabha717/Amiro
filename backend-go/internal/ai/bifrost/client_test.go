@@ -112,3 +112,41 @@ func TestToError_HandlesNilBifrostError(t *testing.T) {
 		t.Fatal("expected a non-nil error even for a nil *BifrostError")
 	}
 }
+
+// An assistant turn replaying its own tool calls must carry type:"function"
+// on every call. Without it the field is omitted (it is a *string with
+// omitempty) and the *second* step of every tool call fails: OpenAI/Azure
+// reject the turn outright, and Bifrost's Anthropic conversion silently
+// drops the tool_use block so the tool_result that follows is orphaned.
+// Either way the model never sees what a tool returned.
+func TestToBifrostMessage_ToolCallsCarryTheFunctionType(t *testing.T) {
+	msg := toBifrostMessage(Message{
+		Role: RoleAssistant,
+		ToolCalls: []ToolCall{
+			{ID: "call_1", Name: "createPieChart", Arguments: `{"title":"Q3"}`},
+			{ID: "call_2", Name: "createTable", Arguments: `{}`},
+		},
+	})
+
+	if msg.ChatAssistantMessage == nil {
+		t.Fatalf("expected an assistant message carrying tool calls, got %+v", msg)
+	}
+	calls := msg.ChatAssistantMessage.ToolCalls
+	if len(calls) != 2 {
+		t.Fatalf("got %d tool calls, want 2", len(calls))
+	}
+	for i, c := range calls {
+		if c.Type == nil || *c.Type != "function" {
+			t.Fatalf("call %d Type = %v, want \"function\"", i, c.Type)
+		}
+		if c.ID == nil || *c.ID == "" {
+			t.Fatalf("call %d lost its id", i)
+		}
+		if c.Index != uint16(i) {
+			t.Fatalf("call %d Index = %d, want %d", i, c.Index, i)
+		}
+	}
+	if *calls[0].Function.Name != "createPieChart" || calls[0].Function.Arguments != `{"title":"Q3"}` {
+		t.Fatalf("first call = %+v, want name and raw arguments preserved", calls[0].Function)
+	}
+}

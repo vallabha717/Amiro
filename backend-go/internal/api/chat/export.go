@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"betterchatbot/backend/internal/auth"
+	"amiro/backend/internal/auth"
 )
 
 type exportRequest struct {

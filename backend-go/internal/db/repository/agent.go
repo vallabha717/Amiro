@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
-	"betterchatbot/backend/internal/db/models"
+	"amiro/backend/internal/db/models"
 )
 
 // AgentRepository ports agent-repository.pg.ts. selectAgentsByUserId is not

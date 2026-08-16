@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"betterchatbot/backend/internal/auth"
-	"betterchatbot/backend/internal/mcp"
+	"amiro/backend/internal/auth"
+	"amiro/backend/internal/mcp"
 )
 
 // Get ports selectMcpClientAction (mcp/actions.ts:46).

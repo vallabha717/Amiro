@@ -6,10 +6,10 @@ import (
 	"errors"
 	"testing"
 
-	bifrostai "betterchatbot/backend/internal/ai/bifrost"
-	"betterchatbot/backend/internal/ai/tools"
-	"betterchatbot/backend/internal/db/repository"
-	"betterchatbot/backend/internal/mcp"
+	bifrostai "amiro/backend/internal/ai/bifrost"
+	"amiro/backend/internal/ai/tools"
+	"amiro/backend/internal/db/repository"
+	"amiro/backend/internal/mcp"
 )
 
 // fakeMCP is a canned MCPTools, so loadMCPTools/mcpCustomizationSystemPrompt

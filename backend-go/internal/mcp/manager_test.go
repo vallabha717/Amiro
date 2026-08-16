@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	bifrostai "betterchatbot/backend/internal/ai/bifrost"
-	"betterchatbot/backend/internal/db"
-	"betterchatbot/backend/internal/db/models"
-	"betterchatbot/backend/internal/db/repository"
+	bifrostai "amiro/backend/internal/ai/bifrost"
+	"amiro/backend/internal/db"
+	"amiro/backend/internal/db/models"
+	"amiro/backend/internal/db/repository"
 )
 
 type fakeMCPEngine struct {

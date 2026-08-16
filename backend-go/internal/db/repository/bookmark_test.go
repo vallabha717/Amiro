@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"betterchatbot/backend/internal/db/models"
+	"amiro/backend/internal/db/models"
 )
 
 func TestBookmarkRepository_CreateIsIdempotent(t *testing.T) {

@@ -25,7 +25,10 @@ type ToolSpec struct {
 // tool_calls with no further content" shape GenerateWithTool already reads
 // off ChatAssistantMessage.ToolCalls.
 type StepResult struct {
-	Text      string
+	Text string
+	// Reasoning is the model's thinking for this step, when it exposes
+	// any. Streamed live via StepHooks.OnReasoningDelta.
+	Reasoning string
 	ToolCalls []ToolCall
 	Usage     *Usage
 }

@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"sort"
 
-	bifrostai "betterchatbot/backend/internal/ai/bifrost"
-	"betterchatbot/backend/internal/ai/prompts"
-	"betterchatbot/backend/internal/api/httpjson"
-	"betterchatbot/backend/internal/auth"
+	bifrostai "amiro/backend/internal/ai/bifrost"
+	"amiro/backend/internal/ai/prompts"
+	"amiro/backend/internal/api/httpjson"
+	"amiro/backend/internal/auth"
 )
 
 // generateRequest ports agent/ai/route.ts's body (agent/ai/route.ts:26).

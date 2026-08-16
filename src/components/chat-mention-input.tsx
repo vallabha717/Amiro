@@ -378,13 +378,10 @@ export function ChatMentionInputSuggestion({
           label = "HTTP";
           description = "Send an http request";
           break;
-        case DefaultToolName.JavascriptExecution:
-          label = "js-execution";
-          description = "Execute simple javascript code";
-          break;
-        case DefaultToolName.PythonExecution:
-          label = "python-execution";
-          description = "Execute simple python code";
+        case DefaultToolName.TerminalExecution:
+        case DefaultToolName.RunShell:
+          label = "terminal";
+          description = "Execute shell commands in a persistent terminal session";
           break;
       }
       return {

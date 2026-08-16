@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"strconv"
 
-	"betterchatbot/backend/internal/ai/workflow"
-	"betterchatbot/backend/internal/db/models"
+	"amiro/backend/internal/ai/workflow"
+	"amiro/backend/internal/db/models"
 )
 
 // edgeUIConfig is the subset of WorkflowEdge.UIConfig this package reads/

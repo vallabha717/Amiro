@@ -28,7 +28,6 @@ import { useCallback, useState } from "react";
 import { Skeleton } from "ui/skeleton";
 import { useArchives } from "@/hooks/queries/use-archives";
 import { ArchiveDialog } from "../archive-dialog";
-import { getIsUserAdmin } from "lib/user/utils";
 import { BasicUser } from "app-types/user";
 import { AppSidebarAdmin } from "./app-sidebar-menu-admin";
 
@@ -101,7 +100,7 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
             </SidebarMenuItem>
           </Tooltip>
         </SidebarMenu>
-        {getIsUserAdmin(user) && <AppSidebarAdmin />}
+        {user && <AppSidebarAdmin />}
         <SidebarMenu className="group/archive">
           <Tooltip>
             <SidebarMenuItem>
@@ -132,7 +131,7 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
             </SidebarMenuItem>
           </Tooltip>
           {expandedArchive && (
-            <>
+            <div className="animate-in fade-in-0 slide-in-from-top-1 duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]">
               <SidebarMenuSub>
                 {isLoadingArchives ? (
                   <div className="gap-2 flex flex-col">
@@ -162,7 +161,7 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
                   ))
                 )}
               </SidebarMenuSub>
-            </>
+            </div>
           )}
         </SidebarMenu>
       </SidebarGroupContent>

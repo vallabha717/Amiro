@@ -12,8 +12,8 @@ import (
 
 	"gorm.io/datatypes"
 
-	"betterchatbot/backend/internal/db/models"
-	"betterchatbot/backend/internal/mcp/oauth"
+	"amiro/backend/internal/db/models"
+	"amiro/backend/internal/mcp/oauth"
 )
 
 // mcpOAuthCallbackPath is where the OAuth authorization server redirects

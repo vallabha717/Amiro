@@ -22,8 +22,6 @@ import { appStore, UploadedFile } from "@/app/store";
 import { useShallow } from "zustand/shallow";
 import { ChatMention, ChatModel } from "app-types/chat";
 import dynamic from "next/dynamic";
-import { ToolModeDropdown } from "./tool-mode-dropdown";
-
 import { ToolSelectDropdown } from "./tool-select-dropdown";
 import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
 import { useTranslations } from "next-intl";
@@ -50,6 +48,8 @@ import {
 } from "ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useThreadFileUploader } from "@/hooks/use-thread-file-uploader";
+import { ProjectSelector } from "./chat/project-selector";
+import { PermissionSelector } from "./chat/permission-selector";
 
 import { EMOJI_DATA } from "lib/const";
 import { AgentSummary } from "app-types/agent";
@@ -476,7 +476,7 @@ export default function PromptInput({
                 })}
               </div>
             )}
-            <div className="flex flex-col gap-3.5 px-5 pt-2 pb-4">
+            <div className="flex flex-col gap-3.5 px-5 pt-2 pb-3">
               <div className="relative min-h-[2rem]">
                 <ChatMentionInput
                   input={input}
@@ -568,18 +568,15 @@ export default function PromptInput({
                       <XIcon className="size-3 group-hover/image-generator:opacity-100 opacity-0 transition-opacity duration-200" />
                     </Button>
                   ) : (
-                    <>
-                      <ToolModeDropdown />
-                      <ToolSelectDropdown
-                        className="mx-1"
-                        align="start"
-                        side="top"
-                        onSelectWorkflow={onSelectWorkflow}
-                        onSelectAgent={onSelectAgent}
-                        onGenerateImage={handleGenerateImage}
-                        mentions={mentions}
-                      />
-                    </>
+                    <ToolSelectDropdown
+                      className="mx-1"
+                      align="start"
+                      side="top"
+                      onSelectWorkflow={onSelectWorkflow}
+                      onSelectAgent={onSelectAgent}
+                      onGenerateImage={handleGenerateImage}
+                      mentions={mentions}
+                    />
                   ))}
 
                 <div className="flex-1" />
@@ -603,7 +600,7 @@ export default function PromptInput({
                           <GeminiIcon className="size-3 opacity-0 group-data-[state=open]:opacity-100 group-hover:opacity-100" />
                         ) : null}
                         <span
-                          className="text-foreground group-data-[state=open]:text-foreground  "
+                          className="text-foreground group-data-[state=open]:text-foreground"
                           data-testid="selected-model-name"
                         >
                           {chatModel.model}
@@ -801,9 +798,18 @@ export default function PromptInput({
                 </div>
               )}
             </div>
+
+            {/* Sub-bar below composer with Project and Permission */}
+            <div className="flex items-center justify-between px-3.5 py-1.5 border-t border-border/40 dark:border-white/[0.06] bg-background/40 dark:bg-white/[0.03] rounded-b-4xl transition-colors">
+              <div className="flex items-center gap-1.5">
+                <ProjectSelector />
+                <PermissionSelector />
+              </div>
+            </div>
           </div>
         </fieldset>
       </div>
     </div>
   );
 }
+

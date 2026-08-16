@@ -2,6 +2,7 @@ package secrets
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -12,7 +13,7 @@ import (
 // for an environment-dependent dependency.
 func requireKeyringAvailable(t *testing.T) *KeyringStore {
 	t.Helper()
-	store := NewKeyringStore()
+	store := NewKeyringStore(t.TempDir())
 	const probeProvider = "betterchatbot-availability-probe"
 	if err := store.Set(context.Background(), probeProvider, "probe"); err != nil {
 		t.Skipf("OS keychain not available in this environment, skipping: %v", err)
@@ -22,9 +23,10 @@ func requireKeyringAvailable(t *testing.T) *KeyringStore {
 }
 
 func TestKeyringStore_GetReturnsFalseWhenUnset(t *testing.T) {
-	store := requireKeyringAvailable(t)
-	_, ok, err := store.Get(context.Background(), "definitely-unset-provider")
+	store := NewKeyringStore(t.TempDir())
+	_, ok, err := store.Get(context.Background(), "never-set")
 	if err != nil {
+		skipIfHeadless(t, err)
 		t.Fatalf("Get: %v", err)
 	}
 	if ok {
@@ -32,16 +34,24 @@ func TestKeyringStore_GetReturnsFalseWhenUnset(t *testing.T) {
 	}
 }
 
-func TestKeyringStore_SetThenGetRoundTrips(t *testing.T) {
+func skipIfHeadless(t *testing.T, err error) {
+	if err != nil && strings.Contains(err.Error(), "The name org.freedesktop.secrets was not provided by any .service files") {
+		t.Skipf("Skipping keyring test: %v", err)
+	}
+}
+
+func TestKeyringStore_RoundTripSetsAndGetsValues(t *testing.T) {
 	store := requireKeyringAvailable(t)
 	const provider = "betterchatbot-test-openai"
 	t.Cleanup(func() { store.Delete(context.Background(), provider) })
 
 	if err := store.Set(context.Background(), provider, "sk-test-123"); err != nil {
+		skipIfHeadless(t, err)
 		t.Fatalf("Set: %v", err)
 	}
 	key, ok, err := store.Get(context.Background(), provider)
 	if err != nil {
+		skipIfHeadless(t, err)
 		t.Fatalf("Get: %v", err)
 	}
 	if !ok || key != "sk-test-123" {
@@ -61,6 +71,7 @@ func TestKeyringStore_DeleteRemovesKey(t *testing.T) {
 	}
 	_, ok, err := store.Get(context.Background(), provider)
 	if err != nil {
+		skipIfHeadless(t, err)
 		t.Fatalf("Get after delete: %v", err)
 	}
 	if ok {
@@ -76,10 +87,10 @@ func TestKeyringStore_DeleteOfUnsetKeyIsNotAnError(t *testing.T) {
 }
 
 func TestNew_SelectsKeyringForDesktopAndEnvForWeb(t *testing.T) {
-	if _, ok := New(true).(*KeyringStore); !ok {
+	if _, ok := New(true, t.TempDir()).(*KeyringStore); !ok {
 		t.Fatal("New(true) should return a *KeyringStore")
 	}
-	if _, ok := New(false).(*EnvStore); !ok {
+	if _, ok := New(false, t.TempDir()).(*EnvStore); !ok {
 		t.Fatal("New(false) should return an *EnvStore")
 	}
 }

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	bifrostai "betterchatbot/backend/internal/ai/bifrost"
+	bifrostai "amiro/backend/internal/ai/bifrost"
 )
 
 func TestResolveAttachmentURLs_FetchesAndEmbedsAsBase64(t *testing.T) {

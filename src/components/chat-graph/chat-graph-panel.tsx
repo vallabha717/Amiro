@@ -1,19 +1,25 @@
 "use client";
 
+import { Markdown } from "@/components/markdown";
+import {
+  getToolPresenter,
+  statusFromNodeHistory,
+} from "@/components/tool-presenters";
+import { ChatGraphNodeData } from "app-types/chat-graph";
 import { XIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { Button } from "ui/button";
+import { useMemo } from "react";
 import { Badge } from "ui/badge";
+import { Button } from "ui/button";
 import JsonView from "ui/json-view";
-import { Markdown } from "@/components/markdown";
-import { ChatGraphNodeData } from "app-types/chat-graph";
+import { TerminalWindow } from "ui/terminal-window";
 
 const KIND_LABEL_DISPLAY = {
   prompt: "INPUT",
   llm: "INFO",
   tool: "TOOL CALL",
   chart: "DATA VISUALIZATION",
-  code: "CODE EXECUTOR",
+  code: "TERMINAL",
   http: "HTTP REQUEST",
   template: "TEMPLATE",
   response: "OUTPUT",
@@ -28,6 +34,26 @@ export function ChatGraphPanel({
 }) {
   const t = useTranslations("Chat.WorkflowView");
   const tCommon = useTranslations("Common");
+
+  // The tool's own presentation, when it has one. No surface wrapper: the
+  // default is "detail", which is exactly what this panel is.
+  const resultPresenter = useMemo(() => {
+    const Expanded = data.toolName
+      ? getToolPresenter(data.toolName)?.Expanded
+      : undefined;
+    if (!Expanded) return null;
+    return (
+      <Expanded
+        input={data.input}
+        output={data.output}
+        status={statusFromNodeHistory({
+          status: data.status,
+          error: data.errorText,
+        })}
+        errorText={data.errorText}
+      />
+    );
+  }, [data.toolName, data.input, data.output, data.status, data.errorText]);
 
   const kindDisplay = KIND_LABEL_DISPLAY[data.kind] || data.kind.toUpperCase();
 
@@ -95,33 +121,68 @@ export function ChatGraphPanel({
             </div>
           )}
 
-        {data.kind !== "prompt" &&
-          data.kind !== "response" &&
-          data.kind !== "llm" && (
-            <div className="flex flex-col gap-3 border-t border-border/40 pt-2">
-              {data.input !== undefined && (
-                <div>
-                  <div className="mb-1 text-muted-foreground font-medium">
-                    {t("input")}
-                  </div>
-                  <JsonView data={data.input} />
+        {data.kind === "code" ? (
+          <div className="border-t border-border/40 pt-2">
+            <TerminalWindow
+              command={
+                (data.input as { command?: string } | undefined)?.command ??
+                data.label
+              }
+              cwd={(data.output as { cwd?: string } | undefined)?.cwd}
+              status={
+                data.status === "fail"
+                  ? "error"
+                  : data.status === "running"
+                    ? "pending"
+                    : "success"
+              }
+              exitCode={
+                (data.output as { exit_code?: number } | undefined)?.exit_code
+              }
+              output={
+                (data.output as { output?: string } | undefined)?.output ??
+                data.errorText
+              }
+              autoCollapseOnDone={false}
+            />
+          </div>
+        ) : (
+          <>
+            {data.kind !== "prompt" &&
+              data.kind !== "response" &&
+              data.kind !== "llm" && (
+                <div className="flex flex-col gap-3 border-t border-border/40 pt-2">
+                  {data.input !== undefined && (
+                    <div>
+                      <div className="mb-1 text-muted-foreground font-medium">
+                        {t("input")}
+                      </div>
+                      <JsonView data={data.input} />
+                    </div>
+                  )}
+                  {data.output !== undefined && (
+                    <div>
+                      <div className="mb-1 text-muted-foreground font-medium">
+                        {tCommon("result")}
+                      </div>
+                      {/* This panel is the detail surface, so it gets the
+                          tool's real presentation -- a diff as a diff, not as
+                          a JSON string with \n in it. That is also where the
+                          chat log deliberately stops: the work log names the
+                          file and the +/- counts, and the patch itself lives
+                          here. */}
+                      {resultPresenter ?? <JsonView data={data.output} />}
+                    </div>
+                  )}
+                  {data.errorText && (
+                    <div className="rounded-md border border-destructive/30 bg-destructive/10 p-2 text-destructive">
+                      {data.errorText}
+                    </div>
+                  )}
                 </div>
               )}
-              {data.output !== undefined && (
-                <div>
-                  <div className="mb-1 text-muted-foreground font-medium">
-                    {tCommon("result")}
-                  </div>
-                  <JsonView data={data.output} />
-                </div>
-              )}
-              {data.errorText && (
-                <div className="rounded-md border border-destructive/30 bg-destructive/10 p-2 text-destructive">
-                  {data.errorText}
-                </div>
-              )}
-            </div>
-          )}
+          </>
+        )}
       </div>
     </div>
   );

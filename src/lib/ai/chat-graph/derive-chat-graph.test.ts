@@ -264,7 +264,7 @@ describe("deriveChatGraph", () => {
     const { nodes } = deriveChatGraph([
       assistantMessage("m2", [
         {
-          type: "tool-python-execution",
+          type: "tool-terminal-execution",
           toolCallId: "call1",
           state: "output-available",
           input: { code: "print('hi')" },

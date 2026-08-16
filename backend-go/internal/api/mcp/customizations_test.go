@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"betterchatbot/backend/internal/db/models"
+	"amiro/backend/internal/db/models"
 )
 
 func TestToServerCustomizationResponse_UsesCamelCaseWireShape(t *testing.T) {

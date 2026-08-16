@@ -17,8 +17,8 @@ export const RandomDataGeneratorExample: Partial<Agent> = {
     mentions: [
       {
         type: "defaultTool",
-        label: DefaultToolName.JavascriptExecution,
-        name: DefaultToolName.JavascriptExecution,
+        label: DefaultToolName.TerminalExecution,
+        name: DefaultToolName.TerminalExecution,
       },
       {
         type: "defaultTool",

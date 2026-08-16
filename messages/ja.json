@@ -126,7 +126,9 @@
       "searchOptionsDescription": "検索結果の最大数、検索日時など、チャットボットに検索オプションを渡すことができます。",
       "defaultToolKit": {
         "visualization": "データ可視化",
-        "webSearch": "ウェブを検索"
+        "webSearch": "ウェブを検索",
+        "file": "ファイルとコード",
+        "memory": "ワークスペースのメモ"
       },
       "agent": "エージェント",
       "mention": "メンション",
@@ -142,7 +144,15 @@
       "manual": "手動",
       "none": "なし",
       "mentionOnly": "@メンションのみ",
-      "noToolsAvailable": "利用可能なツールがありません"
+      "noToolsAvailable": "利用可能なツールがありません",
+      "permissionMode": "権限モード",
+      "permissionModeDescription": "エージェントが確認なしにファイルやシェルへ行える範囲です。",
+      "planMode": "プラン",
+      "planModeDescription": "読み取り専用。調査と変更の提案はできますが、ファイルの書き込みやコマンドの実行はできません。",
+      "interactiveMode": "対話",
+      "interactiveModeDescription": "読み取りはそのまま実行し、書き込みとコマンドは事前に確認します。",
+      "autoPermissionMode": "自動",
+      "autoPermissionModeDescription": "確認なしにすべて実行します。ワークスペースフォルダー内に限られます。"
     },
     "VoiceChat": {
       "title": "音声チャットモード",
@@ -161,7 +171,6 @@
     },
     "Thread": {
       "chat": "チャット",
-
       "renameChat": "名前を変更",
       "deleteChat": "チャットを削除",
       "deleteUnarchivedChats": "アーカイブされていないチャットをすべて削除",
@@ -181,7 +190,6 @@
       "createLink": "リンクを作成",
       "linkCopied": "リンクがコピーされました"
     },
-
     "ChatPreferences": {
       "title": "チャット設定",
       "whatShouldWeCallYou": "何とお呼びすればよろしいですか？",
@@ -204,7 +212,8 @@
       "mcpInstructions": "MCP 指示",
       "mcpInstructionsDescription": "MCP サーバーの指示をカスタマイズします。",
       "userSettings": "ユーザー設定"
-    }
+    },
+    "contextCompacted": "以前のコンテキストを圧縮しました — {count} 件のメッセージを要約し、約 {saved}k トークンを解放"
   },
   "Layout": {
     "toggleSidebar": "サイドバーの切り替え",

@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"betterchatbot/backend/internal/db/models"
+	"amiro/backend/internal/db/models"
 )
 
 func okHandler() http.Handler {

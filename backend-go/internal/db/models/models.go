@@ -39,5 +39,6 @@ func All() []any {
 		&ArchiveItem{},
 		&ChatExport{},
 		&ChatExportComment{},
+		&ProviderConfig{},
 	}
 }

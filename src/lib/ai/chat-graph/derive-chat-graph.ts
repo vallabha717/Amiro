@@ -25,6 +25,9 @@ const CHART_TOOL_NAMES: string[] = [
 ];
 
 const CODE_TOOL_NAMES: string[] = [
+  "terminal-execution",
+  "run_shell",
+  "terminal",
   "python-execution",
   "python-executor",
   "execute-code",

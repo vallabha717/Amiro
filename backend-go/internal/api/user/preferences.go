@@ -3,9 +3,9 @@ package user
 import (
 	"net/http"
 
-	"betterchatbot/backend/internal/api/httpjson"
-	"betterchatbot/backend/internal/auth"
-	"betterchatbot/backend/internal/user"
+	"amiro/backend/internal/api/httpjson"
+	"amiro/backend/internal/auth"
+	"amiro/backend/internal/user"
 )
 
 // GetPreferences ports user/preferences/route.ts's GET.

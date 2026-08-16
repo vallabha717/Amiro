@@ -17,7 +17,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"betterchatbot/backend/internal/db/repository"
+	"amiro/backend/internal/db/repository"
 )
 
 type Handler struct {

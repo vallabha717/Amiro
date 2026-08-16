@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"betterchatbot/backend/internal/ai/workflow/executor"
-	"betterchatbot/backend/internal/auth"
+	"amiro/backend/internal/ai/workflow/executor"
+	"amiro/backend/internal/auth"
 )
 
 // executeTimeout matches the TS route's `timeout: 1000 * 60 * 5` passed to

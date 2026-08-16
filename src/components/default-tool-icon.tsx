@@ -7,7 +7,7 @@ import {
   ChartPieIcon,
   GlobeIcon,
   HardDriveUploadIcon,
-  CodeIcon,
+  TerminalIcon,
   HammerIcon,
   TableOfContents,
 } from "lucide-react";
@@ -51,11 +51,13 @@ export function DefaultToolIcon({
         />
       );
     }
-    if (name === DefaultToolName.JavascriptExecution) {
-      return <CodeIcon className={cn("size-3.5 text-yellow-400", className)} />;
-    }
-    if (name === DefaultToolName.PythonExecution) {
-      return <CodeIcon className={cn("size-3.5 text-blue-400", className)} />;
+    if (
+      name === DefaultToolName.TerminalExecution ||
+      name === DefaultToolName.RunShell
+    ) {
+      return (
+        <TerminalIcon className={cn("size-3.5 text-emerald-400", className)} />
+      );
     }
     return <HammerIcon className={cn("size-3.5", className)} />;
   }, [name]);

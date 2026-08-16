@@ -1,11 +1,22 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+
+/* next-themes sets `attribute="class"`, so `dark:` must follow the `.dark`
+   class rather than Tailwind v4's default `prefers-color-scheme` media query.
+   Without this, `dark:` utilities track the OS while token colors track the
+   app theme, and the two disagree whenever they differ. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Lets translucent chrome fall back to a solid surface when the user has
+   asked for reduced transparency. */
+@custom-variant reduce-transparency (@media (prefers-reduced-transparency: reduce));
+
 /* Individual theme variants - themes from  https://github.com/rawestmoreland/theme-generator/blob/main/src/app/globals.css */
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-fraunces);
   --font-mono: var(--font-geist-mono);
   --font-brand: var(--font-fraunces);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -77,6 +88,16 @@
   --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
   --sidebar-border: oklch(0.92 0.004 286.32);
   --sidebar-ring: oklch(0.705 0.015 286.067);
+
+  /* Design engineering motion tokens */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.15);
+  --duration-instant: 100ms;
+  --duration-fast: 160ms;
+  --duration-normal: 220ms;
+  --duration-slow: 320ms;
 }
 .light {
   [data-theme="zinc"] {
@@ -1441,6 +1462,7 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-fraunces), serif;
   }
 
   button {
@@ -1516,5 +1538,44 @@
 
   .transition-colors-300 {
     @apply transition-colors duration-300;
+  }
+
+  /* Tactile Physical Press Feedback */
+  .press-scale {
+    transition: transform 160ms var(--ease-out);
+  }
+  .press-scale:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  .press-scale-subtle {
+    transition: transform 160ms var(--ease-out);
+  }
+  .press-scale-subtle:active:not(:disabled) {
+    transform: scale(0.985);
+  }
+
+  .press-scale-pill {
+    transition: transform 160ms var(--ease-out);
+  }
+  .press-scale-pill:active:not(:disabled) {
+    transform: scale(0.94);
+  }
+
+  /* Origin-aware popovers */
+  .origin-trigger {
+    transform-origin: var(--radix-popover-content-transform-origin, var(--radix-dropdown-menu-content-transform-origin, center));
+  }
+}
+
+/* Reduced-motion accessibility overrides */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

@@ -17,9 +17,9 @@ import (
 	"strings"
 	"time"
 
-	bifrostai "betterchatbot/backend/internal/ai/bifrost"
-	"betterchatbot/backend/internal/ai/workflow"
-	"betterchatbot/backend/internal/db/models"
+	bifrostai "amiro/backend/internal/ai/bifrost"
+	"amiro/backend/internal/ai/workflow"
+	"amiro/backend/internal/db/models"
 )
 
 // Engine is the subset of *bifrostai.Client the LLM/Tool node executors

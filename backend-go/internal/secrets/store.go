@@ -22,9 +22,9 @@ type KeyStore interface {
 // (postgres driver) -- same split point internal/db.DialectSQLite/Postgres
 // already draws elsewhere, passed in as a bool here rather than importing
 // internal/db so this package stays a leaf with no DB dependency.
-func New(desktop bool) KeyStore {
+func New(desktop bool, appDataDir string) KeyStore {
 	if desktop {
-		return NewKeyringStore()
+		return NewKeyringStore(appDataDir)
 	}
 	return NewEnvStore()
 }

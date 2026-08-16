@@ -53,7 +53,7 @@ export const SelectModel = (props: PropsWithChildren<SelectModelProps>) => {
             <div className="mr-auto flex items-center gap-1">
               {(props.showProvider ?? true) && (
                 <ModelProviderIcon
-                  provider={model?.provider || ""}
+                  provider={providers?.find(p => p.provider === model?.provider)?.providerType || ""}
                   className="size-2.5 mr-1"
                 />
               )}
@@ -84,7 +84,8 @@ export const SelectModel = (props: PropsWithChildren<SelectModelProps>) => {
                 <CommandGroup
                   heading={
                     <ProviderHeader
-                      provider={provider.provider}
+                      providerName={provider.providerName || provider.provider}
+                      providerType={provider.providerType}
                       hasAPIKey={provider.hasAPIKey}
                     />
                   }
@@ -145,20 +146,21 @@ export const SelectModel = (props: PropsWithChildren<SelectModelProps>) => {
 };
 
 const ProviderHeader = memo(function ProviderHeader({
-  provider,
+  providerName,
+  providerType,
   hasAPIKey,
-}: { provider: string; hasAPIKey: boolean }) {
+}: { providerName: string; providerType: string; hasAPIKey: boolean }) {
   return (
     <div className="text-sm text-muted-foreground flex items-center gap-1.5 group-hover:text-foreground transition-colors duration-300">
-      {provider === "openai" ? (
+      {providerType === "openai" ? (
         <ModelProviderIcon
           provider="openai"
           className="size-3 text-foreground"
         />
       ) : (
-        <ModelProviderIcon provider={provider} className="size-3" />
+        <ModelProviderIcon provider={providerType} className="size-3" />
       )}
-      {provider}
+      {providerName}
       {!hasAPIKey && (
         <>
           <span className="text-xs ml-auto text-muted-foreground">

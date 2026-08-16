@@ -8,7 +8,7 @@ import (
 
 	"github.com/maximhq/bifrost/core/schemas"
 
-	bifrostai "betterchatbot/backend/internal/ai/bifrost"
+	bifrostai "amiro/backend/internal/ai/bifrost"
 )
 
 type fakeEngine struct {

@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"betterchatbot/backend/internal/api/httpjson"
-	"betterchatbot/backend/internal/auth"
+	"amiro/backend/internal/api/httpjson"
+	"amiro/backend/internal/auth"
 )
 
 // Get reads one export. See the package doc comment for why this endpoint

@@ -20,10 +20,10 @@ import (
 
 	"gorm.io/gorm"
 
-	"betterchatbot/backend/internal/api/httpjson"
-	"betterchatbot/backend/internal/auth"
-	"betterchatbot/backend/internal/db/models"
-	"betterchatbot/backend/internal/db/repository"
+	"amiro/backend/internal/api/httpjson"
+	"amiro/backend/internal/auth"
+	"amiro/backend/internal/db/models"
+	"amiro/backend/internal/db/repository"
 )
 
 type Handler struct {
@@ -148,6 +148,73 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		"banExpires": dto.BanExpires, "createdAt": dto.CreatedAt, "updatedAt": dto.UpdatedAt,
 		"lastLogin": found.LastLogin,
 	})
+}
+
+// GetStats returns the user profile details and their usage stats.
+// Endpoint: GET /api/admin/users/{id}/stats?from=...&to=...&days=...
+func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) {
+	if _, ok := requireAdmin(w, r); !ok {
+		return
+	}
+	id := r.PathValue("id")
+
+	found, err := h.users.GetByID(r.Context(), id)
+	if err != nil {
+		httpjson.ServerError(w, err)
+		return
+	}
+	if found == nil {
+		httpjson.NotFound(w, "user not found")
+		return
+	}
+
+	opts := parseStatsQueryOptions(r)
+	stats, err := h.users.GetUserStats(r.Context(), id, opts)
+	if err != nil {
+		httpjson.ServerError(w, err)
+		return
+	}
+
+	dto := toAdminUserDTO(found.User)
+	httpjson.OK(w, map[string]any{
+		"user": map[string]any{
+			"id": dto.ID, "name": dto.Name, "email": dto.Email, "emailVerified": dto.EmailVerified,
+			"image": dto.Image, "role": dto.Role, "banned": dto.Banned, "banReason": dto.BanReason,
+			"banExpires": dto.BanExpires, "createdAt": dto.CreatedAt, "updatedAt": dto.UpdatedAt,
+			"lastLogin": found.LastLogin,
+		},
+		"stats": stats,
+	})
+}
+
+func parseStatsQueryOptions(r *http.Request) repository.UserStatsOptions {
+	q := r.URL.Query()
+	var opts repository.UserStatsOptions
+
+	if daysStr := q.Get("days"); daysStr != "" {
+		if d, err := strconv.Atoi(daysStr); err == nil && d >= 0 {
+			opts.Days = &d
+		}
+	}
+
+	if fromStr := q.Get("from"); fromStr != "" {
+		if t, err := time.Parse(time.RFC3339, fromStr); err == nil {
+			opts.From = &t
+		} else if t, err := time.Parse("2006-01-02", fromStr); err == nil {
+			opts.From = &t
+		}
+	}
+
+	if toStr := q.Get("to"); toStr != "" {
+		if t, err := time.Parse(time.RFC3339, toStr); err == nil {
+			opts.To = &t
+		} else if t, err := time.Parse("2006-01-02", toStr); err == nil {
+			endOfDay := time.Date(t.Year(), t.Month(), t.Day(), 23, 59, 59, 999999999, t.Location())
+			opts.To = &endOfDay
+		}
+	}
+
+	return opts
 }
 
 var validRoles = map[string]bool{"user": true, "admin": true}

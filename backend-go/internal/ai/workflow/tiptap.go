@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	bifrostai "betterchatbot/backend/internal/ai/bifrost"
+	bifrostai "amiro/backend/internal/ai/bifrost"
 )
 
 // GetOutputFunc resolves a mention/reference into whatever value a prior

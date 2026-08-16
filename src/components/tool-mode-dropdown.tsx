@@ -10,9 +10,12 @@ import {
   Check,
   CheckIcon,
   ClipboardCheck,
+  EyeIcon,
   Infinity,
   PenOff,
   Settings2,
+  ShieldCheckIcon,
+  ZapIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "ui/button";
@@ -38,8 +41,12 @@ const debounce = createDebounce();
 
 export const ToolModeDropdown = ({ disabled }: { disabled?: boolean }) => {
   const t = useTranslations("Chat.Tool");
-  const [toolChoice, appStoreMutate] = appStore(
-    useShallow((state) => [state.toolChoice, state.mutate]),
+  const [toolChoice, permissionMode, appStoreMutate] = appStore(
+    useShallow((state) => [
+      state.toolChoice,
+      state.permissionMode,
+      state.mutate,
+    ]),
   );
   const [open, setOpen] = useState(false);
 
@@ -92,6 +99,10 @@ export const ToolModeDropdown = ({ disabled }: { disabled?: boolean }) => {
                 className={cn(
                   "rounded-full p-2! data-[state=open]:bg-input! hover:bg-input!",
                   toolChoice == "none" && "text-muted-foreground",
+                  // Auto is the one setting where the agent writes and runs
+                  // commands with no prompt, so the composer says so
+                  // without being opened.
+                  permissionMode == "auto" && "text-amber-600 dark:text-amber-400",
                   open && "bg-input!",
                 )}
                 onClick={() => setOpen(true)}
@@ -171,6 +182,60 @@ export const ToolModeDropdown = ({ disabled }: { disabled?: boolean }) => {
               </p>
             </div>
           </DropdownMenuItem>
+        </DropdownMenuGroup>
+
+        {/* Permission mode is a different question from tool *choice* --
+            which tools exist versus what they may do -- but it belongs in
+            the same menu: both are "how do tools behave here", and a user
+            hunting for "stop it editing my files" looks in exactly one
+            place. */}
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel className="text-muted-foreground flex flex-col gap-1 items-start">
+          <span className="flex items-center gap-2">
+            <ShieldCheckIcon className="size-3.5" />
+            {t("permissionMode")}
+          </span>
+          <span className="text-xs font-normal">
+            {t("permissionModeDescription")}
+          </span>
+        </DropdownMenuLabel>
+        <DropdownMenuGroup>
+          {(
+            [
+              {
+                mode: "plan",
+                icon: EyeIcon,
+                label: t("planMode"),
+                description: t("planModeDescription"),
+              },
+              {
+                mode: "interactive",
+                icon: ClipboardCheck,
+                label: t("interactiveMode"),
+                description: t("interactiveModeDescription"),
+              },
+              {
+                mode: "auto",
+                icon: ZapIcon,
+                label: t("autoPermissionMode"),
+                description: t("autoPermissionModeDescription"),
+              },
+            ] as const
+          ).map(({ mode, icon: Icon, label, description }) => (
+            <DropdownMenuItem
+              key={mode}
+              onClick={() => appStoreMutate({ permissionMode: mode })}
+            >
+              <div className="flex flex-col gap-2 w-full">
+                <div className="flex items-center gap-2">
+                  <Icon />
+                  <span className="font-bold">{label}</span>
+                  {permissionMode == mode && <Check className="ml-auto" />}
+                </div>
+                <p className="text-xs text-muted-foreground">{description}</p>
+              </div>
+            </DropdownMenuItem>
+          ))}
         </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>

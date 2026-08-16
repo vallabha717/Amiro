@@ -29,7 +29,7 @@ import (
 
 	"github.com/maximhq/bifrost/core/schemas"
 
-	bifrostai "betterchatbot/backend/internal/ai/bifrost"
+	bifrostai "amiro/backend/internal/ai/bifrost"
 )
 
 // Engine is the subset of *bifrostai.Client this package calls, narrowed

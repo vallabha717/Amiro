@@ -25,6 +25,20 @@ import { Skeleton } from "ui/skeleton";
 import { TextShimmer } from "ui/text-shimmer";
 import { VrndaLogo } from "@/components/layouts/vrnda-logo";
 
+/**
+ * Tool calls whose code has already been auto-run in this session.
+ *
+ * The auto-run guard cannot live in a ref alone: a ref is per component
+ * instance, so anything that remounts this component (a list re-key, a parent
+ * swap) hands us a fresh `false` and the model's code runs again. Executing
+ * twice is not a cosmetic problem -- this code can `fetch`, so a duplicate run
+ * can repeat a side effect the user only asked for once.
+ *
+ * Keyed by toolCallId, which is unique per call, so an intentional re-run
+ * through the "Run" button (which does not consult this set) still works.
+ */
+const autoRanToolCallIds = new Set<string>();
+
 export const CodeExecutor = memo(function CodeExecutor({
   part,
   onResult,
@@ -235,12 +249,14 @@ export const CodeExecutor = memo(function CodeExecutor({
       onResult &&
       part.input &&
       part.state == "input-available" &&
-      !isRun.current
+      !isRun.current &&
+      !autoRanToolCallIds.has(part.toolCallId)
     ) {
       isRun.current = true;
+      autoRanToolCallIds.add(part.toolCallId);
       menualToolCall(toAny(part.input)?.code);
     }
-  }, [part.state, !!onResult]);
+  }, [part.state, part.toolCallId, !!onResult]);
 
   useEffect(() => {
     if (isRunning) {

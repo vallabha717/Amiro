@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"betterchatbot/backend/internal/db/models"
-	"betterchatbot/backend/internal/mcp"
-	"betterchatbot/backend/internal/user"
+	"amiro/backend/internal/db/models"
+	"amiro/backend/internal/mcp"
+	"amiro/backend/internal/user"
 )
 
 // CreateThreadTitlePrompt ports CREATE_THREAD_TITLE_PROMPT (prompts.ts:9).
@@ -62,7 +62,7 @@ type AgentPromptInfo struct {
 // agent may be nil for a plain, agent-free chat turn (also used by
 // temporary.go, which never binds an agent).
 func BuildUserSystemPrompt(u *models.User, prefs *user.Preferences, agent *AgentPromptInfo) string {
-	assistantName := "better-chatbot"
+	assistantName := "Amiro"
 	if prefs != nil && prefs.BotName != "" {
 		assistantName = prefs.BotName
 	}

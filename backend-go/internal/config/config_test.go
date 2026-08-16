@@ -7,8 +7,9 @@ import (
 )
 
 func TestLoad_GeneratesDifferentTokenEachCallWhenEnvVarUnset(t *testing.T) {
+	t.Setenv("AMIRO_AUTH_TOKEN", "")
 	t.Setenv("BETTERCHATBOT_AUTH_TOKEN", "")
-	t.Setenv("BETTERCHATBOT_APP_DATA_DIR", t.TempDir())
+	t.Setenv("AMIRO_APP_DATA_DIR", t.TempDir())
 
 	first, err := Load()
 	if err != nil {
@@ -27,22 +28,38 @@ func TestLoad_GeneratesDifferentTokenEachCallWhenEnvVarUnset(t *testing.T) {
 	}
 }
 
-func TestLoad_UsesProvidedAuthToken(t *testing.T) {
-	t.Setenv("BETTERCHATBOT_AUTH_TOKEN", "fixed-test-token")
-	t.Setenv("BETTERCHATBOT_APP_DATA_DIR", t.TempDir())
+func TestLoad_UsesAmiroAuthToken(t *testing.T) {
+	t.Setenv("AMIRO_AUTH_TOKEN", "amiro-token-123")
+	t.Setenv("BETTERCHATBOT_AUTH_TOKEN", "legacy-token")
+	t.Setenv("AMIRO_APP_DATA_DIR", t.TempDir())
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.AuthToken != "fixed-test-token" {
-		t.Fatalf("AuthToken = %q, want %q", cfg.AuthToken, "fixed-test-token")
+	if cfg.AuthToken != "amiro-token-123" {
+		t.Fatalf("AuthToken = %q, want %q", cfg.AuthToken, "amiro-token-123")
+	}
+}
+
+func TestLoad_FallsBackToLegacyAuthToken(t *testing.T) {
+	t.Setenv("AMIRO_AUTH_TOKEN", "")
+	t.Setenv("BETTERCHATBOT_AUTH_TOKEN", "legacy-token-456")
+	t.Setenv("AMIRO_APP_DATA_DIR", t.TempDir())
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.AuthToken != "legacy-token-456" {
+		t.Fatalf("AuthToken = %q, want %q", cfg.AuthToken, "legacy-token-456")
 	}
 }
 
 func TestLoad_DefaultsAllowedOriginToTauriLocalhost(t *testing.T) {
+	t.Setenv("AMIRO_ALLOWED_ORIGIN", "")
 	t.Setenv("BETTERCHATBOT_ALLOWED_ORIGIN", "")
-	t.Setenv("BETTERCHATBOT_APP_DATA_DIR", t.TempDir())
+	t.Setenv("AMIRO_APP_DATA_DIR", t.TempDir())
 
 	cfg, err := Load()
 	if err != nil {
@@ -54,8 +71,8 @@ func TestLoad_DefaultsAllowedOriginToTauriLocalhost(t *testing.T) {
 }
 
 func TestLoad_UsesProvidedAllowedOrigin(t *testing.T) {
-	t.Setenv("BETTERCHATBOT_ALLOWED_ORIGIN", "http://localhost:3000")
-	t.Setenv("BETTERCHATBOT_APP_DATA_DIR", t.TempDir())
+	t.Setenv("AMIRO_ALLOWED_ORIGIN", "http://localhost:3000")
+	t.Setenv("AMIRO_APP_DATA_DIR", t.TempDir())
 
 	cfg, err := Load()
 	if err != nil {
@@ -68,7 +85,7 @@ func TestLoad_UsesProvidedAllowedOrigin(t *testing.T) {
 
 func TestLoad_UsesProvidedAppDataDirVerbatim(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "custom-app-data")
-	t.Setenv("BETTERCHATBOT_APP_DATA_DIR", dir)
+	t.Setenv("AMIRO_APP_DATA_DIR", dir)
 
 	cfg, err := Load()
 	if err != nil {
@@ -84,6 +101,7 @@ func TestLoad_LinuxFallsBackToXDGDataHomeWhenAppDataDirUnset(t *testing.T) {
 		t.Skip("this fallback branch is Linux-specific; other OSes have their own branch in appDataDir()")
 	}
 
+	t.Setenv("AMIRO_APP_DATA_DIR", "")
 	t.Setenv("BETTERCHATBOT_APP_DATA_DIR", "")
 	xdg := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", xdg)
@@ -92,15 +110,16 @@ func TestLoad_LinuxFallsBackToXDGDataHomeWhenAppDataDirUnset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	want := filepath.Join(xdg, "better-chatbot")
+	want := filepath.Join(xdg, "amiro")
 	if cfg.AppDataDir != want {
 		t.Fatalf("AppDataDir = %q, want %q", cfg.AppDataDir, want)
 	}
 }
 
 func TestLoad_PostgresDriverRequiresDatabaseURL(t *testing.T) {
-	t.Setenv("BETTERCHATBOT_APP_DATA_DIR", t.TempDir())
-	t.Setenv("BETTERCHATBOT_DATABASE_DRIVER", "postgres")
+	t.Setenv("AMIRO_APP_DATA_DIR", t.TempDir())
+	t.Setenv("AMIRO_DATABASE_DRIVER", "postgres")
+	t.Setenv("AMIRO_DATABASE_URL", "")
 	t.Setenv("BETTERCHATBOT_DATABASE_URL", "")
 
 	if _, err := Load(); err == nil {
@@ -109,9 +128,10 @@ func TestLoad_PostgresDriverRequiresDatabaseURL(t *testing.T) {
 }
 
 func TestLoad_PostgresDriverRequiresS3Bucket(t *testing.T) {
-	t.Setenv("BETTERCHATBOT_APP_DATA_DIR", t.TempDir())
-	t.Setenv("BETTERCHATBOT_DATABASE_DRIVER", "postgres")
-	t.Setenv("BETTERCHATBOT_DATABASE_URL", "postgres://localhost/test")
+	t.Setenv("AMIRO_APP_DATA_DIR", t.TempDir())
+	t.Setenv("AMIRO_DATABASE_DRIVER", "postgres")
+	t.Setenv("AMIRO_DATABASE_URL", "postgres://localhost/test")
+	t.Setenv("AMIRO_S3_BUCKET", "")
 	t.Setenv("BETTERCHATBOT_S3_BUCKET", "")
 
 	if _, err := Load(); err == nil {
@@ -120,8 +140,9 @@ func TestLoad_PostgresDriverRequiresS3Bucket(t *testing.T) {
 }
 
 func TestLoad_SqliteDriverDoesNotRequireS3Bucket(t *testing.T) {
-	t.Setenv("BETTERCHATBOT_APP_DATA_DIR", t.TempDir())
-	t.Setenv("BETTERCHATBOT_DATABASE_DRIVER", "sqlite")
+	t.Setenv("AMIRO_APP_DATA_DIR", t.TempDir())
+	t.Setenv("AMIRO_DATABASE_DRIVER", "sqlite")
+	t.Setenv("AMIRO_S3_BUCKET", "")
 	t.Setenv("BETTERCHATBOT_S3_BUCKET", "")
 
 	cfg, err := Load()
@@ -138,6 +159,7 @@ func TestLoad_LinuxFallsBackToHomeLocalShareWhenNeitherEnvVarSet(t *testing.T) {
 		t.Skip("this fallback branch is Linux-specific; other OSes have their own branch in appDataDir()")
 	}
 
+	t.Setenv("AMIRO_APP_DATA_DIR", "")
 	t.Setenv("BETTERCHATBOT_APP_DATA_DIR", "")
 	t.Setenv("XDG_DATA_HOME", "")
 	home := t.TempDir()
@@ -147,7 +169,7 @@ func TestLoad_LinuxFallsBackToHomeLocalShareWhenNeitherEnvVarSet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	want := filepath.Join(home, ".local", "share", "better-chatbot")
+	want := filepath.Join(home, ".local", "share", "amiro")
 	if cfg.AppDataDir != want {
 		t.Fatalf("AppDataDir = %q, want %q", cfg.AppDataDir, want)
 	}

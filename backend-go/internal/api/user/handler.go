@@ -6,8 +6,8 @@ package user
 import (
 	"time"
 
-	"betterchatbot/backend/internal/auth"
-	"betterchatbot/backend/internal/db/repository"
+	"amiro/backend/internal/auth"
+	"amiro/backend/internal/db/repository"
 )
 
 type Handler struct {

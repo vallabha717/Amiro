@@ -5,6 +5,7 @@
 package main
 
 import (
+	"amiro/backend/internal/agent/workspace"
 	"context"
 	"fmt"
 	"log"
@@ -13,30 +14,30 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
-	bifrostai "betterchatbot/backend/internal/ai/bifrost"
-	adminapi "betterchatbot/backend/internal/api/admin"
-	agentapi "betterchatbot/backend/internal/api/agent"
-	aiapi "betterchatbot/backend/internal/api/ai"
-	archiveapi "betterchatbot/backend/internal/api/archive"
-	bookmarkapi "betterchatbot/backend/internal/api/bookmark"
-	chatapi "betterchatbot/backend/internal/api/chat"
-	exportapi "betterchatbot/backend/internal/api/export"
-	mcpapi "betterchatbot/backend/internal/api/mcp"
-	storageapi "betterchatbot/backend/internal/api/storage"
-	threadapi "betterchatbot/backend/internal/api/thread"
-	userapi "betterchatbot/backend/internal/api/user"
-	workflowapi "betterchatbot/backend/internal/api/workflow"
-	"betterchatbot/backend/internal/auth"
-	"betterchatbot/backend/internal/config"
-	"betterchatbot/backend/internal/db"
-	"betterchatbot/backend/internal/db/repository"
-	"betterchatbot/backend/internal/httpserver"
-	"betterchatbot/backend/internal/mcp"
-	"betterchatbot/backend/internal/secrets"
-	"betterchatbot/backend/internal/storage"
+	bifrostai "amiro/backend/internal/ai/bifrost"
+	adminapi "amiro/backend/internal/api/admin"
+	agentapi "amiro/backend/internal/api/agent"
+	aiapi "amiro/backend/internal/api/ai"
+	archiveapi "amiro/backend/internal/api/archive"
+	bookmarkapi "amiro/backend/internal/api/bookmark"
+	chatapi "amiro/backend/internal/api/chat"
+	exportapi "amiro/backend/internal/api/export"
+	mcpapi "amiro/backend/internal/api/mcp"
+	storageapi "amiro/backend/internal/api/storage"
+	threadapi "amiro/backend/internal/api/thread"
+	userapi "amiro/backend/internal/api/user"
+	workflowapi "amiro/backend/internal/api/workflow"
+	"amiro/backend/internal/auth"
+	"amiro/backend/internal/config"
+	"amiro/backend/internal/db"
+	"amiro/backend/internal/db/repository"
+	"amiro/backend/internal/httpserver"
+	"amiro/backend/internal/mcp"
+	"amiro/backend/internal/storage"
 )
 
 func main() {
@@ -53,8 +54,8 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
-	if os.Getenv("BETTERCHATBOT_AUTH_TOKEN") == "" {
-		fmt.Fprintf(os.Stderr, "dev mode: no BETTERCHATBOT_AUTH_TOKEN supplied, generated one: %s\n", cfg.AuthToken)
+	if os.Getenv("AMIRO_AUTH_TOKEN") == "" && os.Getenv("BETTERCHATBOT_AUTH_TOKEN") == "" {
+		fmt.Fprintf(os.Stderr, "dev mode: no AMIRO_AUTH_TOKEN supplied, generated one: %s\n", cfg.AuthToken)
 	}
 
 	if err := os.MkdirAll(cfg.AppDataDir, 0o700); err != nil {
@@ -84,13 +85,9 @@ func main() {
 	// 	fmt.Fprintf(os.Stderr, "dev mode: desktop auto-login session token: %s\n", session.Token)
 	// }
 
-	// Phase 3: secrets.KeyStore + bifrostai.Client wiring. desktop (sqlite
-	// driver) reads provider keys from the OS keychain, a web deploy
-	// (postgres driver) reads them from the environment -- same
-	// sqlite=desktop/postgres=web split point Phase 2 already drew for this
-	// exact package (internal/secrets's own doc comment).
-	keyStore := secrets.New(cfg.DatabaseDriver == db.DialectSQLite)
-	bifrostClient, err := bifrostai.NewClient(context.Background(), keyStore)
+	// Phase 3: bifrostai.Client wiring.
+	providerRepo := repository.NewProviderRepository(gdb)
+	bifrostClient, err := bifrostai.NewClient(context.Background(), providerRepo)
 	if err != nil {
 		log.Fatalf("bifrost: %v", err)
 	}
@@ -98,7 +95,7 @@ func main() {
 
 	chatRepo := repository.NewChatRepository(gdb)
 	chatExportRepo := repository.NewChatExportRepository(gdb, chatRepo)
-	aiHandler := aiapi.NewHandler(bifrostClient)
+	aiHandler := aiapi.NewHandler(bifrostClient, providerRepo)
 
 	// Phase 4: MCP manager wiring, over the same bifrostClient (Bifrost's
 	// embedded MCP client, per Phase 0's confirmed decision). Init() dials
@@ -134,9 +131,34 @@ func main() {
 	// over the same mcpManager/workflowRepo/agentRepo/bifrostClient every
 	// other handler above already shares.
 	chatHandler := chatapi.NewHandler(
-		chatRepo, chatExportRepo, bifrostClient, bifrostClient, keyStore,
-		mcpManager, workflowRepo, agentRepo, mcpServerCustomRepo, mcpToolCustomRepo,
+		chatRepo,
+		chatExportRepo,
+		bifrostClient,
+		bifrostClient,
+		mcpManager,
+		workflowRepo,
+		agentRepo,
+		mcpServerCustomRepo,
+		mcpToolCustomRepo,
+		providerRepo,
 	)
+	// The file toolkit only exists when a workspace root is configured, and
+	// a root that cannot be resolved is a hard startup error rather than a
+	// silent downgrade to "no file tools": someone who set the variable
+	// meant for the agent to have filesystem access, and finding out via a
+	// mysteriously absent tool is far worse than finding out here.
+	if root := cfg.WorkspaceRoot; root != "" {
+		ws, wsErr := workspace.New(root)
+		if wsErr != nil {
+			log.Fatalf("BETTERCHATBOT_WORKSPACE_ROOT: %v", wsErr)
+		}
+		chatHandler = chatHandler.WithWorkspace(ws, cfg.AppDataDir)
+		defer chatHandler.Close()
+		log.Printf("agent file tools enabled, workspace root: %s", ws.Root())
+		if langs := chatHandler.LanguageServers(); len(langs) > 0 {
+			log.Printf("language servers available: %s", strings.Join(langs, ", "))
+		}
+	}
 	archiveHandler := archiveapi.NewHandler(archiveRepo)
 	bookmarkHandler := bookmarkapi.NewHandler(bookmarkRepo)
 	exportHandler := exportapi.NewHandler(chatExportRepo)
@@ -235,7 +257,10 @@ func newStorage(ctx context.Context, cfg config.Config, port int) (storage.Stora
 	if err != nil {
 		return nil, err
 	}
-	baseURL := os.Getenv("BETTERCHATBOT_PUBLIC_BASE_URL")
+	baseURL := os.Getenv("AMIRO_PUBLIC_BASE_URL")
+	if baseURL == "" {
+		baseURL = os.Getenv("BETTERCHATBOT_PUBLIC_BASE_URL")
+	}
 	if baseURL == "" {
 		baseURL = fmt.Sprintf("http://%s", net.JoinHostPort(cfg.BindHost, strconv.Itoa(port)))
 	}

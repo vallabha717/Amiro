@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"time"
 
-	"betterchatbot/backend/internal/ai/prompts"
-	"betterchatbot/backend/internal/ai/speech"
-	"betterchatbot/backend/internal/auth"
-	"betterchatbot/backend/internal/user"
+	"amiro/backend/internal/ai/prompts"
+	"amiro/backend/internal/ai/speech"
+	"amiro/backend/internal/auth"
+	"amiro/backend/internal/user"
 )
 
 type realtimeRequest struct {
@@ -24,8 +24,8 @@ var realtimeHTTPClient = &http.Client{Timeout: 30 * time.Second}
 // binding (loadMcpTools, rememberAgentAction) is Phase 4/6 work -- only
 // the default client-side voice tools are bound here.
 func (h *Handler) OpenAIRealtime(w http.ResponseWriter, r *http.Request) {
-	apiKey, ok, err := h.secrets.Get(r.Context(), "openai")
-	if err != nil || !ok || apiKey == "" {
+	_, _, apiKey, err := h.providerRepo.GetProviderBaseURLAndKey(r.Context(), "openai")
+	if err != nil || apiKey == "" {
 		http.Error(w, `{"error":"OPENAI_API_KEY is not set"}`, http.StatusInternalServerError)
 		return
 	}

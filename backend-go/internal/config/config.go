@@ -14,44 +14,46 @@ import (
 
 type Config struct {
 	// AuthToken is the shared secret the webview must send on every request.
-	// Passed in from Rust via BETTERCHATBOT_AUTH_TOKEN; generated here as a
-	// fallback for standalone (non-sidecar) runs, e.g. local dev.
+	// Passed in from Rust via AMIRO_AUTH_TOKEN (or legacy BETTERCHATBOT_AUTH_TOKEN);
+	// generated here as a fallback for standalone (non-sidecar) runs, e.g. local dev.
 	AuthToken string
 	// AllowedOrigin is the exact webview origin CORS allows. Passed in from
-	// Rust via BETTERCHATBOT_ALLOWED_ORIGIN; defaults to the Tauri dev origin.
+	// Rust via AMIRO_ALLOWED_ORIGIN (or BETTERCHATBOT_ALLOWED_ORIGIN); defaults to the Tauri dev origin.
 	AllowedOrigin string
 	// AppDataDir is the OS-specific app-data root for SQLite/local storage.
 	AppDataDir string
 	// BindHost is the interface the listener binds. Defaults to 127.0.0.1 --
-	// plan section 1 is explicit that this must never be 0.0.0.0 in the real
-	// sidecar. Override via BETTERCHATBOT_BIND_HOST only exists for manual
-	// LAN testing during development; production/Tauri wiring never sets it.
+	// must never be 0.0.0.0 in the real sidecar. Override via AMIRO_BIND_HOST
+	// or legacy BETTERCHATBOT_BIND_HOST.
 	BindHost string
 	// Port is the TCP port the listener binds. Defaults to 0 (OS-assigned),
 	// which is what the real sidecar relies on -- Rust reads the actual port
-	// off stdout. Override via BETTERCHATBOT_PORT for a stable, guessable
-	// port during manual testing.
+	// off stdout. Override via AMIRO_PORT or BETTERCHATBOT_PORT.
 	Port int
 	// DatabaseDriver selects the GORM dialect: "sqlite" (desktop default)
-	// or "postgres" (web deploy). Override via BETTERCHATBOT_DATABASE_DRIVER.
+	// or "postgres" (web deploy). Override via AMIRO_DATABASE_DRIVER or BETTERCHATBOT_DATABASE_DRIVER.
 	DatabaseDriver string
 	// DatabaseDSN is the dialect-appropriate connection string: a file path
 	// under AppDataDir for sqlite, a "postgres://..." URL for postgres.
-	// Override via BETTERCHATBOT_DATABASE_URL (required when
-	// DatabaseDriver is "postgres" -- there is no sensible default).
+	// Override via AMIRO_DATABASE_URL or BETTERCHATBOT_DATABASE_URL.
 	DatabaseDSN string
 	// S3Bucket names the bucket internal/storage.S3Storage writes to.
-	// Required when DatabaseDriver is "postgres" -- plan section 3 couples
-	// "postgres driver" with "web deploy" throughout (auth's desktop
-	// auto-login and this storage backend selection both key off the same
-	// signal), so a web deploy is assumed to need S3 the same way it needs
-	// a real Postgres URL. Unused on desktop (DatabaseDriver "sqlite"),
-	// which uses internal/storage.LocalStorage instead.
+	// Required when DatabaseDriver is "postgres". Override via AMIRO_S3_BUCKET or BETTERCHATBOT_S3_BUCKET.
 	S3Bucket string
+	// WorkspaceRoot is the single directory tree the agent's file tools may
+	// read and write. Set via AMIRO_WORKSPACE_ROOT or BETTERCHATBOT_WORKSPACE_ROOT.
+	WorkspaceRoot string
+}
+
+func getEnv(amiroKey, legacyKey string) string {
+	if val := os.Getenv(amiroKey); val != "" {
+		return val
+	}
+	return os.Getenv(legacyKey)
 }
 
 func Load() (Config, error) {
-	token := os.Getenv("BETTERCHATBOT_AUTH_TOKEN")
+	token := getEnv("AMIRO_AUTH_TOKEN", "BETTERCHATBOT_AUTH_TOKEN")
 	if token == "" {
 		generated, err := randomToken(32)
 		if err != nil {
@@ -60,21 +62,21 @@ func Load() (Config, error) {
 		token = generated
 	}
 
-	origin := os.Getenv("BETTERCHATBOT_ALLOWED_ORIGIN")
+	origin := getEnv("AMIRO_ALLOWED_ORIGIN", "BETTERCHATBOT_ALLOWED_ORIGIN")
 	if origin == "" {
 		origin = "tauri://localhost"
 	}
 
-	bindHost := os.Getenv("BETTERCHATBOT_BIND_HOST")
+	bindHost := getEnv("AMIRO_BIND_HOST", "BETTERCHATBOT_BIND_HOST")
 	if bindHost == "" {
 		bindHost = "127.0.0.1"
 	}
 
 	port := 0
-	if raw := os.Getenv("BETTERCHATBOT_PORT"); raw != "" {
+	if raw := getEnv("AMIRO_PORT", "BETTERCHATBOT_PORT"); raw != "" {
 		parsed, err := strconv.Atoi(raw)
 		if err != nil {
-			return Config{}, fmt.Errorf("BETTERCHATBOT_PORT: %w", err)
+			return Config{}, fmt.Errorf("AMIRO_PORT: %w", err)
 		}
 		port = parsed
 	}
@@ -84,22 +86,31 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
-	dbDriver := os.Getenv("BETTERCHATBOT_DATABASE_DRIVER")
+	dbDriver := getEnv("AMIRO_DATABASE_DRIVER", "BETTERCHATBOT_DATABASE_DRIVER")
 	if dbDriver == "" {
 		dbDriver = "sqlite"
 	}
 
-	dbDSN := os.Getenv("BETTERCHATBOT_DATABASE_URL")
+	dbDSN := getEnv("AMIRO_DATABASE_URL", "BETTERCHATBOT_DATABASE_URL")
 	if dbDSN == "" {
 		if dbDriver == "postgres" {
-			return Config{}, fmt.Errorf("BETTERCHATBOT_DATABASE_URL is required when BETTERCHATBOT_DATABASE_DRIVER=postgres")
+			return Config{}, fmt.Errorf("AMIRO_DATABASE_URL is required when AMIRO_DATABASE_DRIVER=postgres")
 		}
-		dbDSN = filepath.Join(dataDir, "betterchatbot.db")
+		// Check for existing database file for backwards compatibility
+		legacyDBPath := filepath.Join(dataDir, "betterchatbot.db")
+		amiroDBPath := filepath.Join(dataDir, "amiro.db")
+		if _, err := os.Stat(amiroDBPath); err == nil {
+			dbDSN = amiroDBPath
+		} else if _, err := os.Stat(legacyDBPath); err == nil {
+			dbDSN = legacyDBPath
+		} else {
+			dbDSN = amiroDBPath
+		}
 	}
 
-	s3Bucket := os.Getenv("BETTERCHATBOT_S3_BUCKET")
+	s3Bucket := getEnv("AMIRO_S3_BUCKET", "BETTERCHATBOT_S3_BUCKET")
 	if s3Bucket == "" && dbDriver == "postgres" {
-		return Config{}, fmt.Errorf("BETTERCHATBOT_S3_BUCKET is required when BETTERCHATBOT_DATABASE_DRIVER=postgres")
+		return Config{}, fmt.Errorf("AMIRO_S3_BUCKET is required when AMIRO_DATABASE_DRIVER=postgres")
 	}
 
 	return Config{
@@ -111,6 +122,7 @@ func Load() (Config, error) {
 		DatabaseDriver: dbDriver,
 		DatabaseDSN:    dbDSN,
 		S3Bucket:       s3Bucket,
+		WorkspaceRoot:  getEnv("AMIRO_WORKSPACE_ROOT", "BETTERCHATBOT_WORKSPACE_ROOT"),
 	}, nil
 }
 
@@ -123,7 +135,7 @@ func randomToken(n int) (string, error) {
 }
 
 func appDataDir() (string, error) {
-	if dir := os.Getenv("BETTERCHATBOT_APP_DATA_DIR"); dir != "" {
+	if dir := getEnv("AMIRO_APP_DATA_DIR", "BETTERCHATBOT_APP_DATA_DIR"); dir != "" {
 		return dir, nil
 	}
 
@@ -134,16 +146,46 @@ func appDataDir() (string, error) {
 
 	switch runtime.GOOS {
 	case "darwin":
-		return filepath.Join(home, "Library", "Application Support", "better-chatbot"), nil
+		amiroDir := filepath.Join(home, "Library", "Application Support", "amiro")
+		legacyDir := filepath.Join(home, "Library", "Application Support", "better-chatbot")
+		if _, err := os.Stat(amiroDir); err == nil {
+			return amiroDir, nil
+		}
+		if _, err := os.Stat(legacyDir); err == nil {
+			return legacyDir, nil
+		}
+		return amiroDir, nil
 	case "windows":
+		var baseDir string
 		if appData := os.Getenv("APPDATA"); appData != "" {
-			return filepath.Join(appData, "better-chatbot"), nil
+			baseDir = appData
+		} else {
+			baseDir = filepath.Join(home, "AppData", "Roaming")
 		}
-		return filepath.Join(home, "AppData", "Roaming", "better-chatbot"), nil
+		amiroDir := filepath.Join(baseDir, "amiro")
+		legacyDir := filepath.Join(baseDir, "better-chatbot")
+		if _, err := os.Stat(amiroDir); err == nil {
+			return amiroDir, nil
+		}
+		if _, err := os.Stat(legacyDir); err == nil {
+			return legacyDir, nil
+		}
+		return amiroDir, nil
 	default: // linux and other unix
+		var baseDir string
 		if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
-			return filepath.Join(xdg, "better-chatbot"), nil
+			baseDir = xdg
+		} else {
+			baseDir = filepath.Join(home, ".local", "share")
 		}
-		return filepath.Join(home, ".local", "share", "better-chatbot"), nil
+		amiroDir := filepath.Join(baseDir, "amiro")
+		legacyDir := filepath.Join(baseDir, "better-chatbot")
+		if _, err := os.Stat(amiroDir); err == nil {
+			return amiroDir, nil
+		}
+		if _, err := os.Stat(legacyDir); err == nil {
+			return legacyDir, nil
+		}
+		return amiroDir, nil
 	}
 }

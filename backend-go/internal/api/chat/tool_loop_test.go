@@ -2,14 +2,15 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
-	bifrostai "betterchatbot/backend/internal/ai/bifrost"
-	"betterchatbot/backend/internal/ai/tools"
-	"betterchatbot/backend/internal/ai/uimessage"
+	bifrostai "amiro/backend/internal/ai/bifrost"
+	"amiro/backend/internal/ai/tools"
+	"amiro/backend/internal/ai/uimessage"
 )
 
 // fakeStreamEngine is a canned Engine, so runToolLoop tests exercise the
@@ -27,7 +28,7 @@ type fakeStreamEngine struct {
 	blockUntilCtxDone bool
 }
 
-func (f *fakeStreamEngine) StreamStep(ctx context.Context, _ bifrostai.ResolvedModel, _ string, _ []bifrostai.Message, _ []bifrostai.ToolSpec, _ func(string)) (*bifrostai.StepResult, error) {
+func (f *fakeStreamEngine) StreamStep(ctx context.Context, _ bifrostai.ResolvedModel, _ string, _ []bifrostai.Message, _ []bifrostai.ToolSpec, _ bifrostai.StepHooks) (*bifrostai.StepResult, error) {
 	f.calls++
 	if f.blockUntilCtxDone {
 		<-ctx.Done()
@@ -62,7 +63,7 @@ func TestRunToolLoop_ModelCallTimesOutInsteadOfHangingForever(t *testing.T) {
 	sw := uimessage.NewWriter(rec)
 
 	start := time.Now()
-	_, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, nil)
+	_, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, nil, testPerms())
 	elapsed := time.Since(start)
 
 	if err == nil {
@@ -97,7 +98,7 @@ func TestRunToolLoop_UnknownToolNameSurfacesErrorAndContinuesInsteadOfHangingFor
 	rec := httptest.NewRecorder()
 	sw := uimessage.NewWriter(rec)
 
-	result, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, nil)
+	result, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, nil, testPerms())
 	if err != nil {
 		t.Fatalf("runToolLoop: %v", err)
 	}
@@ -128,7 +129,7 @@ func TestRunToolLoop_ClientOnlyToolStillPausesGenerationForFrontendResubmit(t *t
 	sw := uimessage.NewWriter(rec)
 	activeTools := []tools.Definition{{Name: "client-tool", Execute: nil}}
 
-	result, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, activeTools)
+	result, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, activeTools, testPerms())
 	if err != nil {
 		t.Fatalf("runToolLoop: %v", err)
 	}
@@ -142,3 +143,42 @@ func TestRunToolLoop_ClientOnlyToolStillPausesGenerationForFrontendResubmit(t *t
 		t.Fatalf("Parts = %s, a legitimate client-only tool must not be treated as an error", result.Parts)
 	}
 }
+
+func TestRunToolLoop_AccumulatesUsageAcrossMultipleSteps(t *testing.T) {
+	engine := &fakeStreamEngine{steps: []bifrostai.StepResult{
+		{
+			ToolCalls: []bifrostai.ToolCall{{ID: "call-1", Name: "server-tool", Arguments: `{}`}},
+			Usage:     &bifrostai.Usage{PromptTokens: 500, CompletionTokens: 50, TotalTokens: 550},
+		},
+		{
+			Text:  "Final answer",
+			Usage: &bifrostai.Usage{PromptTokens: 800, CompletionTokens: 100, TotalTokens: 900},
+		},
+	}}
+	rec := httptest.NewRecorder()
+	sw := uimessage.NewWriter(rec)
+	activeTools := []tools.Definition{{
+		Name: "server-tool",
+		Execute: func(ctx context.Context, args json.RawMessage) (any, error) {
+			return map[string]string{"result": "ok"}, nil
+		},
+	}}
+
+	result, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, activeTools, testPerms())
+	if err != nil {
+		t.Fatalf("runToolLoop: %v", err)
+	}
+	if result.Usage == nil {
+		t.Fatal("expected result.Usage to be non-nil")
+	}
+	if result.Usage.PromptTokens != 1300 {
+		t.Fatalf("expected PromptTokens 1300, got %d", result.Usage.PromptTokens)
+	}
+	if result.Usage.CompletionTokens != 150 {
+		t.Fatalf("expected CompletionTokens 150, got %d", result.Usage.CompletionTokens)
+	}
+	if result.Usage.TotalTokens != 1450 {
+		t.Fatalf("expected TotalTokens 1450, got %d", result.Usage.TotalTokens)
+	}
+}
+

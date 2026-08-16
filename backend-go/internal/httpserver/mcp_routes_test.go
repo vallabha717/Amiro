@@ -11,14 +11,14 @@ import (
 
 	"gorm.io/gorm"
 
-	bifrostai "betterchatbot/backend/internal/ai/bifrost"
-	mcpapi "betterchatbot/backend/internal/api/mcp"
-	"betterchatbot/backend/internal/auth"
-	"betterchatbot/backend/internal/db"
-	"betterchatbot/backend/internal/db/models"
-	"betterchatbot/backend/internal/db/repository"
-	"betterchatbot/backend/internal/mcp"
-	"betterchatbot/backend/internal/middleware"
+	bifrostai "amiro/backend/internal/ai/bifrost"
+	mcpapi "amiro/backend/internal/api/mcp"
+	"amiro/backend/internal/auth"
+	"amiro/backend/internal/db"
+	"amiro/backend/internal/db/models"
+	"amiro/backend/internal/db/repository"
+	"amiro/backend/internal/mcp"
+	"amiro/backend/internal/middleware"
 )
 
 // fakeMCPEngine is a canned mcp.Engine -- see chat_routes_test.go's
@@ -119,6 +119,18 @@ func (e mcpTestEnv) promoteToAdmin(t *testing.T, userID string) {
 	t.Helper()
 	if err := e.db.Model(&models.User{}).Where("id = ?", userID).Update("role", "admin").Error; err != nil {
 		t.Fatalf("promoteToAdmin: %v", err)
+	}
+}
+
+// demoteToUser is the counterpart, and it is needed because the *first*
+// account registered on a fresh instance is auto-promoted to admin
+// (auth.Service.Register) -- which every env here creates. A test that
+// wants to prove a non-admin is refused has to strip that role back off
+// first, or it is really testing an admin and passing for the wrong reason.
+func (e mcpTestEnv) demoteToUser(t *testing.T, userID string) {
+	t.Helper()
+	if err := e.db.Model(&models.User{}).Where("id = ?", userID).Update("role", "user").Error; err != nil {
+		t.Fatalf("demoteToUser: %v", err)
 	}
 }
 
@@ -289,6 +301,11 @@ func TestRouter_McpShareRequiresAdmin(t *testing.T) {
 		ID string `json:"id"`
 	}
 	_ = json.Unmarshal(saveRec.Body.Bytes(), &saveResp)
+
+	// This env's user is the instance's first account and so was auto-
+	// promoted to admin; drop it back to a plain user, which is the role
+	// this test is actually about.
+	env.demoteToUser(t, env.userID)
 
 	rec := env.do(t, http.MethodPost, "/api/mcp/servers/"+saveResp.ID+"/share", map[string]string{"visibility": "public"}, env.token)
 	if rec.Code != http.StatusForbidden {

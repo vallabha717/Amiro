@@ -7,7 +7,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"betterchatbot/backend/internal/db/models"
+	"amiro/backend/internal/db/models"
 )
 
 // ArchiveRepository ports archive-repository.pg.ts in full.

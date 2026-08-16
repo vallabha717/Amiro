@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import useSWR, { mutate } from "swr";
 import { fetcher } from "lib/utils";
 import { apiJson, ApiError } from "@/lib/backend/client";
@@ -32,7 +32,8 @@ import { BasicUser } from "app-types/user";
 // up by this exact address on every sidecar restart, so letting it be
 // edited here would orphan the account (and everything it owns) the next
 // time the app launches.
-const DESKTOP_DEFAULT_EMAIL = "local@betterchatbot.desktop";
+const DESKTOP_DEFAULT_EMAIL = "local@amiro.desktop";
+const LEGACY_DESKTOP_DEFAULT_EMAIL = "local@betterchatbot.desktop";
 
 const USER_DETAILS_KEY = "/api/user/details";
 const AUTH_METHODS_KEY = "/api/user/auth-methods";
@@ -75,10 +76,28 @@ function ProfileCard({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { upload, isUploading } = useFileUpload();
   const [name, setName] = useState(user.name);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  const isDesktopDefaultAccount = user.email === DESKTOP_DEFAULT_EMAIL;
+  const isDesktopDefaultAccount =
+    user.email === DESKTOP_DEFAULT_EMAIL ||
+    user.email === LEGACY_DESKTOP_DEFAULT_EMAIL;
   const nameChanged = name.trim() !== user.name;
+  const imageChanged = selectedFile !== null;
+  const hasChanges = nameChanged || imageChanged;
+
+  useEffect(() => {
+    setName(user.name);
+  }, [user.name]);
+
+  useEffect(() => {
+    return () => {
+      if (previewImage) {
+        URL.revokeObjectURL(previewImage);
+      }
+    };
+  }, [previewImage]);
 
   const saveDetails = async (patch: Partial<Pick<BasicUser, "name" | "image">>) => {
     try {
@@ -95,19 +114,44 @@ function ProfileCard({
     }
   };
 
-  const handleSaveName = async () => {
+  const handleSaveProfile = async () => {
     const trimmed = name.trim();
     if (!trimmed) {
       toast.error(tc("required"));
       return;
     }
     setIsSaving(true);
-    const updated = await saveDetails({ name: trimmed });
+
+    let imageUrl: string | undefined = undefined;
+
+    if (selectedFile) {
+      const result = await upload(selectedFile);
+      if (!result) {
+        toast.error(tc("failedToUpdateProfilePhoto"));
+        setIsSaving(false);
+        return;
+      }
+      imageUrl = result.url;
+    }
+
+    const patch: Partial<Pick<BasicUser, "name" | "image">> = {};
+    if (nameChanged) patch.name = trimmed;
+    if (imageUrl) patch.image = imageUrl;
+
+    const updated = await saveDetails(patch);
     setIsSaving(false);
-    if (updated) toast.success(t("updateSuccess"));
+
+    if (updated) {
+      if (previewImage) {
+        URL.revokeObjectURL(previewImage);
+      }
+      setSelectedFile(null);
+      setPreviewImage(null);
+      toast.success(t("updateSuccess"));
+    }
   };
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -122,12 +166,13 @@ function ProfileCard({
       return;
     }
 
-    const result = await upload(file);
-    if (!result) return;
+    if (previewImage) {
+      URL.revokeObjectURL(previewImage);
+    }
 
-    const updated = await saveDetails({ image: result.url });
-    if (updated) toast.success(tc("profilePhotoUpdatedSuccessfully"));
-    else toast.error(tc("failedToUpdateProfilePhoto"));
+    setSelectedFile(file);
+    const objectUrl = URL.createObjectURL(file);
+    setPreviewImage(objectUrl);
   };
 
   return (
@@ -145,12 +190,12 @@ function ProfileCard({
         <div className="flex items-center justify-center">
           <div className="relative inline-block">
             <Avatar className="size-20 rounded-full ring ring-border">
-              <AvatarImage src={user.image ?? undefined} />
+              <AvatarImage src={previewImage ?? user.image ?? undefined} />
               <AvatarFallback className="text-lg font-semibold">
                 {user.name?.slice(0, 2).toUpperCase()}
               </AvatarFallback>
             </Avatar>
-            {isUploading && (
+            {(isUploading || isSaving) && selectedFile && (
               <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/60">
                 <Loader2 className="size-6 animate-spin text-white" />
               </div>
@@ -160,7 +205,7 @@ function ProfileCard({
               size="icon"
               variant="secondary"
               className="absolute bottom-0 right-0 size-7 rounded-full shadow-lg"
-              disabled={isUploading}
+              disabled={isUploading || isSaving}
               onClick={() => fileInputRef.current?.click()}
               data-testid="change-avatar-button"
               aria-label={tc("changeProfilePhoto")}
@@ -173,7 +218,7 @@ function ProfileCard({
               accept="image/jpeg,image/jpg,image/png,image/webp"
               className="hidden"
               onChange={handleFileSelect}
-              disabled={isUploading}
+              disabled={isUploading || isSaving}
               data-testid="avatar-file-input"
             />
           </div>
@@ -185,7 +230,7 @@ function ProfileCard({
             id="user-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            disabled={isSaving}
+            disabled={isSaving || isUploading}
             data-testid="user-name-input"
           />
         </div>
@@ -210,16 +255,14 @@ function ProfileCard({
           </Tooltip>
         </div>
 
-        {view === "user" && (
-          <Button
-            className="w-full"
-            disabled={isSaving || !nameChanged}
-            onClick={handleSaveName}
-            data-testid="save-changes-button"
-          >
-            {isSaving ? tc("saving") : t("saveChanges")}
-          </Button>
-        )}
+        <Button
+          className="w-full"
+          disabled={isSaving || isUploading || !hasChanges}
+          onClick={handleSaveProfile}
+          data-testid="save-changes-button"
+        >
+          {isSaving || isUploading ? tc("saving") : t("saveChanges")}
+        </Button>
       </CardContent>
     </Card>
   );

@@ -3,7 +3,7 @@ package workflow
 import (
 	"net/http"
 
-	"betterchatbot/backend/internal/auth"
+	"amiro/backend/internal/auth"
 )
 
 // ExecuteAbility ports workflow/tools/route.ts's GET handler: every

@@ -1,6 +1,23 @@
 package middleware
 
-import "net/http"
+import (
+	"net/http"
+	"strings"
+)
+
+func isAllowedOrigin(origin, allowedOrigin string) bool {
+	if origin == "" {
+		return false
+	}
+	if origin == allowedOrigin {
+		return true
+	}
+	if strings.HasPrefix(origin, "http://localhost:") || strings.HasPrefix(origin, "http://127.0.0.1:") ||
+		strings.HasPrefix(origin, "https://localhost:") || strings.HasPrefix(origin, "https://127.0.0.1:") {
+		return true
+	}
+	return false
+}
 
 // LoopbackCORS allows exactly one origin — the app's own webview — never a
 // wildcard. A loopback HTTP server is reachable by any local process
@@ -10,7 +27,7 @@ func LoopbackCORS(allowedOrigin string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
-			if origin != "" && origin == allowedOrigin {
+			if isAllowedOrigin(origin, allowedOrigin) {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 				w.Header().Set("Vary", "Origin")
 				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
@@ -22,7 +39,7 @@ func LoopbackCORS(allowedOrigin string) func(http.Handler) http.Handler {
 				// against real requests until an actual cross-origin
 				// fetch() (the webview -> sidecar shape this middleware
 				// exists for) tried it.
-				w.Header().Set("Access-Control-Allow-Headers", AuthHeader+", Authorization, Content-Type")
+				w.Header().Set("Access-Control-Allow-Headers", AuthHeader+", "+LegacyAuthHeader+", Authorization, Content-Type")
 			}
 
 			if r.Method == http.MethodOptions {

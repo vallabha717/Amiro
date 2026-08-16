@@ -13,11 +13,18 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DESKTOP_DIR="$(dirname "$SCRIPT_DIR")"
 
-export BETTERCHATBOT_DATABASE_DRIVER=sqlite
-export BETTERCHATBOT_APP_DATA_DIR="${BETTERCHATBOT_APP_DATA_DIR:-$HOME/.local/share/better-chatbot-dev}"
-export BETTERCHATBOT_PORT=8787
-export BETTERCHATBOT_AUTH_TOKEN="dev-test-token-1786373638"
-export BETTERCHATBOT_ALLOWED_ORIGIN="${BETTERCHATBOT_ALLOWED_ORIGIN:-http://localhost:3210}"
+export AMIRO_DATABASE_DRIVER=sqlite
+export AMIRO_APP_DATA_DIR="${AMIRO_APP_DATA_DIR:-$HOME/.local/share/amiro-dev}"
+export AMIRO_PORT=8787
+export AMIRO_AUTH_TOKEN="dev-test-token-1786373638"
+export AMIRO_ALLOWED_ORIGIN="${AMIRO_ALLOWED_ORIGIN:-http://localhost:3210}"
+
+# Legacy fallback variables for backwards compatibility
+export BETTERCHATBOT_DATABASE_DRIVER="$AMIRO_DATABASE_DRIVER"
+export BETTERCHATBOT_APP_DATA_DIR="$AMIRO_APP_DATA_DIR"
+export BETTERCHATBOT_PORT="$AMIRO_PORT"
+export BETTERCHATBOT_AUTH_TOKEN="$AMIRO_AUTH_TOKEN"
+export BETTERCHATBOT_ALLOWED_ORIGIN="$AMIRO_ALLOWED_ORIGIN"
 
 # OPENAI_COMPATIBLE_DATA (custom self-hosted / OpenAI-compatible models,
 # internal/ai/bifrost/openai_compatible.go) lives in desktop's own .env
@@ -47,6 +54,11 @@ with open(path) as f:
   export OPENAI_COMPATIBLE_DATA
 fi
 
-mkdir -p "$BETTERCHATBOT_APP_DATA_DIR"
+mkdir -p "$AMIRO_APP_DATA_DIR"
+if [ ! -f "$AMIRO_APP_DATA_DIR/amiro.db" ] && [ -f "$HOME/.local/share/better-chatbot-dev/betterchatbot.db" ]; then
+  cp -rn "$HOME/.local/share/better-chatbot-dev/"* "$AMIRO_APP_DATA_DIR/" 2>/dev/null || true
+  cp "$HOME/.local/share/better-chatbot-dev/betterchatbot.db" "$AMIRO_APP_DATA_DIR/amiro.db"
+fi
+
 cd "$DESKTOP_DIR/backend-go"
 exec go run ./cmd/server

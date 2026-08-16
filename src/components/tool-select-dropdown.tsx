@@ -6,12 +6,14 @@ import { cn, objectFlow } from "lib/utils";
 import {
   ArrowUpRightIcon,
   AtSign,
+  BrainIcon,
   ChartColumn,
   ChevronRight,
-  CodeIcon,
+  FolderIcon,
   GlobeIcon,
   HardDriveUploadIcon,
   ImagesIcon,
+  TerminalIcon,
   InfoIcon,
   Loader,
   MessageCircle,
@@ -152,7 +154,7 @@ export function ToolSelectDropdown({
     }
     if (toolChoice == "none") return [];
     const translate = t.raw("defaultToolKit");
-    const defaultTools = Object.values(AppDefaultToolkit)
+    const defaultTools = Array.from(new Set(Object.values(AppDefaultToolkit)))
       .filter((t) => allowedAppDefaultToolkit?.includes(t))
       .map((t) => translate[t]);
     const mcpIds = mcpList.map((v) => v.id);
@@ -870,7 +872,8 @@ function AppDefaultToolKitSelector() {
 
   const defaultToolInfo = useMemo(() => {
     const raw = t.raw("Chat.Tool.defaultToolKit");
-    return Object.values(AppDefaultToolkit).map((toolkit) => {
+    const uniqueToolkits = Array.from(new Set(Object.values(AppDefaultToolkit)));
+    return uniqueToolkits.map((toolkit) => {
       const label = raw[toolkit] || toolkit;
       const id = toolkit;
       let icon = Wrench;
@@ -884,8 +887,15 @@ function AppDefaultToolKitSelector() {
         case AppDefaultToolkit.Http:
           icon = HardDriveUploadIcon;
           break;
+        case AppDefaultToolkit.Terminal:
         case AppDefaultToolkit.Code:
-          icon = CodeIcon;
+          icon = TerminalIcon;
+          break;
+        case AppDefaultToolkit.File:
+          icon = FolderIcon;
+          break;
+        case AppDefaultToolkit.Memory:
+          icon = BrainIcon;
           break;
       }
       return {

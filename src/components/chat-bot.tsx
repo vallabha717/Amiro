@@ -93,6 +93,8 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
     appStoreMutate,
     model,
     toolChoice,
+    permissionMode,
+    projectDirectory,
     allowedAppDefaultToolkit,
     allowedMcpServers,
     threadList,
@@ -105,6 +107,8 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
       state.mutate,
       state.chatModel,
       state.toolChoice,
+      state.permissionMode,
+      state.projectDirectory,
       state.allowedAppDefaultToolkit,
       state.allowedMcpServers,
       state.threadList,
@@ -212,6 +216,8 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
           chatModel:
             (body as { model: ChatModel })?.model ?? latestRef.current.model,
           toolChoice: latestRef.current.toolChoice,
+          permissionMode: latestRef.current.permissionMode,
+          workspaceRoot: latestRef.current.projectDirectory || undefined,
           allowedAppDefaultToolkit:
             latestRef.current.mentions?.length || hasFilePart
               ? []
@@ -248,6 +254,8 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
 
   const latestRef = useToRef({
     toolChoice,
+    permissionMode,
+    projectDirectory,
     model,
     allowedAppDefaultToolkit,
     allowedMcpServers,
@@ -481,7 +489,6 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
                   return (
                     <PreviewMessage
                       threadId={threadId}
-                      messageIndex={index}
                       prevMessage={messages[index - 1]}
                       key={message.id}
                       message={message}

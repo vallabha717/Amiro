@@ -23,7 +23,7 @@ import (
 	"net/http"
 	"time"
 
-	"betterchatbot/backend/internal/storage"
+	"amiro/backend/internal/storage"
 )
 
 // uploadExpiry ports DEFAULT_UPLOAD_EXPIRES_SECONDS (upload-url/route.ts:14).

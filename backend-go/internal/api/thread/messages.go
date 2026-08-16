@@ -3,8 +3,8 @@ package thread
 import (
 	"net/http"
 
-	"betterchatbot/backend/internal/api/httpjson"
-	"betterchatbot/backend/internal/auth"
+	"amiro/backend/internal/api/httpjson"
+	"amiro/backend/internal/auth"
 )
 
 // DeleteMessage ports deleteMessageAction (chat/actions.ts:88). Matches

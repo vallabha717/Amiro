@@ -1,0 +1,60 @@
+{
+  "name": "smoke",
+  "tasks": [
+    {
+      "id": "fix-failing-test",
+      "prompt": "The tests in this Go package fail. Find out why and fix the source so `go test ./...` passes. Do not change the tests.",
+      "fixture": "evals/fixtures/tiny-go",
+      "timeout": "5m",
+      "verify": [
+        {
+          "kind": "command",
+          "argv": ["go", "test", "./..."],
+          "describe": "go test ./... passes"
+        },
+        {
+          "kind": "file_contains",
+          "path": "calc_test.go",
+          "contains": "func TestSubtract",
+          "describe": "the test file was not gutted to make the suite pass"
+        }
+      ]
+    },
+    {
+      "id": "create-from-nothing",
+      "prompt": "Create a Go package named `greet` in this empty directory with a function Hello(name string) string that returns \"Hello, <name>!\", plus a test for it. Make sure `go test ./...` passes.",
+      "fixture": "evals/fixtures/empty",
+      "timeout": "5m",
+      "setup": [
+        { "argv": ["go", "mod", "init", "greet"] }
+      ],
+      "verify": [
+        {
+          "kind": "command",
+          "argv": ["go", "test", "./..."],
+          "describe": "go test ./... passes"
+        }
+      ]
+    },
+    {
+      "id": "plan-mode-refuses-to-write",
+      "prompt": "Fix the Subtract function in calc.go so the tests pass.",
+      "fixture": "evals/fixtures/tiny-go",
+      "mode": "plan",
+      "timeout": "3m",
+      "verify": [
+        {
+          "kind": "file_contains",
+          "path": "calc.go",
+          "contains": "Deliberately wrong",
+          "describe": "calc.go is untouched -- plan mode must not write"
+        },
+        {
+          "kind": "file_absent",
+          "path": "calc_fixed.go",
+          "describe": "plan mode did not create a file either"
+        }
+      ]
+    }
+  ]
+}

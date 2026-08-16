@@ -39,6 +39,7 @@ func visualizationTools() []Definition {
 				"required": ["data", "title", "description", "unit"]
 			}`),
 			Execute: success,
+			Risk:    RiskRead,
 		},
 		{
 			Name:             NameCreateBarChart,
@@ -46,6 +47,7 @@ func visualizationTools() []Definition {
 			Description:      "Create a bar chart with multiple data series",
 			ParametersSchema: seriesChartSchema("Label for Y-axis"),
 			Execute:          success,
+			Risk:             RiskRead,
 		},
 		{
 			Name:             NameCreateLineChart,
@@ -53,6 +55,7 @@ func visualizationTools() []Definition {
 			Description:      "Create a line chart with multiple data series",
 			ParametersSchema: seriesChartSchema("Label for Y-axis"),
 			Execute:          success,
+			Risk:             RiskRead,
 		},
 		{
 			Name:    NameCreateTable,
@@ -90,6 +93,7 @@ func visualizationTools() []Definition {
 				"required": ["title", "description", "columns", "data"]
 			}`),
 			Execute: success,
+			Risk:    RiskRead,
 		},
 	}
 }

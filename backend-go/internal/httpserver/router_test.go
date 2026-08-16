@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"betterchatbot/backend/internal/auth"
-	"betterchatbot/backend/internal/config"
-	"betterchatbot/backend/internal/db"
-	"betterchatbot/backend/internal/middleware"
+	"amiro/backend/internal/auth"
+	"amiro/backend/internal/config"
+	"amiro/backend/internal/db"
+	"amiro/backend/internal/middleware"
 )
 
 func testConfig() config.Config {

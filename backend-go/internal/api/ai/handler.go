@@ -11,24 +11,31 @@ import (
 	"encoding/json"
 	"net/http"
 
-	bifrostai "betterchatbot/backend/internal/ai/bifrost"
-	"betterchatbot/backend/internal/ai/prompts"
-	"betterchatbot/backend/internal/api/httpjson"
-	"betterchatbot/backend/internal/auth"
+	bifrostai "amiro/backend/internal/ai/bifrost"
+	"amiro/backend/internal/ai/prompts"
+	"amiro/backend/internal/api/httpjson"
+	"amiro/backend/internal/auth"
+	"amiro/backend/internal/db/repository"
 )
 
 // Engine is the subset of *bifrostai.Client this package calls, narrowed
 // the same way internal/api/chat.Engine and internal/api/agent.Engine are.
+//
+// TestStep is here for the provider model test (providers.go): the same
+// streamed, tool-attached call shape a real chat turn makes, but output-
+// capped so a slow reasoning model fails the spinner instead of hanging it.
 type Engine interface {
 	GenerateObject(ctx context.Context, resolved bifrostai.ResolvedModel, system string, messages []bifrostai.Message, schema json.RawMessage) (json.RawMessage, *bifrostai.Usage, error)
+	TestStep(ctx context.Context, resolved bifrostai.ResolvedModel, system string, messages []bifrostai.Message, toolSpecs []bifrostai.ToolSpec) (*bifrostai.StepResult, error)
 }
 
 type Handler struct {
-	engine Engine
+	engine       Engine
+	providerRepo *repository.ProviderRepository
 }
 
-func NewHandler(engine Engine) *Handler {
-	return &Handler{engine: engine}
+func NewHandler(engine Engine, providerRepo *repository.ProviderRepository) *Handler {
+	return &Handler{engine: engine, providerRepo: providerRepo}
 }
 
 type chatModelDTO struct {

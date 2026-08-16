@@ -99,8 +99,8 @@ func TestClient_GenerateAndGenerateObjectAndGenerateWithTool_AgainstRealOpenAI(t
 		t.Skip("OPENAI_API_KEY not set to a real key; skipping live Bifrost call")
 	}
 
-	store := fakeStore{"openai": apiKey}
-	client, err := NewClient(context.Background(), store)
+	repo := fakeRepo{{id: "openai", provider: "openai", name: "OpenAI", apiKey: apiKey}}
+	client, err := NewClient(context.Background(), repo)
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}

@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"betterchatbot/backend/internal/ai/workflow"
-	"betterchatbot/backend/internal/db/models"
+	"amiro/backend/internal/ai/workflow"
+	"amiro/backend/internal/db/models"
 )
 
 func edge(id, source, target, sourceHandle string) models.WorkflowEdge {

@@ -7,8 +7,8 @@ import (
 
 	"gorm.io/datatypes"
 
-	"betterchatbot/backend/internal/db"
-	"betterchatbot/backend/internal/db/models"
+	"amiro/backend/internal/db"
+	"amiro/backend/internal/db/models"
 )
 
 func newTestCustomizationRepos(t *testing.T) (*McpServerCustomizationRepository, *McpToolCustomizationRepository, string, *models.User) {

@@ -23,7 +23,7 @@ export function SWRConfigProvider({
 
   useEffect(() => {
     console.log(
-      "%cAmiro\n\n%c⛓️ Premium AI Assistant Platform\nhttps://github.com/cgoinglove/better-chatbot",
+      "%cAmiro\n\n%c⛓️ Premium AI Assistant Platform",
       "color: #00d4ff; font-weight: bold; font-family: monospace; font-size: 20px; text-shadow: 0 0 10px #00d4ff;",
       "color: #888; font-size: 12px;",
     );

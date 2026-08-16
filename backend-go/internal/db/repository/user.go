@@ -4,25 +4,67 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
-	"betterchatbot/backend/internal/db/models"
-	"betterchatbot/backend/internal/user"
+	"amiro/backend/internal/db/models"
+	"amiro/backend/internal/pricing"
+	"amiro/backend/internal/user"
 )
 
-// UserRepository ports user-repository.pg.ts, minus getUserStats.
-//
-// getUserStats is deliberately not ported here: its query is built out of
-// Postgres-native JSON operators (`metadata->'chatModel'->>'model'`,
-// `(... ->>'totalTokens')::numeric`), which have no SQLite equivalent, so
-// it would need a real reimplementation (fetch + aggregate in Go) rather
-// than a port. Its only call site is a Server Action (api/user/actions.ts),
-// which Phase 7 converts to HTTP -- none of Phase 6's own routes
-// (user/details, user/details/{id}, user/preferences) touch it.
+// DailyUsageStat represents aggregated token, cost, and message usage for a specific day.
+type DailyUsageStat struct {
+	Date             string  `json:"date"`
+	TotalTokens      int64   `json:"totalTokens"`
+	PromptTokens     int64   `json:"promptTokens"`
+	CompletionTokens int64   `json:"completionTokens"`
+	TotalCost        float64 `json:"totalCost"`
+	PromptCost       float64 `json:"promptCost"`
+	CompletionCost   float64 `json:"completionCost"`
+	MessageCount     int     `json:"messageCount"`
+}
+
+// ModelStat represents token, cost, and message statistics for a specific model.
+type ModelStat struct {
+	Model            string  `json:"model"`
+	Provider         string  `json:"provider"`
+	MessageCount     int     `json:"messageCount"`
+	TotalTokens      int64   `json:"totalTokens"`
+	PromptTokens     int64   `json:"promptTokens"`
+	CompletionTokens int64   `json:"completionTokens"`
+	TotalCost        float64 `json:"totalCost"`
+	PromptCost       float64 `json:"promptCost"`
+	CompletionCost   float64 `json:"completionCost"`
+}
+
+// UserStats represents aggregated usage and cost metrics for a user over a period.
+type UserStats struct {
+	ThreadCount      int              `json:"threadCount"`
+	MessageCount     int              `json:"messageCount"`
+	ModelStats       []ModelStat      `json:"modelStats"`
+	TotalTokens      int64            `json:"totalTokens"`
+	PromptTokens     int64            `json:"promptTokens"`
+	CompletionTokens int64            `json:"completionTokens"`
+	TotalCost        float64          `json:"totalCost"`
+	PromptCost       float64          `json:"promptCost"`
+	CompletionCost   float64          `json:"completionCost"`
+	DailyUsage       []DailyUsageStat `json:"dailyUsage"`
+	Period           string           `json:"period"`
+}
+
+// UserStatsOptions defines filtering parameters for stats calculation.
+type UserStatsOptions struct {
+	From *time.Time
+	To   *time.Time
+	Days *int
+}
+
+// UserRepository ports user-repository.pg.ts.
 type UserRepository struct {
 	db *gorm.DB
 }
@@ -347,4 +389,221 @@ func (r *UserRepository) GetAuthMethods(ctx context.Context, userID string) (*Au
 		out.HasPassword = u.Password != nil && *u.Password != ""
 	}
 	return out, nil
+}
+
+type chatMessageMetadataForStats struct {
+	Usage *struct {
+		PromptTokens     int64 `json:"promptTokens"`
+		CompletionTokens int64 `json:"completionTokens"`
+		TotalTokens      int64 `json:"totalTokens"`
+	} `json:"usage"`
+	ChatModel *struct {
+		Provider string `json:"provider"`
+		Model    string `json:"model"`
+	} `json:"chatModel"`
+}
+
+// GetUserStats ports and extends getUserStats (user-repository.pg.ts:104): calculates
+// thread count, message count, total tokens, prompt/completion breakdown, daily time series,
+// and top models used for a specified date range. Uses in-memory aggregation of message
+// metadata to maintain 100% SQLite and Postgres dialect portability.
+func (r *UserRepository) GetUserStats(ctx context.Context, userID string, opts ...UserStatsOptions) (*UserStats, error) {
+	var opt UserStatsOptions
+	if len(opts) > 0 {
+		opt = opts[0]
+	}
+
+	var startDate time.Time
+	var endDate *time.Time
+	period := "Last 30 Days"
+
+	if opt.From != nil {
+		startDate = *opt.From
+		if opt.To != nil {
+			endDate = opt.To
+			period = fmt.Sprintf("%s - %s", opt.From.Format("Jan 2, 2006"), opt.To.Format("Jan 2, 2006"))
+		} else {
+			period = fmt.Sprintf("From %s", opt.From.Format("Jan 2, 2006"))
+		}
+	} else if opt.Days != nil {
+		d := *opt.Days
+		if d <= 1 {
+			now := time.Now()
+			startDate = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+			period = "Today"
+		} else {
+			startDate = time.Now().AddDate(0, 0, -d)
+			period = fmt.Sprintf("Last %d Days", d)
+		}
+	} else {
+		startDate = time.Now().AddDate(0, 0, -30)
+		period = "Last 30 Days"
+	}
+
+	var threadIDs []string
+	if err := r.db.WithContext(ctx).Model(&models.ChatThread{}).
+		Where("user_id = ?", userID).
+		Pluck("id", &threadIDs).Error; err != nil {
+		return nil, err
+	}
+
+	if len(threadIDs) == 0 {
+		return &UserStats{
+			ThreadCount:      0,
+			MessageCount:     0,
+			ModelStats:       []ModelStat{},
+			TotalTokens:      0,
+			PromptTokens:     0,
+			CompletionTokens: 0,
+			TotalCost:        0,
+			PromptCost:       0,
+			CompletionCost:   0,
+			DailyUsage:       []DailyUsageStat{},
+			Period:           period,
+		}, nil
+	}
+
+	threadQuery := r.db.WithContext(ctx).Model(&models.ChatThread{}).Where("user_id = ? AND created_at >= ?", userID, startDate)
+	if endDate != nil {
+		threadQuery = threadQuery.Where("created_at <= ?", *endDate)
+	}
+	var threadCount int64
+	if err := threadQuery.Count(&threadCount).Error; err != nil {
+		return nil, err
+	}
+
+	msgQuery := r.db.WithContext(ctx).Where("thread_id IN ? AND created_at >= ?", threadIDs, startDate)
+	if endDate != nil {
+		msgQuery = msgQuery.Where("created_at <= ?", *endDate)
+	}
+	var messages []models.ChatMessage
+	if err := msgQuery.Order("created_at asc").Find(&messages).Error; err != nil {
+		return nil, err
+	}
+
+	var totalTokens int64
+	var totalPromptTokens int64
+	var totalCompletionTokens int64
+	var totalCost float64
+	var totalPromptCost float64
+	var totalCompletionCost float64
+
+	modelStatsMap := make(map[string]*ModelStat)
+	dailyUsageMap := make(map[string]*DailyUsageStat)
+	pricingCatalog := pricing.DefaultCatalog()
+
+	for _, msg := range messages {
+		dayKey := msg.CreatedAt.Format("2006-01-02")
+		dayEntry, ok := dailyUsageMap[dayKey]
+		if !ok {
+			dayEntry = &DailyUsageStat{
+				Date: dayKey,
+			}
+			dailyUsageMap[dayKey] = dayEntry
+		}
+		dayEntry.MessageCount++
+
+		if len(msg.Metadata) == 0 {
+			continue
+		}
+		var meta chatMessageMetadataForStats
+		if err := json.Unmarshal(msg.Metadata, &meta); err != nil {
+			continue
+		}
+
+		var promptTok, completionTok, tok int64
+		if meta.Usage != nil {
+			promptTok = meta.Usage.PromptTokens
+			completionTok = meta.Usage.CompletionTokens
+			tok = meta.Usage.TotalTokens
+			if tok == 0 && (promptTok > 0 || completionTok > 0) {
+				tok = promptTok + completionTok
+			} else if tok > 0 && promptTok == 0 && completionTok == 0 {
+				promptTok = int64(float64(tok) * 0.6)
+				completionTok = tok - promptTok
+			}
+		}
+
+		modelName := ""
+		providerName := ""
+		if meta.ChatModel != nil && meta.ChatModel.Model != "" {
+			modelName = meta.ChatModel.Model
+			providerName = meta.ChatModel.Provider
+		}
+
+		msgTotalCost, msgPromptCost, msgCompletionCost := pricingCatalog.CalculateCost(providerName, modelName, promptTok, completionTok)
+
+		totalTokens += tok
+		totalPromptTokens += promptTok
+		totalCompletionTokens += completionTok
+		totalCost += msgTotalCost
+		totalPromptCost += msgPromptCost
+		totalCompletionCost += msgCompletionCost
+
+		dayEntry.TotalTokens += tok
+		dayEntry.PromptTokens += promptTok
+		dayEntry.CompletionTokens += completionTok
+		dayEntry.TotalCost += msgTotalCost
+		dayEntry.PromptCost += msgPromptCost
+		dayEntry.CompletionCost += msgCompletionCost
+
+		if modelName != "" {
+			entry, exists := modelStatsMap[modelName]
+			if !exists {
+				entry = &ModelStat{
+					Model:    modelName,
+					Provider: providerName,
+				}
+				modelStatsMap[modelName] = entry
+			}
+			entry.MessageCount++
+			entry.TotalTokens += tok
+			entry.PromptTokens += promptTok
+			entry.CompletionTokens += completionTok
+			entry.TotalCost += msgTotalCost
+			entry.PromptCost += msgPromptCost
+			entry.CompletionCost += msgCompletionCost
+		}
+	}
+
+	modelStatsList := make([]ModelStat, 0, len(modelStatsMap))
+	for _, stat := range modelStatsMap {
+		modelStatsList = append(modelStatsList, *stat)
+	}
+
+	// Sort by total tokens descending; tie-break by message count descending
+	sort.Slice(modelStatsList, func(i, j int) bool {
+		if modelStatsList[i].TotalTokens == modelStatsList[j].TotalTokens {
+			return modelStatsList[i].MessageCount > modelStatsList[j].MessageCount
+		}
+		return modelStatsList[i].TotalTokens > modelStatsList[j].TotalTokens
+	})
+
+	// Limit to top 20 models (allows more granular filtering on frontend)
+	if len(modelStatsList) > 20 {
+		modelStatsList = modelStatsList[:20]
+	}
+
+	// Build sorted daily usage list (chronological)
+	dailyUsageList := make([]DailyUsageStat, 0, len(dailyUsageMap))
+	for _, day := range dailyUsageMap {
+		dailyUsageList = append(dailyUsageList, *day)
+	}
+	sort.Slice(dailyUsageList, func(i, j int) bool {
+		return dailyUsageList[i].Date < dailyUsageList[j].Date
+	})
+
+	return &UserStats{
+		ThreadCount:      int(threadCount),
+		MessageCount:     len(messages),
+		ModelStats:       modelStatsList,
+		TotalTokens:      totalTokens,
+		PromptTokens:     totalPromptTokens,
+		CompletionTokens: totalCompletionTokens,
+		TotalCost:        totalCost,
+		PromptCost:       totalPromptCost,
+		CompletionCost:   totalCompletionCost,
+		DailyUsage:       dailyUsageList,
+		Period:           period,
+	}, nil
 }

@@ -1,15 +1,19 @@
 "use client";
 
-import { memo, PropsWithChildren } from "react";
+import { Fragment, memo, PropsWithChildren, useMemo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { PreBlock } from "./pre-block";
 import { isJson, isString, toAny } from "lib/utils";
+import { splitMarkdownBlocks } from "lib/markdown-blocks";
 import JsonView from "ui/json-view";
 import { LinkIcon } from "lucide-react";
 import { WritingCursor } from "ui/writing-cursor";
+
+/** Placeholder swapped for the live cursor by InlineContent. */
+const CURSOR_TOKEN = "[writing-cursor]";
 import {
   Table,
   TableHeader,
@@ -19,27 +23,41 @@ import {
   TableCell,
 } from "ui/table";
 
-const FadeIn = memo(({ children }: PropsWithChildren) => {
-  return <span className="fade-in animate-in duration-1000">{children} </span>;
+/**
+ * Renders inline content, swapping the streaming cursor placeholder for the
+ * real cursor.
+ *
+ * This replaced a per-word fade-in. That effect wrapped every single word in
+ * its own `animate-in duration-1000` span, so a 500-word reply meant 500
+ * concurrently animating nodes -- and because the markdown was re-parsed on
+ * every token, each new token remounted them and restarted every animation.
+ * The result was a message that shimmered continuously and pegged the main
+ * thread instead of settling. Entry animation now happens once per *block*
+ * (see MarkdownBlock), which is a single node per paragraph rather than one
+ * per word.
+ */
+export const InlineContent = memo(({ children }: PropsWithChildren) => {
+  const parts = [children].flat();
+  return parts.map((child, index) =>
+    isString(child) && child.includes(CURSOR_TOKEN) ? (
+      <Fragment key={index}>
+        {child.split(CURSOR_TOKEN).map((chunk, i) => (
+          <Fragment key={i}>
+            {i > 0 && <WritingCursor />}
+            {chunk}
+          </Fragment>
+        ))}
+      </Fragment>
+    ) : (
+      <Fragment key={index}>{child}</Fragment>
+    ),
+  );
 });
-FadeIn.displayName = "FadeIn";
-
-export const WordByWordFadeIn = memo(({ children }: PropsWithChildren) => {
-  const childrens = [children]
-    .flat()
-    .flatMap((child) => (isString(child) ? child.split(" ") : child));
-  return childrens.map((word, index) => {
-    if (word === "[writing-cursor]") {
-      return <WritingCursor key={index} />;
-    }
-    return isString(word) ? <FadeIn key={index}>{word}</FadeIn> : word;
-  });
-});
-WordByWordFadeIn.displayName = "WordByWordFadeIn";
+InlineContent.displayName = "InlineContent";
 const components: Partial<Components> = {
   table: ({ node, children, ...props }) => {
     return (
-      <div className="my-4">
+      <div className="my-2">
         <Table {...props}>{children}</Table>
       </div>
     );
@@ -56,64 +74,64 @@ const components: Partial<Components> = {
   th: ({ node, children, ...props }) => {
     return (
       <TableHead {...props}>
-        <WordByWordFadeIn>{children}</WordByWordFadeIn>
+        <InlineContent>{children}</InlineContent>
       </TableHead>
     );
   },
   td: ({ node, children, ...props }) => {
     return (
       <TableCell {...props}>
-        <WordByWordFadeIn>{children}</WordByWordFadeIn>
+        <InlineContent>{children}</InlineContent>
       </TableCell>
     );
   },
   code: ({ children }) => {
     return (
-      <code className="text-sm rounded-md bg-accent text-primary py-1 px-2 mx-0.5">
+      <code className="text-sm rounded-md bg-accent text-primary py-0.5 px-1.5 mx-0.5">
         {children}
       </code>
     );
   },
   blockquote: ({ children }) => {
     return (
-      <div className="px-4">
-        <blockquote className="relative bg-accent/30 p-6 rounded-2xl my-6 overflow-hidden border">
-          <WordByWordFadeIn>{children}</WordByWordFadeIn>
+      <div className="px-2">
+        <blockquote className="relative bg-accent/30 p-3.5 rounded-xl my-2.5 overflow-hidden border">
+          <InlineContent>{children}</InlineContent>
         </blockquote>
       </div>
     );
   },
   p: ({ children }) => {
     return (
-      <p className="leading-6 my-4 break-words">
-        <WordByWordFadeIn>{children}</WordByWordFadeIn>
+      <p className="leading-relaxed my-2 first:mt-0 last:mb-0 break-words text-justify [text-align-last:left]">
+        <InlineContent>{children}</InlineContent>
       </p>
     );
   },
   pre: ({ children }) => {
     return (
-      <div className="px-4 py-2">
+      <div className="py-1.5">
         <PreBlock>{children}</PreBlock>
       </div>
     );
   },
   ol: ({ node, children, ...props }) => {
     return (
-      <ol className="px-8 list-decimal list-outside" {...props}>
+      <ol className="px-6 list-decimal list-outside my-2 space-y-0.5" {...props}>
         {children}
       </ol>
     );
   },
   li: ({ node, children, ...props }) => {
     return (
-      <li className="py-2 break-words" {...props}>
-        <WordByWordFadeIn>{children}</WordByWordFadeIn>
+      <li className="py-0.5 break-words text-justify [text-align-last:left]" {...props}>
+        <InlineContent>{children}</InlineContent>
       </li>
     );
   },
   ul: ({ node, children, ...props }) => {
     return (
-      <ul className="px-8 list-outside list-disc" {...props}>
+      <ul className="px-6 list-outside list-disc my-2 space-y-0.5" {...props}>
         {children}
       </ul>
     );
@@ -121,7 +139,7 @@ const components: Partial<Components> = {
   strong: ({ node, children, ...props }) => {
     return (
       <span className="font-semibold" {...props}>
-        <WordByWordFadeIn>{children}</WordByWordFadeIn>
+        <InlineContent>{children}</InlineContent>
       </span>
     );
   },
@@ -134,49 +152,49 @@ const components: Partial<Components> = {
         {...toAny(props)}
       >
         <LinkIcon className="size-3.5" />
-        <WordByWordFadeIn>{children}</WordByWordFadeIn>
+        <InlineContent>{children}</InlineContent>
       </a>
     );
   },
   h1: ({ node, children, ...props }) => {
     return (
-      <h1 className="text-3xl font-semibold mt-6 mb-2" {...props}>
-        <WordByWordFadeIn>{children}</WordByWordFadeIn>
+      <h1 className="text-2xl font-semibold mt-4 mb-1.5" {...props}>
+        <InlineContent>{children}</InlineContent>
       </h1>
     );
   },
   h2: ({ node, children, ...props }) => {
     return (
-      <h2 className="text-2xl font-semibold mt-6 mb-2" {...props}>
-        <WordByWordFadeIn>{children}</WordByWordFadeIn>
+      <h2 className="text-xl font-semibold mt-3.5 mb-1.5" {...props}>
+        <InlineContent>{children}</InlineContent>
       </h2>
     );
   },
   h3: ({ node, children, ...props }) => {
     return (
-      <h3 className="text-xl font-semibold mt-6 mb-2" {...props}>
-        <WordByWordFadeIn>{children}</WordByWordFadeIn>
+      <h3 className="text-lg font-semibold mt-3 mb-1" {...props}>
+        <InlineContent>{children}</InlineContent>
       </h3>
     );
   },
   h4: ({ node, children, ...props }) => {
     return (
-      <h4 className="text-lg font-semibold mt-6 mb-2" {...props}>
-        <WordByWordFadeIn>{children}</WordByWordFadeIn>
+      <h4 className="text-base font-semibold mt-2.5 mb-1" {...props}>
+        <InlineContent>{children}</InlineContent>
       </h4>
     );
   },
   h5: ({ node, children, ...props }) => {
     return (
-      <h5 className="text-base font-semibold mt-6 mb-2" {...props}>
-        <WordByWordFadeIn>{children}</WordByWordFadeIn>
+      <h5 className="text-sm font-semibold mt-2 mb-0.5" {...props}>
+        <InlineContent>{children}</InlineContent>
       </h5>
     );
   },
   h6: ({ node, children, ...props }) => {
     return (
-      <h6 className="text-sm font-semibold mt-6 mb-2" {...props}>
-        <WordByWordFadeIn>{children}</WordByWordFadeIn>
+      <h6 className="text-xs font-semibold mt-2 mb-0.5" {...props}>
+        <InlineContent>{children}</InlineContent>
       </h6>
     );
   },
@@ -190,6 +208,31 @@ const components: Partial<Components> = {
   },
 };
 
+/**
+ * One top-level markdown block, memoized on its own source.
+ *
+ * This is the whole point of the block split: while a reply streams, only the
+ * final block's source is changing. Every earlier block compares equal, React
+ * bails out, and none of the already-rendered text is re-parsed, re-rendered
+ * or re-animated. Previously each token re-parsed the entire document.
+ */
+const MarkdownBlock = memo(
+  function MarkdownBlock({ source }: { source: string }) {
+    return (
+      <div className="animate-in fade-in duration-300">
+        <ReactMarkdown
+          components={components}
+          remarkPlugins={[remarkGfm, remarkMath]}
+          rehypePlugins={[rehypeKatex]}
+        >
+          {source}
+        </ReactMarkdown>
+      </div>
+    );
+  },
+  (prev, next) => prev.source === next.source,
+);
+
 const NonMemoizedMarkdown = ({
   children,
   isStreaming,
@@ -197,21 +240,28 @@ const NonMemoizedMarkdown = ({
   children: string;
   isStreaming?: boolean;
 }) => {
-  const processedText = isStreaming ? children + " [writing-cursor]" : children;
+  const blocks = useMemo(() => splitMarkdownBlocks(children), [children]);
+
+  if (isJson(children)) {
+    return (
+      <article className="w-full h-full relative">
+        <JsonView data={children} />
+      </article>
+    );
+  }
 
   return (
     <article className="w-full h-full relative">
-      {isJson(children) ? (
-        <JsonView data={children} />
-      ) : (
-        <ReactMarkdown
-          components={components}
-          remarkPlugins={[remarkGfm, remarkMath]}
-          rehypePlugins={[rehypeKatex]}
-        >
-          {processedText}
-        </ReactMarkdown>
-      )}
+      {blocks.map((block, index) => {
+        const isLast = index === blocks.length - 1;
+        // The cursor belongs to the block currently being written, so it
+        // travels with the text instead of anchoring to the message end.
+        const source = isStreaming && isLast ? `${block} ${CURSOR_TOKEN}` : block;
+        // Keyed by position: a block's index is stable for its lifetime
+        // (blocks are only ever appended while streaming), so completed
+        // blocks keep their identity and never remount.
+        return <MarkdownBlock key={index} source={source} />;
+      })}
     </article>
   );
 };

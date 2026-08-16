@@ -2,8 +2,14 @@ export enum AppDefaultToolkit {
   Visualization = "visualization",
   WebSearch = "webSearch",
   Http = "http",
-  Code = "code",
+  Terminal = "terminal",
+  Code = "terminal", // alias
   Workflow = "workflow",
+  File = "file",
+  // Durable notes about the workspace. A real toggle, unlike the plan
+  // tools -- a note that changes how the agent behaves in every future
+  // conversation is something a user should be able to switch off.
+  Memory = "memory",
 }
 
 export enum DefaultToolName {
@@ -14,8 +20,31 @@ export enum DefaultToolName {
   WebSearch = "webSearch",
   WebContent = "webContent",
   Http = "http",
-  JavascriptExecution = "mini-javascript-execution",
-  PythonExecution = "python-execution",
+  TerminalExecution = "terminal-execution",
+  RunShell = "run_shell",
+  // File ACI -- only offered when the backend has a workspace root
+  // configured (BETTERCHATBOT_WORKSPACE_ROOT).
+  ReadFile = "read_file",
+  ListDir = "list_dir",
+  WriteFile = "write_file",
+  Glob = "glob",
+  Grep = "grep",
+  EditFile = "edit_file",
+  MultiEdit = "multi_edit",
+  Git = "git",
+  // Context & scale (Phase 4).
+  TodoWrite = "todo_write",
+  TodoRead = "todo_read",
+  Task = "task",
+  // Orientation, symbol intelligence and durable notes (Phase 4.4 / 5).
+  // repo_map needs only a workspace; lsp additionally needs a language
+  // server installed, and the memory tools an app data directory -- so
+  // any of these may legitimately be absent from a given turn.
+  RepoMap = "repo_map",
+  Lsp = "lsp",
+  MemoryWrite = "memory_write",
+  MemoryRead = "memory_read",
+  MemoryForget = "memory_forget",
   CreateWorkflow = "createWorkflow",
   UpdateWorkflow = "updateWorkflow",
   GetWorkflow = "getWorkflowStructure",
@@ -24,4 +53,3 @@ export enum DefaultToolName {
 export const SequentialThinkingToolName = "sequential-thinking";
 
 export const ImageToolName = "image-manager";
-

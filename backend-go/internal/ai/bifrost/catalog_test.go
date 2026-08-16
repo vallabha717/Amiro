@@ -7,96 +7,125 @@ import (
 	"github.com/maximhq/bifrost/core/schemas"
 )
 
-type fakeStore map[string]string
-
-func (f fakeStore) Get(_ context.Context, provider string) (string, bool, error) {
-	v, ok := f[provider]
-	return v, ok, nil
+// fakeConfig is one row of a fakeRepo -- the test-side stand-in for a
+// repository.ProviderConfigData.
+type fakeConfig struct {
+	id       string
+	provider string
+	name     string
+	apiKey   string
+	baseURL  string
+	models   []string
 }
-func (f fakeStore) Set(_ context.Context, provider, key string) error {
-	f[provider] = key
+
+// fakeRepo implements both interfaces this package asks of a provider
+// store: ProviderFetcher (catalog.go) for listing, and singleConfigFetcher
+// (account.go) for resolving one connection's credentials by id.
+type fakeRepo []fakeConfig
+
+func (f fakeRepo) IterateConfigs(_ context.Context, cb func(id, provider, name, apiKey string, models []string)) error {
+	for _, c := range f {
+		cb(c.id, c.provider, c.name, c.apiKey, c.models)
+	}
 	return nil
 }
-func (f fakeStore) Delete(_ context.Context, provider string) error {
-	delete(f, provider)
-	return nil
-}
 
-func TestResolve_KnownProviderAndModelReturnsExactMatch(t *testing.T) {
-	got := Resolve("anthropic", "sonnet-4.5")
-	if got.Provider != schemas.Anthropic || got.BifrostModel != "claude-sonnet-4-5" {
-		t.Fatalf("got %+v", got)
+func (f fakeRepo) GetProviderBaseURLAndKey(_ context.Context, id string) (string, string, string, error) {
+	for _, c := range f {
+		if c.id == id {
+			return c.provider, c.baseURL, c.apiKey, nil
+		}
 	}
+	return "", "", "", nil
 }
 
-func TestResolve_UnknownProviderFallsBackToOpenAIGPT41(t *testing.T) {
-	got := Resolve("not-a-real-provider", "not-a-real-model")
-	if got.ProviderKey != "openai" || got.BifrostModel != "gpt-4.1" {
-		t.Fatalf("got %+v, want the openai/gpt-4.1 fallback", got)
-	}
-}
-
-func TestResolve_KnownProviderUnknownModelFallsBackToOpenAIGPT41(t *testing.T) {
-	got := Resolve("anthropic", "not-a-real-model")
-	if got.ProviderKey != "openai" || got.BifrostModel != "gpt-4.1" {
-		t.Fatalf("got %+v, want the openai/gpt-4.1 fallback", got)
-	}
-}
-
-func TestResolve_EmptyProviderAndModelFallsBackToOpenAIGPT41(t *testing.T) {
+func TestResolve_EmptyRequestFallsBackToTheCatalogDefault(t *testing.T) {
 	got := Resolve("", "")
-	if got.ProviderKey != "openai" || got.BifrostModel != "gpt-4.1" {
+	if got.Provider != schemas.OpenAI || got.BifrostModel != "gpt-4.1" {
 		t.Fatalf("got %+v, want the openai/gpt-4.1 fallback", got)
 	}
 }
 
-func TestListModels_OllamaIsAlwaysConfiguredWithNoKeySet(t *testing.T) {
-	info := ListModels(context.Background(), fakeStore{})
-	for _, p := range info {
-		if p.Provider == "ollama" && !p.HasAPIKey {
-			t.Fatalf("ollama should always report hasAPIKey=true, got %+v", p)
-		}
+// A chat request names a provider *connection* (a provider_config row id),
+// not a provider type -- Resolve passes that id through as the Bifrost
+// provider so account.GetConfigForProvider can look the row up. Two
+// connections to the same vendor therefore stay distinct.
+func TestResolve_ConfigIDIsPassedThroughAsTheBifrostProvider(t *testing.T) {
+	got := Resolve("cfg-123", "z-ai/glm-5.2")
+	if string(got.Provider) != "cfg-123" {
+		t.Fatalf("Provider = %q, want the config id", got.Provider)
+	}
+	if got.BifrostModel != "z-ai/glm-5.2" {
+		t.Fatalf("BifrostModel = %q, want the model sent verbatim", got.BifrostModel)
 	}
 }
 
-func TestListModels_ProviderWithConfiguredKeyReportsHasAPIKey(t *testing.T) {
-	store := fakeStore{"anthropic": "sk-real-key"}
-	info := ListModels(context.Background(), store)
-	for _, p := range info {
-		if p.Provider == "anthropic" && !p.HasAPIKey {
-			t.Fatalf("anthropic should report hasAPIKey=true once a key is set, got %+v", p)
-		}
-		if p.Provider == "openai" && p.HasAPIKey {
-			t.Fatalf("openai should report hasAPIKey=false when unset, got %+v", p)
-		}
+func TestListModels_ReportsEachConfigsOwnModels(t *testing.T) {
+	repo := fakeRepo{{
+		id: "cfg-1", provider: "openai", name: "Tyson LiteLLM",
+		apiKey: "sk-real", models: []string{"gpt-5.6-luna", "claude-opus-4-8"},
+	}}
+
+	info := ListModels(context.Background(), repo)
+	if len(info) != 1 {
+		t.Fatalf("got %d providers, want 1", len(info))
+	}
+	got := info[0]
+	if got.Provider != "cfg-1" || got.ProviderName != "Tyson LiteLLM" || got.ProviderType != "openai" {
+		t.Fatalf("identity = %+v, want the config id/name/type", got)
+	}
+	if !got.HasAPIKey {
+		t.Fatalf("HasAPIKey = false, want true when a real key is stored")
+	}
+	if len(got.Models) != 2 || got.Models[0].Name != "gpt-5.6-luna" {
+		t.Fatalf("Models = %+v, want the configured list in order", got.Models)
+	}
+}
+
+// A connection saved before anyone synced or typed a model list still needs
+// to offer something in the model selector.
+func TestListModels_FallsBackToCatalogModelsWhenConfigListsNone(t *testing.T) {
+	repo := fakeRepo{{id: "cfg-1", provider: "anthropic", name: "Anthropic", apiKey: "sk-real"}}
+
+	info := ListModels(context.Background(), repo)
+	if len(info) != 1 {
+		t.Fatalf("got %d providers, want 1", len(info))
+	}
+	anthropic, _ := findProvider("anthropic")
+	if len(info[0].Models) != len(anthropic.Models) {
+		t.Fatalf("got %d models, want the %d catalog defaults", len(info[0].Models), len(anthropic.Models))
 	}
 }
 
 func TestListModels_PlaceholderKeyDoesNotCountAsConfigured(t *testing.T) {
-	store := fakeStore{"openai": "****"}
-	info := ListModels(context.Background(), store)
-	for _, p := range info {
-		if p.Provider == "openai" && p.HasAPIKey {
-			t.Fatalf("a literal \"****\" placeholder key must not count as configured")
-		}
+	repo := fakeRepo{{id: "cfg-1", provider: "openai", name: "OpenAI", apiKey: "****"}}
+
+	info := ListModels(context.Background(), repo)
+	if len(info) != 1 {
+		t.Fatalf("got %d providers, want 1", len(info))
+	}
+	if info[0].HasAPIKey {
+		t.Fatalf("a literal \"****\" placeholder key must not count as configured")
 	}
 }
 
-func TestListModels_EveryCatalogProviderIsListedWithItsModels(t *testing.T) {
-	info := ListModels(context.Background(), fakeStore{})
-	want := map[string]int{
-		"openai": 8, "google": 4, "anthropic": 3, "xai": 3, "ollama": 3, "groq": 5, "openRouter": 7,
+func TestListModels_NoConfigsMeansNoProviders(t *testing.T) {
+	if info := ListModels(context.Background(), fakeRepo{}); len(info) != 0 {
+		t.Fatalf("got %d providers, want 0 -- nothing is offered until a connection is saved", len(info))
 	}
-	if len(info) != len(want) {
-		t.Fatalf("got %d providers, want %d", len(info), len(want))
+	if info := ListModels(context.Background(), nil); len(info) != 0 {
+		t.Fatalf("a nil repo must yield no providers, got %d", len(info))
 	}
-	for _, p := range info {
-		n, ok := want[p.Provider]
-		if !ok {
-			t.Fatalf("unexpected provider %q", p.Provider)
-		}
-		if len(p.Models) != n {
-			t.Fatalf("provider %q: got %d models, want %d", p.Provider, len(p.Models), n)
+}
+
+func TestNormalizeBaseURL_StripsTrailingSlashAndVersionSuffix(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"https://litellm.tyson.com/v1", "https://litellm.tyson.com"},
+		{"https://litellm.tyson.com/v1/", "https://litellm.tyson.com"},
+		{"https://example.com", "https://example.com"},
+	} {
+		if got := normalizeBaseURL(tc.in); got != tc.want {
+			t.Fatalf("normalizeBaseURL(%q) = %q, want %q", tc.in, got, tc.want)
 		}
 	}
 }

@@ -6,8 +6,8 @@ import (
 	"html"
 	"net/http"
 
-	"betterchatbot/backend/internal/auth"
-	"betterchatbot/backend/internal/mcp"
+	"amiro/backend/internal/auth"
+	"amiro/backend/internal/mcp"
 )
 
 // Authorize ports authorizeMcpClientAction (mcp/actions.ts:140): POST

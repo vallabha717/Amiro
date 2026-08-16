@@ -1,70 +1,75 @@
 "use client";
 
-import { FileUIPart, getToolName, ToolUIPart, UIMessage } from "ai";
+import { useCopy } from "@/hooks/use-copy";
 import { rewriteStorageUrl } from "@/lib/backend/config";
+import type { UseChatHelpers } from "@ai-sdk/react";
+import { FileUIPart, ToolUIPart, UIMessage, getToolName } from "ai";
+import { cn, safeJSONParse, truncateString } from "lib/utils";
 import {
   Check,
-  Copy,
-  Loader,
-  Pencil,
   ChevronDownIcon,
-  ChevronUp,
-  RefreshCw,
-  X,
-  Trash2,
   ChevronRight,
-  TriangleAlert,
-  HammerIcon,
+  ChevronUp,
+  Copy,
+  Download,
   EllipsisIcon,
   FileIcon,
-  Download,
+  HammerIcon,
+  Loader,
+  Pencil,
+  RefreshCw,
+  Trash2,
+  TriangleAlert,
+  X,
 } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
-import { Button } from "ui/button";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "ui/badge";
-import { Markdown } from "./markdown";
-import { cn, safeJSONParse, truncateString } from "lib/utils";
+import { Button } from "ui/button";
 import JsonView from "ui/json-view";
-import { useMemo, useState, memo, useEffect, useRef, useCallback } from "react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
+import { Markdown } from "./markdown";
 import { MessageEditor } from "./message-editor";
-import type { UseChatHelpers } from "@ai-sdk/react";
-import { useCopy } from "@/hooks/use-copy";
 
-import { AnimatePresence, motion } from "framer-motion";
-import { SelectModel } from "./select-model";
 import {
   deleteMessage as deleteMessageAction,
   deleteMessagesAfter as deleteMessagesByChatIdAfterTimestampAction,
 } from "@/lib/backend/chat-api";
+import { AnimatePresence, motion } from "framer-motion";
+import { SelectModel } from "./select-model";
 
+import { ChatMetadata, ChatModel, ManualToolConfirmTag } from "app-types/chat";
 import { toast } from "sonner";
 import { safe } from "ts-safe";
-import { ChatMetadata, ChatModel, ManualToolConfirmTag } from "app-types/chat";
 
-import { useTranslations } from "next-intl";
 import { extractMCPToolId } from "lib/ai/mcp/mcp-tool-id";
+import { useTranslations } from "next-intl";
 import { Separator } from "ui/separator";
 
-import { TextShimmer } from "ui/text-shimmer";
-import equal from "lib/equal";
 import {
   VercelAIWorkflowToolStreamingResult,
   VercelAIWorkflowToolStreamingResultTag,
 } from "app-types/workflow";
-import { Avatar, AvatarFallback, AvatarImage } from "ui/avatar";
 import { DefaultToolName, ImageToolName } from "lib/ai/tools";
+import equal from "lib/equal";
 import {
   Shortcut,
   getShortcutKeyList,
   isShortcutEvent,
 } from "lib/keyboard-shortcuts";
+import { Avatar, AvatarFallback, AvatarImage } from "ui/avatar";
+import { TextShimmer } from "ui/text-shimmer";
 
-import { WorkflowInvocation } from "./tool-invocation/workflow-invocation";
-import dynamic from "next/dynamic";
-import { notify } from "lib/notify";
-import { ModelProviderIcon } from "ui/model-provider-icon";
 import { appStore } from "@/app/store";
 import { BACKGROUND_COLORS, EMOJI_DATA } from "lib/const";
+import { notify } from "lib/notify";
+import dynamic from "next/dynamic";
+import { ModelProviderIcon } from "ui/model-provider-icon";
+import { ToolRenderBoundary } from "./tool-invocation/tool-render-boundary";
+import { WorkflowInvocation } from "./tool-invocation/workflow-invocation";
+import {
+  getToolPresenter,
+  presenterPropsFromToolPart,
+} from "./tool-presenters";
 
 type MessagePart = UIMessage["parts"][number];
 type TextMessagePart = Extract<MessagePart, { type: "text" }>;
@@ -371,9 +376,12 @@ export const AssistMessagePart = memo(function AssistMessagePart({
     >
       <div
         data-testid="message-content"
-        className={cn("flex flex-col gap-4 px-2", {
-          "opacity-50 border border-destructive bg-card rounded-lg": isError,
-        })}
+        className={cn(
+          "flex flex-col gap-2 px-2 text-justify [text-align-last:left]",
+          {
+            "opacity-50 border border-destructive bg-card rounded-lg": isError,
+          },
+        )}
       >
         <Markdown isStreaming={isLast && isMessageLoading}>
           {part.text}
@@ -610,24 +618,32 @@ export const ReasoningPart = memo(function ReasoningPart({
 
   return (
     <div
-      className="flex flex-col cursor-pointer"
+      className="flex flex-col cursor-pointer select-none"
       onClick={() => {
         setIsExpanded(!isExpanded);
       }}
     >
-      <div className="flex flex-row gap-2 items-center text-ring hover:text-primary transition-colors">
+      <div className="flex flex-row gap-2 items-center text-ring hover:text-primary transition-colors duration-150">
+        {isThinking && (
+          <span className="size-2 rounded-full bg-primary animate-pulse" />
+        )}
         {isThinking ? (
-          <TextShimmer>Reasoned for a few seconds</TextShimmer>
+          <TextShimmer>Reasoning...</TextShimmer>
         ) : (
-          <div className="font-medium">Reasoned for a few seconds</div>
+          <div className="font-medium text-xs tracking-wide">
+            Thought process
+          </div>
         )}
 
         <button
           data-testid="message-reasoning-toggle"
           type="button"
-          className="cursor-pointer"
+          className={cn(
+            "cursor-pointer transition-transform duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]",
+            isExpanded && "rotate-180",
+          )}
         >
-          <ChevronDownIcon size={16} />
+          <ChevronDownIcon size={14} />
         </button>
       </div>
 
@@ -641,7 +657,7 @@ export const ReasoningPart = memo(function ReasoningPart({
               animate="expanded"
               exit="collapsed"
               variants={variants}
-              transition={{ duration: 0.2, ease: "easeInOut" }}
+              transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}
               style={{ overflow: "hidden" }}
               className="pl-6 text-muted-foreground border-l flex flex-col gap-4"
             >
@@ -705,15 +721,6 @@ const WebSearchToolInvocation = dynamic(
     import("./tool-invocation/web-search").then(
       (mod) => mod.WebSearchToolInvocation,
     ),
-  {
-    ssr: false,
-    loading,
-  },
-);
-
-const CodeExecutor = dynamic(
-  () =>
-    import("./tool-invocation/code-executor").then((mod) => mod.CodeExecutor),
   {
     ssr: false,
     loading,
@@ -874,6 +881,20 @@ export const ToolMessagePart = memo(
     );
 
     const CustomToolComponent = useMemo(() => {
+      // Registry first: a tool with a presenter renders through the shared
+      // component the workflow canvas also uses, so the two surfaces cannot
+      // drift. Tools still living in tool-invocation/ fall through below.
+      const presenter = getToolPresenter(toolName);
+      if (presenter?.Expanded) {
+        const Expanded = presenter.Expanded;
+        return (
+          <Expanded
+            key={`${toolCallId}-${toolName}`}
+            {...presenterPropsFromToolPart(part)}
+          />
+        );
+      }
+
       if (
         toolName === DefaultToolName.WebSearch ||
         toolName === DefaultToolName.WebContent
@@ -883,28 +904,6 @@ export const ToolMessagePart = memo(
 
       if (toolName === ImageToolName) {
         return <ImageGeneratorToolInvocation part={part} />;
-      }
-
-      if (toolName === DefaultToolName.JavascriptExecution) {
-        return (
-          <CodeExecutor
-            part={part}
-            key={part.toolCallId}
-            onResult={onToolCallDirect}
-            type="javascript"
-          />
-        );
-      }
-
-      if (toolName === DefaultToolName.PythonExecution) {
-        return (
-          <CodeExecutor
-            part={part}
-            key={part.toolCallId}
-            onResult={onToolCallDirect}
-            type="python"
-          />
-        );
       }
 
       if (state === "output-available") {
@@ -934,7 +933,17 @@ export const ToolMessagePart = memo(
         }
       }
       return null;
-    }, [toolName, state, onToolCallDirect, result, input]);
+    }, [
+      toolName,
+      state,
+      onToolCallDirect,
+      result,
+      input,
+      output,
+      errorText,
+      part,
+      toolCallId,
+    ]);
 
     const { serverName: mcpServerName, toolName: mcpToolName } = useMemo(() => {
       return extractMCPToolId(toolName);
@@ -955,7 +964,16 @@ export const ToolMessagePart = memo(
     return (
       <div className="group w-full">
         {CustomToolComponent ? (
-          CustomToolComponent
+          // Keyed on state so a card that failed to render a half-streamed
+          // input recovers by itself once the complete input lands, rather
+          // than staying stuck on the error.
+          <ToolRenderBoundary
+            key={`${toolCallId}-${state}`}
+            toolName={toolName}
+            input={input}
+          >
+            {CustomToolComponent}
+          </ToolRenderBoundary>
         ) : (
           <div className="flex flex-col fade-in duration-300 animate-in">
             <div
@@ -998,9 +1016,12 @@ export const ToolMessagePart = memo(
                   </span>
                 </>
               )}
-              <div className="ml-auto group-hover/title:bg-input p-1.5 rounded transition-colors duration-300">
+              <div className="ml-auto group-hover/title:bg-input p-1.5 rounded transition-colors duration-200">
                 <ChevronDownIcon
-                  className={cn(isExpanded && "rotate-180", "size-3.5")}
+                  className={cn(
+                    "size-3.5 transition-transform duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]",
+                    isExpanded && "rotate-180",
+                  )}
                 />
               </div>
             </div>

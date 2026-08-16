@@ -1,8 +1,15 @@
-$env:BETTERCHATBOT_DATABASE_DRIVER="sqlite"
-$env:BETTERCHATBOT_APP_DATA_DIR="$env:USERPROFILE\.local\share\better-chatbot-dev"
-$env:BETTERCHATBOT_PORT="8787"
-$env:BETTERCHATBOT_AUTH_TOKEN="dev-test-token-1786373638"
-$env:BETTERCHATBOT_ALLOWED_ORIGIN="http://localhost:3210"
+$env:AMIRO_DATABASE_DRIVER="sqlite"
+$env:AMIRO_APP_DATA_DIR="$env:USERPROFILE\.local\share\amiro-dev"
+$env:AMIRO_PORT="8787"
+$env:AMIRO_AUTH_TOKEN="dev-test-token-1786373638"
+$env:AMIRO_ALLOWED_ORIGIN="http://localhost:3210"
+
+# Legacy fallback variables for backwards compatibility
+$env:BETTERCHATBOT_DATABASE_DRIVER=$env:AMIRO_DATABASE_DRIVER
+$env:BETTERCHATBOT_APP_DATA_DIR=$env:AMIRO_APP_DATA_DIR
+$env:BETTERCHATBOT_PORT=$env:AMIRO_PORT
+$env:BETTERCHATBOT_AUTH_TOKEN=$env:AMIRO_AUTH_TOKEN
+$env:BETTERCHATBOT_ALLOWED_ORIGIN=$env:AMIRO_ALLOWED_ORIGIN
 
 $envFile = "$PSScriptRoot\..\.env"
 if (Test-Path $envFile) {

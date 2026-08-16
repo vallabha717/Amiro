@@ -3,16 +3,19 @@ package chat
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"gorm.io/datatypes"
 
-	bifrostai "betterchatbot/backend/internal/ai/bifrost"
-	"betterchatbot/backend/internal/ai/prompts"
-	"betterchatbot/backend/internal/ai/tools"
-	"betterchatbot/backend/internal/ai/uimessage"
-	"betterchatbot/backend/internal/auth"
-	"betterchatbot/backend/internal/db/models"
-	"betterchatbot/backend/internal/user"
+	"amiro/backend/internal/agent/permission"
+	"amiro/backend/internal/agent/workspace"
+	bifrostai "amiro/backend/internal/ai/bifrost"
+	"amiro/backend/internal/ai/prompts"
+	"amiro/backend/internal/ai/tools"
+	"amiro/backend/internal/ai/uimessage"
+	"amiro/backend/internal/auth"
+	"amiro/backend/internal/db/models"
+	"amiro/backend/internal/user"
 )
 
 // mentionDTO ports ChatMention (types/chat.ts:45)'s discriminated union
@@ -46,6 +49,13 @@ type chatRequest struct {
 	Mentions                 []mentionDTO                   `json:"mentions"`
 	AllowedAppDefaultToolkit *[]string                      `json:"allowedAppDefaultToolkit"`
 	AllowedMcpServers        map[string]allowedMCPServerDTO `json:"allowedMcpServers"`
+	// PermissionMode is "plan" | "manual" | "edit" | "auto". Absent or
+	// unrecognized means interactive/manual -- see permission.ParseMode for why the
+	// fallback is the asking mode rather than the permissive one.
+	PermissionMode string `json:"permissionMode"`
+	// WorkspaceRoot is the selected project directory to scope file and shell tools.
+	WorkspaceRoot string `json:"workspaceRoot,omitempty"`
+	ProjectDir    string `json:"projectDir,omitempty"`
 }
 
 // chatMetadata ports ChatMetadata (types/chat.ts:7).
@@ -55,6 +65,20 @@ type chatMetadata struct {
 	ToolChoice string           `json:"toolChoice,omitempty"`
 	ToolCount  int              `json:"toolCount"`
 	AgentID    string           `json:"agentId,omitempty"`
+
+	// DurationMS is how long the whole turn spent working, summed across
+	// every round an approval split it into.
+	//
+	// It is sent because the browser cannot measure it. A thread reopened
+	// tomorrow has no start time to subtract from, and the work log's
+	// fallback there was a step count -- which answers a different question
+	// than the one "how long did that take?" asks.
+	//
+	// No omitempty: absent and zero mean different things to the reader of
+	// this field. Absent is a message written before the server measured
+	// anything, where the work log falls back to a step count; zero is a
+	// turn that really was that fast.
+	DurationMS int64 `json:"durationMs"`
 }
 
 // isToolCallAllowed ports route.ts:170's gate (minus the tool-call-
@@ -70,7 +94,7 @@ func isToolCallAllowed(req chatRequest) bool {
 // defaultTool mentions take priority over allowedAppDefaultToolkit, which
 // itself defaults to every toolkit when the request omits the key
 // entirely.
-func activeAppDefaultTools(req chatRequest) []tools.Definition {
+func activeAppDefaultTools(req chatRequest, deps tools.Deps) []tools.Definition {
 	if !isToolCallAllowed(req) {
 		return nil
 	}
@@ -80,7 +104,7 @@ func activeAppDefaultTools(req chatRequest) []tools.Definition {
 			mentionNames = append(mentionNames, m.Name)
 		}
 	}
-	return tools.Filter(tools.Defaults(), req.AllowedAppDefaultToolkit, mentionNames)
+	return tools.Filter(tools.Defaults(deps), req.AllowedAppDefaultToolkit, mentionNames)
 }
 
 // Chat ports route.ts's POST handler (chat/route.ts:57): resolve the
@@ -133,13 +157,6 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		history = history[:len(history)-1]
 	}
 
-	engineMessages := make([]bifrostai.Message, 0, len(history)+1)
-	for _, m := range history {
-		engineMessages = append(engineMessages, dbMessageToEngines(m)...)
-	}
-	engineMessages = append(engineMessages, req.Message.toEngineMessages()...)
-	engineMessages = resolveAttachmentURLs(ctx, engineMessages)
-
 	chatModel := chatModelDTO{}
 	if req.ChatModel != nil {
 		chatModel = *req.ChatModel
@@ -171,6 +188,19 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 			activeTools = mergeToolDefinitions(activeTools, workflowDefs)
 		}
 	}
+	// Resolve active workspace: prioritize user-selected workspace directory if supplied,
+	// falling back to handler's configured default workspace.
+	activeWS := h.workspace
+	targetWS := req.WorkspaceRoot
+	if targetWS == "" {
+		targetWS = req.ProjectDir
+	}
+	if targetWS != "" {
+		if ws, err := workspace.New(targetWS); err == nil {
+			activeWS = ws
+		}
+	}
+
 	// Run activeAppDefaultTools against the agent-merged mentions, not just
 	// req.Mentions -- an agent's own defaultTool mentions (resolveAgent
 	// already appended them into `mentions` above) should apply exactly
@@ -179,31 +209,146 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 	// loadAppDefaultTools later reads (route.ts:176-187, shared.chat.ts:427).
 	reqForDefaults := req
 	reqForDefaults.Mentions = mentions
-	activeTools = mergeToolDefinitions(activeTools, activeAppDefaultTools(reqForDefaults))
+	activeTools = mergeToolDefinitions(activeTools, activeAppDefaultTools(reqForDefaults, tools.Deps{
+		Workspace: activeWS,
+		Todos:     h.todos,
+		SessionID: details.Thread.ID,
+		Memory:    h.notes,
+		LSP:       h.lsp,
+	}))
+
+	perms := permission.New(
+		permission.ParseMode(req.PermissionMode),
+		activeWS,
+		permission.DefaultAllowedCommands,
+		h.grants.For(details.Thread.ID),
+	)
+
+	// The subagent tool is added last, over the tools already loaded: its
+	// child gets a read-only subset of whatever this turn actually has, so
+	// a turn with no file tools produces no `task` tool either. It is also
+	// what keeps recursion out -- `task` is not in the child's subset, so a
+	// subagent cannot spawn one.
+	//
+	// The child runs under the *same* permission engine, not a permissive
+	// one. Its tools are all reads so nothing should ever be gated, but a
+	// child holding a weaker engine is precisely the shape of a privilege
+	// escalation, and the tool subset is one edit away from including
+	// something consequential.
+	if isToolCallAllowed(req) {
+		if task, ok := subagentTool(h.engine, resolved, activeTools, perms); ok {
+			activeTools = mergeToolDefinitions(activeTools, []tools.Definition{task})
+		}
+	}
+
+	// The clock for this round starts here rather than at the top of the
+	// handler: everything above is thread lookup and tool loading, and the
+	// approved tool below is work the turn should be charged for.
+	//
+	// Deliberately per-request, so the stretch where the turn sat waiting
+	// for a human to read an approval card is not counted. "Worked for 4m"
+	// on a turn that spent three of them idle would be a lie about the
+	// agent, and the reader is asking about the agent.
+	roundStart := time.Now()
+
+	// Resolve anything the user just approved or rejected before the history
+	// is built, so the model sees the tool's real result where the browser
+	// left a confirmation. This has to run after tool loading (it needs the
+	// definitions to execute) and before toEngineMessages, which is why the
+	// history is assembled here rather than up with the thread lookup.
+	resolveApprovals(ctx, &req.Message, activeTools, perms)
+
+	engineMessages := make([]bifrostai.Message, 0, len(history)+1)
+	for _, m := range history {
+		engineMessages = append(engineMessages, dbMessageToEngines(m)...)
+	}
+	engineMessages = append(engineMessages, req.Message.toEngineMessages()...)
+	engineMessages = resolveAttachmentURLs(ctx, engineMessages)
+
+	// Workspace notes go into the system prompt, not behind a tool call.
+	// A memory the model has to remember to look up is not memory: it will
+	// skip the lookup precisely on the turns where it already thinks it
+	// knows the answer, which are the turns a stale assumption costs most.
+	// memory_read exists for searching past what the injection budget fits.
+	//
+	// Only when the memory tools were actually loaded this turn. Notes that
+	// say "correct this with memory_write" in a turn with no memory_write
+	// tool describe a capability the model does not have, and a model told
+	// it can fix something it cannot will keep trying.
+	notes := ""
+	if _, ok := tools.FindByName(activeTools, tools.NameMemoryWrite); ok {
+		notes = h.notes.Prompt()
+	}
 
 	system := prompts.MergeSystemPrompt(
 		prompts.BuildUserSystemPrompt(authedUser, user.ParsePreferences(details.Preferences), agentInfo),
 		systemExtra,
+		notes,
 	)
 
-	responseID := models.NewID()
+	// A turn that stopped to ask for approval resumes as a *continuation* of
+	// the assistant message it paused in, not as a new one.
+	//
+	// The browser re-submits with the assistant message last (the AI SDK's
+	// submit-tool-result trigger), so `req.Message` here is the turn so far,
+	// not a new instruction. Minting a fresh id for the reply then wrote one
+	// assistant row per approval, each a superset of the one before: a turn
+	// that asked ten times read back as ten assistant messages and ten work
+	// logs ("Worked · 9 steps", "· 10 steps", "· 11 steps" ...), all
+	// describing the same piece of work. Continuing the same id makes a turn
+	// one message however many times it had to stop.
+	continuing := req.Message.Role == "assistant"
+	responseID := req.Message.ID
+	if !continuing {
+		responseID = models.NewID()
+	}
+
 	sw := uimessage.NewWriter(w)
 	_ = sw.Start(responseID)
 
-	loopResult, loopErr := runToolLoop(ctx, h.engine, sw, resolved, system, engineMessages, activeTools)
+	loopResult, loopErr := runToolLoop(ctx, h.engine, sw, resolved, system, engineMessages, activeTools, perms)
 	if loopErr != nil {
 		_ = sw.Error(loopErr.Error())
 	}
 
+	// Totals for the whole turn, not for this round. Both are carried on the
+	// message the browser sent back, which is where the previous round left
+	// them -- there is no server-side turn state to read them from, and a
+	// per-round figure would report a ten-approval turn as whatever its last
+	// few seconds happened to cost.
+	prior := priorMetadata(req.Message, continuing)
 	metadata := chatMetadata{
-		Usage: loopResult.Usage, ChatModel: &chatModel, ToolChoice: req.ToolChoice, ToolCount: len(activeTools), AgentID: agentID,
+		Usage:      addUsage(prior.Usage, loopResult.Usage),
+		ChatModel:  &chatModel,
+		ToolChoice: req.ToolChoice,
+		ToolCount:  len(activeTools),
+		AgentID:    agentID,
+		DurationMS: prior.DurationMS + time.Since(roundStart).Milliseconds(),
 	}
 	_ = sw.Finish(metadata)
 	_ = sw.Done()
 
-	// Persist both sides even if the loop errored partway through --
-	// matches onFinish always running in the TS route (createUIMessageStream
-	// calls onFinish regardless of whether the model call itself failed).
+	// Persist even if the loop errored partway through -- matches onFinish
+	// always running in the TS route (createUIMessageStream calls onFinish
+	// regardless of whether the model call itself failed).
+	metadataJSON, _ := json.Marshal(metadata)
+
+	if continuing {
+		// One write, because the row being continued and the row being
+		// written are the same row. req.Message.Parts is the turn up to the
+		// pause with the approval already resolved in place by
+		// resolveApprovals, so this stores the answered call rather than the
+		// question a reloaded thread would otherwise re-ask.
+		_ = h.chats.UpsertMessage(ctx, &models.ChatMessage{
+			ID:       responseID,
+			ThreadID: details.Thread.ID,
+			Role:     "assistant",
+			Parts:    datatypes.JSON(concatParts(req.Message.Parts, loopResult.Parts)),
+			Metadata: datatypes.JSON(metadataJSON),
+		})
+		return
+	}
+
 	userParts, _ := json.Marshal(req.Message.Parts)
 	_ = h.chats.UpsertMessage(ctx, &models.ChatMessage{
 		ID:       req.Message.ID,
@@ -213,7 +358,6 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if loopErr == nil || loopResult.Text != "" {
-		metadataJSON, _ := json.Marshal(metadata)
 		_ = h.chats.UpsertMessage(ctx, &models.ChatMessage{
 			ID:       responseID,
 			ThreadID: details.Thread.ID,
@@ -222,4 +366,53 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 			Metadata: datatypes.JSON(metadataJSON),
 		})
 	}
+}
+
+// priorMetadata reads the running totals off the message being continued.
+//
+// Absent or unparseable metadata reads as zero rather than as an error: the
+// totals are a display figure, and a turn whose duration restarts at zero is
+// a much smaller problem than a turn that fails to save.
+func priorMetadata(msg uiMessage, continuing bool) chatMetadata {
+	var prior chatMetadata
+	if !continuing || len(msg.Metadata) == 0 {
+		return prior
+	}
+	_ = json.Unmarshal(msg.Metadata, &prior)
+	return prior
+}
+
+// addUsage sums token counts across the rounds of one turn.
+func addUsage(prior, next *bifrostai.Usage) *bifrostai.Usage {
+	if prior == nil {
+		return next
+	}
+	if next == nil {
+		return prior
+	}
+	return &bifrostai.Usage{
+		PromptTokens:     prior.PromptTokens + next.PromptTokens,
+		CompletionTokens: prior.CompletionTokens + next.CompletionTokens,
+		TotalTokens:      prior.TotalTokens + next.TotalTokens,
+	}
+}
+
+// concatParts appends this round's parts to the parts already in the turn.
+//
+// Both sides are already-encoded JSON, so this splices arrays rather than
+// re-marshalling anything: a part that survived a round trip through the
+// browser keeps whatever fields this Go code does not model.
+func concatParts(prior []json.RawMessage, next json.RawMessage) []byte {
+	var added []json.RawMessage
+	if len(next) > 0 {
+		_ = json.Unmarshal(next, &added)
+	}
+	merged, err := json.Marshal(append(append([]json.RawMessage{}, prior...), added...))
+	if err != nil {
+		// Unreachable short of a part that is not valid JSON, which cannot
+		// happen -- both inputs were decoded from JSON. Keeping the turn so
+		// far beats persisting nothing.
+		merged, _ = json.Marshal(prior)
+	}
+	return merged
 }

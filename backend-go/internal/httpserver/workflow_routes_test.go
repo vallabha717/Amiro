@@ -11,12 +11,12 @@ import (
 	"strings"
 	"testing"
 
-	bifrostai "betterchatbot/backend/internal/ai/bifrost"
-	workflowapi "betterchatbot/backend/internal/api/workflow"
-	"betterchatbot/backend/internal/auth"
-	"betterchatbot/backend/internal/db"
-	"betterchatbot/backend/internal/db/repository"
-	"betterchatbot/backend/internal/middleware"
+	bifrostai "amiro/backend/internal/ai/bifrost"
+	workflowapi "amiro/backend/internal/api/workflow"
+	"amiro/backend/internal/auth"
+	"amiro/backend/internal/db"
+	"amiro/backend/internal/db/repository"
+	"amiro/backend/internal/middleware"
 )
 
 // fakeWorkflowEngine is a canned executor.Engine -- same rationale as

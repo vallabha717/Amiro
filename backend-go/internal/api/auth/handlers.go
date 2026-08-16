@@ -8,8 +8,8 @@ import (
 	"errors"
 	"net/http"
 
-	"betterchatbot/backend/internal/auth"
-	"betterchatbot/backend/internal/db/models"
+	"amiro/backend/internal/auth"
+	"amiro/backend/internal/db/models"
 )
 
 type userResponse struct {

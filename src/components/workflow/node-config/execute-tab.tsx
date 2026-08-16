@@ -1,36 +1,38 @@
+import { appStore } from "@/app/store";
 import { useWorkflowStore } from "@/app/store/workflow.store";
+import { SelectModel } from "@/components/select-model";
+import { useObjectState } from "@/hooks/use-object-state";
+import { generateObject as generateObjectAction } from "@/lib/backend/chat-api";
+import { apiFetch } from "@/lib/backend/client";
+import { useReactFlow } from "@xyflow/react";
+import { allNodeValidate } from "lib/ai/workflow/node-validate";
+import { decodeWorkflowEvents } from "lib/ai/workflow/shared.workflow";
 import {
   NodeKind,
   NodeRuntimeHistory,
 } from "lib/ai/workflow/workflow.interface";
-import { useReactFlow } from "@xyflow/react";
-import { useObjectState } from "@/hooks/use-object-state";
 import { UINode } from "lib/ai/workflow/workflow.interface";
+import { notify } from "lib/notify";
 import { cn, createDebounce, errorToString } from "lib/utils";
-import { apiFetch } from "@/lib/backend/client";
-import { useCallback, useMemo, useRef, useState } from "react";
-import { GraphEndEvent } from "ts-edge";
-import { allNodeValidate } from "lib/ai/workflow/node-validate";
-import { toast } from "sonner";
-import { decodeWorkflowEvents } from "lib/ai/workflow/shared.workflow";
-import { Alert, AlertDescription, AlertTitle } from "ui/alert";
 import {
   AlertTriangleIcon,
+  Check,
+  Copy,
   Loader,
   Loader2,
-  Copy,
-  Check,
+  Maximize2,
   WandSparklesIcon,
   XIcon,
-  Maximize2,
 } from "lucide-react";
-import JsonView from "ui/json-view";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { GraphEndEvent } from "ts-edge";
+import { Alert, AlertDescription, AlertTitle } from "ui/alert";
 import { Button } from "ui/button";
-import { Separator } from "ui/separator";
 import { FlipWords } from "ui/flip-words";
-import { Label } from "ui/label";
 import { Input } from "ui/input";
-import { Switch } from "ui/switch";
+import JsonView from "ui/json-view";
+import { Label } from "ui/label";
 import {
   Select,
   SelectContent,
@@ -38,19 +40,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from "ui/select";
+import { Separator } from "ui/separator";
+import { Switch } from "ui/switch";
+import { TextShimmer } from "ui/text-shimmer";
 import { Textarea } from "ui/textarea";
 import { NodeIcon } from "../node-icon";
-import { TextShimmer } from "ui/text-shimmer";
-import { generateObject as generateObjectAction } from "@/lib/backend/chat-api";
-import { appStore } from "@/app/store";
-import { notify } from "lib/notify";
-import { SelectModel } from "@/components/select-model";
 
 import { useCopy } from "@/hooks/use-copy";
-import { NodeResultPopup } from "../node-result-popup";
 import { useTranslations } from "next-intl";
+import { NodeResultPopup } from "../node-result-popup";
 
 const debounce = createDebounce();
+
+/**
+ * NodeRuntimeHistory records which node ran, not which tool it ran, so the
+ * tool id has to come back off the node itself. Resolving it here is what
+ * lets NodeResultPopup swap its raw JSON dump for that tool's presenter.
+ */
+function toolNameOfHistory(
+  history: { nodeId: string; kind: NodeKind },
+  getNode: (id: string) => UINode | undefined,
+): string | undefined {
+  if (history.kind !== NodeKind.Tool) return undefined;
+  const node = getNode(history.nodeId);
+  const data = node?.data as { tool?: { id?: string } } | undefined;
+  return data?.tool?.id;
+}
 
 export function ExecuteTab({
   close,
@@ -218,14 +233,17 @@ ${workflow!.description ? `tool-description: ${workflow!.description}` : ""}`,
         });
       });
       try {
-        const response = await apiFetch(`/api/workflow/${workflow!.id}/execute`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
+        const response = await apiFetch(
+          `/api/workflow/${workflow!.id}/execute`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ query }),
+            signal: abortController.signal,
           },
-          body: JSON.stringify({ query }),
-          signal: abortController.signal,
-        });
+        );
 
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
@@ -508,7 +526,11 @@ ${workflow!.description ? `tool-description: ${workflow!.description}` : ""}`,
           >
             {histories.map((history, i) => {
               return (
-                <NodeResultPopup history={history} key={i}>
+                <NodeResultPopup
+                  history={history}
+                  key={i}
+                  toolName={toolNameOfHistory(history, getNode)}
+                >
                   <div
                     className={cn(
                       "cursor-pointer hover:bg-secondary flex items-center gap-2 text-sm rounded-sm px-2 py-1.5 relative",

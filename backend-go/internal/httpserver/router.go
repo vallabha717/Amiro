@@ -5,22 +5,22 @@ package httpserver
 import (
 	"net/http"
 
-	adminapi "betterchatbot/backend/internal/api/admin"
-	agentapi "betterchatbot/backend/internal/api/agent"
-	aiapi "betterchatbot/backend/internal/api/ai"
-	archiveapi "betterchatbot/backend/internal/api/archive"
-	authapi "betterchatbot/backend/internal/api/auth"
-	bookmarkapi "betterchatbot/backend/internal/api/bookmark"
-	chatapi "betterchatbot/backend/internal/api/chat"
-	exportapi "betterchatbot/backend/internal/api/export"
-	mcpapi "betterchatbot/backend/internal/api/mcp"
-	storageapi "betterchatbot/backend/internal/api/storage"
-	threadapi "betterchatbot/backend/internal/api/thread"
-	userapi "betterchatbot/backend/internal/api/user"
-	workflowapi "betterchatbot/backend/internal/api/workflow"
-	"betterchatbot/backend/internal/auth"
-	"betterchatbot/backend/internal/config"
-	"betterchatbot/backend/internal/middleware"
+	adminapi "amiro/backend/internal/api/admin"
+	agentapi "amiro/backend/internal/api/agent"
+	aiapi "amiro/backend/internal/api/ai"
+	archiveapi "amiro/backend/internal/api/archive"
+	authapi "amiro/backend/internal/api/auth"
+	bookmarkapi "amiro/backend/internal/api/bookmark"
+	chatapi "amiro/backend/internal/api/chat"
+	exportapi "amiro/backend/internal/api/export"
+	mcpapi "amiro/backend/internal/api/mcp"
+	storageapi "amiro/backend/internal/api/storage"
+	threadapi "amiro/backend/internal/api/thread"
+	userapi "amiro/backend/internal/api/user"
+	workflowapi "amiro/backend/internal/api/workflow"
+	"amiro/backend/internal/auth"
+	"amiro/backend/internal/config"
+	"amiro/backend/internal/middleware"
 )
 
 // storagePathPrefix is one of two route families served outside the
@@ -133,6 +133,16 @@ func New(cfg config.Config, h Handlers) http.Handler {
 		session := auth.RequireSession(h.Auth)
 		mux.Handle("POST /api/ai/generate-object", session(http.HandlerFunc(h.AI.GenerateObject)))
 		mux.Handle("POST /api/ai/generate-example-tool-schema", session(http.HandlerFunc(h.AI.GenerateExampleToolSchema)))
+		mux.Handle("GET /api/ai/providers", session(http.HandlerFunc(h.AI.GetProviderStatuses)))
+		mux.Handle("POST /api/ai/providers", session(http.HandlerFunc(h.AI.SetProviderKey)))
+		mux.Handle("DELETE /api/ai/providers/{id}", session(http.HandlerFunc(h.AI.DeleteProviderConfig)))
+		// "models" is a literal where the sibling patterns take an {id}
+		// wildcard, but only for POST, and ServeMux orders literal-over-
+		// wildcard fine -- the ambiguity that forced /api/mcp/servers/{id}
+		// above needs wildcard-then-literal on *both* sides to trigger.
+		mux.Handle("POST /api/ai/providers/models", session(http.HandlerFunc(h.AI.FetchProviderModels)))
+		mux.Handle("POST /api/ai/providers/{id}/sync-models", session(http.HandlerFunc(h.AI.SyncProviderModels)))
+		mux.Handle("POST /api/ai/providers/{id}/test", session(http.HandlerFunc(h.AI.TestProviderModel)))
 	}
 
 	if h.Workflow != nil && h.Auth != nil {
@@ -209,6 +219,7 @@ func New(cfg config.Config, h Handlers) http.Handler {
 		mux.Handle("GET /api/user/details", session(http.HandlerFunc(h.User.Details)))
 		mux.Handle("PUT /api/user/details", session(http.HandlerFunc(h.User.UpdateDetails)))
 		mux.Handle("GET /api/user/details/{id}", session(http.HandlerFunc(h.User.DetailsByID)))
+		mux.Handle("GET /api/user/stats", session(http.HandlerFunc(h.User.Stats)))
 		mux.Handle("PUT /api/user/password", session(http.HandlerFunc(h.User.UpdatePassword)))
 		mux.Handle("GET /api/user/auth-methods", session(http.HandlerFunc(h.User.AuthMethods)))
 		mux.Handle("GET /api/user/preferences", session(http.HandlerFunc(h.User.GetPreferences)))
@@ -219,6 +230,7 @@ func New(cfg config.Config, h Handlers) http.Handler {
 		session := auth.RequireSession(h.Auth)
 		mux.Handle("GET /api/admin/users", session(http.HandlerFunc(h.Admin.List)))
 		mux.Handle("GET /api/admin/users/{id}", session(http.HandlerFunc(h.Admin.Get)))
+		mux.Handle("GET /api/admin/users/{id}/stats", session(http.HandlerFunc(h.Admin.GetStats)))
 		mux.Handle("PUT /api/admin/users/{id}/role", session(http.HandlerFunc(h.Admin.UpdateRole)))
 		mux.Handle("PUT /api/admin/users/{id}/ban", session(http.HandlerFunc(h.Admin.UpdateBanStatus)))
 		mux.Handle("DELETE /api/admin/users/{id}", session(http.HandlerFunc(h.Admin.Delete)))

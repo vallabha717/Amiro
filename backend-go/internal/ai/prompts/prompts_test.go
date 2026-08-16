@@ -4,14 +4,14 @@ import (
 	"strings"
 	"testing"
 
-	"betterchatbot/backend/internal/db/models"
-	"betterchatbot/backend/internal/user"
+	"amiro/backend/internal/db/models"
+	"amiro/backend/internal/user"
 )
 
-func TestBuildUserSystemPrompt_DefaultsToBetterChatbotAssistantName(t *testing.T) {
+func TestBuildUserSystemPrompt_DefaultsToAmiroAssistantName(t *testing.T) {
 	got := BuildUserSystemPrompt(nil, nil, nil)
-	if !strings.HasPrefix(got, "You are better-chatbot.") {
-		t.Fatalf("got %q, want it to start with the default assistant name", got)
+	if !strings.HasPrefix(got, "You are Amiro.") {
+		t.Fatalf("got %q, want it to start with the default assistant name Amiro", got)
 	}
 }
 
