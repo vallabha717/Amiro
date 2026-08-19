@@ -4,6 +4,7 @@ package httpserver
 
 import (
 	"net/http"
+	"strings"
 
 	adminapi "amiro/backend/internal/api/admin"
 	agentapi "amiro/backend/internal/api/agent"
@@ -14,6 +15,7 @@ import (
 	chatapi "amiro/backend/internal/api/chat"
 	exportapi "amiro/backend/internal/api/export"
 	mcpapi "amiro/backend/internal/api/mcp"
+	searchapi "amiro/backend/internal/api/search"
 	storageapi "amiro/backend/internal/api/storage"
 	threadapi "amiro/backend/internal/api/thread"
 	userapi "amiro/backend/internal/api/user"
@@ -54,10 +56,52 @@ type Handlers struct {
 	Thread   *threadapi.Handler
 	User     *userapi.Handler
 	Storage  *storageapi.Handler
+	Search   *searchapi.Handler
+}
+
+// Options configures the route families and guards that only some
+// entrypoints want. The zero Options is exactly what the Tauri sidecar has
+// always had, which is why New keeps its original two-argument shape and
+// delegates here.
+type Options struct {
+	// UI, when non-nil, serves the dashboard bundle as the last-resort
+	// fallback for any request no API route matched -- `amiro serve` and
+	// `amiro --serve`. The sidecar leaves it nil: its UI is loaded by the
+	// Tauri webview from its own bundled frontend, not over HTTP.
+	UI http.Handler
+
+	// BrowserAuth swaps the shared-secret guard for the serve-mode one
+	// (middleware.RequireTokenOrBrowser), which additionally accepts a
+	// same-origin browser request. Set it only when UI is set: a page this
+	// server itself delivered is the only browser request that has any
+	// business skipping the header, and without a served page there is no
+	// such request.
+	BrowserAuth bool
+
+	// AllowedOrigins are extra origins CORS accepts on top of
+	// cfg.AllowedOrigin -- `amiro serve --allow-origin`, for a frontend
+	// someone is genuinely hosting elsewhere. Empty is the normal case:
+	// the served dashboard is same-origin and needs no entry here.
+	AllowedOrigins []string
+
+	// LoopbackOriginWildcard reflects any http://localhost:<port> origin.
+	// True preserves the sidecar's long-standing behaviour; serve mode
+	// passes false, because that blanket allowance stops being harmless
+	// the moment the listener leaves loopback. See middleware.CORS.
+	LoopbackOriginWildcard bool
+
+	// RateLimit, when non-nil, throttles the unauthenticated auth routes
+	// per client IP. cmd/amiro installs it for a non-loopback bind only.
+	RateLimit *middleware.RateLimitConfig
 }
 
 // New wires every route the sidecar exposes.
 func New(cfg config.Config, h Handlers) http.Handler {
+	return NewWithOptions(cfg, h, Options{LoopbackOriginWildcard: true})
+}
+
+// NewWithOptions is New with the serve-mode knobs exposed.
+func NewWithOptions(cfg config.Config, h Handlers, opts Options) http.Handler {
 	mux := http.NewServeMux()
 
 	// Path prefixes exempt from the shared-secret header, populated only
@@ -143,6 +187,20 @@ func New(cfg config.Config, h Handlers) http.Handler {
 		mux.Handle("POST /api/ai/providers/models", session(http.HandlerFunc(h.AI.FetchProviderModels)))
 		mux.Handle("POST /api/ai/providers/{id}/sync-models", session(http.HandlerFunc(h.AI.SyncProviderModels)))
 		mux.Handle("POST /api/ai/providers/{id}/test", session(http.HandlerFunc(h.AI.TestProviderModel)))
+	}
+
+	if h.Search != nil && h.Auth != nil {
+		session := auth.RequireSession(h.Auth)
+		// Active is deliberately reachable by any signed-in user, not just an
+		// admin -- see GetActive's own comment. Every other route below it
+		// reads or writes API keys and stays admin-gated inside the handler.
+		mux.Handle("GET /api/search/active", session(http.HandlerFunc(h.Search.GetActive)))
+		mux.Handle("GET /api/search/catalog", session(http.HandlerFunc(h.Search.GetCatalog)))
+		mux.Handle("GET /api/search/providers", session(http.HandlerFunc(h.Search.GetStatuses)))
+		mux.Handle("POST /api/search/providers", session(http.HandlerFunc(h.Search.SetConfig)))
+		mux.Handle("DELETE /api/search/providers/{id}", session(http.HandlerFunc(h.Search.DeleteConfig)))
+		mux.Handle("POST /api/search/providers/{id}/test", session(http.HandlerFunc(h.Search.TestProvider)))
+		mux.Handle("POST /api/search/providers/{id}/activate", session(http.HandlerFunc(h.Search.Activate)))
 	}
 
 	if h.Workflow != nil && h.Auth != nil {
@@ -255,8 +313,50 @@ func New(cfg config.Config, h Handlers) http.Handler {
 		}
 	}
 
+	// The dashboard is the last-resort fallback: registered on the bare
+	// "/" pattern, which ServeMux only reaches after every method+path
+	// API pattern has failed to match. apiAware wraps it so that an
+	// unmatched /api or /storage path answers as an API would (404 JSON)
+	// rather than handing back the SPA shell -- a mistyped route should
+	// not look like a page that briefly loaded.
+	if opts.UI != nil {
+		mux.Handle("/", apiAware(opts.UI))
+	}
+
+	origins := append([]string{cfg.AllowedOrigin}, opts.AllowedOrigins...)
+
 	var handler http.Handler = mux
-	handler = middleware.RequireToken(cfg.AuthToken, tokenExemptPrefixes...)(handler)
-	handler = middleware.LoopbackCORS(cfg.AllowedOrigin)(handler)
+	if opts.BrowserAuth {
+		handler = middleware.RequireTokenOrBrowser(cfg.AuthToken, origins, tokenExemptPrefixes...)(handler)
+	} else {
+		handler = middleware.RequireToken(cfg.AuthToken, tokenExemptPrefixes...)(handler)
+	}
+	if opts.RateLimit != nil {
+		// Outside the auth guard: refusing a flood of login attempts is
+		// cheaper the earlier it happens, and a caller holding a valid
+		// shared secret has no more business brute-forcing a password
+		// than anyone else.
+		handler = middleware.RateLimit(*opts.RateLimit)(handler)
+	}
+	handler = middleware.CORS(origins, opts.LoopbackOriginWildcard)(handler)
 	return handler
+}
+
+// apiPrefixes are the path families that must never fall through to the
+// dashboard. Both are served by real routes above; a request landing here
+// under one of these prefixes matched none of them.
+var apiPrefixes = []string{"/api/", "/storage/", "/health"}
+
+func apiAware(ui http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for _, prefix := range apiPrefixes {
+			if strings.HasPrefix(r.URL.Path, prefix) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte(`{"error":"not found"}`))
+				return
+			}
+		}
+		ui.ServeHTTP(w, r)
+	})
 }

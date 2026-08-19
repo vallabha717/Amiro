@@ -2,6 +2,7 @@ import {
   backendUrl,
   getBackendSharedSecret,
   getSessionToken,
+  isSameOriginBackend,
 } from "./config";
 
 export class ApiError extends Error {
@@ -22,11 +23,19 @@ export class ApiError extends Error {
  * routes like GET /api/export/{id} when no session exists yet.
  */
 function authHeaders(): HeadersInit {
-  const secret = getBackendSharedSecret();
-  const headers: Record<string, string> = {
-    "X-Amiro-Token": secret,
-    "X-BetterChatbot-Token": secret,
-  };
+  const headers: Record<string, string> = {};
+  // A page served by the Go binary itself is same-origin with the API and
+  // has no shared secret to send -- one could only have been given to it
+  // by embedding it in the page, i.e. handing it to every visitor. That
+  // path authenticates structurally instead (same-origin, proven by
+  // Sec-Fetch-Site) plus the session below; see
+  // middleware.RequireTokenOrBrowser. Sending an empty header here would
+  // fail the constant-time compare, so send none at all.
+  if (!isSameOriginBackend()) {
+    const secret = getBackendSharedSecret();
+    headers["X-Amiro-Token"] = secret;
+    headers["X-BetterChatbot-Token"] = secret;
+  }
   const token = getSessionToken();
   if (token) {
     headers.Authorization = `Bearer ${token}`;

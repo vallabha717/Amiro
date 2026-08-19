@@ -17,6 +17,10 @@ export type StepKind =
   | "command"
   | "search"
   | "plan"
+  // Separate from "plan": a walkthrough is written once, at the end, and it
+  // answers "what changed" rather than "what is left". Folding it into
+  // "Updated the plan" would mislabel the one row that says a turn finished.
+  | "summarize"
   | "delegate"
   | "visualize"
   | "other";
@@ -51,6 +55,8 @@ const KIND_BY_TOOL: Record<string, StepKind> = {
 
   [DefaultToolName.TodoWrite]: "plan",
   [DefaultToolName.TodoRead]: "plan",
+  [DefaultToolName.ProposePlan]: "plan",
+  [DefaultToolName.Walkthrough]: "summarize",
 
   // Delegation is its own kind rather than a kind of exploring: a subagent
   // row expands into a returned summary, not into a list of files, and
@@ -119,6 +125,10 @@ export function stepGroupLabel(
       // Singular either way: consecutive plan writes are revisions of one
       // plan, and "Updated 4 plans" would be actively wrong.
       return running ? "Planning" : "Updated the plan";
+    case "summarize":
+      // Also singular, and also on purpose: a turn writes one walkthrough.
+      // A second call is a rewrite of the first, not a second summary.
+      return running ? "Writing the walkthrough" : "Wrote the walkthrough";
     case "delegate":
       return running
         ? `Delegating ${count} ${plural("task", "tasks")}`

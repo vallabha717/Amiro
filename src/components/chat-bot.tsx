@@ -1,39 +1,58 @@
 "use client";
 
-import { useChat } from "@ai-sdk/react";
-import { toast } from "sonner";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import PromptInput from "./prompt-input";
-import clsx from "clsx";
 import { appStore } from "@/app/store";
+import { useChat } from "@ai-sdk/react";
+import clsx from "clsx";
 import { cn, createDebounce, generateUUID, truncateString } from "lib/utils";
-import { ErrorMessage, PreviewMessage } from "./message";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { ArtifactPane } from "./artifacts/artifact-pane";
+import {
+  type ArtifactTab,
+  buildPlanDecision,
+  useArtifacts,
+} from "./artifacts/use-artifacts";
+import { usePlanDecision } from "./artifacts/use-plan-decision";
 import { ChatGreeting } from "./chat-greeting";
+import { ErrorMessage, PreviewMessage } from "./message";
+import PromptInput from "./prompt-input";
 
-import { useShallow } from "zustand/shallow";
 import {
   DefaultChatTransport,
-  isToolUIPart,
-  lastAssistantMessageIsCompleteWithToolCalls,
   TextUIPart,
   UIMessage,
+  getToolName,
+  isToolUIPart,
+  lastAssistantMessageIsCompleteWithToolCalls,
 } from "ai";
+import { useShallow } from "zustand/shallow";
 
-import { safe } from "ts-safe";
-import { mutate } from "swr";
+import { ChatGraphCanvas } from "@/components/chat-graph/chat-graph-canvas";
+import { useGenerateThreadTitle } from "@/hooks/queries/use-generate-thread-title";
+import { useFileDragOverlay } from "@/hooks/use-file-drag-overlay";
+import { useToRef } from "@/hooks/use-latest";
+import { useMounted } from "@/hooks/use-mounted";
+import { useThreadFileUploader } from "@/hooks/use-thread-file-uploader";
+import { deleteThread } from "@/lib/backend/chat-api";
+import { backendFetch } from "@/lib/backend/client";
+import { backendUrl } from "@/lib/backend/config";
 import {
   ChatApiSchemaRequestBody,
   ChatAttachment,
   ChatModel,
 } from "app-types/chat";
-import { useToRef } from "@/hooks/use-latest";
-import { isShortcutEvent, Shortcuts } from "lib/keyboard-shortcuts";
-import { Button } from "ui/button";
-import { deleteThread } from "@/lib/backend/chat-api";
-import { backendFetch } from "@/lib/backend/client";
-import { backendUrl } from "@/lib/backend/config";
+import { WORKFLOW_VIEW_LAUNCH_DATE } from "app-types/chat-graph";
+import { AnimatePresence, motion } from "framer-motion";
+import { DefaultToolName } from "lib/ai/tools";
+import { getStorageManager } from "lib/browser-stroage";
+import { Shortcuts, isShortcutEvent } from "lib/keyboard-shortcuts";
+import { ArrowDown, FilePlus, Loader } from "lucide-react";
+import { useTranslations } from "next-intl";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { ArrowDown, Loader, FilePlus } from "lucide-react";
+import { mutate } from "swr";
+import { safe } from "ts-safe";
+import { Button } from "ui/button";
 import {
   Dialog,
   DialogContent,
@@ -42,17 +61,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "ui/dialog";
-import { useTranslations } from "next-intl";
 import { Think } from "ui/think";
-import { useGenerateThreadTitle } from "@/hooks/queries/use-generate-thread-title";
-import dynamic from "next/dynamic";
-import { useMounted } from "@/hooks/use-mounted";
-import { getStorageManager } from "lib/browser-stroage";
-import { AnimatePresence, motion } from "framer-motion";
-import { useThreadFileUploader } from "@/hooks/use-thread-file-uploader";
-import { useFileDragOverlay } from "@/hooks/use-file-drag-overlay";
-import { WORKFLOW_VIEW_LAUNCH_DATE } from "app-types/chat-graph";
-import { ChatGraphCanvas } from "@/components/chat-graph/chat-graph-canvas";
 
 type Props = {
   threadId: string;
@@ -102,6 +111,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
     pendingThreadMention,
     threadImageToolModel,
     workflowView,
+    artifactView,
   ] = appStore(
     useShallow((state) => [
       state.mutate,
@@ -116,6 +126,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
       state.pendingThreadMention,
       state.threadImageToolModel,
       state.workflowView,
+      state.artifactView,
     ]),
   );
 
@@ -155,6 +166,19 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
 
   const [input, setInput] = useState("");
 
+  // The ai SDK's makeRequest re-checks sendAutomaticallyWhen after *every*
+  // request settles, including one the user just aborted via stop() --
+  // gated only on the request not having errored, and an abort is not an
+  // error (ai/dist/index.mjs's makeRequest, the `!isError` branch after its
+  // finally block). So a Stop click that lands while the last model step's
+  // tool calls all happen to already be resolved -- common mid-turn, since
+  // that is exactly when the model is generating the *next* step and the
+  // user has time to react -- gets silently followed by a fresh request,
+  // and the agent keeps going as if nothing happened. This ref is consumed
+  // by the very next sendAutomaticallyWhen check so that one, and only
+  // that one, resumption is suppressed.
+  const suppressNextAutoResumeRef = useRef(false);
+
   const {
     messages,
     status,
@@ -165,16 +189,19 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
     stop,
   } = useChat({
     id: threadId,
-    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+    sendAutomaticallyWhen: (params) => {
+      if (suppressNextAutoResumeRef.current) {
+        suppressNextAutoResumeRef.current = false;
+        return false;
+      }
+      return lastAssistantMessageIsCompleteWithToolCalls(params);
+    },
     transport: new DefaultChatTransport({
       api: backendUrl("/api/chat"),
       fetch: backendFetch,
       prepareSendMessagesRequest: ({ messages, body, id }) => {
         const threadUrl = `/?thread=${threadId}`;
-        if (
-          window.location.pathname + window.location.search !==
-          threadUrl
-        ) {
+        if (window.location.pathname + window.location.search !== threadUrl) {
           console.log("replace-state");
           window.history.replaceState({}, "", threadUrl);
         }
@@ -250,6 +277,13 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
     [_addToolResult],
   );
 
+  // Stop must mean stop -- see suppressNextAutoResumeRef above for why the
+  // library's own abort isn't enough on its own.
+  const handleStop = useCallback(() => {
+    suppressNextAutoResumeRef.current = true;
+    stop();
+  }, [stop]);
+
   const mounted = useMounted();
 
   const latestRef = useToRef({
@@ -291,12 +325,95 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
     );
   }, [workflowView.isOpen, messages.length, threadList, threadId]);
 
+  // The plan, task list and walkthrough, read back out of the transcript.
+  const artifacts = useArtifacts(messages, isLoading);
+
+  const hasArtifact = Boolean(
+    artifacts.plan || artifacts.todos || artifacts.walkthrough,
+  );
+  const isArtifactViewActive = artifactView.isOpen && hasArtifact;
+
+  // The assistant message an in-flight turn's artifacts belong to. A revised
+  // plan reuses this same id (the suspend/resume round trip continues the
+  // same message rather than minting a new one -- see route.go), so keying
+  // auto-open on it is what makes "once per turn" and "once per proposal"
+  // the same rule: a revision does not reopen a pane the user already has
+  // open on the growing document, but a genuinely new turn gets a fresh shot.
+  const latestAssistantMessageId = useMemo(() => {
+    const last = messages.at(-1);
+    return last?.role === "assistant" ? last.id : undefined;
+  }, [messages]);
+
+  // Auto-open the instant a plan or walkthrough *starts* -- not once it
+  // finishes. That is the entire point: the document is worth watching grow,
+  // and waiting for the tool call to fully resolve before showing anything
+  // is the wait this exists to remove. Only when nothing else owns the wide
+  // pane, and only once per turn -- reopening on every render would fight a
+  // user who closed it to read the chat, the same mistake the work log's
+  // auto-collapse was careful not to make.
+  //
+  // Tasks is deliberately not part of this. A todo list is routine -- most
+  // turns write one -- and popping the pane open for it would make the
+  // feature feel naggy rather than helpful. Its content already streams live
+  // in the work log, and once the pane is open for any reason the Tasks tab
+  // shows the same live list.
+  useEffect(() => {
+    if (!latestAssistantMessageId) return;
+    if (artifactView.openedFor === latestAssistantMessageId) return;
+    if (workflowView.isOpen) return;
+    const tab = artifacts.plan
+      ? "plan"
+      : artifacts.walkthrough
+        ? "walkthrough"
+        : undefined;
+    if (!tab) return;
+    appStoreMutate((state) => ({
+      artifactView: {
+        ...state.artifactView,
+        isOpen: true,
+        tab,
+        openedFor: latestAssistantMessageId,
+      },
+    }));
+  }, [
+    latestAssistantMessageId,
+    artifacts.plan,
+    artifacts.walkthrough,
+    artifactView.openedFor,
+    workflowView.isOpen,
+    appStoreMutate,
+  ]);
+
   const isInitialThreadEntry = useMemo(
     () =>
       initialMessages.length > 0 &&
       initialMessages.at(-1)?.id === messages.at(-1)?.id,
     [messages],
   );
+
+  /**
+   * The propose_plan call the transcript is currently suspended on, if any.
+   *
+   * A plan is the one pause that is not a prompt. Every other unresolved tool
+   * call is a question with a fixed set of answers -- approve this write, deny
+   * it -- and the composer stays locked because typing prose at it would go
+   * nowhere. A proposed plan is a document, and "actually, do it this way
+   * instead" is the most natural thing a reader has to say about one. Locking
+   * the composer on it left the turn looking hung with no way out but the two
+   * buttons in the artifact header.
+   */
+  const pendingPlanToolCallId = useMemo(() => {
+    if (status != "ready") return undefined;
+    const lastMessage = messages.at(-1);
+    if (lastMessage?.role != "assistant") return undefined;
+    for (const part of lastMessage.parts ?? []) {
+      if (!isToolUIPart(part)) continue;
+      if (getToolName(part) !== DefaultToolName.ProposePlan) continue;
+      if (part.state.startsWith("output")) continue;
+      return part.toolCallId;
+    }
+    return undefined;
+  }, [status, messages]);
 
   const isPendingToolCall = useMemo(() => {
     if (status != "ready") return false;
@@ -306,8 +423,78 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
     if (!lastPart) return false;
     if (!isToolUIPart(lastPart)) return false;
     if (lastPart.state.startsWith("output")) return false;
+    // A suspended plan is answerable by typing; see pendingPlanToolCallId.
+    if (getToolName(lastPart) === DefaultToolName.ProposePlan) return false;
     return true;
   }, [status, messages]);
+
+  /**
+   * Send a chat message, answering a suspended plan first if there is one.
+   *
+   * A tool call left unresolved is not a state the transcript can be sent in
+   * -- the provider rejects a tool_use with no tool_result -- so a user who
+   * replies in prose rather than clicking Proceed has to have their reply
+   * turned into an answer. It is a *revision*: they did not approve, so the
+   * agent must not start work, and the message they just wrote is the reason
+   * why. The note points the model at it rather than duplicating it, because
+   * the message itself arrives in the same request, one turn later.
+   *
+   * The auto-resume suppression is the same one Stop uses: writing a tool
+   * result satisfies `lastAssistantMessageIsCompleteWithToolCalls`, which
+   * would fire a request of its own carrying the answer but not the message
+   * the user is sending in the same breath.
+   */
+  const sendMessageAnsweringPlan = useCallback<typeof sendMessage>(
+    async (...args) => {
+      if (pendingPlanToolCallId) {
+        suppressNextAutoResumeRef.current = true;
+        await _addToolResult({
+          tool: DefaultToolName.ProposePlan,
+          toolCallId: pendingPlanToolCallId,
+          output: buildPlanDecision("revise", [
+            {
+              quote: "",
+              note: "The user replied in chat instead of answering here. Do not start work; read their next message and treat it as their response to this plan.",
+            },
+          ]),
+        });
+      }
+      return sendMessage(...args);
+    },
+    [pendingPlanToolCallId, _addToolResult, sendMessage],
+  );
+
+  // Answering a plan from the graph goes through the same decision helper the
+  // artifact header and the chat card use, so "Proceed" means one thing --
+  // including the permission-mode switch, which is the half a second copy
+  // would forget.
+  const { grantedMode, decide } = usePlanDecision(addToolResult);
+
+  const graphActions = useMemo(
+    () => ({
+      openArtifact: (tab: ArtifactTab) =>
+        appStoreMutate((state) => ({
+          artifactView: { ...state.artifactView, isOpen: true, tab },
+        })),
+      proceedWithPlan: (toolCallId: string) => {
+        const plan = artifacts.plan;
+        if (!plan || plan.toolCallId !== toolCallId) return;
+        // No comments from this surface: the graph node has no gutter to
+        // write them in. Someone who wants to annotate uses Review, which
+        // opens the pane where the document is.
+        decide(plan, "proceed", [], grantedMode);
+      },
+      // isLoading alone, not isPendingToolCall. isPendingToolCall is true
+      // exactly when the last part of the last message is an unresolved
+      // tool call -- which a suspended propose_plan always is, by
+      // definition, until it is answered. Including it here disabled the
+      // one button whose entire job is to answer it: the call could never
+      // resolve because the button that resolves it was disabled by the
+      // call being unresolved.
+      busy: isLoading,
+    }),
+    [appStoreMutate, artifacts.plan, decide, grantedMode, isLoading],
+  );
 
   const space = useMemo(() => {
     if (!isLoading || error) return false;
@@ -327,34 +514,35 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
   const particle = useMemo(() => {
     return (
       <AnimatePresence>
-        {showParticles && !isWorkflowViewActive && (
+        {showParticles && !isWorkflowViewActive && !isArtifactViewActive && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 5 }}
+            className="absolute inset-0 pointer-events-none overflow-hidden z-10"
           >
-            <div className="absolute top-0 left-0 w-full h-full z-10">
+            <div className="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
               <LightRays />
             </div>
-            <div className="absolute top-0 left-0 w-full h-full z-10">
+            <div className="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
               <Particles particleCount={400} particleBaseSize={10} />
             </div>
 
-            <div className="absolute top-0 left-0 w-full h-full z-10">
+            <div className="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
               <div className="w-full h-full bg-gradient-to-t from-background to-50% to-transparent z-20" />
             </div>
-            <div className="absolute top-0 left-0 w-full h-full z-10">
+            <div className="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
               <div className="w-full h-full bg-gradient-to-l from-background to-20% to-transparent z-20" />
             </div>
-            <div className="absolute top-0 left-0 w-full h-full z-10">
+            <div className="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
               <div className="w-full h-full bg-gradient-to-r from-background to-20% to-transparent z-20" />
             </div>
           </motion.div>
         )}
       </AnimatePresence>
     );
-  }, [showParticles, isWorkflowViewActive]);
+  }, [showParticles, isWorkflowViewActive, isArtifactViewActive]);
 
   const handleFocus = useCallback(() => {
     setShowParticles(false);
@@ -441,24 +629,55 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
   return (
     <>
       {particle}
+      {/* The wide pane is shared, and the artifact pane wins it when open.
+          That is the right way round because opening it is always a
+          deliberate act -- clicking Review on a halted node, or a plan card
+          in the chat. The auto-open below is the one case that is not
+          deliberate, and it declines to fire while the graph is up rather
+          than taking the pane out from under it. Closing the pane hands the
+          graph straight back. */}
       <div
         className={cn(
-          "flex min-w-0 h-full",
-          isWorkflowViewActive && "gap-2 p-1.5 bg-muted/20",
+          "flex min-w-0 w-full h-full max-w-full overflow-hidden",
+          (isWorkflowViewActive || isArtifactViewActive) &&
+            "gap-2 p-1.5 bg-muted/20",
         )}
       >
-        {isWorkflowViewActive && (
-          <div className="flex-1 min-w-0 h-full relative z-40 rounded-xl border border-border shadow-xl overflow-hidden bg-background">
-            <ChatGraphCanvas messages={messages} />
+        {isArtifactViewActive ? (
+          <div
+            className={cn(
+              "flex-1 min-w-0 h-full relative z-40 rounded-xl border border-border shadow-xl overflow-hidden bg-background",
+              // Enter and exit along one path, on the drawer curve the rest
+              // of the app uses. The chat column's width transition below is
+              // deliberately the same duration and curve, so the two read as
+              // one movement rather than two things that happened at once.
+              "motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-[0.98] motion-safe:duration-[240ms] motion-safe:ease-[var(--ease-drawer)]",
+            )}
+          >
+            <ArtifactPane
+              artifacts={artifacts}
+              threadId={threadId}
+              addToolResult={addToolResult}
+              // Same fix as graphActions.busy just above: isPendingToolCall
+              // is true for the very call Proceed/Send exist to resolve, so
+              // including it here deadlocks the pane's own buttons.
+              busy={isLoading}
+              canReturnToGraph={isWorkflowViewActive}
+            />
           </div>
-        )}
+        ) : isWorkflowViewActive ? (
+          <div className="flex-1 min-w-0 h-full relative z-40 rounded-xl border border-border shadow-xl overflow-hidden bg-background">
+            <ChatGraphCanvas messages={messages} actions={graphActions} />
+          </div>
+        ) : null}
         <div
           className={cn(
             emptyMessage ? "justify-center pb-24" : "justify-end",
             "flex flex-col min-w-0 relative h-full z-40",
-            isWorkflowViewActive &&
+            "transition-[width] duration-[240ms] ease-[var(--ease-drawer)] motion-reduce:transition-none",
+            (isWorkflowViewActive || isArtifactViewActive) &&
               "w-[380px] shrink-0 rounded-xl border border-border shadow-xl overflow-hidden bg-background",
-            !isWorkflowViewActive && "w-full",
+            !isWorkflowViewActive && !isArtifactViewActive && "w-full",
           )}
         >
           {isDragging && (
@@ -478,6 +697,8 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
           ) : (
             <>
               <div
+                data-testid="chat-messages-container"
+                data-state={isLoading || isPendingToolCall ? "streaming" : "ready"}
                 className={
                   "flex flex-col gap-2 overflow-y-auto pt-6 pb-40 z-10 [scrollbar-gutter:stable_both-edges]"
                 }
@@ -542,10 +763,10 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
             <PromptInput
               input={input}
               threadId={threadId}
-              sendMessage={sendMessage}
+              sendMessage={sendMessageAnsweringPlan}
               setInput={setInput}
               isLoading={isLoading || isPendingToolCall}
-              onStop={stop}
+              onStop={handleStop}
               onFocus={isFirstTime ? undefined : handleFocus}
             />
           </div>

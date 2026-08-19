@@ -14,6 +14,7 @@ import (
 
 	bifrostai "amiro/backend/internal/ai/bifrost"
 	chatapi "amiro/backend/internal/api/chat"
+	exportapi "amiro/backend/internal/api/export"
 	"amiro/backend/internal/auth"
 	"amiro/backend/internal/db"
 	"amiro/backend/internal/db/models"
@@ -91,8 +92,8 @@ func newChatTestEnv(t *testing.T, engine chatapi.Engine) chatTestEnv {
 	chatRepo := repository.NewChatRepository(gdb)
 	exportRepo := repository.NewChatExportRepository(gdb, chatRepo)
 	providerRepo := repository.NewProviderRepository(gdb)
-	chatHandler := chatapi.NewHandler(chatRepo, exportRepo, engine, nil, nil, nil, nil, nil, nil, providerRepo)
-	handler := New(testConfig(), Handlers{Auth: authService, Chat: chatHandler})
+	chatHandler := chatapi.NewHandler(chatRepo, exportRepo, engine, nil, nil, nil, nil, nil, nil, providerRepo, nil)
+	handler := New(testConfig(), Handlers{Auth: authService, Chat: chatHandler, Export: exportapi.NewHandler(exportRepo)})
 
 	do := func(method, path string, body any) *httptest.ResponseRecorder {
 		var reader *bytes.Reader
@@ -376,6 +377,27 @@ func TestRouter_ChatExportSucceedsForOwner(t *testing.T) {
 	rec = env.do(t, http.MethodPost, "/api/chat/export", map[string]any{"threadId": "thread-1"}, env.token)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	// The response body must be the bare export id -- both existing
+	// callers (chat-api.ts's exportChat, chat-export-popup.tsx's
+	// `.ifOk((exportId) => ...)`) read the resolved JSON directly as the id
+	// string and build a share URL from it. A `{"message": "..."}` wrapper
+	// here (what this handler used to return) makes exportId the whole
+	// object client-side, and the copied link read literally as
+	// ".../export/[object Object]" -- silent because nothing checked the
+	// body shape.
+	var exportID string
+	if err := json.Unmarshal(rec.Body.Bytes(), &exportID); err != nil {
+		t.Fatalf("export response body = %s, want a bare JSON string id: %v", rec.Body.String(), err)
+	}
+	if exportID == "" {
+		t.Fatalf("export id is empty")
+	}
+
+	getRec := env.do(t, http.MethodGet, "/api/export/"+exportID, nil, env.token)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("GET /api/export/%s status = %d, body = %s -- the id the export handler returned does not resolve", exportID, getRec.Code, getRec.Body.String())
 	}
 }
 

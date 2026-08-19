@@ -14,29 +14,42 @@ import { SidebarGroupContent } from "ui/sidebar";
 import { SidebarGroup } from "ui/sidebar";
 import Link from "next/link";
 import { getShortcutKeyList, Shortcuts } from "lib/keyboard-shortcuts";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { MCPIcon } from "ui/mcp-icon";
 import { WriteIcon } from "ui/write-icon";
 import {
+  ChevronRight,
   FolderOpenIcon,
   FolderSearchIcon,
   PlusIcon,
   Waypoints,
 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Skeleton } from "ui/skeleton";
 import { useArchives } from "@/hooks/queries/use-archives";
 import { ArchiveDialog } from "../archive-dialog";
 import { BasicUser } from "app-types/user";
 import { AppSidebarAdmin } from "./app-sidebar-menu-admin";
+import { cn } from "lib/utils";
 
 export function AppSidebarMenus({ user }: { user?: BasicUser }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentArchiveId = searchParams?.get("id");
   const t = useTranslations("");
   const { setOpenMobile } = useSidebar();
-  const [expandedArchive, setExpandedArchive] = useState(false);
+  const [expandedArchive, setExpandedArchive] = useState(() =>
+    pathname.startsWith("/archive"),
+  );
   const [addArchiveDialogOpen, setAddArchiveDialogOpen] = useState(false);
+
+  useEffect(() => {
+    if (pathname.startsWith("/archive")) {
+      setExpandedArchive(true);
+    }
+  }, [pathname]);
 
   const { data: archives, isLoading: isLoadingArchives } = useArchives();
   const toggleArchive = useCallback(() => {
@@ -51,6 +64,7 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
             <SidebarMenuItem className="mb-1">
               <Link
                 href="/"
+                data-testid="sidebar-new-chat-button"
                 onClick={(e) => {
                   e.preventDefault();
                   setOpenMobile(false);
@@ -79,7 +93,7 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
         <SidebarMenu>
           <Tooltip>
             <SidebarMenuItem>
-              <Link href="/mcp">
+              <Link href="/mcp" data-testid="sidebar-mcp-link">
                 <SidebarMenuButton className="font-semibold">
                   <MCPIcon className="size-4 fill-accent-foreground" />
                   {t("Layout.mcpConfiguration")}
@@ -91,7 +105,7 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
         <SidebarMenu>
           <Tooltip>
             <SidebarMenuItem>
-              <Link href="/workflow">
+              <Link href="/workflow" data-testid="sidebar-workflow-link">
                 <SidebarMenuButton className="font-semibold">
                   <Waypoints className="size-4" />
                   {t("Layout.workflow")}
@@ -105,19 +119,27 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
           <Tooltip>
             <SidebarMenuItem>
               <SidebarMenuButton
+                data-testid="sidebar-archive-link"
                 onClick={toggleArchive}
-                className="font-semibold"
+                className="font-semibold cursor-pointer pr-14"
+                isActive={pathname.startsWith("/archive")}
               >
                 {expandedArchive ? (
                   <FolderOpenIcon className="size-4" />
                 ) : (
                   <FolderSearchIcon className="size-4" />
                 )}
-                {t("Archive.title")}
+                <span>{t("Archive.title")}</span>
               </SidebarMenuButton>
-              <SidebarMenuAction
-                className="group-hover/archive:opacity-100 opacity-0 transition-opacity"
-                onClick={() => setAddArchiveDialogOpen(true)}
+              <button
+                type="button"
+                aria-label={t("Archive.addArchive")}
+                className="text-sidebar-foreground ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground absolute top-1.5 right-7 flex aspect-square w-5 cursor-pointer items-center justify-center rounded-md p-0 outline-hidden transition-all duration-150 focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0 group-hover/archive:opacity-100 opacity-0"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setAddArchiveDialogOpen(true);
+                }}
               >
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -127,6 +149,22 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
                     {t("Archive.addArchive")}
                   </TooltipContent>
                 </Tooltip>
+              </button>
+              <SidebarMenuAction
+                aria-label="Toggle Archive Submenu"
+                data-testid="archive-sidebar-dropdown-button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  toggleArchive();
+                }}
+              >
+                <ChevronRight
+                  className={cn(
+                    "size-4 transition-transform duration-200 text-muted-foreground",
+                    expandedArchive && "rotate-90",
+                  )}
+                />
               </SidebarMenuAction>
             </SidebarMenuItem>
           </Tooltip>
@@ -154,7 +192,12 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
                       key={archive.id}
                       className="cursor-pointer"
                     >
-                      <SidebarMenuSubButton>
+                      <SidebarMenuSubButton
+                        isActive={
+                          pathname === "/archive" &&
+                          currentArchiveId === archive.id
+                        }
+                      >
                         {archive.name}
                       </SidebarMenuSubButton>
                     </SidebarMenuSubItem>
@@ -172,3 +215,4 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
     </SidebarGroup>
   );
 }
+

@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"io/fs"
 	"path/filepath"
 	"testing"
 
@@ -34,20 +35,65 @@ func TestLoadMigrations_RejectsUnknownDialect(t *testing.T) {
 	}
 }
 
-func TestLoadMigrations_ReturnsAllTwentyInVersionOrder(t *testing.T) {
+// countMigrationFiles is the expected migration count, read from the
+// embedded files rather than written down.
+//
+// This used to be a literal, and a literal is wrong the moment anyone adds a
+// migration -- which is what happened: the number said 21 while the tree held
+// 22, so the suite failed for everyone until someone edited a constant that
+// asserts nothing about correctness. The invariants worth testing are the
+// ones below (contiguous from 1, both directions present, both dialects in
+// step); the total is just bookkeeping and the tree already knows it.
+func countMigrationFiles(t *testing.T, dialect string) int {
+	t.Helper()
+	entries, err := fs.Glob(migrationFS, "migrations/"+dialect+"/*.up.sql")
+	if err != nil {
+		t.Fatalf("glob: %v", err)
+	}
+	return len(entries)
+}
+
+func TestLoadMigrations_ReturnsEveryMigrationInVersionOrder(t *testing.T) {
 	migrations, err := loadMigrations(DialectSQLite)
 	if err != nil {
 		t.Fatalf("loadMigrations: %v", err)
 	}
-	if len(migrations) != 21 {
-		t.Fatalf("len(migrations) = %d, want 21", len(migrations))
+	if want := countMigrationFiles(t, DialectSQLite); len(migrations) != want {
+		t.Fatalf("len(migrations) = %d, want %d (one per .up.sql on disk)", len(migrations), want)
 	}
 	for i, m := range migrations {
+		// Contiguous and 1-based: a gap means a migration was deleted
+		// rather than superseded, and every install past that point has a
+		// schema nothing in the tree describes.
 		if m.Version != i+1 {
-			t.Fatalf("migrations[%d].Version = %d, want %d (out of order)", i, m.Version, i+1)
+			t.Fatalf("migrations[%d].Version = %d, want %d (gap or out of order)", i, m.Version, i+1)
 		}
 		if m.UpSQL == "" || m.DownSQL == "" {
 			t.Fatalf("migration %04d_%s missing up or down SQL", m.Version, m.Name)
+		}
+	}
+}
+
+// The dual-deploy invariant: sqlite is the desktop schema and postgres is the
+// web one, and a migration added to only one of them is a difference that
+// stays invisible until the other deploy runs.
+func TestLoadMigrations_DialectsAreInStep(t *testing.T) {
+	sqliteMigrations, err := loadMigrations(DialectSQLite)
+	if err != nil {
+		t.Fatalf("loadMigrations(sqlite): %v", err)
+	}
+	postgresMigrations, err := loadMigrations(DialectPostgres)
+	if err != nil {
+		t.Fatalf("loadMigrations(postgres): %v", err)
+	}
+	if len(sqliteMigrations) != len(postgresMigrations) {
+		t.Fatalf("sqlite has %d migrations, postgres has %d -- one dialect is missing a migration",
+			len(sqliteMigrations), len(postgresMigrations))
+	}
+	for i := range sqliteMigrations {
+		if sqliteMigrations[i].Version != postgresMigrations[i].Version {
+			t.Fatalf("version mismatch at index %d: sqlite %d, postgres %d",
+				i, sqliteMigrations[i].Version, postgresMigrations[i].Version)
 		}
 	}
 }
@@ -77,8 +123,8 @@ func TestMigrate_RunningTwiceIsANoOp(t *testing.T) {
 	if err := sqlDB.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("count schema_migrations: %v", err)
 	}
-	if count != 21 {
-		t.Fatalf("schema_migrations has %d rows, want 21 (re-run should not duplicate)", count)
+	if want := countMigrationFiles(t, DialectSQLite); count != want {
+		t.Fatalf("schema_migrations has %d rows, want %d (re-run should not duplicate)", count, want)
 	}
 }
 

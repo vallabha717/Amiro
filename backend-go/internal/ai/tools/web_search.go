@@ -1,252 +1,217 @@
 package tools
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
-	"os"
+	"log"
+
+	"amiro/backend/internal/db/repository"
+	"amiro/backend/internal/search"
 )
 
-const exaBaseURL = "https://api.exa.ai"
-
-// exaSearchInput/exaContentsInput mirror exaSearchSchema/exaContentsSchema
-// (lib/ai/tools/web/web-search.ts).
-type exaSearchInput struct {
-	Query              string   `json:"query"`
-	NumResults         int      `json:"numResults"`
-	Type               string   `json:"type"`
-	Category           string   `json:"category"`
-	IncludeDomains     []string `json:"includeDomains"`
-	ExcludeDomains     []string `json:"excludeDomains"`
-	StartPublishedDate string   `json:"startPublishedDate"`
-	EndPublishedDate   string   `json:"endPublishedDate"`
-	MaxCharacters      int      `json:"maxCharacters"`
+// webSearchInput/webContentInput are the tool argument shapes.
+type webSearchInput struct {
+	Query      string `json:"query"`
+	NumResults int    `json:"numResults"`
 }
 
-type exaContentsInput struct {
+type webContentInput struct {
 	URLs          []string `json:"urls"`
 	MaxCharacters int      `json:"maxCharacters"`
-	Livecrawl     string   `json:"livecrawl"`
 }
 
-type exaContentsConfig struct {
-	Text struct {
-		MaxCharacters int `json:"maxCharacters,omitempty"`
-	} `json:"text"`
-	Livecrawl string `json:"livecrawl,omitempty"`
-}
-
-type exaSearchRequest struct {
-	Query              string            `json:"query"`
-	Type               string            `json:"type"`
-	Category           string            `json:"category,omitempty"`
-	IncludeDomains     []string          `json:"includeDomains,omitempty"`
-	ExcludeDomains     []string          `json:"excludeDomains,omitempty"`
-	StartPublishedDate string            `json:"startPublishedDate,omitempty"`
-	EndPublishedDate   string            `json:"endPublishedDate,omitempty"`
-	NumResults         int               `json:"numResults"`
-	Contents           exaContentsConfig `json:"contents"`
-}
-
-type exaContentsRequest struct {
-	IDs      []string          `json:"ids"`
-	Contents exaContentsConfig `json:"contents"`
-}
-
-// exaToolError mirrors exaSearchTool/exaContentsTool's .ifFail return
-// shape -- like http_fetch.go, a "failed" call still succeeds as a tool
-// call and returns this as its output, matching TS's safe().ifFail().
-type exaToolError struct {
+// webToolError is returned as a *successful* tool call carrying an error
+// payload, matching http_fetch.go and the TS `safe().ifFail()` shape: the
+// model gets to read what went wrong and tell the user, rather than the turn
+// failing with a message only the logs will ever show.
+type webToolError struct {
 	IsError  bool   `json:"isError"`
 	Error    string `json:"error"`
 	Solution string `json:"solution"`
 }
 
-// webSearchTools ports exaSearchTool and exaContentsTool (the non-workflow
-// variants -- lib/ai/tools/web/web-search.ts:236,284). EXA_API_KEY is read
-// per-call, matching the TS module-level `const API_KEY =
-// process.env.EXA_API_KEY` read at import time closely enough: both fail
-// the same way (a clear "not configured" tool error) when unset.
-func webSearchTools() []Definition {
+// webSearchTools builds web_search and web_content against whichever
+// provider is currently active.
+//
+// The provider is resolved per call rather than captured at construction:
+// these Definitions are built once per request, but a user can switch the
+// active provider in the admin UI mid-conversation, and a tool holding a
+// provider chosen at startup would keep searching with the old one until the
+// process restarted.
+func webSearchTools(searchRepo *repository.SearchProviderRepository) []Definition {
 	return []Definition{
 		{
 			Name:    NameWebSearch,
 			Toolkit: ToolkitWebSearch,
-			Description: "Search the web using Exa AI - performs real-time web searches with semantic and " +
-				"neural search capabilities. Returns high-quality, relevant results with full content extraction.",
-			ParametersSchema: exaSearchSchema,
-			Execute:          executeWebSearch,
-			Risk:             RiskRead,
+			Description: "Search the web for current information. Returns titles, URLs and snippets from " +
+				"the configured search provider. Use this when the answer depends on information that may " +
+				"have changed, or that you do not already know.",
+			ParametersSchema: webSearchSchema,
+			Execute: func(ctx context.Context, input json.RawMessage) (any, error) {
+				return executeWebSearch(ctx, input, searchRepo)
+			},
+			Risk: RiskRead,
 		},
 		{
 			Name:    NameWebContent,
 			Toolkit: ToolkitWebSearch,
-			Description: "Extract detailed content from specific URLs using Exa AI - retrieves full text " +
-				"content, metadata, and structured information from web pages with live crawling capabilities.",
-			ParametersSchema: exaContentsSchema,
-			Execute:          executeWebContent,
-			Risk:             RiskRead,
+			Description: "Extract the readable text of specific URLs. Use this after web_search when a " +
+				"snippet is not enough and you need what the page actually says.",
+			ParametersSchema: webContentSchema,
+			Execute: func(ctx context.Context, input json.RawMessage) (any, error) {
+				return executeWebContent(ctx, input, searchRepo)
+			},
+			Risk: RiskRead,
 		},
 	}
 }
 
-var exaSearchSchema = json.RawMessage(`{
+var webSearchSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
 		"query": {"type": "string", "description": "Search query"},
-		"numResults": {"type": "number", "description": "Number of search results to return", "default": 5, "minimum": 1, "maximum": 20},
-		"type": {
-			"type": "string",
-			"enum": ["auto", "keyword", "neural"],
-			"description": "Search type - auto lets Exa decide, keyword for exact matches, neural for semantic search",
-			"default": "auto"
-		},
-		"category": {
-			"type": "string",
-			"enum": ["company", "research paper", "news", "linkedin profile", "github", "tweet", "movie", "song", "personal site", "pdf"],
-			"description": "Category to focus the search on"
-		},
-		"includeDomains": {"type": "array", "items": {"type": "string"}, "description": "List of domains to specifically include in search results"},
-		"excludeDomains": {"type": "array", "items": {"type": "string"}, "description": "List of domains to specifically exclude from search results"},
-		"startPublishedDate": {"type": "string", "description": "Start date for published content (YYYY-MM-DD format)"},
-		"endPublishedDate": {"type": "string", "description": "End date for published content (YYYY-MM-DD format)"},
-		"maxCharacters": {"type": "number", "description": "Maximum characters to extract from each result", "default": 3000, "minimum": 100, "maximum": 10000}
+		"numResults": {"type": "number", "description": "Number of results to return", "default": 5, "minimum": 1, "maximum": 20}
 	},
-	"required": ["query"]
+	"required": ["query"],
+	"additionalProperties": false
 }`)
 
-var exaContentsSchema = json.RawMessage(`{
+var webContentSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {
-		"urls": {"type": "array", "items": {"type": "string"}, "description": "List of URLs to extract content from"},
-		"maxCharacters": {"type": "number", "description": "Maximum characters to extract from each URL", "default": 3000, "minimum": 100, "maximum": 10000},
-		"livecrawl": {
-			"type": "string",
-			"enum": ["always", "fallback", "preferred"],
-			"description": "Live crawling preference - always forces live crawl, fallback uses cache first, preferred tries live first",
-			"default": "preferred"
-		}
+		"urls": {"type": "array", "items": {"type": "string"}, "description": "URLs to extract content from"},
+		"maxCharacters": {"type": "number", "description": "Maximum characters to extract from each URL", "default": 3000, "minimum": 100, "maximum": 10000}
 	},
-	"required": ["urls"]
+	"required": ["urls"],
+	"additionalProperties": false
 }`)
 
-func executeWebSearch(ctx context.Context, rawInput json.RawMessage) (any, error) {
-	var in exaSearchInput
-	if err := json.Unmarshal(rawInput, &in); err != nil {
-		return exaToolError{IsError: true, Error: err.Error(), Solution: exaSolutionText("search")}, nil
+// noProviderMessage is what the user sees when nothing is configured.
+//
+// It names the screen to go to. "Web search is not configured" without that
+// is a dead end for anyone who has not already been told where the setting
+// lives.
+const noProviderMessage = "no web search provider is active -- add one under Settings > Search Providers and activate it"
+
+// activeProvider resolves the configured provider, or explains why it could not.
+//
+// A repository error is returned, never swallowed. The previous version
+// discarded it and fell through to a default engine, so a database problem
+// presented as searches quietly going somewhere else -- the failure mode
+// where everything looks like it is working and the results are just
+// mysteriously worse.
+func activeProvider(ctx context.Context, repo *repository.SearchProviderRepository) (search.Provider, string, error) {
+	if repo == nil {
+		return nil, "", errors.New(noProviderMessage)
 	}
-	if in.Type == "" {
-		in.Type = "auto"
+	cfg, err := repo.GetActive(ctx)
+	if err != nil {
+		// Logged as well as returned: the model relays the message to the
+		// user, but the underlying DB error is an operator's problem and
+		// belongs somewhere an operator will look.
+		log.Printf("search: reading active provider: %v", err)
+		return nil, "", errors.New("could not read the search provider configuration")
+	}
+	if cfg == nil {
+		return nil, "", errors.New(noProviderMessage)
+	}
+
+	provider, err := search.New(cfg.Provider, cfg.APIKey)
+	if err != nil {
+		return nil, cfg.Provider, err
+	}
+	return provider, cfg.Provider, nil
+}
+
+func executeWebSearch(ctx context.Context, rawInput json.RawMessage, repo *repository.SearchProviderRepository) (any, error) {
+	var in webSearchInput
+	if err := json.Unmarshal(rawInput, &in); err != nil {
+		return toolError(err, "search"), nil
 	}
 	if in.NumResults == 0 {
 		in.NumResults = 5
 	}
-	maxChars := in.MaxCharacters
-	if maxChars == 0 {
-		maxChars = 3000
-	}
 
-	req := exaSearchRequest{
-		Query:              in.Query,
-		Type:               in.Type,
-		Category:           in.Category,
-		IncludeDomains:     in.IncludeDomains,
-		ExcludeDomains:     in.ExcludeDomains,
-		StartPublishedDate: in.StartPublishedDate,
-		EndPublishedDate:   in.EndPublishedDate,
-		NumResults:         in.NumResults,
-	}
-	req.Contents.Text.MaxCharacters = maxChars
-	req.Contents.Livecrawl = "preferred"
-
-	result, err := fetchExa(ctx, "/search", req)
+	provider, kind, err := activeProvider(ctx, repo)
 	if err != nil {
-		return exaToolError{IsError: true, Error: err.Error(), Solution: exaSolutionText("search")}, nil
+		return toolError(err, "search"), nil
 	}
-	if resultMap, ok := result.(map[string]any); ok {
-		resultMap["guide"] = "Use the search results to answer the user's question. Summarize the content " +
-			"and ask if they have any additional questions about the topic."
-		return resultMap, nil
+
+	results, err := provider.Search(ctx, in.Query, in.NumResults)
+	if err != nil {
+		if errors.Is(err, search.ErrNotConfigured) {
+			err = fmt.Errorf("the active provider (%s) has no API key set -- add one under Settings > Search Providers", kind)
+		}
+		return toolError(err, "search"), nil
 	}
-	return result, nil
+
+	// An empty result set is reported as such rather than as an error. "No
+	// pages matched" is a real answer to a search, and dressing it up as a
+	// failure invites the model to retry the same query.
+	return map[string]any{
+		"provider": kind,
+		"results":  results,
+		"guide": "Use these results to answer the user's question, citing the URLs you relied on. " +
+			"If a snippet is not enough, call web_content on the specific URLs.",
+	}, nil
 }
 
-func executeWebContent(ctx context.Context, rawInput json.RawMessage) (any, error) {
-	var in exaContentsInput
+func executeWebContent(ctx context.Context, rawInput json.RawMessage, repo *repository.SearchProviderRepository) (any, error) {
+	var in webContentInput
 	if err := json.Unmarshal(rawInput, &in); err != nil {
-		return exaToolError{IsError: true, Error: err.Error(), Solution: exaSolutionText("content extraction")}, nil
+		return toolError(err, "content extraction"), nil
 	}
-	maxChars := in.MaxCharacters
-	if maxChars == 0 {
-		maxChars = 3000
+	if len(in.URLs) == 0 {
+		return toolError(errors.New("no urls given"), "content extraction"), nil
 	}
-	livecrawl := in.Livecrawl
-	if livecrawl == "" {
-		livecrawl = "preferred"
+	if in.MaxCharacters == 0 {
+		in.MaxCharacters = 3000
 	}
 
-	req := exaContentsRequest{IDs: in.URLs}
-	req.Contents.Text.MaxCharacters = maxChars
-	req.Contents.Livecrawl = livecrawl
-
-	result, err := fetchExa(ctx, "/contents", req)
+	provider, kind, err := activeProvider(ctx, repo)
 	if err != nil {
-		return exaToolError{IsError: true, Error: err.Error(), Solution: exaSolutionText("content extraction")}, nil
+		return toolError(err, "content extraction"), nil
 	}
-	return result, nil
+
+	// The bug this replaces: this tool used to call Exa unconditionally,
+	// taking whatever key the active provider happened to hold. With a
+	// non-Exa provider active that meant sending its key to Exa and
+	// reporting "EXA_API_KEY is not configured" -- so on any setup that did
+	// not happen to use Exa, web_content was simply dead.
+	//
+	// Capability is now asked for rather than assumed, and a provider that
+	// cannot extract says so and names the tool that can do the job
+	// instead. http_fetch is in every toolkit this one is, so the advice is
+	// always actionable.
+	extractor, ok := provider.(search.ContentExtractor)
+	if !ok {
+		return toolError(
+			fmt.Errorf("the active search provider (%s) returns links only and cannot extract page content", kind),
+			"content extraction",
+			"Use the http_fetch tool to retrieve these URLs directly, or switch to a provider that extracts content (Tavily or Exa) under Settings > Search Providers.",
+		), nil
+	}
+
+	pages, err := extractor.Extract(ctx, in.URLs, in.MaxCharacters)
+	if err != nil {
+		if errors.Is(err, search.ErrNotConfigured) {
+			err = fmt.Errorf("the active provider (%s) has no API key set -- add one under Settings > Search Providers", kind)
+		}
+		return toolError(err, "content extraction"), nil
+	}
+
+	return map[string]any{"provider": kind, "pages": pages}, nil
 }
 
-func fetchExa(ctx context.Context, endpoint string, body any) (any, error) {
-	apiKey := os.Getenv("EXA_API_KEY")
-	if apiKey == "" {
-		return nil, errors.New("EXA_API_KEY is not configured")
+// toolError builds the error payload, with an optional caller-supplied
+// remedy in place of the generic one.
+func toolError(err error, kind string, solution ...string) webToolError {
+	remedy := fmt.Sprintf("A web %s error occurred. Explain to the user what caused it and how to resolve it, "+
+		"then answer their question from your existing knowledge if you can.", kind)
+	if len(solution) > 0 && solution[0] != "" {
+		remedy = solution[0]
 	}
-
-	payload, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, exaBaseURL+endpoint, bytes.NewReader(payload))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-api-key", apiKey)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, errors.New("Invalid EXA API key")
-	}
-	if resp.StatusCode == http.StatusTooManyRequests {
-		return nil, errors.New("Exa API usage limit exceeded")
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("Exa API error: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
-	}
-
-	respBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	var result any
-	if err := json.Unmarshal(respBytes, &result); err != nil {
-		return nil, err
-	}
-	return result, nil
-}
-
-func exaSolutionText(kind string) string {
-	return fmt.Sprintf("A web %s error occurred. First, explain to the user what caused this specific error "+
-		"and how they can resolve it. Then provide helpful information based on your existing knowledge to "+
-		"answer their question.", kind)
+	return webToolError{IsError: true, Error: err.Error(), Solution: remedy}
 }

@@ -80,6 +80,29 @@ export interface AppState {
   workflowView: {
     isOpen: boolean;
   };
+  /**
+   * The artifact pane: the implementation plan, the task list, and the
+   * walkthrough. Shares the wide pane with the Workflow View.
+   *
+   * `openedFor` is the tool call id the pane was last auto-opened for, and
+   * exists so the auto-open fires once per proposal. Without it, a user who
+   * closes the pane to read the chat has it reopened on the next render --
+   * the same "auto-collapse fires once" rule the work log follows.
+   */
+  artifactView: {
+    isOpen: boolean;
+    tab: "plan" | "tasks" | "walkthrough";
+    openedFor?: string;
+  };
+  /**
+   * The permission mode in effect before the user switched to Plan.
+   *
+   * Approving a plan means "go do this", so Proceed has to restore a mode
+   * that can actually write. Remembering what they were in beats picking one:
+   * a user who works in Manual and drops into Plan to think should come back
+   * to Manual, not be silently promoted to something more permissive.
+   */
+  modeBeforePlan?: "manual" | "interactive" | "edit" | "auto";
   pendingThreadMention?: ChatMention;
 }
 
@@ -107,6 +130,11 @@ const initialState: AppState = {
   allowedAppDefaultToolkit: [
     AppDefaultToolkit.Code,
     AppDefaultToolkit.Visualization,
+    AppDefaultToolkit.File,
+    AppDefaultToolkit.Memory,
+    AppDefaultToolkit.WebSearch,
+    AppDefaultToolkit.Http,
+    AppDefaultToolkit.Workflow,
   ],
   toolPresets: [],
   chatModel: undefined,
@@ -129,6 +157,11 @@ const initialState: AppState = {
   workflowView: {
     isOpen: true,
   },
+  artifactView: {
+    isOpen: false,
+    tab: "plan",
+  },
+  modeBeforePlan: undefined,
   pendingThreadMention: undefined,
 };
 
@@ -160,6 +193,12 @@ export const appStore = create<AppState & AppDispatch>()(
         },
         toolPresets: state.toolPresets || initialState.toolPresets,
         workflowView: state.workflowView || initialState.workflowView,
+        // Deliberately not persisted open. The pane belongs to a specific
+        // proposal in a specific thread; restoring it across a reload into a
+        // different conversation would show an artifact from another one.
+        // `modeBeforePlan` does persist, because the round trip it serves
+        // (switch to Plan, reload, approve) spans exactly that boundary.
+        modeBeforePlan: state.modeBeforePlan,
         voiceChat: {
           ...initialState.voiceChat,
           ...state.voiceChat,

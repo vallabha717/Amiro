@@ -1,0 +1,30 @@
+amiro · /home/user/project · thread thread-golden-0001
+You                                                                                                                     
+run the test suite                                                                                                      
+                                                                                                                        
+Amiro                                                                                                                   
+I'll run the test suite.                                                                                                
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮    
+│ run_shell · awaiting approval                                                                                    │    
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯    
+                                                                                                                        
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮    
+│ Approve run_shell?  ·  runs a command                                                                            │    
+│ $ go test ./...                                                                                                  │    
+│ run_shell needs approval                                                                                         │    
+│                                                                                                                  │    
+│ [y] approve once   [a] always allow   [n] deny                                                                   │    
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯    
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+> Ask Amiro…                                                                                                          
+>                                                                                                                     
+>                                                                                                                     
+interactive  ·  /home/user/project  ·  60 tok  ·  2s  ·  y approve · a always allow · n deny

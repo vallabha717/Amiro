@@ -13,6 +13,20 @@ import (
 
 // exaAPIKey/exaBaseURL port web-search.ts's API_KEY/BASE_URL module
 // constants (src/lib/ai/tools/web/web-search.ts:151).
+//
+// # Why this is still Exa-only and env-configured
+//
+// The *agent* tools (internal/ai/tools/web_search.go) read whichever
+// provider is active in Settings > Search Providers. These workflow nodes
+// deliberately do not: a workflow node executes outside a chat request, and
+// giving it the provider repository means threading a database handle
+// through the executor's node signature -- a change to every node, for one
+// node's benefit.
+//
+// The cost is that the two surfaces are configured in two places, which is
+// worth knowing rather than discovering. The error below says so explicitly
+// instead of naming an environment variable and leaving the user to guess
+// why the provider they configured in the UI is not being used.
 const exaBaseURL = "https://api.exa.ai"
 
 func exaAPIKey() string {
@@ -44,7 +58,7 @@ type exaContentsParams struct {
 func fetchExa(ctx context.Context, endpoint string, body interface{}) (json.RawMessage, error) {
 	apiKey := exaAPIKey()
 	if apiKey == "" {
-		return nil, fmt.Errorf("EXA_API_KEY is not configured")
+		return nil, fmt.Errorf("workflow web-search nodes use Exa and are configured with the EXA_API_KEY environment variable, separately from Settings > Search Providers (which configures the chat agent's search); EXA_API_KEY is not set")
 	}
 
 	payload, err := json.Marshal(body)

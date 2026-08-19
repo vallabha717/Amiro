@@ -300,4 +300,120 @@ describe("deriveChatGraph", () => {
     ]);
     expect(nodes).toEqual([]);
   });
+
+  /**
+   * The assertion that protects the halt.
+   *
+   * A suspended propose_plan sits in `input-available` forever, which the
+   * generic derivation reads as "still going" -- so the node would show a
+   * running spinner. That is the opposite of what is true: the run is
+   * stopped, and the thing it is stopped on is the reader. If this ever goes
+   * back to "running", the Workflow View starts telling users to be patient
+   * at exactly the moment it should be telling them to answer.
+   */
+  it("derives a suspended plan as a waiting gate, never as running", () => {
+    const { nodes } = deriveChatGraph([
+      userMessage("m1", "Add a flag"),
+      assistantMessage("m2", [
+        {
+          type: `tool-${DefaultToolName.ProposePlan}`,
+          toolCallId: "c1",
+          state: "input-available",
+          input: { title: "Add a flag", plan: "## Phase 1" },
+        } as any,
+      ]),
+    ]);
+
+    const gate = nodes.find((n) => n.data.toolName === DefaultToolName.ProposePlan);
+    expect(gate).toBeDefined();
+    expect(gate!.data.kind).toBe("gate");
+    expect(gate!.data.status).toBe("waiting");
+  });
+
+  // The gate node's "Writing the plan…" branch (chat-graph-node.tsx) exists
+  // precisely because this state is reachable and distinct from `waiting`:
+  // the model is still emitting arguments, `data.output` does not exist yet,
+  // and a node that read this as answered would render "Approved." on a plan
+  // nobody has seen. `kind` must already be "gate" here too, not the generic
+  // "tool" fallback -- it is set from the tool's name, which streaming input
+  // does not change.
+  it("derives a plan still being written as a running gate, not waiting", () => {
+    const { nodes } = deriveChatGraph([
+      userMessage("m1", "Add a flag"),
+      assistantMessage("m2", [
+        {
+          type: `tool-${DefaultToolName.ProposePlan}`,
+          toolCallId: "c1",
+          state: "input-streaming",
+          input: { title: "Add a flag", plan: "## Phase 1\nDo th" },
+        } as any,
+      ]),
+    ]);
+
+    const gate = nodes.find((n) => n.data.toolName === DefaultToolName.ProposePlan);
+    expect(gate!.data.kind).toBe("gate");
+    expect(gate!.data.status).toBe("running");
+  });
+
+  it("derives an answered plan as a finished gate", () => {
+    const { nodes } = deriveChatGraph([
+      userMessage("m1", "Add a flag"),
+      assistantMessage("m2", [
+        {
+          type: `tool-${DefaultToolName.ProposePlan}`,
+          toolCallId: "c1",
+          state: "output-available",
+          input: { title: "Add a flag", plan: "## Phase 1" },
+          output: { decision: "proceed" },
+        } as any,
+      ]),
+    ]);
+
+    const gate = nodes.find((n) => n.data.toolName === DefaultToolName.ProposePlan);
+    expect(gate!.data.kind).toBe("gate");
+    expect(gate!.data.status).toBe("success");
+  });
+
+  // A client-executed tool also sits in input-available, but it resolves on
+  // its own in a second or two -- it genuinely is running. Repainting every
+  // mid-flight client tool as "blocked on you" would make the waiting state
+  // meaningless.
+  it("leaves an ordinary in-flight tool call running", () => {
+    const { nodes } = deriveChatGraph([
+      userMessage("m1", "Run it"),
+      assistantMessage("m2", [
+        {
+          type: `tool-${DefaultToolName.TerminalExecution}`,
+          toolCallId: "c1",
+          state: "input-available",
+          input: { command: "ls" },
+        } as any,
+      ]),
+    ]);
+
+    const node = nodes.find(
+      (n) => n.data.toolName === DefaultToolName.TerminalExecution,
+    );
+    expect(node!.data.status).toBe("running");
+  });
+
+  it("gives the walkthrough its own kind", () => {
+    const { nodes } = deriveChatGraph([
+      userMessage("m1", "Do it"),
+      assistantMessage("m2", [
+        {
+          type: `tool-${DefaultToolName.Walkthrough}`,
+          toolCallId: "c1",
+          state: "output-available",
+          input: {},
+          output: { summary: "Did the thing.", changes: [] },
+        } as any,
+      ]),
+    ]);
+
+    const node = nodes.find(
+      (n) => n.data.toolName === DefaultToolName.Walkthrough,
+    );
+    expect(node!.data.kind).toBe("summary");
+  });
 });

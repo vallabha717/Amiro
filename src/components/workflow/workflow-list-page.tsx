@@ -215,7 +215,7 @@ export default function WorkflowListPage({
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {canCreate && (
               <EditWorkflowPopup>
-                <Card className="relative bg-secondary overflow-hidden w-full hover:bg-input transition-colors h-[196px] cursor-pointer">
+                <Card data-testid="create-workflow-card" className="relative bg-secondary overflow-hidden w-full hover:bg-input transition-colors h-[196px] cursor-pointer">
                   <div className="absolute inset-0 w-full h-full opacity-50">
                     <BackgroundPaths />
                   </div>

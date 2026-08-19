@@ -36,10 +36,11 @@ export function UserSettingsPopup({
     >
       <DrawerPortal>
         <DrawerContent
+          data-testid="user-settings-drawer"
           style={{
             userSelect: "text",
           }}
-          className="max-h-[100vh]! w-full h-full  rounded-none flex flex-col overflow-hidden p-4 md:p-6"
+          className="max-h-[100vh]! w-full h-full rounded-none flex flex-col overflow-hidden p-4 md:p-6"
         >
           <div className="flex items-center justify-end">
             <Button

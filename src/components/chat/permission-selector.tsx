@@ -160,7 +160,18 @@ export function PermissionSelector({
             return (
               <DropdownMenuItem
                 key={mode}
-                onClick={() => appStoreMutate({ permissionMode: mode })}
+                onClick={() =>
+                  appStoreMutate({
+                    permissionMode: mode,
+                    // Remember what Plan is being entered *from*, so approving
+                    // a plan can hand that mode back rather than pick one.
+                    // Someone who works in Manual and drops into Plan to think
+                    // should come back to Manual, not be silently promoted.
+                    ...(mode === "plan" && permissionMode !== "plan"
+                      ? { modeBeforePlan: permissionMode }
+                      : {}),
+                  })
+                }
                 className={cn(
                   "flex items-start gap-2.5 p-2 rounded-lg cursor-pointer transition-colors duration-100",
                   isSelected

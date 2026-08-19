@@ -146,6 +146,7 @@ export default function EmailSignUp() {
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
+                data-testid="signup-email-input"
                 type="email"
                 placeholder="mcp@example.com"
                 disabled={isLoading}
@@ -169,6 +170,7 @@ export default function EmailSignUp() {
               <Label htmlFor="name">Full Name</Label>
               <Input
                 id="name"
+                data-testid="signup-name-input"
                 type="text"
                 placeholder="Cgoing"
                 disabled={isLoading}
@@ -194,6 +196,7 @@ export default function EmailSignUp() {
               </div>
               <Input
                 id="password"
+                data-testid="signup-password-input"
                 type="password"
                 placeholder="********"
                 disabled={isLoading}
@@ -272,6 +275,7 @@ export default function EmailSignUp() {
               tabIndex={0}
               disabled={isLoading}
               className="w-1/2"
+              data-testid="signup-next-button"
               onClick={() => {
                 if (step === 1) successEmailStep();
                 if (step === 2) successNameStep();
@@ -286,6 +290,7 @@ export default function EmailSignUp() {
               disabled={isLoading || step === 1}
               className={cn(step === 1 && "invisible", "w-1/2")}
               variant="ghost"
+              data-testid="signup-back-button"
               onClick={backStep}
             >
               <ChevronLeft className="size-4" />

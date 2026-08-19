@@ -7,14 +7,14 @@ import (
 	"github.com/maximhq/bifrost/core/schemas"
 )
 
-func TestAccount_GetConfiguredProvidersListsEveryCatalogProvider(t *testing.T) {
+func TestAccount_GetConfiguredProvidersReturnsNilForDynamicRouting(t *testing.T) {
 	a := newAccount(fakeRepo{})
 	providers, err := a.GetConfiguredProviders()
 	if err != nil {
 		t.Fatalf("GetConfiguredProviders: %v", err)
 	}
-	if len(providers) != len(catalog) {
-		t.Fatalf("got %d providers, want %d (see account.go's doc comment)", len(providers), len(catalog))
+	if len(providers) != 0 {
+		t.Fatalf("got %d providers, want 0 for dynamic DB routing", len(providers))
 	}
 }
 

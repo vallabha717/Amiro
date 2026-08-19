@@ -328,9 +328,10 @@ export default function MentionInput({
     <div
       ref={containerRef}
       onClick={focus}
+      data-testid="chat-input-container"
       className={cn("relative w-full", className)}
     >
-      <EditorContent editor={editor} onKeyDown={handleKeyDown} />
+      <EditorContent editor={editor} data-testid="chat-input" onKeyDown={handleKeyDown} />
       {suggestion}
       {placeholderElement}
     </div>

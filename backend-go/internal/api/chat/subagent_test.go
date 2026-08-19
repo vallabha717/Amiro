@@ -127,6 +127,24 @@ func TestSubagent_CannotSpawnASubagent(t *testing.T) {
 	}
 }
 
+// A subagent must never be offered propose_plan, and the reason is sharper
+// than "it is not a read tool".
+//
+// propose_plan works by having no executor: the scheduler leaves the call in
+// "input-available" and stops the loop so a human can answer. In a child
+// loop there is no human -- no cards render, nothing about the child reaches
+// the transcript until it returns -- so the pause has nobody to resolve it.
+// The child would burn its budget waiting and the parent would block behind
+// it. The allowlist prevents this structurally, the same way it prevents
+// recursion, rather than by a rule someone has to remember.
+func TestSubagent_CannotProposeAPlan(t *testing.T) {
+	for _, name := range []string{tools.NameProposePlan, tools.NameWalkthrough} {
+		if subagentToolNames[name] {
+			t.Fatalf("%s is in the child's tool subset; a suspending tool inside an unwatched loop hangs the parent", name)
+		}
+	}
+}
+
 // No read tools this turn means no `task` tool: a subagent with nothing to
 // explore with is a slower, more confusing way to ask the model directly.
 func TestSubagent_NotOfferedWithoutReadTools(t *testing.T) {

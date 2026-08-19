@@ -41,6 +41,7 @@ export default function OnboardingWizard() {
         method: "POST",
         body: JSON.stringify({
           provider: selectedProvider,
+          name: activeProvider?.name || selectedProvider,
           apiKey: apiKey,
           baseUrl: baseUrl,
         }),
@@ -80,6 +81,7 @@ export default function OnboardingWizard() {
                   {providers.map((provider) => (
                     <div
                       key={provider.id}
+                      data-testid={`onboarding-provider-${provider.id}`}
                       onClick={() => {
                         setSelectedProvider(provider.id);
                         setApiKey("");
@@ -106,6 +108,7 @@ export default function OnboardingWizard() {
                   <Label htmlFor="apiKey">API Key</Label>
                   <Input
                     id="apiKey"
+                    data-testid="onboarding-api-key-input"
                     type="password"
                     placeholder={`sk-...`}
                     value={apiKey}
@@ -121,6 +124,7 @@ export default function OnboardingWizard() {
                     <Label htmlFor="baseUrl">Custom Base URL (Optional)</Label>
                     <Input
                       id="baseUrl"
+                      data-testid="onboarding-base-url-input"
                       type="url"
                       placeholder="https://api.openai.com/v1"
                       value={baseUrl}
@@ -151,17 +155,17 @@ export default function OnboardingWizard() {
         <CardFooter className="flex justify-between border-t p-6 bg-muted/20">
           {step === 1 ? (
             <>
-              <Button variant="ghost" onClick={() => router.push("/")}>
+              <Button variant="ghost" data-testid="onboarding-skip-button" onClick={() => router.push("/")}>
                 Skip for now
               </Button>
-              <Button onClick={handleSaveProvider} disabled={isSaving}>
+              <Button data-testid="onboarding-save-button" onClick={handleSaveProvider} disabled={isSaving}>
                 {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Save & Continue
                 <ChevronRight className="ml-2 h-4 w-4" />
               </Button>
             </>
           ) : (
-            <Button onClick={finishSetup} className="w-full text-lg h-12">
+            <Button data-testid="onboarding-finish-button" onClick={finishSetup} className="w-full text-lg h-12">
               Start Using Amiro
             </Button>
           )}

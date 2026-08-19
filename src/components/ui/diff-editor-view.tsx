@@ -936,7 +936,7 @@ function PureDiffEditorView({
 
       {!hideMaximize && (
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogContent className="flex h-[85vh] w-[95vw] max-w-6xl flex-col gap-3 p-4">
+          <DialogContent className="flex h-[85vh] w-[95vw] sm:max-w-6xl flex-col gap-3 p-4">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 truncate font-mono text-sm">
                 <FileDiffIcon className="size-4 shrink-0 text-muted-foreground" />
@@ -1048,7 +1048,7 @@ function PureDiffEditorViewCompact({
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
-          className="flex h-[85vh] w-[95vw] max-w-6xl flex-col gap-3 p-4"
+          className="flex h-[85vh] w-[95vw] sm:max-w-6xl flex-col gap-3 p-4"
           onClick={(e) => e.stopPropagation()}
         >
           <DialogHeader>

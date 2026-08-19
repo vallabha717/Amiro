@@ -31,12 +31,48 @@ func okTool(name string) tools.Definition {
 		Execute: func(context.Context, json.RawMessage) (any, error) { return "fine", nil }}
 }
 
-// The load-bearing test for keeping two records of one turn honest.
+// The claim the inversion actually makes: the persisted parts array *is* the
+// projection of the event log, not a second account that happens to agree.
 //
-// The event log is a parallel structure to the persisted parts array, not
-// yet a projection of it (see internal/agent/session's package doc for why
-// the inversion is still deferred). Two records of one turn can drift, and
-// a test is the only thing that can stop them.
+// This replaces what the agreement test below could ever prove. While the two
+// were accumulated side by side, the strongest available assertion was "these
+// two structures currently say the same thing about this one scenario" --
+// which passes right up until someone appends to one and not the other on a
+// path no test covers. Comparing the persisted bytes against the projection
+// of the log fails for *any* turn where the two could differ, because there
+// is no longer a second accumulator that could drift.
+func TestToolLoop_PersistedPartsAreTheProjectionOfTheLog(t *testing.T) {
+	defs := []tools.Definition{
+		okTool(tools.NameReadFile),
+		{Name: tools.NameEditFile, Risk: tools.RiskWrite,
+			Execute: func(context.Context, json.RawMessage) (any, error) {
+				return nil, fmt.Errorf("edit_file: the search anchor matched 3 times")
+			}},
+	}
+	engine := &fakeStreamEngine{steps: []bifrostai.StepResult{
+		{Reasoning: "thinking", Text: "reading", ToolCalls: []bifrostai.ToolCall{
+			{ID: "c1", Name: tools.NameReadFile, Arguments: `{"path":"a.go"}`},
+			{ID: "c2", Name: tools.NameEditFile, Arguments: `{"path":"a.go"}`},
+		}},
+		{Text: "done"},
+	}}
+
+	res := loopWith(t, engine, defs, testPerms())
+
+	want, err := json.Marshal(partsFromLog(res.Log.Events()))
+	if err != nil {
+		t.Fatalf("project: %v", err)
+	}
+	if string(res.Parts) != string(want) {
+		t.Errorf("the persisted parts are not the projection of the log.\npersisted: %s\nprojected: %s",
+			res.Parts, want)
+	}
+}
+
+// The original drift guard, kept because it states the property in the terms
+// a reader will look for. It can no longer fail for the reason it was written
+// -- there is one record now -- but it is cheap and it documents the
+// invariant that made the inversion worth doing.
 func TestToolLoop_EventLogAgreesWithThePersistedParts(t *testing.T) {
 	defs := []tools.Definition{okTool(tools.NameReadFile), okTool(tools.NameGrep)}
 	engine := &fakeStreamEngine{steps: []bifrostai.StepResult{

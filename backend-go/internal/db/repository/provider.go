@@ -63,7 +63,7 @@ func (r *ProviderRepository) IterateConfigs(ctx context.Context, cb func(id, pro
 
 func (r *ProviderRepository) Get(ctx context.Context, id string) (*ProviderConfigData, error) {
 	var model models.ProviderConfig
-	err := r.db.WithContext(ctx).Where("id = ?", id).First(&model).Error
+	err := r.db.WithContext(ctx).Where("id = ? OR provider = ?", id, id).First(&model).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil // Not found

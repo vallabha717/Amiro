@@ -15,13 +15,10 @@ func newAccount(repo ProviderFetcher) *account {
 }
 
 func (a *account) GetConfiguredProviders() ([]schemas.ModelProvider, error) {
-	// Bifrost core only strictly needs this for initialization verification of static providers,
-	// Since we handle dynamic routing via DB, we can just return the static list.
-	providers := make([]schemas.ModelProvider, 0, len(catalog))
-	for _, p := range catalog {
-		providers = append(providers, p.Provider)
-	}
-	return providers, nil
+	// Returning nil tells Bifrost that all provider routing is dynamic via DB
+	// (GetConfigForProvider and GetKeysForProvider), preventing it from freezing
+	// static base URLs against an empty database at startup.
+	return nil, nil
 }
 
 func (a *account) GetKeysForProvider(ctx context.Context, providerKey schemas.ModelProvider) ([]schemas.Key, error) {

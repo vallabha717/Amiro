@@ -45,21 +45,20 @@ export default function SignIn() {
 
   const emailAndPasswordSignIn = () => {
     setLoading(true);
-    safe(() =>
-      authClient.signIn.email(
+    safe(async () => {
+      const res = await authClient.signIn.email(
         { email: formData.email, password: formData.password },
         {
           onError(ctx) {
             toast.error(ctx.error.message || ctx.error.statusText);
           },
         },
-      ).then((res) => {
+      );
+      if (res?.data) {
         router.push("/onboarding");
-        return res;
-      })
-    )
-      .watch(() => setLoading(false))
-      .unwrap();
+      }
+      return res;
+    }).watch(() => setLoading(false));
   };
 
   return (
@@ -97,6 +96,7 @@ export default function SignIn() {
                   <Label htmlFor="email">Email</Label>
                   <Input
                     id="email"
+                    data-testid="signin-email-input"
                     autoFocus
                     disabled={loading}
                     value={formData.email}
@@ -112,6 +112,7 @@ export default function SignIn() {
                   </div>
                   <Input
                     id="password"
+                    data-testid="signin-password-input"
                     disabled={loading}
                     value={formData.password}
                     placeholder="********"

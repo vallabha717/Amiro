@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { format } from "date-fns";
 import { TrendingUp, ShieldCheck, Users, Check, ChevronsUpDown } from "lucide-react";
 import { fetcher } from "lib/utils";
+import { getUserAvatar } from "lib/user/utils";
 import { useSession } from "@/lib/backend/session-context";
 import { Avatar, AvatarFallback, AvatarImage } from "ui/avatar";
 import { Badge } from "ui/badge";
@@ -294,7 +295,7 @@ function UsageContent() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center gap-4">
                 <Avatar className="size-12 rounded-full border shadow-sm">
-                  <AvatarImage src={user.image ?? undefined} />
+                  <AvatarImage src={getUserAvatar(user)} />
                   <AvatarFallback className="text-base font-semibold bg-primary/10 text-primary">
                     {user.name.slice(0, 2).toUpperCase()}
                   </AvatarFallback>

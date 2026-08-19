@@ -87,10 +87,10 @@ function ArchivePageContent() {
           <div className="w-full h-full bg-gradient-to-r from-background to-20% to-transparent z-20" />
         </div>
       </>
-      <div className="container mx-auto p-6 max-w-4xl z-40">
+      <div className="container mx-auto p-6 max-w-4xl z-40" data-testid="archive-page">
         <div className="mb-8 z-50">
           <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-2xl font-bold">{archive.name}</h1>
+            <h1 className="text-2xl font-bold" data-testid="archive-title">{archive.name}</h1>
             <div className="flex-1" />
             <p className="text-xs text-muted-foreground mr-2">
               Created {formatTimeAgo(new Date(archive.createdAt))}
@@ -118,7 +118,7 @@ function ArchivePageContent() {
 
         <div className="space-y-3">
           {archiveThreads.length === 0 ? (
-            <Card className="bg-transparent  border-none">
+            <Card className="bg-transparent border-none" data-testid="archive-empty">
               <CardContent className="flex items-center justify-center py-12">
                 <div className="text-center">
                   <MessageCircleXIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />

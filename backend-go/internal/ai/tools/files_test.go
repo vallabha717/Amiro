@@ -203,6 +203,19 @@ func TestGlob_MatchesAcrossSegmentsAndSortsNewestFirst(t *testing.T) {
 	}
 }
 
+func TestGlob_ReportsNoticeWhenPatternMatchesNothing(t *testing.T) {
+	ws, _ := testWorkspace(t)
+	defs := Defaults(Deps{Workspace: ws})
+
+	out := mustRun(t, defs, NameGlob, `{"pattern":"**/*.does-not-exist"}`).(GlobOutput)
+	if out.Count != 0 || len(out.Matches) != 0 {
+		t.Fatalf("empty glob result = %+v, want no matches", out)
+	}
+	if out.Notice != "no files matched" {
+		t.Fatalf("Notice = %q, want %q", out.Notice, "no files matched")
+	}
+}
+
 func TestGrep_ReportsHitsWithFileCountAndRespectsInclude(t *testing.T) {
 	ws, _ := testWorkspace(t)
 	defs := Defaults(Deps{Workspace: ws})

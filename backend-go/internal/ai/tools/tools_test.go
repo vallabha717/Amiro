@@ -9,16 +9,19 @@ import (
 	"testing"
 )
 
-func TestDefaults_ReturnsElevenToolsAcrossFourToolkits(t *testing.T) {
+func TestDefaults_ReturnsThirteenToolsAcrossFiveToolkits(t *testing.T) {
 	defs := Defaults(Deps{})
-	if len(defs) != 11 {
-		t.Fatalf("got %d tools, want 11 (4 visualization + 1 http + 2 webSearch + 4 terminal), defs: %+v", len(defs), defs)
+	if len(defs) != 13 {
+		t.Fatalf("got %d tools, want 13 (4 visualization + 1 http + 2 webSearch + 4 terminal + 2 todo), defs: %+v", len(defs), defs)
 	}
 	byToolkit := map[string]int{}
 	for _, d := range defs {
 		byToolkit[d.Toolkit]++
 	}
-	want := map[string]int{ToolkitVisualization: 4, ToolkitHttp: 1, ToolkitWebSearch: 2, ToolkitTerminal: 4}
+	// The two `todo` entries here are propose_plan and walkthrough, which
+	// need no session store and so exist even for an empty Deps. todo_write
+	// and todo_read do need one, and are absent from this count.
+	want := map[string]int{ToolkitVisualization: 4, ToolkitHttp: 1, ToolkitWebSearch: 2, ToolkitTerminal: 4, ToolkitTodo: 2}
 	for k, v := range want {
 		if byToolkit[k] != v {
 			t.Fatalf("toolkit %q: got %d tools, want %d (%+v)", k, byToolkit[k], v, byToolkit)
@@ -26,9 +29,24 @@ func TestDefaults_ReturnsElevenToolsAcrossFourToolkits(t *testing.T) {
 	}
 }
 
-func TestDefaults_EveryToolHasExecute(t *testing.T) {
+// propose_plan is the one built-in with no server-side executor, and that is
+// the mechanism rather than an oversight: a nil Execute is what makes the
+// scheduler leave the call in "input-available", stop the loop, and hand it
+// to the browser for a human to answer.
+//
+// So this test asserts the exception by name. Relaxing it to "some tools may
+// have no executor" would let a genuine omission -- a tool that simply
+// forgot its implementation -- through, and the symptom of that is a turn
+// that hangs forever waiting for an answer nobody will send.
+func TestDefaults_EveryToolHasExecuteExceptProposePlan(t *testing.T) {
 	defs := Defaults(Deps{})
 	for _, d := range defs {
+		if d.Name == NameProposePlan {
+			if d.Execute != nil {
+				t.Fatalf("%s has an executor; the nil one is what suspends the turn for the user", d.Name)
+			}
+			continue
+		}
 		if d.Execute == nil {
 			t.Fatalf("tool %q (toolkit %q): got nil Execute, want non-nil", d.Name, d.Toolkit)
 		}
@@ -89,26 +107,45 @@ func TestFilter_NilAllowedToolkitsReturnsEverything(t *testing.T) {
 	}
 }
 
-func TestFilter_EmptyAllowedToolkitsReturnsNone(t *testing.T) {
+// "None" means none of the *capabilities*. The plan toolkit survives any
+// allowlist by design (alwaysOffered) -- it is how the agent coordinates
+// with the user about its own work, not something a user would think to
+// switch on. This test used to read "returns none" and passed only because
+// an empty Deps has no todo store; propose_plan and walkthrough need no
+// store, so the exemption is now visible here and worth asserting directly.
+func TestFilter_EmptyAllowedToolkitsReturnsOnlyTheExemptPlanTools(t *testing.T) {
 	defs := Defaults(Deps{})
 	empty := []string{}
 	got := Filter(defs, &empty, nil)
-	if len(got) != 0 {
-		t.Fatalf("got %+v, want none", got)
+	for _, d := range got {
+		if d.Toolkit != ToolkitTodo {
+			t.Fatalf("tool %q (toolkit %q) survived an empty allowlist", d.Name, d.Toolkit)
+		}
+	}
+	for _, name := range []string{NameProposePlan, NameWalkthrough} {
+		if _, ok := FindByName(got, name); !ok {
+			t.Fatalf("%s is exempt from the allowlist but was dropped", name)
+		}
 	}
 }
 
-func TestFilter_SpecificToolkitReturnsOnlyItsTools(t *testing.T) {
+func TestFilter_SpecificToolkitReturnsItsToolsPlusTheExemptOnes(t *testing.T) {
 	defs := Defaults(Deps{})
 	allowed := []string{ToolkitVisualization}
 	got := Filter(defs, &allowed, nil)
-	if len(got) != 4 {
-		t.Fatalf("got %d tools, want 4", len(got))
-	}
 	for _, d := range got {
-		if d.Toolkit != ToolkitVisualization {
-			t.Fatalf("got tool %q from toolkit %q, want only visualization", d.Name, d.Toolkit)
+		if d.Toolkit != ToolkitVisualization && d.Toolkit != ToolkitTodo {
+			t.Fatalf("got tool %q from toolkit %q, want only visualization (plus the exempt plan tools)", d.Name, d.Toolkit)
 		}
+	}
+	visualization := 0
+	for _, d := range got {
+		if d.Toolkit == ToolkitVisualization {
+			visualization++
+		}
+	}
+	if visualization != 4 {
+		t.Fatalf("got %d visualization tools, want 4", visualization)
 	}
 }
 

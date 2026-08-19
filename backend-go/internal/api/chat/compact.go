@@ -55,11 +55,21 @@ func summarizerFor(engine Engine, resolved bifrostai.ResolvedModel) compaction.S
 func compactIfNeeded(
 	ctx context.Context,
 	engine Engine,
-	sw *uimessage.Writer,
+	sw uimessage.Emitter,
 	resolved bifrostai.ResolvedModel,
 	messages []bifrostai.Message,
 ) ([]bifrostai.Message, map[string]any) {
-	res, err := compaction.Compact(ctx, messages, compaction.DefaultPolicy(), summarizerFor(engine, resolved))
+	policy := compaction.DefaultPolicy()
+	if consumeForceCompact(ctx) {
+		// A budget of 1 token clears Compact's own "under budget" check
+		// unconditionally -- its other guard (nothing to compact once
+		// everything is within KeepRecent) still applies, which is the
+		// right behavior for a manual /compact on a short thread: there is
+		// nothing to summarize yet, and saying so beats compacting the
+		// summary of a summary.
+		policy.MaxTokens = 1
+	}
+	res, err := compaction.Compact(ctx, messages, policy, summarizerFor(engine, resolved))
 	if err != nil || !res.Compacted {
 		return messages, nil
 	}
@@ -71,11 +81,51 @@ func compactIfNeeded(
 	}
 	_ = sw.Data(compactionDataPart, "", data)
 
-	// Persisted as a part too, so the marker is still there on reload. A
-	// user scrolling back through a long turn needs to see where the agent
-	// stopped being able to remember the beginning of it.
-	return res.Messages, map[string]any{
-		"type": "data-" + compactionDataPart,
-		"data": data,
+	// Returned as the marker's *data*, not as a finished part. The caller
+	// records it on the compaction event and the parts projection wraps it
+	// (parts.go) -- so the marker still survives a reload, and this function
+	// no longer knows the persisted format. A user scrolling back through a
+	// long turn needs to see where the agent stopped being able to remember
+	// the beginning of it.
+	return res.Messages, data
+}
+
+// forceCompactKey types the context value below -- the same pattern
+// approver.go uses for the same reason: request-scoped, optional, with a
+// correct zero behavior (unset means "only compact when actually over
+// budget," the existing rule).
+//
+// A ctx value rather than a parameter on compactIfNeeded/runToolLoop
+// specifically to avoid touching either signature: runToolLoop alone has
+// upwards of a dozen call sites across this package's own test suite, and
+// none of them have any reason to know a manual compact was requested. The
+// alternative -- a new parameter threaded through runToolLoop,
+// runToolLoopWithBudget, and every test call site -- is a wide, purely
+// mechanical diff for a feature (the TUI's /compact) that only ever needs
+// to reach the one place a step's history gets checked.
+type forceCompactKey struct{}
+
+// WithForceCompact marks ctx's turn to compact its history on the very next
+// check regardless of size -- the TUI's `/compact` (component/editor's
+// slash commands), sent as TurnRequest.CompactNow.
+//
+// The flag is consumed by the first call to compactIfNeeded and cleared
+// immediately after, via the pointer this stores rather than a plain bool
+// value -- ctx itself is immutable, but what it points to isn't. Without
+// that, a multi-step turn would force-compact every step, not just the
+// first, repeatedly summarizing history that was just summarized.
+func WithForceCompact(ctx context.Context, force bool) context.Context {
+	flag := force
+	return context.WithValue(ctx, forceCompactKey{}, &flag)
+}
+
+// consumeForceCompact reports whether ctx was still carrying an unconsumed
+// force request, and clears it either way.
+func consumeForceCompact(ctx context.Context) bool {
+	ptr, ok := ctx.Value(forceCompactKey{}).(*bool)
+	if !ok || !*ptr {
+		return false
 	}
+	*ptr = false
+	return true
 }

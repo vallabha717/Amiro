@@ -36,6 +36,8 @@ const TOOLS_REQUIRING_A_PRESENTER = [
   DefaultToolName.MemoryWrite,
   DefaultToolName.MemoryRead,
   DefaultToolName.MemoryForget,
+  DefaultToolName.ProposePlan,
+  DefaultToolName.Walkthrough,
 ];
 
 describe("tool presenter registry", () => {

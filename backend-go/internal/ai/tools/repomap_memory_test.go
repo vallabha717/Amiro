@@ -312,7 +312,11 @@ func TestFilter_KeepsThePlanToolsRegardlessOfTheAllowlist(t *testing.T) {
 	allowed := []string{"terminal", "visualization"}
 	got := Filter(defs, &allowed, nil)
 
-	for _, name := range []string{NameTodoWrite, NameTodoRead} {
+	// propose_plan and walkthrough ride the same exemption, and the stakes
+	// are higher for propose_plan than for the todo tools: Plan mode's whole
+	// contract is "finish by proposing a plan", so an allowlist that quietly
+	// drops it produces a mode that can never reach its own end state.
+	for _, name := range []string{NameTodoWrite, NameTodoRead, NameProposePlan, NameWalkthrough} {
 		if _, ok := FindByName(got, name); !ok {
 			t.Errorf("%s was filtered out by an allowlist that does not mention it", name)
 		}

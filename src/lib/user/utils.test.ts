@@ -19,6 +19,13 @@ describe("User Utils", () => {
       expect(getUserAvatar({ image: "" })).toBe("/pf.png");
     });
 
+    it("should rewrite loopback storage URLs to current backend base URL", () => {
+      const result = getUserAvatar({
+        image: "http://127.0.0.1:41235/storage/some-signed-token",
+      });
+      expect(result).toBe("http://127.0.0.1:8787/storage/some-signed-token");
+    });
+
     it("should respect DISABLE_DEFAULT_AVATAR environment flag", () => {
       process.env.DISABLE_DEFAULT_AVATAR = "true";
 
@@ -26,7 +33,7 @@ describe("User Utils", () => {
       expect(getUserAvatar({})).toBe("");
 
       // But still return user image when available
-      expect(getUserAvatar({ image: "custom.jpg" })).toBe("custom.jpg");
+      expect(getUserAvatar({ image: "https://example.com/custom.jpg" })).toBe("https://example.com/custom.jpg");
     });
   });
 

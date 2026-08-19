@@ -14,9 +14,28 @@ export type ChatGraphNodeKind =
   | "code"
   | "http"
   | "template"
-  | "response";
+  | "response"
+  /**
+   * A decision the run is stopped on: `propose_plan`. Its own kind rather
+   * than a generic "tool" because it is the only node the user is expected
+   * to *act* on, and one that looks like every other step is one they will
+   * scroll past while wondering why nothing is happening.
+   */
+  | "gate"
+  /** The end-of-turn `walkthrough`: what changed, in reading order. */
+  | "summary";
 
-export type ChatGraphNodeStatus = "running" | "success" | "fail";
+/**
+ * `waiting` is a tool call the loop suspended -- it is not running, it is
+ * stopped, and what it is stopped on is a human.
+ *
+ * This had to be distinct from `running`. A suspended call sits in
+ * `input-available` forever, which the old derivation read as "still going",
+ * so the node showed a spinner. A spinner on a node that is in fact waiting
+ * for *you* tells the user the exact opposite of what is true: it says "be
+ * patient" when the honest message is "nothing will happen until you answer".
+ */
+export type ChatGraphNodeStatus = "running" | "waiting" | "success" | "fail";
 
 export type ChatGraphNodeData = {
   kind: ChatGraphNodeKind;

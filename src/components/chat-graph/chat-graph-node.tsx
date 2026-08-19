@@ -15,10 +15,14 @@ import {
   BarChart3Icon,
   BotIcon,
   CheckCircle2Icon,
+  ClipboardListIcon,
   FileTextIcon,
   GlobeIcon,
   InfoIcon,
   Loader2Icon,
+  MessagesSquareIcon,
+  PauseIcon,
+  PlayIcon,
   PlugIcon,
   TerminalIcon,
   TriangleAlertIcon,
@@ -26,6 +30,7 @@ import {
   WrenchIcon,
 } from "lucide-react";
 import { memo } from "react";
+import { useChatGraphActions } from "./chat-graph-actions";
 import {
   DiffEditorViewCompact,
   sectionsFromEditOutput,
@@ -106,6 +111,25 @@ const KIND_CONFIG: Record<ChatGraphNodeKind, NodeConfig> = {
     borderColor: "border-green-500/40",
     accentBg: "bg-green-500",
   },
+  // Amber, matching the approval card and the pending-plan tint everywhere
+  // else. A user learns one colour for "this is waiting on me" and finds it
+  // in the graph without being taught the graph separately.
+  gate: {
+    label: "REVIEW",
+    icon: FileTextIcon,
+    badgeBg:
+      "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30",
+    borderColor: "border-amber-500/40",
+    accentBg: "bg-amber-500",
+  },
+  summary: {
+    label: "WALKTHROUGH",
+    icon: ClipboardListIcon,
+    badgeBg:
+      "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/30",
+    borderColor: "border-teal-500/40",
+    accentBg: "bg-teal-500",
+  },
 };
 
 function ChartPreview({ toolName, input }: { toolName?: string; input: any }) {
@@ -169,11 +193,13 @@ export const ChatGraphNode = memo(function ChatGraphNode({
   const config = KIND_CONFIG[data.kind] || KIND_CONFIG.tool;
   const Icon = config.icon;
   const isChart = data.kind === "chart";
+  const actions = useChatGraphActions();
 
   const handleStyle = cn(
     "h-3! w-3! border-2! border-background! transition-colors",
     data.status === "fail" && "bg-destructive!",
     data.status === "running" && "bg-blue-500!",
+    data.status === "waiting" && "bg-amber-500!",
     data.status === "success" && "bg-emerald-500!",
   );
 
@@ -187,6 +213,12 @@ export const ChatGraphNode = memo(function ChatGraphNode({
           : "border-border/80",
         data.status === "fail" && "border-destructive/80",
         data.status === "running" && "border-blue-500/80 animate-pulse",
+        // A slow breathe rather than the running pulse, and a different
+        // colour: the two states must not be told apart only by tempo. Under
+        // reduced motion it goes static and the amber border carries it --
+        // the information is the colour, the motion only draws the eye.
+        data.status === "waiting" &&
+          "border-amber-500/80 motion-safe:animate-[pulse_2s_ease-in-out_infinite]",
       )}
     >
       {/* Target Handles (Top & Left) */}
@@ -236,6 +268,13 @@ export const ChatGraphNode = memo(function ChatGraphNode({
               <Loader2Icon className="size-3.5 animate-spin" />
               <span className="hidden sm:inline">Running</span>
             </div>
+          ) : data.status === "waiting" ? (
+            // Not a spinner. The run is stopped, and the thing it is stopped
+            // on is the reader.
+            <div className="flex items-center gap-1 text-amber-600 dark:text-amber-400 text-[11px] font-medium">
+              <PauseIcon className="size-3.5" />
+              <span className="hidden sm:inline">Your review</span>
+            </div>
           ) : (
             <div className="flex items-center gap-1 text-emerald-500 text-[11px] font-medium">
               <CheckCircle2Icon className="size-3.5" />
@@ -269,6 +308,88 @@ export const ChatGraphNode = memo(function ChatGraphNode({
               {data.text}
             </div>
           )}
+
+        {/* The halted plan. Both actions are here as well as in the artifact
+            header and the chat card, because the user may be watching any of
+            the three when they decide -- and the one they are watching when
+            the run stops is usually this one. */}
+        {data.kind === "gate" && (
+          <div className="flex flex-col gap-2 px-3.5 pb-3.5">
+            {data.status === "waiting" ? (
+              <p className="text-[11px] leading-snug text-muted-foreground">
+                The run is paused here until you answer.
+              </p>
+            ) : data.status === "running" ? (
+              // Not yet suspended -- the model is still writing the plan's
+              // arguments. `data.output` does not exist yet at this point, so
+              // falling through to the answered branch would read it as
+              // undefined and render "Approved." on a plan nobody has seen.
+              <p className="flex items-center gap-1.5 text-[11px] leading-snug text-muted-foreground">
+                <span className="inline-block size-1.5 shrink-0 rounded-full bg-amber-500 motion-safe:animate-pulse" />
+                Writing the plan…
+              </p>
+            ) : (
+              <p className="text-[11px] leading-snug text-muted-foreground">
+                {(data.output as { decision?: string } | undefined)
+                  ?.decision === "revise"
+                  ? "Returned for revision."
+                  : "Approved."}
+              </p>
+            )}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  actions.openArtifact?.("plan");
+                }}
+                className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors duration-[120ms] ease-[var(--ease-out)] hover:bg-muted"
+              >
+                <MessagesSquareIcon className="size-3" />
+                Review
+              </button>
+              {data.status === "waiting" && (
+                <button
+                  type="button"
+                  disabled={actions.busy}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (data.toolCallId) actions.proceedWithPlan?.(data.toolCallId);
+                  }}
+                  className="inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[11px] font-medium text-primary-foreground transition-transform duration-[160ms] ease-[var(--ease-out)] active:scale-[0.97] disabled:opacity-50"
+                >
+                  <PlayIcon className="size-3" />
+                  Proceed
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {data.kind === "summary" && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              actions.openArtifact?.("walkthrough");
+            }}
+            className="mx-3.5 mb-3.5 rounded-md border border-border/40 bg-muted/30 p-2.5 text-left leading-relaxed text-muted-foreground transition-colors duration-[120ms] ease-[var(--ease-out)] hover:bg-muted/60"
+          >
+            {data.status === "running" && (
+              <span className="mb-1 flex items-center gap-1.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                <span className="inline-block size-1.5 shrink-0 rounded-full bg-amber-500 motion-safe:animate-pulse" />
+                Writing…
+              </span>
+            )}
+            <span className="line-clamp-3">
+              {/* Falls back to the streaming input's summary before the
+                  output exists, matching the walkthrough artifact/card. */}
+              {(data.output as { summary?: string } | undefined)?.summary ??
+                (data.input as { summary?: string } | undefined)?.summary ??
+                "Walkthrough"}
+            </span>
+          </button>
+        )}
 
         {/* An edit_file/multi_edit node IS a diff, the same way a code node
             IS a shell terminal below -- clicking it opens the full

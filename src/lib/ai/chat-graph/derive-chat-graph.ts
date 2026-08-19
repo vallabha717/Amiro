@@ -100,7 +100,29 @@ function getToolStateStatus(part: any): {
   ) {
     return { status: "success", isRunning: false };
   }
+  // A suspended call: the loop stopped here and will not move until the
+  // browser sends a result. `propose_plan` is the case that matters, and the
+  // difference from "running" is the whole point -- one says wait, the other
+  // says answer. isRunning stays false so the edge into this node does not
+  // animate; an animated edge into a stopped node is the same lie the
+  // spinner was.
+  if (state === "input-available" && isSuspendingTool(part)) {
+    return { status: "waiting", isRunning: false };
+  }
   return { status: "running", isRunning: true };
+}
+
+/**
+ * Tools whose "input-available" means "waiting for a human", not "waiting for
+ * the browser to run it".
+ *
+ * Client-executed tools (the JS/Python sandbox) also sit in input-available,
+ * but those resolve on their own within a second or two and genuinely are
+ * running. Listing the suspending tools explicitly keeps the two apart rather
+ * than repainting every mid-flight client tool as blocked on the user.
+ */
+function isSuspendingTool(part: any): boolean {
+  return extractToolName(part) === DefaultToolName.ProposePlan;
 }
 
 /**
@@ -113,6 +135,11 @@ export function getEstimatedNodeHeight(data: ChatGraphNodeData): number {
   if (data.kind === "chart") return 460;
   if (data.kind === "code" || data.kind === "http" || data.kind === "tool")
     return 240;
+  // A gate carries two buttons under its title, so it is taller than the
+  // 180 default. Getting this wrong only costs one frame of overlap before
+  // the canvas re-flows from measured sizes, but that frame lands exactly
+  // when the run halts and the user looks at it.
+  if (data.kind === "gate") return 220;
   return 180;
 }
 
@@ -145,6 +172,15 @@ function classifyToolKind(toolName: string): {
     serverName = "playwright";
   }
 
+  // Checked before the generic families: a plan gate is the one node in the
+  // graph the user has to act on, and letting it fall through to "tool"
+  // would render the decision point identically to a file read.
+  if (toolName === DefaultToolName.ProposePlan) {
+    return { kind: "gate", isMcp: false, serverName: undefined };
+  }
+  if (toolName === DefaultToolName.Walkthrough) {
+    return { kind: "summary", isMcp: false, serverName: undefined };
+  }
   if (CHART_TOOL_NAMES.includes(toolName)) {
     return { kind: "chart", isMcp, serverName };
   }

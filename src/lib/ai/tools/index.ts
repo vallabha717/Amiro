@@ -36,6 +36,11 @@ export enum DefaultToolName {
   TodoWrite = "todo_write",
   TodoRead = "todo_read",
   Task = "task",
+  // Plan review and the end-of-turn summary (Phase 6). propose_plan has no
+  // server-side executor: it suspends the turn and the browser answers it,
+  // which is why the artifact pane is what resolves the call.
+  ProposePlan = "propose_plan",
+  Walkthrough = "walkthrough",
   // Orientation, symbol intelligence and durable notes (Phase 4.4 / 5).
   // repo_map needs only a workspace; lsp additionally needs a language
   // server installed, and the memory tools an app data directory -- so

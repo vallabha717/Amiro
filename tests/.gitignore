@@ -1,0 +1,12 @@
+# Yours, not the repo's. config.example.yaml is the committed template;
+# copy it to config.yaml and edit. Every key in it is optional.
+config.yaml
+config.local.yaml
+.env
+
+# Every run writes here. Pruned to logging.keepRuns automatically.
+logs/
+
+node_modules/
+test-results/
+playwright-report/

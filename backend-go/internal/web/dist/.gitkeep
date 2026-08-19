@@ -1,0 +1,3 @@
+Placeholder so `go:embed all:dist` (embed_on.go) has a directory to point
+at in a checkout that has not run scripts/build-ui.sh. Everything else in
+here is generated and gitignored.

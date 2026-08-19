@@ -3,7 +3,6 @@ package chat
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"amiro/backend/internal/agent/permission"
@@ -96,10 +95,8 @@ func resolveApprovals(
 			// another route rather than retry the same call.
 			replacement = map[string]any{
 				"type": p.Type, "toolCallId": p.ToolCallID, "state": "output-error",
-				"input": input,
-				"errorText": fmt.Sprintf(
-					"The user declined to run %s. Do not retry it -- explain what you wanted to do and why, or find another way.",
-					toolName),
+				"input":     input,
+				"errorText": declinedToolMessage(toolName),
 			}
 		default:
 			def, found := tools.FindByName(activeTools, toolName)

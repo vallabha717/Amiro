@@ -18,6 +18,11 @@ export AMIRO_APP_DATA_DIR="${AMIRO_APP_DATA_DIR:-$HOME/.local/share/amiro-dev}"
 export AMIRO_PORT=8787
 export AMIRO_AUTH_TOKEN="dev-test-token-1786373638"
 export AMIRO_ALLOWED_ORIGIN="${AMIRO_ALLOWED_ORIGIN:-http://localhost:3210}"
+# File/edit/search/git tools only exist when a workspace root is set (see
+# backend-go/internal/agent/workspace) -- without this, this dev flow is
+# terminal-only no matter what the frontend's Tools dropdown allows.
+# Defaults to this repo so the agent can work on itself out of the box.
+export AMIRO_WORKSPACE_ROOT="${AMIRO_WORKSPACE_ROOT:-$DESKTOP_DIR}"
 
 # Legacy fallback variables for backwards compatibility
 export BETTERCHATBOT_DATABASE_DRIVER="$AMIRO_DATABASE_DRIVER"
@@ -25,6 +30,7 @@ export BETTERCHATBOT_APP_DATA_DIR="$AMIRO_APP_DATA_DIR"
 export BETTERCHATBOT_PORT="$AMIRO_PORT"
 export BETTERCHATBOT_AUTH_TOKEN="$AMIRO_AUTH_TOKEN"
 export BETTERCHATBOT_ALLOWED_ORIGIN="$AMIRO_ALLOWED_ORIGIN"
+export BETTERCHATBOT_WORKSPACE_ROOT="$AMIRO_WORKSPACE_ROOT"
 
 # OPENAI_COMPATIBLE_DATA (custom self-hosted / OpenAI-compatible models,
 # internal/ai/bifrost/openai_compatible.go) lives in desktop's own .env

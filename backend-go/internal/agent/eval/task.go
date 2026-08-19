@@ -3,21 +3,26 @@
 // fixed tasks, score them the same way every time, and report the metrics
 // that say whether a scaffold change helped.
 //
-// # What this is, and what it is not
+// # What this is
 //
-// The plan names SWE-bench Verified as the gate. This is not that, and the
-// difference matters: a SWE-bench instance needs a pinned repository
-// checkout and a container to run the project's own test suite in, which is
-// a Python-and-Docker dependency the plan itself acknowledges. What lives
-// here is the *harness* -- the task format, the runner, the scoring and the
-// report -- with an Agent interface at the boundary. Pointing it at
-// SWE-bench means writing an adapter that materializes an instance into a
-// workspace directory and a verify command, not rewriting any of this.
+// The *harness*: the task format, the runner, the scoring and the report,
+// with an Agent interface at the boundary. It knows nothing about any
+// particular benchmark, which is what let SWE-bench be added
+// (internal/agent/eval/swebench, landed 2026-08-17) as an adapter producing
+// ordinary Tasks plus one registered VerifyFunc, rather than as a second
+// runner.
 //
-// It is runnable today against local fixture tasks, which is the thing that
-// actually catches scaffold regressions during development: "did my change
-// to the edit format make edit_file fail more often" is answerable in
-// seconds against a handful of fixtures and in an hour against SWE-bench.
+// Two suites run through it:
+//
+//   - Local fixture tasks, which are what actually catches scaffold
+//     regressions during development: "did my change to the edit format make
+//     edit_file fail more often" is answerable in seconds against a handful
+//     of fixtures.
+//   - SWE-bench Verified, the gate the plan names, in an hour.
+//
+// Both produce the same Report, which is the point -- the numbers being
+// compared across a scaffold change should not depend on which suite
+// produced them.
 //
 // # The metrics, and why these four
 //

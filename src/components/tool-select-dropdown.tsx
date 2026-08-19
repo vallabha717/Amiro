@@ -13,7 +13,6 @@ import {
   GlobeIcon,
   HardDriveUploadIcon,
   ImagesIcon,
-  TerminalIcon,
   InfoIcon,
   Loader,
   MessageCircle,
@@ -21,6 +20,7 @@ import {
   Package,
   Plus,
   ShieldAlertIcon,
+  TerminalIcon,
   Waypoints,
   Wrench,
   WrenchIcon,
@@ -58,31 +58,35 @@ import { MCPIcon } from "ui/mcp-icon";
 
 import { useTranslations } from "next-intl";
 
-import { Switch } from "ui/switch";
-import { useShallow } from "zustand/shallow";
 import { useMcpList } from "@/hooks/queries/use-mcp-list";
 import { useWorkflowToolList } from "@/hooks/queries/use-workflow-tool-list";
-import { Avatar, AvatarFallback, AvatarImage } from "ui/avatar";
-import { WorkflowSummary } from "app-types/workflow";
-import { WorkflowGreeting } from "./workflow/workflow-greeting";
-import { AppDefaultToolkit } from "lib/ai/tools";
 import { ChatMention } from "app-types/chat";
+import { WorkflowSummary } from "app-types/workflow";
+import { AppDefaultToolkit } from "lib/ai/tools";
+import { Avatar, AvatarFallback, AvatarImage } from "ui/avatar";
 import { CountAnimation } from "ui/count-animation";
+import { Switch } from "ui/switch";
+import { useShallow } from "zustand/shallow";
+import { WorkflowGreeting } from "./workflow/workflow-greeting";
 
-import { Separator } from "ui/separator";
-import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
 import { AgentSummary } from "app-types/agent";
 import { authClient } from "auth/client";
+import { Separator } from "ui/separator";
+import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
 
-import { Alert, AlertDescription, AlertTitle } from "ui/alert";
-import { safe } from "ts-safe";
-import { mutate } from "swr";
-import { handleErrorWithToast } from "ui/shared-toast";
 import { useAgents } from "@/hooks/queries/use-agents";
-import { redriectMcpOauth } from "lib/ai/mcp/oauth-redirect";
-import { GeminiIcon } from "ui/gemini-icon";
 import { useChatModels } from "@/hooks/queries/use-chat-models";
+import {
+  SEARCH_ACTIVE_KEY,
+  selectActiveSearchProvider,
+} from "@/lib/backend/search-provider-api";
+import { redriectMcpOauth } from "lib/ai/mcp/oauth-redirect";
+import useSWR, { mutate } from "swr";
+import { safe } from "ts-safe";
+import { Alert, AlertDescription, AlertTitle } from "ui/alert";
+import { GeminiIcon } from "ui/gemini-icon";
 import { OpenAIIcon } from "ui/openai-icon";
+import { handleErrorWithToast } from "ui/shared-toast";
 
 interface ToolSelectDropdownProps {
   align?: "start" | "end" | "center";
@@ -848,11 +852,33 @@ function McpServerToolSelector({
   );
 }
 
+/**
+ * The active search provider's name, for the caption under "Search the Web"
+ * below.
+ *
+ * This is the answer to "how do I know which search is selected" without
+ * leaving the composer: the dropdown someone already opens to turn web
+ * search on or off is where they are standing when they'd ask that
+ * question, so the answer belongs there rather than only on the admin page.
+ */
+function useActiveSearchProviderCaption() {
+  const t = useTranslations("Chat.Tool");
+  const { data } = useSWR(SEARCH_ACTIVE_KEY, selectActiveSearchProvider, {
+    revalidateOnFocus: false,
+    shouldRetryOnError: false,
+  });
+  if (!data) return null;
+  return data.configured && data.label
+    ? t("activeSearchProvider", { label: data.label })
+    : t("searchNotConfigured");
+}
+
 function AppDefaultToolKitSelector() {
   const [appStoreMutate, allowedAppDefaultToolkit] = appStore(
     useShallow((state) => [state.mutate, state.allowedAppDefaultToolkit]),
   );
   const t = useTranslations();
+  const searchProviderCaption = useActiveSearchProviderCaption();
   const toggleAppDefaultToolkit = useCallback((toolkit: AppDefaultToolkit) => {
     appStoreMutate((prev) => {
       const newAllowedAppDefaultToolkit = [
@@ -872,7 +898,9 @@ function AppDefaultToolKitSelector() {
 
   const defaultToolInfo = useMemo(() => {
     const raw = t.raw("Chat.Tool.defaultToolKit");
-    const uniqueToolkits = Array.from(new Set(Object.values(AppDefaultToolkit)));
+    const uniqueToolkits = Array.from(
+      new Set(Object.values(AppDefaultToolkit)),
+    );
     return uniqueToolkits.map((toolkit) => {
       const label = raw[toolkit] || toolkit;
       const id = toolkit;
@@ -909,11 +937,13 @@ function AppDefaultToolKitSelector() {
   return (
     <DropdownMenuGroup>
       {defaultToolInfo.map((tool) => {
+        const isWebSearch = tool.id === AppDefaultToolkit.WebSearch;
         return (
           <DropdownMenuItem
             key={tool.id}
             className={cn(
               "cursor-pointer font-semibold text-xs text-muted-foreground",
+              isWebSearch && "flex-col items-stretch gap-1 py-2",
               allowedAppDefaultToolkit?.includes(tool.id) && "text-foreground",
             )}
             onClick={(e) => {
@@ -921,18 +951,28 @@ function AppDefaultToolKitSelector() {
               toggleAppDefaultToolkit(tool.id);
             }}
           >
-            <tool.icon
-              className={cn(
-                "size-3.5",
-                allowedAppDefaultToolkit?.includes(tool.id) &&
-                  "text-foreground",
-              )}
-            />
-            {tool.label}
-            <Switch
-              className="ml-auto"
-              checked={allowedAppDefaultToolkit?.includes(tool.id)}
-            />
+            <div className="flex items-center gap-2 w-full">
+              <tool.icon
+                className={cn(
+                  "size-3.5",
+                  allowedAppDefaultToolkit?.includes(tool.id) &&
+                    "text-foreground",
+                )}
+              />
+              {tool.label}
+              <Switch
+                className="ml-auto"
+                checked={allowedAppDefaultToolkit?.includes(tool.id)}
+              />
+            </div>
+            {/* The caption that answers "which engine is selected" without
+                leaving this menu. Rendered even when the toggle is off: a
+                user turning search on is about to care what it will use. */}
+            {isWebSearch && searchProviderCaption && (
+              <p className="pl-5.5 text-[11px] font-normal normal-case text-muted-foreground/80">
+                {searchProviderCaption}
+              </p>
+            )}
           </DropdownMenuItem>
         );
       })}

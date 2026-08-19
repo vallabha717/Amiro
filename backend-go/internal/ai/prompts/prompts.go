@@ -232,6 +232,40 @@ func BuildAgentGenerationPrompt(toolNames []string) string {
 CRITICAL: Generate all output content in the same language as the user's request. Be specific and comprehensive. Proactively seek clarification if requirements are ambiguous. Your output should enable the new agent to operate autonomously and reliably within its domain.`
 }
 
+// BuildPlanContractPrompt is the propose-plan-then-approve contract
+// (docs/agentic-loop-implementation-plan.md, Phase 6).
+//
+// Plan mode used to be purely negative -- the permission engine refused every
+// consequential call and nothing ever asked the model to produce something
+// the user could agree to. The result was a mode whose output was prose in
+// the chat and no decision point. This is the positive half: in Plan mode the
+// turn is supposed to *end* in a proposal.
+//
+// Returned empty for an unrecognized mode rather than defaulting to the
+// interactive text. The caller only includes this when the plan tools were
+// actually loaded, and the same reasoning applies one level down: a prompt
+// describing a contract that does not hold this turn is worse than silence.
+func BuildPlanContractPrompt(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "plan":
+		return `<planning>
+You are in Plan mode. Every consequential tool call will be refused, so do not attempt one -- read, search and map the codebase instead.
+
+Finish by calling propose_plan. Do not deliver the plan as a chat message: a plan the user cannot approve or comment on is not a plan, it is a suggestion, and this turn cannot act on it either way.
+
+Before you propose: read enough to name the actual files and the actual functions. A plan built from guesses reads exactly like a plan built from evidence, and the user cannot tell them apart until you are halfway through executing the wrong one.
+</planning>`
+	case "manual", "interactive", "edit", "auto":
+		return `<planning>
+For work that will touch several files or is hard to undo, call propose_plan first and let the user agree to the approach before you start. For a small, obvious change, just do it -- asking permission to fix a typo wastes the user's attention on the turns where it is worth nothing.
+
+When a turn is done and it changed files, call walkthrough: what changed, and in what order someone should read it.
+</planning>`
+	default:
+		return ""
+	}
+}
+
 // MergeSystemPrompt ports mergeSystemPrompt (shared.chat.ts:106): joins
 // every non-empty prompt with a blank line between them.
 func MergeSystemPrompt(prompts ...string) string {

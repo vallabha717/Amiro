@@ -185,6 +185,7 @@ export const UserMessagePart = memo(
       <div className="flex flex-col gap-2 items-end my-2">
         <div
           data-testid="message-content"
+          data-role="user"
           className={cn(
             "flex flex-col gap-4 max-w-full ring ring-input relative overflow-hidden",
             {
@@ -376,6 +377,7 @@ export const AssistMessagePart = memo(function AssistMessagePart({
     >
       <div
         data-testid="message-content"
+        data-role="assistant"
         className={cn(
           "flex flex-col gap-2 px-2 text-justify [text-align-last:left]",
           {

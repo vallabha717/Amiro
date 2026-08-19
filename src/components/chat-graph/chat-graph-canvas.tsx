@@ -22,6 +22,10 @@ import { deriveChatGraph } from "lib/ai/chat-graph/derive-chat-graph";
 import { layoutChatGraph } from "lib/ai/chat-graph/layout-chat-graph";
 import { useToRef } from "@/hooks/use-latest";
 import { ChatGraphNode as ChatGraphNodeType } from "app-types/chat-graph";
+import {
+  type ChatGraphActions,
+  ChatGraphActionsProvider,
+} from "./chat-graph-actions";
 import { ChatGraphNode } from "./chat-graph-node";
 import { ChatGraphPanel } from "./chat-graph-panel";
 
@@ -97,6 +101,34 @@ function ChatGraphCanvasInner({ messages }: { messages: UIMessage[] }) {
     if (lastUserMessageId) autoFollowRef.current = true;
   }, [lastUserMessageId]);
 
+  /**
+   * The plan or walkthrough node currently worth pinning the viewport to --
+   * either because the run is halted on it, or because it is being written
+   * right now and is the reason the user is watching this canvas at all.
+   *
+   * The halt itself needs no mechanism here: propose_plan has no server-side
+   * executor, so the loop stops and no further messages arrive, and this
+   * canvas is a pure function of messages. What *does* need handling is the
+   * viewport -- see the latch below.
+   *
+   * `running` matters as much as `waiting` here, and for two different
+   * tools. A gate (propose_plan) passes through `running` before it ever
+   * reaches `waiting`, so catching it early is what lets the viewport arrive
+   * *while the plan is still being typed* rather than only once it stops. A
+   * summary (walkthrough) never reaches `waiting` at all -- it has a real
+   * executor and goes straight from `running` to `success` -- so `running`
+   * is the only state in which pinning it means anything.
+   */
+  const gateNodeId = useMemo(
+    () =>
+      derived.nodes.find(
+        (node) =>
+          (node.data.kind === "gate" || node.data.kind === "summary") &&
+          (node.data.status === "waiting" || node.data.status === "running"),
+      )?.id ?? null,
+    [derived.nodes],
+  );
+
   // Queue the newest node for focus as the response streams in.
   useEffect(() => {
     const count = derived.nodes.length;
@@ -111,6 +143,28 @@ function ChatGraphCanvasInner({ messages }: { messages: UIMessage[] }) {
     }
     previousNodeCount.current = count;
   }, [derived.nodes]);
+
+  /**
+   * Latch the viewport onto a gate or summary while it is live -- being
+   * written, or (for a gate) halted awaiting an answer.
+   *
+   * Without this the node is merely the last one, and the ordinary
+   * auto-follow points at it once -- then a late measurement, a re-layout or
+   * a resize re-frames on something else and the document the user is
+   * watching grow scrolls out of view, with nothing on screen explaining why.
+   *
+   * Pinning rather than disabling auto-follow: once the state that earned the
+   * pin ends (answered, or the walkthrough finishes), the pin clears and the
+   * next node produced is focused normally -- the run visibly continues from
+   * where the user was already looking instead of refitting the whole thread.
+   */
+  useEffect(() => {
+    if (!gateNodeId) return;
+    pendingFocusRef.current = gateNodeId;
+    autoFollowRef.current = true;
+  }, [gateNodeId]);
+
+  const gateNodeIdRef = useToRef(gateNodeId);
 
   // Re-flow columns from measured sizes so cards can never overlap.
   useEffect(() => {
@@ -200,6 +254,9 @@ function ChatGraphCanvasInner({ messages }: { messages: UIMessage[] }) {
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         if (nodesRef.current.length === 0) return;
+        // A halted gate outranks the remembered framing: a resize must never
+        // be what loses the user the thing the run is waiting on.
+        if (gateNodeIdRef.current && focusNode(gateNodeIdRef.current)) return;
         // Preserve whichever framing is in effect rather than always refitting.
         if (autoFollowRef.current && focusedNodeIdRef.current) {
           if (focusNode(focusedNodeIdRef.current)) return;
@@ -213,7 +270,7 @@ function ChatGraphCanvasInner({ messages }: { messages: UIMessage[] }) {
       observer.disconnect();
       if (debounceTimer) clearTimeout(debounceTimer);
     };
-  }, [fitView, focusNode, nodesRef]);
+  }, [fitView, focusNode, nodesRef, gateNodeIdRef]);
 
   // React Flow passes a null event for viewport moves we triggered ourselves,
   // so a real event here means the user panned/zoomed and owns the view now.
@@ -287,10 +344,23 @@ function ChatGraphCanvasInner({ messages }: { messages: UIMessage[] }) {
   );
 }
 
-export function ChatGraphCanvas({ messages }: { messages: UIMessage[] }) {
+export function ChatGraphCanvas({
+  messages,
+  actions,
+}: {
+  messages: UIMessage[];
+  /**
+   * Optional: a read-only surface renders the same graph with no way to
+   * answer a gate, and a gate whose buttons are absent is the honest
+   * rendering of that.
+   */
+  actions?: ChatGraphActions;
+}) {
   return (
     <ReactFlowProvider>
-      <ChatGraphCanvasInner messages={messages} />
+      <ChatGraphActionsProvider value={actions ?? {}}>
+        <ChatGraphCanvasInner messages={messages} />
+      </ChatGraphActionsProvider>
     </ReactFlowProvider>
   );
 }

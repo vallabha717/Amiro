@@ -124,6 +124,68 @@ NEXT_PUBLIC_BACKEND_TOKEN=dev-test-token-1786373638
 
 These values must match `scripts/dev-backend.sh`'s `BETTERCHATBOT_PORT`/`BETTERCHATBOT_AUTH_TOKEN`. This path is dev/test-only — the real packaged app never uses `.env.local`; it gets its port and token injected by the Rust shell at launch instead.
 
+## Serving the dashboard in a browser (`amiro serve`)
+
+The desktop app is not the only way to reach Amiro. `amiro serve` compiles
+the exported Next.js dashboard into the Go binary and serves it on the same
+listener as the API — one executable, no Node runtime, reachable from a
+browser on this machine or, if you ask for it, from another device on your
+network.
+
+Build a binary with the dashboard inside it:
+
+```bash
+pnpm build && ./scripts/build-ui.sh     # export the frontend, stage it for go:embed
+cd backend-go
+go build -tags embedui -o bin/amiro ./cmd/amiro
+```
+
+`go build` without `-tags embedui` still works and produces a binary that
+serves the API and reports that it carries no dashboard — a Go contributor
+never has to run a frontend build. `amiro version` tells you which you have:
+
+```
+amiro dev
+dashboard c13fe09381ec        # or "dashboard (not embedded ...)"
+```
+
+Then:
+
+```bash
+amiro serve                                  # http://127.0.0.1:<free port>
+amiro serve --port 8080 --open               # pinned port, opens a browser
+amiro serve --host 0.0.0.0 --port 8080       # reachable from your network
+amiro serve --ui-dir ../out                  # serve an export from disk, no Go rebuild
+amiro serve --no-ui                          # API only, shared secret required
+amiro --serve --port 8080                    # the TUI *and* the dashboard, one backend
+```
+
+`amiro --serve` is the combined mode: the terminal UI and a browser-reachable
+dashboard over a single embedded backend and a single database, so a thread
+started in one shows up in the other. Its URL sits in the TUI status bar.
+
+### About `--host 0.0.0.0`
+
+This makes Amiro reachable by every host on your network, and Amiro runs
+shell commands and reads files on behalf of whoever signs in. It is a
+deliberate opt-in, never a default, and it prints a warning saying so.
+
+What protects it:
+
+- **Accounts.** Everyone reaching the port gets the sign-in page; every API
+  route that matters is behind a session.
+- **CSRF.** Cross-site requests are refused outright, using the browser-set
+  `Sec-Fetch-Site` header (which a page cannot forge) rather than a token a
+  served page would have to be handed. See
+  `internal/middleware.RequireTokenOrBrowser`.
+- **Rate limiting** on `/api/auth/login` and `/api/auth/register`, installed
+  only for a non-loopback bind.
+- **No blanket CORS.** The any-`localhost:<port>` allowance the desktop
+  sidecar uses is switched off; `--allow-origin` adds exact origins if you
+  genuinely need cross-origin access.
+
+Only do this on a network you trust.
+
 ## Building a production installer
 
 ```bash

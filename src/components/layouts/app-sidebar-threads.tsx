@@ -265,16 +265,17 @@ export function AppSidebarThreads() {
                                 >
                                   <Link
                                     href={`/?thread=${thread.id}`}
+                                    data-testid="sidebar-thread-link"
                                     className="flex items-center"
                                   >
                                     {generatingTitleThreadIds.includes(
                                       thread.id,
                                     ) ? (
-                                      <TextShimmer className="truncate min-w-0">
+                                      <TextShimmer data-testid="sidebar-thread-title" className="truncate min-w-0">
                                         {thread.title || "New Chat"}
                                       </TextShimmer>
                                     ) : (
-                                      <p className="truncate min-w-0">
+                                      <p data-testid="sidebar-thread-title" className="truncate min-w-0">
                                         {thread.title || "New Chat"}
                                       </p>
                                     )}

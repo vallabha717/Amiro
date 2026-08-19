@@ -9,7 +9,11 @@ import {
   SearchIcon,
   TriangleAlertIcon,
 } from "lucide-react";
-import { DiffEditorView, sectionsFromEditOutput } from "ui/diff-editor-view";
+import {
+  DiffEditorView,
+  DiffEditorViewCompact,
+  sectionsFromEditOutput,
+} from "ui/diff-editor-view";
 import { usePresenterSurface } from "./surface";
 import type { PresenterProps, ToolPresenter } from "./types";
 
@@ -450,19 +454,31 @@ function EditDetail({
   );
 }
 
+/**
+ * The chat surface's rendering of an edit: the same compact, colored +N/-M
+ * card the workflow canvas uses, with its own click-to-expand side-by-side
+ * diff dialog. Chat used to point away from itself here ("open the Workflow
+ * View to read the diff") -- there is no reason a reader should have to
+ * leave the conversation to see what changed.
+ */
 function EditExpanded(props: PresenterProps & { note?: string }) {
   const surface = usePresenterSurface();
   if (surface === "detail") {
     return <EditDetail {...props} />;
   }
+  const { input, output, status, errorText, note } = props;
+  const { sections, windowed } = sectionsFromEditOutput(output);
   return (
-    <Shell
-      icon={PencilIcon}
-      title={props.output?.path ?? props.input?.path ?? ""}
-      tone={props.status === "error" ? "error" : "default"}
-    >
-      <EditBody {...props} />
-    </Shell>
+    <DiffEditorViewCompact
+      path={output?.path ?? input?.path ?? ""}
+      sections={sections}
+      windowed={windowed}
+      added={output?.added ?? 0}
+      removed={output?.removed ?? 0}
+      status={status}
+      errorText={errorText}
+      note={note}
+    />
   );
 }
 

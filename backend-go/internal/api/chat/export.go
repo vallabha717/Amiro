@@ -43,11 +43,21 @@ func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := h.exports.ExportChat(ctx, req.ThreadID, authedUser.ID, req.ExpiresAt); err != nil {
+	exportID, err := h.exports.ExportChat(ctx, req.ThreadID, authedUser.ID, req.ExpiresAt)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	// The response body is the bare export id, not a wrapper object: both
+	// existing callers of this route -- src/lib/backend/chat-api.ts's
+	// exportChat, and chat-export-popup.tsx's `.ifOk((exportId) => ...)` --
+	// read the resolved JSON body directly as the id string and build
+	// `${origin}/export/${exportId}` from it. Encoding
+	// `{"message": "..."}` here (as this handler did until now) silently
+	// broke that: `exportId` became the whole object, and the copied link
+	// read literally as ".../export/[object Object]" -- a bug entirely
+	// hidden from any test that only checks the response status.
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]string{"message": "Chat exported successfully"})
+	_ = json.NewEncoder(w).Encode(exportID)
 }

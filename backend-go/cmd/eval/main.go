@@ -2,6 +2,12 @@
 // Part 4 of docs/agentic-loop-implementation-plan.md tracks.
 //
 //	go run ./cmd/eval -suite evals/smoke.json -provider openai -model gpt-5
+//	go run ./cmd/eval -swebench evals/swebench/verified-subset.json
+//
+// -suite and -swebench are the two ways to name a task set. They produce the
+// same kind of run and the same report; the difference is only where the
+// tasks come from, which is the point of the adapter
+// (internal/agent/eval/swebench) rather than a second harness.
 //
 // It does not start the server or go through the HTTP path -- no auth, no
 // thread, nothing persisted. It does open the app database, because that is
@@ -21,9 +27,11 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"amiro/backend/internal/agent/eval"
+	"amiro/backend/internal/agent/eval/swebench"
 	bifrostai "amiro/backend/internal/ai/bifrost"
 	"amiro/backend/internal/api/chat"
 	"amiro/backend/internal/config"
@@ -33,7 +41,9 @@ import (
 
 func main() {
 	var (
-		suitePath = flag.String("suite", "evals/smoke.json", "path to a task suite JSON file")
+		suitePath = flag.String("suite", "", "path to a task suite JSON file (default evals/smoke.json when -swebench is not given)")
+		swePath   = flag.String("swebench", "", "path to a pinned SWE-bench subset (see cmd/swebench-pin)")
+		sweCache  = flag.String("swebench-cache", "", "where materialized SWE-bench checkouts are cached")
 		provider  = flag.String("provider", "", "provider id (defaults to the app's default)")
 		model     = flag.String("model", "", "model id (defaults to the app's default)")
 		jsonOut   = flag.String("json", "", "write the full report as JSON to this path")
@@ -43,10 +53,38 @@ func main() {
 	)
 	flag.Parse()
 
-	suite, err := eval.LoadSuite(*suitePath)
-	if err != nil {
-		fail(err)
+	if *suitePath != "" && *swePath != "" {
+		fail(fmt.Errorf("pass either -suite or -swebench, not both"))
 	}
+	if *suitePath == "" && *swePath == "" {
+		*suitePath = "evals/smoke.json"
+	}
+
+	// Built here so the SWE-bench branch can register its scorer on the
+	// runner below. Everything after this point is identical for both suite
+	// kinds -- one runner, one report, one exit code.
+	var (
+		suite   *eval.Suite
+		adapter *swebench.Adapter
+		err     error
+	)
+	if *swePath != "" {
+		instances, loadErr := swebench.LoadInstances(*swePath)
+		if loadErr != nil {
+			fail(loadErr)
+		}
+		adapter, err = swebench.NewAdapter(instances, swebench.Options{CacheDir: *sweCache})
+		if err != nil {
+			fail(err)
+		}
+		suite = adapter.Suite("swe-bench-verified (" + filepath.Base(*swePath) + ")")
+	} else {
+		suite, err = eval.LoadSuite(*suitePath)
+		if err != nil {
+			fail(err)
+		}
+	}
+
 	if *only != "" {
 		var filtered []eval.Task
 		for _, t := range suite.Tasks {
@@ -55,7 +93,7 @@ func main() {
 			}
 		}
 		if len(filtered) == 0 {
-			fail(fmt.Errorf("no task with id %q in %s", *only, *suitePath))
+			fail(fmt.Errorf("no task with id %q in the suite", *only))
 		}
 		suite.Tasks = filtered
 	}
@@ -85,6 +123,17 @@ func main() {
 		WorkDir: *workDir,
 		Keep:    *keep,
 		Log:     os.Stderr,
+	}
+
+	if adapter != nil {
+		adapter.Register(runner)
+		// Materialize every checkout before the first model call. Pulling a
+		// multi-gigabyte image can fail, and finding that out on instance 7
+		// of 50 means an hour of model spend already gone.
+		fmt.Fprintf(os.Stderr, "materializing %d SWE-bench checkouts (first run pulls images)...\n", len(suite.Tasks))
+		if err := adapter.Prepare(ctx); err != nil {
+			fail(err)
+		}
 	}
 
 	report, runErr := runner.Run(ctx, suite)

@@ -1,0 +1,16 @@
+{
+  "name": "@amiro/tests",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Playwright half of the Amiro test system. Deliberately NOT part of the root pnpm workspace: Playwright and its browsers must not enter the shipped app's dependency graph. See docs/testing/01-architecture.md.",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "install-browsers": "playwright install --with-deps chromium",
+    "show-report": "playwright show-report logs/latest/ui/html",
+    "show-trace": "playwright show-trace"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1"
+  }
+}

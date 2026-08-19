@@ -1,0 +1,52 @@
+version: 1
+meta:
+  recorded_at: "2026-08-19T09:00:00Z"
+  provider: openai
+  model: gpt-4.1
+  endpoint: /v1/chat/completions
+  prompt_tokens: 45
+  completion_tokens: 22
+  total_tokens: 67
+  cost_usd: 0.00015
+  ttl_days: 90
+interactions:
+  - id: interaction-multiturn-01
+    request:
+      method: POST
+      path: /v1/chat/completions
+      headers:
+        content-type: application/json
+      body: '{"messages":[{"role":"user","content":"Remember the code: ALPHA"}],"model":"gpt-4.1","stream":true}'
+    response:
+      status: 200
+      headers:
+        content-type: text/event-stream
+      stream:
+        - delay_ms: 5
+          chunk: "data: {\"id\":\"chatcmpl-mt-01\",\"object\":\"chat.completion.chunk\",\"created\":1724058000,\"model\":\"gpt-4.1\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"I will remember \"},\"finish_reason\":null}]}\n\n"
+        - delay_ms: 10
+          chunk: "data: {\"id\":\"chatcmpl-mt-01\",\"object\":\"chat.completion.chunk\",\"created\":1724058000,\"model\":\"gpt-4.1\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"the code ALPHA.\"},\"finish_reason\":null}]}\n\n"
+        - delay_ms: 5
+          chunk: "data: {\"id\":\"chatcmpl-mt-01\",\"object\":\"chat.completion.chunk\",\"created\":1724058000,\"model\":\"gpt-4.1\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":10,\"total_tokens\":30}}\n\n"
+        - delay_ms: 2
+          chunk: "data: [DONE]\n\n"
+  - id: interaction-multiturn-02
+    request:
+      method: POST
+      path: /v1/chat/completions
+      headers:
+        content-type: application/json
+      body: '{"messages":[{"role":"user","content":"Remember the code: ALPHA"},{"role":"assistant","content":"I will remember the code ALPHA."},{"role":"user","content":"What was the code?"}],"model":"gpt-4.1","stream":true}'
+    response:
+      status: 200
+      headers:
+        content-type: text/event-stream
+      stream:
+        - delay_ms: 5
+          chunk: "data: {\"id\":\"chatcmpl-mt-02\",\"object\":\"chat.completion.chunk\",\"created\":1724058000,\"model\":\"gpt-4.1\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"The code was \"},\"finish_reason\":null}]}\n\n"
+        - delay_ms: 10
+          chunk: "data: {\"id\":\"chatcmpl-mt-02\",\"object\":\"chat.completion.chunk\",\"created\":1724058000,\"model\":\"gpt-4.1\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ALPHA.\"},\"finish_reason\":null}]}\n\n"
+        - delay_ms: 5
+          chunk: "data: {\"id\":\"chatcmpl-mt-02\",\"object\":\"chat.completion.chunk\",\"created\":1724058000,\"model\":\"gpt-4.1\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":25,\"completion_tokens\":12,\"total_tokens\":37}}\n\n"
+        - delay_ms: 2
+          chunk: "data: [DONE]\n\n"

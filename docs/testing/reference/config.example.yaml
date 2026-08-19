@@ -1,0 +1,323 @@
+# ============================================================================
+# tests/config.example.yaml
+#
+# Copy to tests/config.yaml and edit. config.yaml is gitignored.
+#
+# EVERY KEY IS OPTIONAL. Anything you leave out falls back to the default
+# shown in the comment above it. Deleting this file entirely is a valid
+# configuration -- the suite runs in `fake` provider mode with a sqlite
+# database and a chromium browser.
+#
+# ${VAR} anywhere in a string is expanded from the environment (and from a
+# tests/.env file if present). ${VAR:-fallback} is supported.
+# ============================================================================
+
+
+# ---------------------------------------------------------------------------
+# run -- what to execute and how
+# ---------------------------------------------------------------------------
+run:
+  # default: <UTC RFC3339 timestamp>-<6 random chars>, e.g. 2026-08-19T14-32-05Z-a1b2c3
+  id: ""
+
+  # default: [backend, tui, ui, desktop] -- desktop self-skips if the Tauri
+  # toolchain is absent (see desktop.enabled below).
+  surfaces: [backend, tui, ui, desktop]
+
+  # default: [] == every feature of every selected surface.
+  # Names match the directory names under suites/<surface>/ and ui/specs/.
+  features: []
+
+  tags:
+    # default: []  -- no tag is required for a test to run
+    include: []
+    # default: [live, slow, flaky] -- excluded from the default run
+    exclude: [live, slow, flaky]
+
+  # default: 4. Each parallel worker gets its own database, workspace and port.
+  parallel: 4
+
+  # default: 30m for the whole run; 2m per test.
+  timeout: 30m
+  testTimeout: 2m
+
+  # default: on-failure. always | on-failure | never
+  # Controls videos, HAR files, database snapshots and frame dumps.
+  # run.json, summary.* and events.ndjson are ALWAYS kept.
+  keepArtifacts: on-failure
+
+  # default: false -- run everything, report everything.
+  failFast: false
+
+  # default: 1. Reruns a failed test N times before declaring failure.
+  # Every attempt is kept in the log tree as attempt-1/, attempt-2/, ...
+  # CI sets this to 0 -- a retry that turns a run green hides a race.
+  retries: 1
+
+  # default: false locally, true in CI.
+  # false -- a request with no matching cassette falls back to `fake` mode,
+  #          logs a miss, and reports degraded fidelity in the summary.
+  # true  -- a cassette miss FAILS the test, naming the cassette that would
+  #          have been written and the command to record it. This is what
+  #          stops cassette rot from silently turning the suite into `fake`.
+  strictCassettes: false
+
+  # default: 2.00 -- USD ceiling for a `live` or `record` run. Exceeding it
+  # fails the run. Ignored in replay/fake mode, where spend is always 0.
+  costCeilingUsd: 2.00
+
+
+# ---------------------------------------------------------------------------
+# providers -- LLM and search credentials, and how the suite talks to them
+# ---------------------------------------------------------------------------
+providers:
+  # default: replay
+  #   replay -- serve recorded traffic from cassetteDir. No network. No cost.
+  #   record -- call the real API and write cassettes. Requires real keys.
+  #   live   -- call the real API, write nothing.
+  #   fake   -- never touch a cassette or the network; harness/fakeprovider
+  #             answers with deterministic canned streams. This is what runs
+  #             when you have no keys at all.
+  # Falls back to `fake` automatically if mode is replay and no cassette
+  # exists for a request, unless run.strictCassettes is true.
+  mode: replay
+
+  # default: ./cassettes (relative to tests/)
+  cassetteDir: ./cassettes
+
+  # default: anthropic/claude-sonnet-5
+  # Used wherever a test does not name a model explicitly.
+  default: anthropic/claude-sonnet-5
+
+  # LLM providers. Provider ids match backend-go/internal/ai/bifrost/catalog.go:
+  #   openai · google · anthropic · xai · groq · openRouter
+  # plus `ollama` for a local endpoint.
+  # default: [] -- with none configured the suite uses `fake` mode.
+  llm:
+    - id: anthropic
+      apiKey: ${ANTHROPIC_API_KEY}
+      # default: the provider's own official base URL
+      baseUrl: ""
+      # default: [] == whatever the provider advertises. Pin models here to
+      # keep cassettes stable across provider-side catalog changes.
+      models: [claude-sonnet-5]
+
+    - id: openai
+      apiKey: ${OPENAI_API_KEY}
+      baseUrl: https://api.openai.com/v1
+      models: [gpt-4.1-mini]
+
+    # - id: google
+    #   apiKey: ${GOOGLE_GENERATIVE_AI_API_KEY}
+    # - id: xai
+    #   apiKey: ${XAI_API_KEY}
+    # - id: groq
+    #   apiKey: ${GROQ_API_KEY}
+    #   baseUrl: https://api.groq.com/openai/v1
+    # - id: openRouter
+    #   apiKey: ${OPENROUTER_API_KEY}
+    # - id: ollama
+    #   baseUrl: http://localhost:11434/api
+    #   models: [qwen3:8b]
+
+  # Web-search providers. ids match backend-go/internal/search/registry.go:
+  #   exa · tavily · brave · serper
+  # default: []
+  search:
+    - id: exa
+      apiKey: ${EXA_API_KEY}
+
+  # default: the list below. Header names and JSON field names whose values
+  # are replaced with <redacted> in every log, cassette and HAR file.
+  redact:
+    - authorization
+    - cookie
+    - set-cookie
+    - x-api-key
+    - apiKey
+    - api_key
+    - password
+    - token
+
+
+# ---------------------------------------------------------------------------
+# backend -- the Go server under test
+# ---------------------------------------------------------------------------
+backend:
+  # default: "" == build backend-go/cmd/server from source and cache it.
+  # Set to a path to skip the build (this is what CI does).
+  binary: ""
+
+  # default: 127.0.0.1
+  bindHost: 127.0.0.1
+
+  # default: 0 == let the OS assign. The harness reads the real port off the
+  # PORT= line the server prints on stdout. Pin only for manual debugging.
+  port: 0
+
+  database:
+    # default: sqlite. sqlite | postgres
+    driver: sqlite
+    # default: "" == <runDir>/backend/db/<test-id>.db for sqlite.
+    # Required for postgres; the harness creates and drops a schema per test.
+    dsn: ""
+    # default: false. Keep the database file after a passing test too.
+    keepOnSuccess: false
+
+  # default: "" == a per-test copy of fixtures/workspaces/basic.
+  # Tests that exercise agent file tools always get their own copy; nothing
+  # a test writes is visible to another test.
+  workspaceRoot: ""
+
+  # default: {} -- extra AMIRO_* env vars merged into every spawned backend.
+  env: {}
+
+  # default: 30s -- how long to wait for PORT= plus a healthy /health.
+  startupTimeout: 30s
+
+
+# ---------------------------------------------------------------------------
+# tui -- the amiro terminal client
+# ---------------------------------------------------------------------------
+tui:
+  # default: "" == build backend-go/cmd/amiro from source and cache it.
+  binary: ""
+
+  terminal:
+    # default: 120 x 40. Golden frames are captured at this size, so changing
+    # it invalidates every golden file.
+    width: 120
+    height: 40
+    # default: xterm-256color
+    term: xterm-256color
+
+  # default: true -- write an asciinema .cast per test into the run directory.
+  recordCasts: true
+
+  # default: false. true rewrites golden frames instead of comparing them.
+  # Equivalent to `amirotest run --surface tui --update-golden`.
+  goldenUpdate: false
+
+  # default: 5s -- how long to wait for the screen to stop changing before
+  # capturing a frame for comparison.
+  settleTimeout: 5s
+
+
+# ---------------------------------------------------------------------------
+# ui -- the web dashboard
+# ---------------------------------------------------------------------------
+ui:
+  # default: embedded
+  #   embedded -- `amiro serve` serves the go:embed'ed bundle. This is the
+  #               shipped path and the one that should stay default.
+  #   static   -- serve a prebuilt directory (ui.distDir) over plain HTTP.
+  #   dev      -- point Playwright at a running `next dev`. Fast iteration,
+  #               does NOT test the shipped bundle.
+  mode: embedded
+
+  # default: "" == derived from the server the harness started.
+  # Set to test against something already running.
+  baseUrl: ""
+
+  # default: 127.0.0.1 for tests. Set 0.0.0.0 to exercise the
+  # reachable-from-the-network path Phase 0 adds (and its warning banner).
+  host: 127.0.0.1
+  # default: 0 == OS-assigned
+  port: 0
+
+  # default: ../out (repo root's Next.js export). Only used by mode: static.
+  distDir: ../out
+
+  # default: [chromium]. chromium | firefox | webkit
+  browsers: [chromium]
+
+  # default: false
+  headed: false
+
+  # default: 1280x800
+  viewport: { width: 1280, height: 800 }
+
+  # default: retain-on-failure. on | off | retain-on-failure
+  video: retain-on-failure
+  # default: on -- ALWAYS produces the trace.zip you can open in
+  # `playwright show-trace`. on | off | retain-on-failure
+  trace: on
+  # default: only-on-failure. on | off | only-on-failure
+  screenshot: only-on-failure
+  # default: retain-on-failure -- network.har alongside the trace
+  har: retain-on-failure
+
+
+# ---------------------------------------------------------------------------
+# desktop -- the Tauri shell
+# ---------------------------------------------------------------------------
+desktop:
+  # default: auto -- run the suite only if `cargo` and the Tauri CLI are on
+  # PATH; otherwise skip with a reason recorded in the summary, not a failure.
+  # auto | true | false
+  enabled: auto
+
+  # default: "" == `cargo tauri dev` from src-tauri/
+  binary: ""
+
+  # default: dev. dev | bundled
+  #   bundled builds a real installer and drives the installed app. Slow;
+  #   tagged `slow` so it is out of the default run.
+  mode: dev
+
+  # default: 90s -- Tauri dev builds are not fast.
+  startupTimeout: 90s
+
+
+# ---------------------------------------------------------------------------
+# logging
+# ---------------------------------------------------------------------------
+logging:
+  # default: ./logs (relative to tests/)
+  dir: ./logs
+
+  # default: info. debug | info | warn | error
+  # debug adds full request/response bodies and per-frame TUI dumps.
+  level: info
+
+  # default: true -- record HTTP bodies in backend/http.ndjson (redacted).
+  httpBodies: true
+  # default: 65536 -- bodies larger than this are truncated with a marker.
+  maxBodyBytes: 65536
+
+  # default: 20 -- delete run directories older than the newest N.
+  # 0 disables pruning.
+  keepRuns: 20
+
+
+# ---------------------------------------------------------------------------
+# accounts -- the identities every suite signs in as
+# ---------------------------------------------------------------------------
+# The FIRST account registered against a fresh database becomes the admin
+# (backend-go/internal/auth). The harness always registers `admin` first.
+accounts:
+  # default: admin@amiro.test / Amiro-Test-Admin-1
+  admin:
+    email: admin@amiro.test
+    password: Amiro-Test-Admin-1
+  # default: user@amiro.test / Amiro-Test-User-1
+  user:
+    email: user@amiro.test
+    password: Amiro-Test-User-1
+  # default: other@amiro.test / Amiro-Test-Other-1
+  # A second non-admin, used for every "can B see A's data?" test.
+  other:
+    email: other@amiro.test
+    password: Amiro-Test-Other-1
+
+
+# ---------------------------------------------------------------------------
+# mcp -- the MCP server the suite connects to
+# ---------------------------------------------------------------------------
+mcp:
+  # default: true -- start fixtures/mcp/server (a real stdio MCP server with
+  # deterministic tools) so MCP tests exercise the real protocol.
+  useFixtureServer: true
+  # default: [] -- extra real MCP servers to connect to. Anything here is
+  # tagged `live` and excluded from the default run.
+  external: []

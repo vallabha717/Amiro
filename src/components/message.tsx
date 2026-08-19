@@ -11,6 +11,9 @@ import { cn, truncateString } from "lib/utils";
 import { ChevronDown, ChevronUp, TriangleAlertIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Button } from "ui/button";
+import { PlanCard, WalkthroughCard } from "./artifacts/plan-card";
+import { useArtifacts } from "./artifacts/use-artifacts";
+import { usePlanDecision } from "./artifacts/use-plan-decision";
 import { type CompactionData, CompactionMarker } from "./compaction-marker";
 import {
   AssistMessagePart,
@@ -91,6 +94,25 @@ const PurePreviewMessage = ({
       return [{ request, input: (call as any).input }];
     });
   }, [partsForDisplay]);
+
+  /**
+   * The artifacts this one turn produced.
+   *
+   * Scoped to the message rather than the thread on purpose: the cards belong
+   * in the turn that made them, and the walkthrough's "files you changed but
+   * did not mention" check compares against *this* turn's edits. The pane
+   * shows the thread-wide latest; these are the entry points to it.
+   */
+  const justThisMessage = useMemo(() => [message], [message]);
+  const { plan, walkthrough } = useArtifacts(justThisMessage, isLoading);
+  const { grantedMode, decide } = usePlanDecision(addToolResult);
+  const t = useTranslations("Chat.Tool");
+  const grantedModeLabel =
+    grantedMode === "auto"
+      ? t("autoPermissionMode")
+      : grantedMode === "edit"
+        ? t("editPermissionMode")
+        : t("manualPermissionMode");
 
   if (message.role == "system") {
     return null; // system message is not shown
@@ -280,10 +302,35 @@ const PurePreviewMessage = ({
                 </div>
               );
 
+            /**
+             * The artifact cards, rendered next to the approval cards and
+             * outside the work log, for exactly the same reason: a suspended
+             * plan is by construction the last thing the turn did, so it
+             * lands in a section that auto-collapses, and a decision the user
+             * has to expand a collapsed row to find reads as a hung turn.
+             */
+            const artifactCards =
+              !plan && !walkthrough ? null : (
+                <div className="flex flex-col gap-2">
+                  {plan && (
+                    <PlanCard
+                      plan={plan}
+                      grantedModeLabel={grantedModeLabel}
+                      busy={Boolean(isLoading) || readonly}
+                      onProceed={() =>
+                        decide(plan, "proceed", [], grantedMode)
+                      }
+                    />
+                  )}
+                  {walkthrough && <WalkthroughCard walkthrough={walkthrough} />}
+                </div>
+              );
+
             if (lastToolIndex < 0) {
               return (
                 <>
                   {partsForDisplay.map(renderPart)}
+                  {artifactCards}
                   {approvals}
                 </>
               );
@@ -353,6 +400,7 @@ const PurePreviewMessage = ({
                 {tailParts.map((part, i) =>
                   renderPart(part, lastToolIndex + 1 + i),
                 )}
+                {artifactCards}
                 {approvals}
               </>
             );

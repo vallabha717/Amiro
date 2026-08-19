@@ -1,0 +1,82 @@
+# Thin wrappers over `go run ./cmd/amirotest`.
+#
+# Deliberately thin. Every task here is one line, and none of them does
+# anything you cannot do by typing the underlying command -- see
+# docs/testing/03-selection.md: amirotest must never be the only way to run
+# a test, and a Taskfile that grew logic of its own would become a second,
+# undocumented way to configure a run.
+#
+# Install: https://taskfile.dev  ·  or just run the commands in `cmds:`.
+version: "3"
+
+vars:
+  AMIROTEST: go run ./cmd/amirotest
+
+tasks:
+  default:
+    desc: Everything config.yaml selects
+    cmds: ["{{.AMIROTEST}} run"]
+
+  doctor:
+    desc: Is the toolchain complete, and what does each gap mean?
+    cmds: ["{{.AMIROTEST}} doctor"]
+
+  list:
+    desc: Every discovered surface/feature/test address
+    cmds: ["{{.AMIROTEST}} list"]
+
+  smoke:
+    desc: The minimal path that proves each surface is alive
+    cmds: ["{{.AMIROTEST}} run --tag smoke"]
+
+  backend:
+    desc: The backend surface (pass FEATURE=chat to narrow)
+    cmds: ["{{.AMIROTEST}} run --surface backend {{if .FEATURE}}--feature {{.FEATURE}}{{end}}"]
+
+  tui:
+    desc: The TUI surface
+    cmds: ["{{.AMIROTEST}} run --surface tui {{if .FEATURE}}--feature {{.FEATURE}}{{end}}"]
+
+  ui:
+    desc: The web dashboard surface (Playwright)
+    cmds: ["{{.AMIROTEST}} run --surface ui {{if .FEATURE}}--feature {{.FEATURE}}{{end}}"]
+
+  desktop:
+    desc: The Tauri surface (skips itself if cargo is absent)
+    cmds: ["{{.AMIROTEST}} run --surface desktop"]
+
+  meta:
+    desc: The guards -- tests of the test system itself
+    cmds: ["{{.AMIROTEST}} run --surface meta"]
+
+  feature:
+    desc: One feature on EVERY surface that has it (FEATURE=chat)
+    cmds: ["{{.AMIROTEST}} run --feature {{.FEATURE}}"]
+
+  unit:
+    desc: The harness's own unit tests
+    cmds: ["go test ./harness/... ./cmd/..."]
+
+  report:
+    desc: Re-render the newest run's summary
+    cmds: ["{{.AMIROTEST}} report"]
+
+  timeline:
+    desc: The merged event timeline for one test (TEST='backend/smoke/TestX')
+    cmds: ["{{.AMIROTEST}} report --timeline {{if .TEST}}--test '{{.TEST}}'{{end}}"]
+
+  config:
+    desc: Regenerate config.example.yaml from harness/config/defaults.go
+    cmds: ["{{.AMIROTEST}} config example"]
+
+  config:check:
+    desc: Fail if config.example.yaml has drifted (what CI runs)
+    cmds: ["{{.AMIROTEST}} config example --check"]
+
+  env:
+    desc: Print every AMIRO_TEST_* variable and the config key it sets
+    cmds: ["{{.AMIROTEST}} env --list"]
+
+  clean:
+    desc: Prune logs/ to logging.keepRuns
+    cmds: ["{{.AMIROTEST}} clean"]

@@ -10,7 +10,6 @@ import { cn } from "lib/utils";
 import {
   ChevronDownIcon,
   ChevronRightIcon,
-  FileIcon,
   Loader2Icon,
   TriangleAlertIcon,
 } from "lucide-react";
@@ -70,10 +69,14 @@ function GroupRow({
   const [open, setOpen] = useState(false);
   const failed = row.glances.some((g) => g.failed);
 
-  // A named file row already says everything its glance line would, so the
-  // sub-line is dropped -- except on a failure, where the glance carries the
-  // reason the edit did not apply and the header cannot.
-  const showGlances = !row.file || failed;
+  // A named file row's card (a colored +N/-M stat that opens the full
+  // side-by-side diff on click, or a create/overwrite badge) already says
+  // everything the chevron+glance header would, in a form that's directly
+  // interactive -- so it renders straight away instead of waiting for a
+  // second click to reveal what the first click already named.
+  if (row.file) {
+    return <div className="flex flex-col py-0.5">{row.children}</div>;
+  }
 
   return (
     <div className="flex flex-col">
@@ -95,59 +98,27 @@ function GroupRow({
         ) : failed ? (
           <TriangleAlertIcon className="size-3 shrink-0 text-destructive" />
         ) : null}
-        {row.file ? (
-          <span
-            className="flex items-center gap-1.5 min-w-0"
-            title={row.file.path}
-          >
-            <span className={cn(failed && "text-destructive")}>
-              {row.file.verb}
-            </span>
-            <FileIcon className="size-3 shrink-0" />
-            <span
-              className={cn(
-                "font-mono font-medium truncate",
-                failed ? "text-destructive" : "text-foreground",
-              )}
-            >
-              {row.file.name}
-            </span>
-            {row.file.added !== undefined ? (
-              <span className="font-mono text-emerald-600 dark:text-emerald-400">
-                +{row.file.added}
-              </span>
-            ) : null}
-            {row.file.removed !== undefined ? (
-              <span className="font-mono text-destructive">
-                −{row.file.removed}
-              </span>
-            ) : null}
-          </span>
-        ) : (
-          <span className={cn("truncate", failed && "text-destructive")}>
-            {stepGroupLabel(row.kind, row.glances.length, running)}
-          </span>
-        )}
+        <span className={cn("truncate", failed && "text-destructive")}>
+          {stepGroupLabel(row.kind, row.glances.length, running)}
+        </span>
       </button>
 
       {/* Collapsed: one glance line per call, so the row still says what
           happened without being expanded into full tool cards. */}
       {!open ? (
-        showGlances ? (
-          <div className="pl-[18px] flex flex-col">
-            {row.glances.map((g, i) => (
-              <span
-                key={i}
-                className={cn(
-                  "text-[11px] truncate leading-5",
-                  g.failed ? "text-destructive" : "text-muted-foreground/70",
-                )}
-              >
-                {g.text}
-              </span>
-            ))}
-          </div>
-        ) : null
+        <div className="pl-[18px] flex flex-col">
+          {row.glances.map((g, i) => (
+            <span
+              key={i}
+              className={cn(
+                "text-[11px] truncate leading-5",
+                g.failed ? "text-destructive" : "text-muted-foreground/70",
+              )}
+            >
+              {g.text}
+            </span>
+          ))}
+        </div>
       ) : (
         <div className="pl-[18px] flex flex-col gap-2 py-1">{row.children}</div>
       )}

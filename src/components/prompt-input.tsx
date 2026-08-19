@@ -636,6 +636,7 @@ export default function PromptInput({
                   </Tooltip>
                 ) : (
                   <div
+                    data-testid="chat-send-button"
                     onClick={() => {
                       if (isLoading) {
                         onStop();

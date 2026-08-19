@@ -2,20 +2,15 @@ package chat
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
-	"time"
 
-	"gorm.io/datatypes"
-
-	"amiro/backend/internal/agent/permission"
 	"amiro/backend/internal/agent/workspace"
 	bifrostai "amiro/backend/internal/ai/bifrost"
-	"amiro/backend/internal/ai/prompts"
 	"amiro/backend/internal/ai/tools"
 	"amiro/backend/internal/ai/uimessage"
 	"amiro/backend/internal/auth"
 	"amiro/backend/internal/db/models"
-	"amiro/backend/internal/user"
 )
 
 // mentionDTO ports ChatMention (types/chat.ts:45)'s discriminated union
@@ -56,6 +51,11 @@ type chatRequest struct {
 	// WorkspaceRoot is the selected project directory to scope file and shell tools.
 	WorkspaceRoot string `json:"workspaceRoot,omitempty"`
 	ProjectDir    string `json:"projectDir,omitempty"`
+	// CompactNow is not part of the TS schema this struct otherwise ports --
+	// it is Amiro TUI-only (Phase 4's `/compact`), additive and optional, so
+	// an absent key from the browser reads as false exactly like every
+	// other zero value here. See runner.go's TurnRequest.CompactNow.
+	CompactNow bool `json:"compactNow,omitempty"`
 }
 
 // chatMetadata ports ChatMetadata (types/chat.ts:7).
@@ -81,36 +81,42 @@ type chatMetadata struct {
 	DurationMS int64 `json:"durationMs"`
 }
 
-// isToolCallAllowed ports route.ts:170's gate (minus the tool-call-
-// unsupported-model and imageTool checks this rewrite has no equivalent
-// for): toolChoice "none" still allows tool loading when the user
-// explicitly @-mentioned something -- an explicit mention overrides the
-// blanket toggle.
-func isToolCallAllowed(req chatRequest) bool {
-	return req.ToolChoice != "none" || len(req.Mentions) > 0
+// toolDeps builds the Deps a live chat request hands to tools.Defaults.
+//
+// Pulled out of Chat's body and named, rather than an inline literal, for
+// one reason: an inline `tools.Deps{...}` that forgets a field fails
+// silently. That happened here -- SearchRepo was added to the Deps struct
+// and threaded all the way from main.go into the Handler, and then never
+// actually reached this literal, so every live request built the web-search
+// tools with a nil repository regardless of what was configured in the
+// database. The tool's own error for that ("no provider configured") and
+// the tool's error for "nothing is wired" are worded identically, so the
+// bug looked like a data problem from the outside and passed every test
+// that exercised the tool directly with a repo supplied by hand.
+//
+// A named function with its own return value is a thing TestToolDepsCarriesEverySearchRepo
+// can assert on without standing up the rest of Chat's dependencies
+// (thread lookup, model resolution, a live LLM stream). The inline literal
+// had no such seam.
+func (h *Handler) toolDeps(ws *workspace.Workspace, sessionID string) tools.Deps {
+	return tools.Deps{
+		Workspace:  ws,
+		Todos:      h.todos,
+		SessionID:  sessionID,
+		Memory:     h.notes,
+		LSP:        h.lsp,
+		SearchRepo: h.searchRepo,
+	}
 }
 
-// activeAppDefaultTools ports loadAppDefaultTools (shared.chat.ts:427):
-// defaultTool mentions take priority over allowedAppDefaultToolkit, which
-// itself defaults to every toolkit when the request omits the key
-// entirely.
-func activeAppDefaultTools(req chatRequest, deps tools.Deps) []tools.Definition {
-	if !isToolCallAllowed(req) {
-		return nil
-	}
-	var mentionNames []string
-	for _, m := range req.Mentions {
-		if m.Type == "defaultTool" {
-			mentionNames = append(mentionNames, m.Name)
-		}
-	}
-	return tools.Filter(tools.Defaults(deps), req.AllowedAppDefaultToolkit, mentionNames)
-}
-
-// Chat ports route.ts's POST handler (chat/route.ts:57): resolve the
-// thread, resolve the model and agent, load every mentioned/allowed tool
-// (MCP, workflow, app-default), run the (possibly multi-step, tool-calling)
-// reply, persist both sides.
+// Chat ports route.ts's POST handler (chat/route.ts:57).
+//
+// It is now only the HTTP half of that: authenticate, decode the browser's
+// request shape, and hand the turn to RunTurn (runner.go), which is what
+// every surface shares. Everything this function used to do between those
+// two points -- thread resolution, tool loading, prompt assembly, the tool
+// loop, persistence -- moved there unchanged, because none of it ever
+// touched the ResponseWriter or the Request.
 func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 	authedUser, ok := auth.UserFromContext(r.Context())
 	if !ok {
@@ -123,296 +129,44 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
-	if req.ID == "" || req.Message.ID == "" {
-		http.Error(w, "id and message are required", http.StatusBadRequest)
-		return
-	}
 
-	ctx := r.Context()
-
-	details, err := h.chats.SelectThreadDetails(ctx, req.ID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if details == nil {
-		thread := &models.ChatThread{ID: req.ID, Title: "", UserID: authedUser.ID}
-		if err := h.chats.InsertThread(ctx, thread); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		details, err = h.chats.SelectThreadDetails(ctx, req.ID)
-		if err != nil || details == nil {
-			http.Error(w, "failed to create thread", http.StatusInternalServerError)
-			return
-		}
-	}
-	if details.Thread.UserID != authedUser.ID {
+	// The Writer is built before RunTurn because it is RunTurn's output
+	// channel, and it sets response headers without writing a status line --
+	// so the error paths below can still choose their own status. The SSE
+	// headers linger on those error responses, which is cosmetic: a client
+	// reading a 403 reads the status and the body, not Cache-Control.
+	turn, err := h.RunTurn(r.Context(), req.turn(authedUser), uimessage.NewWriter(w))
+	switch {
+	case errors.Is(err, ErrForbidden):
 		http.Error(w, "Forbidden", http.StatusForbidden)
-		return
-	}
-
-	history := details.Messages
-	if len(history) > 0 && history[len(history)-1].ID == req.Message.ID {
-		history = history[:len(history)-1]
-	}
-
-	chatModel := chatModelDTO{}
-	if req.ChatModel != nil {
-		chatModel = *req.ChatModel
-	}
-	resolved := bifrostai.Resolve(chatModel.Provider, chatModel.Model)
-
-	// rememberAgentAction (route.ts:176-187): an agent mention's own
-	// pre-bound mentions get merged into the request's before any tool
-	// loading below, and its instructions feed into the system prompt.
-	agent, mentions := h.resolveAgent(ctx, authedUser.ID, req.Mentions)
-	var agentInfo *prompts.AgentPromptInfo
-	agentID := ""
-	if agent != nil {
-		agentInfo = agent.Info
-		agentID = agent.ID
-	}
-
-	var activeTools []tools.Definition
-	systemExtra := ""
-	if isToolCallAllowed(req) {
-		mcpResult, mcpErr := h.loadMCPTools(ctx, authedUser.ID, mentions, req.AllowedMcpServers)
-		if mcpErr == nil {
-			activeTools = mergeToolDefinitions(activeTools, mcpResult.Defs)
-			systemExtra = h.mcpCustomizationSystemPrompt(ctx, authedUser.ID, mcpResult.ToolsByServer, mcpResult.Servers)
-		}
-
-		workflowDefs, wfErr := h.loadWorkflowTools(ctx, mentions)
-		if wfErr == nil {
-			activeTools = mergeToolDefinitions(activeTools, workflowDefs)
-		}
-	}
-	// Resolve active workspace: prioritize user-selected workspace directory if supplied,
-	// falling back to handler's configured default workspace.
-	activeWS := h.workspace
-	targetWS := req.WorkspaceRoot
-	if targetWS == "" {
-		targetWS = req.ProjectDir
-	}
-	if targetWS != "" {
-		if ws, err := workspace.New(targetWS); err == nil {
-			activeWS = ws
-		}
-	}
-
-	// Run activeAppDefaultTools against the agent-merged mentions, not just
-	// req.Mentions -- an agent's own defaultTool mentions (resolveAgent
-	// already appended them into `mentions` above) should apply exactly
-	// like a manually-typed one, matching how the TS route pushes
-	// agent.instructions.mentions into the same `mentions` array
-	// loadAppDefaultTools later reads (route.ts:176-187, shared.chat.ts:427).
-	reqForDefaults := req
-	reqForDefaults.Mentions = mentions
-	activeTools = mergeToolDefinitions(activeTools, activeAppDefaultTools(reqForDefaults, tools.Deps{
-		Workspace: activeWS,
-		Todos:     h.todos,
-		SessionID: details.Thread.ID,
-		Memory:    h.notes,
-		LSP:       h.lsp,
-	}))
-
-	perms := permission.New(
-		permission.ParseMode(req.PermissionMode),
-		activeWS,
-		permission.DefaultAllowedCommands,
-		h.grants.For(details.Thread.ID),
-	)
-
-	// The subagent tool is added last, over the tools already loaded: its
-	// child gets a read-only subset of whatever this turn actually has, so
-	// a turn with no file tools produces no `task` tool either. It is also
-	// what keeps recursion out -- `task` is not in the child's subset, so a
-	// subagent cannot spawn one.
-	//
-	// The child runs under the *same* permission engine, not a permissive
-	// one. Its tools are all reads so nothing should ever be gated, but a
-	// child holding a weaker engine is precisely the shape of a privilege
-	// escalation, and the tool subset is one edit away from including
-	// something consequential.
-	if isToolCallAllowed(req) {
-		if task, ok := subagentTool(h.engine, resolved, activeTools, perms); ok {
-			activeTools = mergeToolDefinitions(activeTools, []tools.Definition{task})
-		}
-	}
-
-	// The clock for this round starts here rather than at the top of the
-	// handler: everything above is thread lookup and tool loading, and the
-	// approved tool below is work the turn should be charged for.
-	//
-	// Deliberately per-request, so the stretch where the turn sat waiting
-	// for a human to read an approval card is not counted. "Worked for 4m"
-	// on a turn that spent three of them idle would be a lie about the
-	// agent, and the reader is asking about the agent.
-	roundStart := time.Now()
-
-	// Resolve anything the user just approved or rejected before the history
-	// is built, so the model sees the tool's real result where the browser
-	// left a confirmation. This has to run after tool loading (it needs the
-	// definitions to execute) and before toEngineMessages, which is why the
-	// history is assembled here rather than up with the thread lookup.
-	resolveApprovals(ctx, &req.Message, activeTools, perms)
-
-	engineMessages := make([]bifrostai.Message, 0, len(history)+1)
-	for _, m := range history {
-		engineMessages = append(engineMessages, dbMessageToEngines(m)...)
-	}
-	engineMessages = append(engineMessages, req.Message.toEngineMessages()...)
-	engineMessages = resolveAttachmentURLs(ctx, engineMessages)
-
-	// Workspace notes go into the system prompt, not behind a tool call.
-	// A memory the model has to remember to look up is not memory: it will
-	// skip the lookup precisely on the turns where it already thinks it
-	// knows the answer, which are the turns a stale assumption costs most.
-	// memory_read exists for searching past what the injection budget fits.
-	//
-	// Only when the memory tools were actually loaded this turn. Notes that
-	// say "correct this with memory_write" in a turn with no memory_write
-	// tool describe a capability the model does not have, and a model told
-	// it can fix something it cannot will keep trying.
-	notes := ""
-	if _, ok := tools.FindByName(activeTools, tools.NameMemoryWrite); ok {
-		notes = h.notes.Prompt()
-	}
-
-	system := prompts.MergeSystemPrompt(
-		prompts.BuildUserSystemPrompt(authedUser, user.ParsePreferences(details.Preferences), agentInfo),
-		systemExtra,
-		notes,
-	)
-
-	// A turn that stopped to ask for approval resumes as a *continuation* of
-	// the assistant message it paused in, not as a new one.
-	//
-	// The browser re-submits with the assistant message last (the AI SDK's
-	// submit-tool-result trigger), so `req.Message` here is the turn so far,
-	// not a new instruction. Minting a fresh id for the reply then wrote one
-	// assistant row per approval, each a superset of the one before: a turn
-	// that asked ten times read back as ten assistant messages and ten work
-	// logs ("Worked · 9 steps", "· 10 steps", "· 11 steps" ...), all
-	// describing the same piece of work. Continuing the same id makes a turn
-	// one message however many times it had to stop.
-	continuing := req.Message.Role == "assistant"
-	responseID := req.Message.ID
-	if !continuing {
-		responseID = models.NewID()
-	}
-
-	sw := uimessage.NewWriter(w)
-	_ = sw.Start(responseID)
-
-	loopResult, loopErr := runToolLoop(ctx, h.engine, sw, resolved, system, engineMessages, activeTools, perms)
-	if loopErr != nil {
-		_ = sw.Error(loopErr.Error())
-	}
-
-	// Totals for the whole turn, not for this round. Both are carried on the
-	// message the browser sent back, which is where the previous round left
-	// them -- there is no server-side turn state to read them from, and a
-	// per-round figure would report a ten-approval turn as whatever its last
-	// few seconds happened to cost.
-	prior := priorMetadata(req.Message, continuing)
-	metadata := chatMetadata{
-		Usage:      addUsage(prior.Usage, loopResult.Usage),
-		ChatModel:  &chatModel,
-		ToolChoice: req.ToolChoice,
-		ToolCount:  len(activeTools),
-		AgentID:    agentID,
-		DurationMS: prior.DurationMS + time.Since(roundStart).Milliseconds(),
-	}
-	_ = sw.Finish(metadata)
-	_ = sw.Done()
-
-	// Persist even if the loop errored partway through -- matches onFinish
-	// always running in the TS route (createUIMessageStream calls onFinish
-	// regardless of whether the model call itself failed).
-	metadataJSON, _ := json.Marshal(metadata)
-
-	if continuing {
-		// One write, because the row being continued and the row being
-		// written are the same row. req.Message.Parts is the turn up to the
-		// pause with the approval already resolved in place by
-		// resolveApprovals, so this stores the answered call rather than the
-		// question a reloaded thread would otherwise re-ask.
-		_ = h.chats.UpsertMessage(ctx, &models.ChatMessage{
-			ID:       responseID,
-			ThreadID: details.Thread.ID,
-			Role:     "assistant",
-			Parts:    datatypes.JSON(concatParts(req.Message.Parts, loopResult.Parts)),
-			Metadata: datatypes.JSON(metadataJSON),
-		})
-		return
-	}
-
-	userParts, _ := json.Marshal(req.Message.Parts)
-	_ = h.chats.UpsertMessage(ctx, &models.ChatMessage{
-		ID:       req.Message.ID,
-		ThreadID: details.Thread.ID,
-		Role:     req.Message.Role,
-		Parts:    datatypes.JSON(userParts),
-	})
-
-	if loopErr == nil || loopResult.Text != "" {
-		_ = h.chats.UpsertMessage(ctx, &models.ChatMessage{
-			ID:       responseID,
-			ThreadID: details.Thread.ID,
-			Role:     "assistant",
-			Parts:    datatypes.JSON(loopResult.Parts),
-			Metadata: datatypes.JSON(metadataJSON),
-		})
+	case errors.Is(err, ErrInvalidTurn):
+		http.Error(w, "id and message are required", http.StatusBadRequest)
+	case err != nil:
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	default:
+		_ = turn
 	}
 }
 
-// priorMetadata reads the running totals off the message being continued.
+// turn adapts the browser's request shape to the transport-neutral one.
 //
-// Absent or unparseable metadata reads as zero rather than as an error: the
-// totals are a display figure, and a turn whose duration restarts at zero is
-// a much smaller problem than a turn that fails to save.
-func priorMetadata(msg uiMessage, continuing bool) chatMetadata {
-	var prior chatMetadata
-	if !continuing || len(msg.Metadata) == 0 {
-		return prior
+// A method on chatRequest rather than a constructor on TurnRequest so the
+// wire DTO stays the thing that knows about the wire: a second surface that
+// speaks a different shape converts its own, and neither has to know the
+// other exists.
+func (r chatRequest) turn(u *models.User) TurnRequest {
+	return TurnRequest{
+		User:                     u,
+		ThreadID:                 r.ID,
+		Message:                  r.Message,
+		ChatModel:                r.ChatModel,
+		ToolChoice:               r.ToolChoice,
+		Mentions:                 r.Mentions,
+		AllowedAppDefaultToolkit: r.AllowedAppDefaultToolkit,
+		AllowedMcpServers:        r.AllowedMcpServers,
+		PermissionMode:           r.PermissionMode,
+		WorkspaceRoot:            r.WorkspaceRoot,
+		ProjectDir:               r.ProjectDir,
+		CompactNow:               r.CompactNow,
 	}
-	_ = json.Unmarshal(msg.Metadata, &prior)
-	return prior
-}
-
-// addUsage sums token counts across the rounds of one turn.
-func addUsage(prior, next *bifrostai.Usage) *bifrostai.Usage {
-	if prior == nil {
-		return next
-	}
-	if next == nil {
-		return prior
-	}
-	return &bifrostai.Usage{
-		PromptTokens:     prior.PromptTokens + next.PromptTokens,
-		CompletionTokens: prior.CompletionTokens + next.CompletionTokens,
-		TotalTokens:      prior.TotalTokens + next.TotalTokens,
-	}
-}
-
-// concatParts appends this round's parts to the parts already in the turn.
-//
-// Both sides are already-encoded JSON, so this splices arrays rather than
-// re-marshalling anything: a part that survived a round trip through the
-// browser keeps whatever fields this Go code does not model.
-func concatParts(prior []json.RawMessage, next json.RawMessage) []byte {
-	var added []json.RawMessage
-	if len(next) > 0 {
-		_ = json.Unmarshal(next, &added)
-	}
-	merged, err := json.Marshal(append(append([]json.RawMessage{}, prior...), added...))
-	if err != nil {
-		// Unreachable short of a part that is not valid JSON, which cannot
-		// happen -- both inputs were decoded from JSON. Keeping the turn so
-		// far beats persisting nothing.
-		merged, _ = json.Marshal(prior)
-	}
-	return merged
 }

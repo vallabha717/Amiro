@@ -1,0 +1,49 @@
+[
+  {
+    "text": "I should look at both files.",
+    "type": "reasoning"
+  },
+  {
+    "text": "Reading the two files now.",
+    "type": "text"
+  },
+  {
+    "input": {
+      "path": "a.go"
+    },
+    "output": "fine",
+    "state": "output-available",
+    "toolCallId": "c1",
+    "type": "tool-read_file"
+  },
+  {
+    "errorText": "grep: no matches for \"x\"",
+    "input": {
+      "pattern": "x"
+    },
+    "state": "output-error",
+    "toolCallId": "c2",
+    "type": "tool-grep"
+  },
+  {
+    "text": "One of those failed. Trying an edit.",
+    "type": "text"
+  },
+  {
+    "input": {
+      "path": "a.go"
+    },
+    "output": {
+      "added": 3,
+      "path": "a.go",
+      "removed": 1
+    },
+    "state": "output-available",
+    "toolCallId": "c3",
+    "type": "tool-edit_file"
+  },
+  {
+    "text": "Done.",
+    "type": "text"
+  }
+]

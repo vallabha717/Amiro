@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"amiro/backend/internal/ai/prompts"
@@ -24,7 +25,7 @@ var realtimeHTTPClient = &http.Client{Timeout: 30 * time.Second}
 // binding (loadMcpTools, rememberAgentAction) is Phase 4/6 work -- only
 // the default client-side voice tools are bound here.
 func (h *Handler) OpenAIRealtime(w http.ResponseWriter, r *http.Request) {
-	_, _, apiKey, err := h.providerRepo.GetProviderBaseURLAndKey(r.Context(), "openai")
+	_, baseURL, apiKey, err := h.providerRepo.GetProviderBaseURLAndKey(r.Context(), "openai")
 	if err != nil || apiKey == "" {
 		http.Error(w, `{"error":"OPENAI_API_KEY is not set"}`, http.StatusInternalServerError)
 		return
@@ -58,7 +59,16 @@ func (h *Handler) OpenAIRealtime(w http.ResponseWriter, r *http.Request) {
 		"tools":        speech.DefaultVoiceTools(),
 	})
 
-	upstreamReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, "https://api.openai.com/v1/realtime/sessions", bytes.NewReader(body))
+	targetURL := "https://api.openai.com/v1/realtime/sessions"
+	if baseURL != "" {
+		trimmed := strings.TrimSuffix(baseURL, "/")
+		if !strings.HasSuffix(trimmed, "/v1") {
+			trimmed += "/v1"
+		}
+		targetURL = trimmed + "/realtime/sessions"
+	}
+
+	upstreamReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

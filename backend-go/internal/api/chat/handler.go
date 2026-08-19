@@ -64,6 +64,7 @@ type Handler struct {
 	mcpServerCustom *repository.McpServerCustomizationRepository
 	mcpToolCustom   *repository.McpToolCustomizationRepository
 	providerRepo    *repository.ProviderRepository
+	searchRepo      *repository.SearchProviderRepository
 
 	// workspace roots the file toolkit. Nil means no workspace was
 	// configured, which omits the file tools entirely -- set via
@@ -142,6 +143,7 @@ func NewHandler(
 	mcpServerCustom *repository.McpServerCustomizationRepository,
 	mcpToolCustom *repository.McpToolCustomizationRepository,
 	providerRepo *repository.ProviderRepository,
+	searchRepo *repository.SearchProviderRepository,
 ) *Handler {
 	return &Handler{
 		chats:           chats,
@@ -154,6 +156,7 @@ func NewHandler(
 		mcpServerCustom: mcpServerCustom,
 		mcpToolCustom:   mcpToolCustom,
 		providerRepo:    providerRepo,
+		searchRepo:      searchRepo,
 		grants:          permission.NewStore(),
 		todos:           tools.NewTodoStore(),
 	}

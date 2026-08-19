@@ -69,7 +69,7 @@ func newPhase7TestEnv(t *testing.T, engine interface {
 	chatRepo := repository.NewChatRepository(gdb)
 	exportRepo := repository.NewChatExportRepository(gdb, chatRepo)
 	providerRepo := repository.NewProviderRepository(gdb)
-	chatHandler := chatapi.NewHandler(chatRepo, exportRepo, engine, nil, nil, nil, nil, nil, nil, providerRepo)
+	chatHandler := chatapi.NewHandler(chatRepo, exportRepo, engine, nil, nil, nil, nil, nil, nil, providerRepo, nil)
 	threadHandler := threadapi.NewHandler(chatRepo)
 	aiHandler := aiapi.NewHandler(engine, providerRepo)
 	handler := New(testConfig(), Handlers{Auth: authService, Chat: chatHandler, Thread: threadHandler, AI: aiHandler})

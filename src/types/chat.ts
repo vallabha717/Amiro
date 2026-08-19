@@ -2,7 +2,6 @@ import type { LanguageModelUsage, UIMessage } from "ai";
 import { z } from "zod";
 import { AllowedMCPServerZodSchema } from "./mcp";
 import { UserPreferences } from "./user";
-import { tag } from "lib/tag";
 
 export type ChatMetadata = {
   usage?: LanguageModelUsage;
@@ -186,8 +185,21 @@ export type ChatRepository = {
  * a command-shaped call, otherwise the tool. It has to be that side's
  * choice, because it is the side that knows a tool's shape -- approving one
  * `go test` run must never widen into approving the shell.
+ *
+ * This does NOT go through lib/tag.ts's generic `tag()` helper -- that
+ * helper's wire key is `__$ref__`, but the Go side of this contract
+ * (approvals.go's `approvalAnswer.Tag`, `json:"__tag"`) and this file's own
+ * `isApprovalAnswer` (tool-presenters/types.ts) both key off `__tag`. Using
+ * `tag()` here silently produced `{__$ref__:"manual-tool-confirm",...}`,
+ * which `parseApprovalAnswer` never recognizes -- an "Approve" click would
+ * resubmit with the confirmation object itself read back as the tool's
+ * result, not a real answer. `__tag` is used directly instead of fixing
+ * `tag()`'s DEFAULT_KEY because that key is shared with
+ * VercelAIWorkflowToolTag/VercelAIMcpToolTag, which have no such contract.
  */
-export const ManualToolConfirmTag = tag<{
-  confirm: boolean;
-  scope?: "once" | "always";
-}>("manual-tool-confirm");
+export const ManualToolConfirmTag = {
+  create: (data: { confirm: boolean; scope?: "once" | "always" }) => ({
+    ...data,
+    __tag: "manual-tool-confirm" as const,
+  }),
+};

@@ -61,9 +61,34 @@ type Result struct {
 	DurationMS int64  `json:"duration_ms"`
 }
 
+// VerifyFunc scores one check against the workspace the agent left behind.
+//
+// The signature is deliberately the same shape as the built-in checks: it
+// gets the workspace root and the check, and it answers pass/fail. It does
+// not get the agent, the log, or the task -- scoring reads the workspace,
+// never the agent's account of itself, and the way to keep that true is to
+// not hand a scorer anything else to read.
+type VerifyFunc func(ctx context.Context, root string, c Check) (bool, error)
+
 // Runner executes a suite.
 type Runner struct {
 	Agent Agent
+
+	// Checks registers scorers for check kinds this package does not
+	// implement itself, keyed by kind.
+	//
+	// The extension point exists for SWE-bench (internal/agent/eval/swebench),
+	// whose verification is "reconstruct the agent's patch, apply it inside
+	// the instance's own container, run the project's suite, and map the
+	// results onto FAIL_TO_PASS/PASS_TO_PASS". That is a real scorer and it
+	// is emphatically not something to express as a JSON `argv` -- but it is
+	// also not something this package should import Docker to do. A registry
+	// keeps the harness ignorant of both.
+	//
+	// A registered kind shadows nothing: the built-in kinds are checked only
+	// after this map misses, so a suite cannot quietly redefine what
+	// `command` means.
+	Checks map[CheckKind]VerifyFunc
 
 	// WorkDir is where task workspaces are created. Empty means the OS temp
 	// directory. Kept configurable because a run's workspaces are the first
@@ -161,7 +186,7 @@ func (r *Runner) runOne(ctx context.Context, task Task) Result {
 	defer verifyCancel()
 
 	for _, check := range task.Verify {
-		if ok, err := runCheck(verifyCtx, root, check); !ok {
+		if ok, err := r.runCheck(verifyCtx, root, check); !ok {
 			desc := check.String()
 			if err != nil {
 				desc += " (" + err.Error() + ")"
@@ -212,7 +237,14 @@ func runCommand(ctx context.Context, root string, c Command) error {
 	return nil
 }
 
-func runCheck(ctx context.Context, root string, c Check) (bool, error) {
+func (r *Runner) runCheck(ctx context.Context, root string, c Check) (bool, error) {
+	// Registered scorers first, so a kind this package does not know about
+	// reaches the package that does rather than falling through to
+	// "unknown check kind" -- which would score every SWE-bench task as
+	// failed, and look exactly like an agent that solved nothing.
+	if fn, ok := r.Checks[c.Kind]; ok {
+		return fn(ctx, root, c)
+	}
 	switch c.Kind {
 	case CheckCommand:
 		if err := runCommand(ctx, root, Command{Argv: c.Argv}); err != nil {

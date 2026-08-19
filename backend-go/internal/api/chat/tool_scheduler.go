@@ -62,7 +62,7 @@ type toolSlot struct {
 //     reasoning non-reproducible, which is a far worse trade than the
 //     latency parallelism buys back.
 type toolScheduler struct {
-	sw          *uimessage.Writer
+	sw          uimessage.Emitter
 	activeTools []tools.Definition
 
 	// perms decides allow / deny / ask for every call before it runs. Never
@@ -94,13 +94,6 @@ type toolScheduler struct {
 	// result.
 	paused bool
 
-	// approvals are the parts describing calls this step suspended for
-	// approval, in call order. runToolLoop appends them to the persisted
-	// message so the approval card survives a reload -- an approval prompt
-	// that disappears when the user refreshes is worse than no prompt,
-	// because the turn is then stuck with nothing on screen explaining why.
-	approvals []map[string]any
-
 	// log records what each call did, for the eval harness and for anything
 	// that needs to reason about a turn as actions rather than as message
 	// frames (internal/agent/session). Nil is a valid zero -- every method
@@ -110,7 +103,7 @@ type toolScheduler struct {
 	step int
 }
 
-func newToolScheduler(sw *uimessage.Writer, activeTools []tools.Definition, perms *permission.Engine) *toolScheduler {
+func newToolScheduler(sw uimessage.Emitter, activeTools []tools.Definition, perms *permission.Engine) *toolScheduler {
 	return &toolScheduler{
 		sw:          sw,
 		activeTools: activeTools,
@@ -130,8 +123,8 @@ func (s *toolScheduler) withLog(l *session.Log, step int) *toolScheduler {
 
 // note records an action/observation pair for a call that never reached
 // execute -- an unknown tool, a refusal, a suspension.
-func (s *toolScheduler) note(sl *toolSlot, status session.ObservationStatus, summary, errText string) {
-	s.log.Record(s.action(sl), session.Observation{Status: status, Summary: summary, Error: errText})
+func (s *toolScheduler) note(sl *toolSlot, o session.Observation) {
+	s.log.Record(s.action(sl), o)
 }
 
 func (s *toolScheduler) action(sl *toolSlot) session.Action {
@@ -183,7 +176,7 @@ func (s *toolScheduler) Offer(ctx context.Context, tc bifrostai.ToolCall) {
 		errMsg := "unknown tool: " + tc.Name
 		s.emitError(tc.ID, errMsg)
 		sl.outcome = errorOutcome(tc, input, errMsg)
-		s.note(sl, session.StatusError, "", errMsg)
+		s.note(sl, session.Observation{Status: session.StatusError, Error: errMsg})
 		return
 	}
 
@@ -196,8 +189,12 @@ func (s *toolScheduler) Offer(ctx context.Context, tc bifrostai.ToolCall) {
 	case d.Allowed:
 		// fall through to execution
 	case d.NeedsUser:
-		s.suspendForApproval(sl, d)
-		return
+		// An Approver (headless runs, the eval harness) answers here and
+		// now; without one the turn suspends and a client answers later.
+		// See approver.go for why those are two paths and not one.
+		if !s.askApprover(ctx, sl, d) {
+			return
+		}
 	default:
 		// A refusal is fed back to the model as the tool's result rather
 		// than surfaced as a stream error, because it is one: the call was
@@ -206,19 +203,18 @@ func (s *toolScheduler) Offer(ctx context.Context, tc bifrostai.ToolCall) {
 		// turn; a stream error ends the turn with nothing useful said.
 		s.emitError(tc.ID, d.Reason)
 		sl.outcome = errorOutcome(tc, input, d.Reason)
-		s.note(sl, session.StatusDenied, "", d.Reason)
+		s.note(sl, session.Observation{Status: session.StatusDenied, Error: d.Reason})
 		return
 	}
 
 	if def.Execute == nil {
-		sl.outcome = toolCallOutcome{
-			part: map[string]any{
-				"type": "tool-" + tc.Name, "toolCallId": tc.ID, "state": "input-available", "input": input,
-			},
-			pauseForClient: true,
-		}
+		sl.outcome = toolCallOutcome{pauseForClient: true}
 		s.paused = true
-		s.note(sl, session.StatusOK, "handed to the client to execute", "")
+		s.note(sl, session.Observation{
+			Status:    session.StatusOK,
+			Summary:   "handed to the client to execute",
+			Suspended: true,
+		})
 		return
 	}
 
@@ -268,10 +264,6 @@ func (s *toolScheduler) Finish(ctx context.Context) []toolCallOutcome {
 // stopped this step.
 func (s *toolScheduler) Paused() bool { return s.paused }
 
-// Approvals returns the approval-request parts this step produced, in call
-// order.
-func (s *toolScheduler) Approvals() []map[string]any { return s.approvals }
-
 // approvalDataPart is the name of the data part carrying an approval
 // request. The frontend keys off `data-` + this.
 const approvalDataPart = "tool-approval"
@@ -317,21 +309,68 @@ func (s *toolScheduler) suspendForApproval(sl *toolSlot, d permission.Decision) 
 		data["compound"] = permission.HasShellOperators(command)
 	}
 
-	part := map[string]any{"type": "data-" + approvalDataPart, "id": sl.tc.ID, "data": data}
-	s.approvals = append(s.approvals, part)
-
 	s.swMu.Lock()
 	_ = s.sw.Data(approvalDataPart, sl.tc.ID, data)
 	s.swMu.Unlock()
 
-	sl.outcome = toolCallOutcome{
-		part: map[string]any{
-			"type": "tool-" + sl.tc.Name, "toolCallId": sl.tc.ID, "state": "input-available", "input": sl.input,
-		},
-		pauseForClient: true,
-	}
+	sl.outcome = toolCallOutcome{pauseForClient: true}
 	s.paused = true
-	s.note(sl, session.StatusDenied, "suspended for user approval", d.Reason)
+	s.note(sl, session.Observation{
+		Status:    session.StatusDenied,
+		Summary:   "suspended for user approval",
+		Error:     d.Reason,
+		Suspended: true,
+		// Carried on the observation rather than accumulated in a side list
+		// on the scheduler: the approval part is a fact about this call, and
+		// the projection emits it from here.
+		Approval: data,
+	})
+}
+
+// askApprover resolves a gated call through the context's Approver, if it
+// has one, and reports whether the call may now run.
+//
+// With no Approver this suspends the turn and returns false, which is the
+// behavior every existing caller has always had.
+//
+// A denial is written back as the tool's *result*, not as a stream error,
+// for the same reason a policy refusal is: the call was answered, just not
+// the way the model hoped, and a model that reads "the user declined" in a
+// tool result adapts within the same turn where a stream error would end it
+// with nothing useful said.
+func (s *toolScheduler) askApprover(ctx context.Context, sl *toolSlot, d permission.Decision) bool {
+	ap := approverFrom(ctx)
+	if ap == nil {
+		s.suspendForApproval(sl, d)
+		return false
+	}
+
+	answer, err := ap.Ask(ctx, approvalRequestFor(sl, d))
+	if err != nil {
+		// An approver that could not answer is not a yes. Reported with its
+		// own wording rather than the human-declined sentence, because "the
+		// approval mechanism broke" and "a person said no" should not read
+		// identically to whoever is debugging the run.
+		msg := "approval could not be obtained for " + sl.tc.Name + ": " + err.Error()
+		s.emitError(sl.tc.ID, msg)
+		sl.outcome = errorOutcome(sl.tc, sl.input, msg)
+		s.note(sl, session.Observation{Status: session.StatusError, Error: msg})
+		return false
+	}
+
+	if !answer.Confirm {
+		msg := declinedToolMessage(sl.tc.Name)
+		s.emitError(sl.tc.ID, msg)
+		sl.outcome = errorOutcome(sl.tc, sl.input, msg)
+		s.note(sl, session.Observation{Status: session.StatusDenied, Summary: "declined by the approver", Error: msg})
+		return false
+	}
+
+	// "always" is recorded against the same session grants the client path
+	// writes to, so an answer given here and one given in a browser mean the
+	// same thing for the rest of the conversation.
+	rememberApproval(s.perms, sl.def, sl.input, approvalAnswer{Confirm: true, Scope: answer.Scope})
+	return true
 }
 
 // execute runs one tool and records its outcome. Safe to call from any
@@ -356,16 +395,16 @@ func (s *toolScheduler) execute(ctx context.Context, sl *toolSlot) {
 
 	outputJSON, _ := json.Marshal(output)
 	sl.outcome = toolCallOutcome{
-		part: map[string]any{
-			"type": "tool-" + sl.tc.Name, "toolCallId": sl.tc.ID, "state": "output-available",
-			"input": sl.input, "output": output,
-		},
 		messages: []bifrostai.Message{
 			assistantCallMessage(sl.tc, sl.input),
 			{Role: bifrostai.RoleTool, ToolCallID: sl.tc.ID, Text: stringifyToolOutput(outputJSON)},
 		},
 	}
-	s.log.Observe(sl.logAt, session.Observation{Status: session.StatusOK, Summary: summarizeOutput(outputJSON)})
+	s.log.Observe(sl.logAt, session.Observation{
+		Status:  session.StatusOK,
+		Summary: summarizeOutput(outputJSON),
+		Output:  output,
+	})
 }
 
 // classifyToolError separates "the tool refused" from "the tool broke".
@@ -435,10 +474,6 @@ func assistantCallMessage(tc bifrostai.ToolCall, input json.RawMessage) bifrosta
 
 func errorOutcome(tc bifrostai.ToolCall, input json.RawMessage, msg string) toolCallOutcome {
 	return toolCallOutcome{
-		part: map[string]any{
-			"type": "tool-" + tc.Name, "toolCallId": tc.ID, "state": "output-error",
-			"input": input, "errorText": msg,
-		},
 		messages: []bifrostai.Message{
 			assistantCallMessage(tc, input),
 			{Role: bifrostai.RoleTool, ToolCallID: tc.ID, Text: msg},
@@ -446,11 +481,14 @@ func errorOutcome(tc bifrostai.ToolCall, input json.RawMessage, msg string) tool
 	}
 }
 
-// toolCallOutcome is one resolved tool call: the part to persist, the
-// messages to append to the model's history, and whether the loop must now
-// pause and wait for the browser to run it.
+// toolCallOutcome is one resolved tool call: the messages to append to the
+// model's history, and whether the loop must now pause and wait for the
+// browser to run it.
+//
+// It used to carry the persisted part too. That field is gone, and its
+// absence is the inversion: the part is now projected from the event log
+// (parts.go), so a call describes itself in exactly one place.
 type toolCallOutcome struct {
-	part           map[string]any
 	messages       []bifrostai.Message
 	pauseForClient bool
 }

@@ -20,22 +20,39 @@
 //     derivable from a message array or from the persisted parts, because
 //     both record that a tool returned, not whether it did its job.
 //
-// # What this is not, yet
+// # This is now the source of truth (inverted 2026-08-17)
 //
-// The plan's end state is that the EventLog becomes the source of truth and
-// the Bifrost message array becomes a projection of it. This is not that.
-// The message array is still built directly and still what gets persisted;
-// the log is a parallel structured record of the same turn.
+// It did not start that way. For a day this was a *parallel* record: the
+// persisted parts array was accumulated separately inside the tool loop, and
+// TestToolLoop_EventLogAgreesWithThePersistedParts was the only thing
+// stopping two accounts of one turn from drifting apart. A test can catch
+// drift after the fact; it cannot prevent it.
 //
-// Two records of one turn is a real cost and worth stating plainly rather
-// than dressing up: they can drift.
-// TestToolLoop_EventLogAgreesWithThePersistedParts is what keeps them
-// honest, and it exists because a test is the only thing that can. The
-// alternative -- doing the inversion now -- means rewriting persistence
-// (route.go, models.ChatMessage) and re-deriving the parts array from the
-// log, in a tree where part ordering has already been a live bug once.
-// That is the right change and the wrong time; the log has to exist and be
-// trusted before anything can be built on top of it.
+// The parts array is now a pure projection of this log
+// (internal/api/chat/parts.go, partsFromLog). Two consequences follow, and
+// they are the whole reason for the change:
+//
+//   - The two records cannot disagree, because there is one record. The
+//     agreement test still exists but it can no longer fail for the reason it
+//     was written -- it now asserts a property of a projection rather than a
+//     coincidence between two accumulators.
+//   - A run can be reconstructed from its log, which is what replay needs and
+//     what a record that is *allowed* to disagree with the transcript can
+//     never support.
+//
+// # What that cost, and why it is not a regression
+//
+// Two fields here used to be deliberately lossy, and the reasoning was
+// sound while this was a measurement record: Action.Text was clipped to 400
+// characters and Observation carried a 200-character summary rather than the
+// tool's output, on the grounds that "the transcript already holds the full
+// text" and a log carrying every file read is as large as the context it
+// describes.
+//
+// Both invert with the log. The transcript is now built *from* this, so
+// truncating here truncates the transcript. The memory argument does not
+// survive either: the parts array held those same bytes before, for the same
+// duration, in the same request. The bytes moved; they were not added.
 package session
 
 import (
@@ -83,10 +100,24 @@ type Action struct {
 	Risk     string          `json:"risk,omitempty"`
 	Parallel bool            `json:"parallel,omitempty"`
 
-	// Text is set for ActionMessage and ActionThink. Truncated: the log is
-	// for measuring a run, not for replaying its prose, and the transcript
-	// already holds the full text.
+	// Text is set for ActionMessage and ActionThink, and carries the step's
+	// full text.
+	//
+	// It used to be clipped, on the reasoning that the log measured a run
+	// while the transcript held the prose. The transcript is now projected
+	// from here, so a clip here is a clip in the saved conversation.
 	Text string `json:"text,omitempty"`
+
+	// Data carries a structured payload for kinds that have one. Today only
+	// ActionCompact does: what was replaced, and the token estimate either
+	// side of it.
+	//
+	// A loose map rather than a typed struct because this is the shape the
+	// compaction marker is *already* published in, to the stream and to the
+	// persisted part. Introducing a typed mirror of it here would put a
+	// second definition of one payload in the tree, which is the class of
+	// problem this whole inversion exists to remove.
+	Data map[string]any `json:"data,omitempty"`
 
 	At time.Time `json:"at"`
 }
@@ -95,11 +126,37 @@ type Action struct {
 type Observation struct {
 	Status ObservationStatus `json:"status"`
 
-	// Summary is a short human-readable result. Deliberately not the tool's
-	// full output: a log that carries every file read is as large as the
-	// context it was meant to describe.
+	// Summary is a short human-readable line about the result, for anyone
+	// reading the log itself. Distinct from Output rather than a lossy copy
+	// of it: Output is the data the tool returned, Summary is the sentence a
+	// person scanning a 40-step run wants instead of that data.
 	Summary string `json:"summary,omitempty"`
 	Error   string `json:"error,omitempty"`
+
+	// Output is what the tool returned, exactly as it returned it.
+	//
+	// This is the field that made the log able to carry the transcript. It
+	// used to be absent on the grounds that a log holding every file read is
+	// as large as the context it describes -- true, and irrelevant once the
+	// persisted parts are projected from here, because those parts held these
+	// same bytes anyway.
+	Output any `json:"output,omitempty"`
+
+	// Suspended marks a call this turn could not resolve on its own: a
+	// client-executed tool handed to the browser, or one the permission
+	// engine wants a human to approve.
+	//
+	// Not a Status value, because it is orthogonal to one. A suspended call
+	// has both an outcome so far (StatusOK for a client tool, StatusDenied
+	// for one awaiting approval) *and* the property that nothing further
+	// happened in this turn. Folding the two into one enum would force a
+	// choice between reporting why the call stopped and reporting that it
+	// stopped.
+	Suspended bool `json:"suspended,omitempty"`
+
+	// Approval is the request put to the user, when Suspended because the
+	// permission engine asked for a human. Nil otherwise.
+	Approval map[string]any `json:"approval,omitempty"`
 
 	DurationMS int64     `json:"duration_ms"`
 	At         time.Time `json:"at"`

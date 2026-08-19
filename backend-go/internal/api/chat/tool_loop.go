@@ -104,7 +104,7 @@ type toolLoopResult struct {
 func runToolLoop(
 	ctx context.Context,
 	engine Engine,
-	sw *uimessage.Writer,
+	sw uimessage.Emitter,
 	resolved bifrostai.ResolvedModel,
 	system string,
 	messages []bifrostai.Message,
@@ -119,7 +119,7 @@ func runToolLoop(
 func runToolLoopWithBudget(
 	ctx context.Context,
 	engine Engine,
-	sw *uimessage.Writer,
+	sw uimessage.Emitter,
 	resolved bifrostai.ResolvedModel,
 	system string,
 	messages []bifrostai.Message,
@@ -133,7 +133,6 @@ func runToolLoopWithBudget(
 	}
 
 	var fullText string
-	parts := []map[string]any{}
 	var usage *bifrostai.Usage
 	log := session.NewLog()
 
@@ -149,15 +148,14 @@ func runToolLoopWithBudget(
 		// Before the model call, not after: the check has to happen where
 		// the history is about to be *sent*, and a turn does most of its
 		// growing inside itself.
-		var compactionPart map[string]any
-		messages, compactionPart = compactIfNeeded(ctx, engine, sw, resolved, messages)
+		var compacted map[string]any
+		messages, compacted = compactIfNeeded(ctx, engine, sw, resolved, messages)
 
 		_ = sw.StartStep()
-		if compactionPart != nil {
-			parts = append(parts, compactionPart)
+		if compacted != nil {
 			log.Record(
-				session.Action{Kind: session.ActionCompact, Step: step},
-				session.Observation{Status: session.StatusOK, Summary: compactionSummary(compactionPart)},
+				session.Action{Kind: session.ActionCompact, Step: step, Data: compacted},
+				session.Observation{Status: session.StatusOK, Summary: compactionSummary(compacted)},
 			)
 		}
 
@@ -267,9 +265,8 @@ func runToolLoopWithBudget(
 		// calls still collapses into one part -- StepResult carries the
 		// step's text as a single string -- which is unchanged from before.
 		if result.Reasoning != "" {
-			parts = append(parts, map[string]any{"type": "reasoning", "text": result.Reasoning})
 			log.Record(
-				session.Action{Kind: session.ActionThink, Step: step, Text: clip(result.Reasoning)},
+				session.Action{Kind: session.ActionThink, Step: step, Text: result.Reasoning},
 				session.Observation{Status: session.StatusOK},
 			)
 		}
@@ -278,9 +275,8 @@ func runToolLoopWithBudget(
 				fullText += "\n\n"
 			}
 			fullText += result.Text
-			parts = append(parts, map[string]any{"type": "text", "text": result.Text})
 			log.Record(
-				session.Action{Kind: session.ActionMessage, Step: step, Text: clip(result.Text)},
+				session.Action{Kind: session.ActionMessage, Step: step, Text: result.Text},
 				session.Observation{Status: session.StatusOK},
 			)
 		}
@@ -301,14 +297,8 @@ func runToolLoopWithBudget(
 		// joined. Outcomes come back in the model's original call order
 		// regardless of which finished first.
 		for _, out := range sched.Finish(ctx) {
-			parts = append(parts, out.part)
 			messages = append(messages, out.messages...)
 		}
-
-		// Approval requests are persisted alongside the tool parts they
-		// describe, after them, so a reloaded thread can still find the
-		// pending call and re-render its card.
-		parts = append(parts, sched.Approvals()...)
 
 		_ = sw.FinishStep()
 		if sched.Paused() {
@@ -316,26 +306,16 @@ func runToolLoopWithBudget(
 		}
 	}
 
-	partsJSON, err := json.Marshal(parts)
+	// The parts array is derived here, once, from the log -- not accumulated
+	// alongside it. See parts.go for why the ordering is explicit.
+	partsJSON, err := json.Marshal(partsFromLog(log.Events()))
 	if err != nil {
 		return toolLoopResult{}, err
 	}
 	return toolLoopResult{Text: fullText, Parts: partsJSON, Usage: usage, Steps: steps, Log: log}, nil
 }
 
-// clip bounds the text an event carries. The log measures a run; the
-// transcript is what holds the prose, and duplicating it here would make
-// the log as expensive to keep as the thing it summarizes.
-func clip(s string) string {
-	const max = 400
-	if len(s) <= max {
-		return s
-	}
-	return s[:max] + "..."
-}
-
-func compactionSummary(part map[string]any) string {
-	data, _ := part["data"].(map[string]any)
+func compactionSummary(data map[string]any) string {
 	if data == nil {
 		return ""
 	}

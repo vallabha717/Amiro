@@ -27,7 +27,8 @@ function readSidebarCollapsedCookie(): boolean {
   const match = document.cookie
     .split("; ")
     .find((row) => row.startsWith(`${COOKIE_KEY_SIDEBAR_STATE}=`));
-  return match?.split("=")[1] !== "true";
+  if (!match) return false;
+  return match.split("=")[1] === "false";
 }
 
 function ChatLayoutInner({ children }: { children: React.ReactNode }) {
@@ -45,9 +46,9 @@ function ChatLayoutInner({ children }: { children: React.ReactNode }) {
           }
         />
         <AppSidebar user={session!.user} />
-        <main className="relative bg-background  w-full flex flex-col h-screen">
+        <main className="relative bg-background flex-1 min-w-0 flex flex-col h-screen overflow-hidden">
           <AppHeader />
-          <div className="flex-1 overflow-y-auto">{children}</div>
+          <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden">{children}</div>
         </main>
       </SWRConfigProvider>
     </SidebarProvider>

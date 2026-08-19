@@ -13,6 +13,7 @@ import (
 	"amiro/backend/internal/agent/lsp"
 	"amiro/backend/internal/agent/memory"
 	"amiro/backend/internal/agent/workspace"
+	"amiro/backend/internal/db/repository"
 )
 
 // Toolkit names, matching AppDefaultToolkit's string values exactly.
@@ -63,6 +64,12 @@ const (
 	// request carries a conversation id -- see Deps.
 	NameTodoWrite = "todo_write"
 	NameTodoRead  = "todo_read"
+
+	// Plan review and the end-of-turn summary (Phase 6). propose_plan has no
+	// server-side executor on purpose -- it suspends the turn so a human can
+	// answer it; see plan.go.
+	NameProposePlan = "propose_plan"
+	NameWalkthrough = "walkthrough"
 
 	// Durable notes about a workspace (Phase 5). Only offered when both a
 	// workspace and an app data directory exist -- see Deps.Memory.
@@ -178,12 +185,15 @@ type Deps struct {
 	// and costs nothing: the `lsp` tool is simply never offered, and the
 	// model is never told about a tool that would fail on first call.
 	LSP *lsp.Pool
+
+	// SearchRepo is the DB repository for retrieving the configured search provider.
+	SearchRepo *repository.SearchProviderRepository
 }
 
 // Defaults returns every APP_DEFAULT_TOOL_KIT tool, freshly constructed per call.
 func Defaults(d Deps) []Definition {
 	ws := d.Workspace
-	defs := append(append(visualizationTools(), httpFetchTool()), webSearchTools()...)
+	defs := append(append(visualizationTools(), httpFetchTool()), webSearchTools(d.SearchRepo)...)
 	defs = append(defs, terminalTools(ws)...)
 	defs = append(defs, fileTools(ws)...)
 	defs = append(defs, searchTools(ws)...)
@@ -196,6 +206,10 @@ func Defaults(d Deps) []Definition {
 		}
 	}
 	defs = append(defs, todoTools(d.Todos, d.SessionID)...)
+	// Unlike the todo tools, these need no session store: propose_plan's
+	// answer arrives as its own tool result and the walkthrough is a
+	// one-shot summary, so both are stateless and always available.
+	defs = append(defs, planTools(ws)...)
 	defs = append(defs, memoryTools(d.Memory, d.SessionID)...)
 	return defs
 }

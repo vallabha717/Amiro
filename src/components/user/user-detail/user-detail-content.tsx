@@ -24,6 +24,8 @@ import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import { UserDetailContentSkeleton } from "./user-detail-content-skeleton";
 import { BasicUser } from "app-types/user";
+import { getUserAvatar } from "lib/user/utils";
+import { rewriteStorageUrl } from "@/lib/backend/config";
 
 // The single local account desktop builds auto-provision and auto-login
 // as (internal/auth/service.go's DesktopDefaultUserEmail) -- kept in sync
@@ -190,12 +192,12 @@ function ProfileCard({
         <div className="flex items-center justify-center">
           <div className="relative inline-block">
             <Avatar className="size-20 rounded-full ring ring-border">
-              <AvatarImage src={previewImage ?? user.image ?? undefined} />
+              <AvatarImage src={previewImage ?? (user.image ? rewriteStorageUrl(user.image) : undefined) ?? getUserAvatar(user)} />
               <AvatarFallback className="text-lg font-semibold">
                 {user.name?.slice(0, 2).toUpperCase()}
               </AvatarFallback>
             </Avatar>
-            {(isUploading || isSaving) && selectedFile && (
+            {(isUploading || isSaving) && (
               <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/60">
                 <Loader2 className="size-6 animate-spin text-white" />
               </div>

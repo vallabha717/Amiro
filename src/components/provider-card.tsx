@@ -2,7 +2,6 @@
 
 import {
   Box,
-  CloudDownload,
   Eye,
   EyeOff,
   FlaskConical,
@@ -31,7 +30,6 @@ import { useTranslations } from "next-intl";
 import {
   PROVIDERS_KEY,
   removeProvider,
-  syncProviderModels,
   type ProviderConfig,
 } from "@/lib/backend/provider-api";
 
@@ -54,7 +52,6 @@ export const ProviderCard = memo(function ProviderCard({
   const { mutate } = useSWRConfig();
 
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [revealKey, setRevealKey] = useState(false);
 
   const modelList = models ?? [];
@@ -91,19 +88,7 @@ export const ProviderCard = memo(function ProviderCard({
       .watch(() => setIsProcessing(false));
   }, [id, name, mutate, t]);
 
-  const handleSync = useCallback(async () => {
-    await safe(() => setIsSyncing(true))
-      .map(() => syncProviderModels(id))
-      .ifOk((res) => {
-        mutate(PROVIDERS_KEY);
-        mutate("/api/chat/models");
-        toast.success(t("modelsSynced", { count: res.models.length }));
-      })
-      .ifFail(handleErrorWithToast)
-      .watch(() => setIsSyncing(false));
-  }, [id, mutate, t]);
-
-  const isLoading = isProcessing || isSyncing;
+  const isLoading = isProcessing;
 
   return (
     <Card
@@ -165,27 +150,6 @@ export const ProviderCard = memo(function ProviderCard({
         <div className="h-4">
           <Separator orientation="vertical" />
         </div>
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleSync}
-              disabled={isLoading || !configured}
-              data-testid="provider-sync-button"
-            >
-              {isSyncing ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <CloudDownload className="size-3.5" />
-              )}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>{t("syncModels")}</p>
-          </TooltipContent>
-        </Tooltip>
 
         <Tooltip>
           <TooltipTrigger asChild>

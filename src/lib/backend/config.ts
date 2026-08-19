@@ -20,6 +20,15 @@
  */
 declare global {
   interface Window {
+    /** Set by the Go binary itself when it is serving this page
+     * (`amiro serve` / `amiro --serve`, backend-go/internal/web injects it
+     * into every HTML response). An empty string means "same origin as
+     * this page", which is the whole point: the API and the dashboard come
+     * off one listener, so relative /api/... URLs are correct and no port
+     * needs to be guessed. Checked before __BACKEND_PORT__ because a
+     * served page never has a port injected and must not fall through to
+     * the 127.0.0.1:8787 dev default. */
+    __BACKEND_ORIGIN__?: string;
     __BACKEND_PORT__?: number;
     __BACKEND_TOKEN__?: string;
     /** The desktop auto-login user's session token (backend-go's
@@ -34,10 +43,29 @@ declare global {
 }
 
 export function getBackendBaseUrl(): string {
-  if (typeof window !== "undefined" && window.__BACKEND_PORT__) {
-    return `http://127.0.0.1:${window.__BACKEND_PORT__}`;
+  if (typeof window !== "undefined") {
+    // Deliberately a typeof check, not a truthiness one: "" is the value
+    // that means same-origin, and it is falsy.
+    if (typeof window.__BACKEND_ORIGIN__ === "string") {
+      return window.__BACKEND_ORIGIN__;
+    }
+    if (window.__BACKEND_PORT__) {
+      return `http://127.0.0.1:${window.__BACKEND_PORT__}`;
+    }
   }
   return process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8787";
+}
+
+/** True when the Go binary is serving this page, so the API is same-origin.
+ * The shared-secret header is meaningless here -- see
+ * middleware.RequireTokenOrBrowser for why a served page authenticates
+ * structurally (same-origin + a session) rather than with a secret every
+ * visitor would be handed. */
+export function isSameOriginBackend(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.__BACKEND_ORIGIN__ === "string"
+  );
 }
 
 export function getBackendSharedSecret(): string {
@@ -70,6 +98,9 @@ export function rewriteStorageUrl(url: string | undefined): string | undefined {
     if (!parsed.pathname.startsWith("/storage/")) return url;
     return `${getBackendBaseUrl()}${parsed.pathname}${parsed.search}`;
   } catch {
+    if (url.startsWith("/storage/")) {
+      return `${getBackendBaseUrl()}${url}`;
+    }
     return url;
   }
 }

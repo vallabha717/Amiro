@@ -19,3 +19,13 @@ error-framing 500s, several unguarded `message.parts` reads).
 Backend (`go build/vet/test ./...`) and frontend (`tsc`, `biome`,
 `vitest`) all clean; everything also verified live against the running
 dev servers, not just unit-tested.
+
+Dummy line 1.
+Dummy line 2.
+
+Dummy line 3.
+Dummy line 4.
+Edited dummy line 5.
+Edited dummy line 6.
+Dummy line 7.
+Dummy line 8.

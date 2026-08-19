@@ -46,6 +46,16 @@ func (s *KeyringStore) saveFallback() {
 	}
 }
 
+// Get never returns an error: the file-store fallback is the documented
+// mitigation for "keyring unavailable over SSH / headless Linux" (plan
+// §2.7's risk table -- "must not hard-fail"), and a caller can't act on
+// that error differently than on ok=false, so the two used to collapse
+// into one anyway everywhere it mattered except here. Found the hard way:
+// `amiro auth whoami` after a `logout` in this exact environment (a
+// session D-Bus with no org.freedesktop.secrets provider registered on
+// it) surfaced the raw dbus error instead of "not signed in" -- the one
+// case where the fallback file legitimately has no answer either (the key
+// was just deleted from it), which is also just "not set," not a failure.
 func (s *KeyringStore) Get(_ context.Context, provider string) (string, bool, error) {
 	key, err := keyring.Get(keyringService, provider)
 	if errors.Is(err, keyring.ErrNotFound) || err != nil {
@@ -61,9 +71,6 @@ func (s *KeyringStore) Get(_ context.Context, provider string) (string, bool, er
 	if errors.Is(err, keyring.ErrNotFound) || err != nil {
 		if val, ok := s.memFallback[provider]; ok {
 			return val, true, nil
-		}
-		if err != nil && !errors.Is(err, keyring.ErrNotFound) {
-			return "", false, err
 		}
 		return "", false, nil
 	}

@@ -38,6 +38,7 @@ export const ChatGreeting = () => {
   return (
     <motion.div
       key="welcome"
+      data-testid="chat-greeting"
       className="max-w-3xl mx-auto my-4 h-20"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}

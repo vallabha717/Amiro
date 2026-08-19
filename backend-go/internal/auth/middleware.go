@@ -19,6 +19,19 @@ func UserFromContext(ctx context.Context) (*models.User, bool) {
 	return user, ok
 }
 
+// ContextWithUser is UserFromContext's counterpart, for callers that have to
+// build the state RequireSession would have left.
+//
+// Exported for tests: a handler's authorization rules are exactly what wants
+// testing -- "does this refuse a non-admin" is the question a security bug
+// answers wrongly -- and without this the only way to ask it is to stand up
+// the real session middleware and a real user row, which tests the
+// middleware rather than the handler. The key stays unexported, so nothing
+// outside this package can forge a user onto a context by accident.
+func ContextWithUser(ctx context.Context, user *models.User) context.Context {
+	return context.WithValue(ctx, userContextKey, user)
+}
+
 // RequireSession rejects any request without a valid "Authorization:
 // Bearer <session token>" header and stores the resolved user on the
 // request context for downstream handlers. This is a second, user-level
