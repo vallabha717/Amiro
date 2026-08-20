@@ -98,7 +98,7 @@ export default class TimelineReporter implements Reporter {
     return `ui/${feature}/${test.title}`;
   }
 
-  onBegin(config: FullConfig, suite: Suite): void {
+  onBegin(_config: FullConfig, suite: Suite): void {
     if (!this.runDir && process.env.AMIRO_TEST_RUN_DIR) {
       this.runDir = process.env.AMIRO_TEST_RUN_DIR;
       this.eventsPath = path.join(this.runDir, "events.ndjson");
@@ -127,7 +127,7 @@ export default class TimelineReporter implements Reporter {
     });
   }
 
-  onStepBegin(test: TestCase, result: TestResult, step: TestStep): void {
+  onStepBegin(test: TestCase, _result: TestResult, step: TestStep): void {
     if (step.category === "test.step" || step.category === "pw:api" || step.title.startsWith("page.")) {
       this.emit({
         surface: "ui",
@@ -139,7 +139,7 @@ export default class TimelineReporter implements Reporter {
     }
   }
 
-  onStepEnd(test: TestCase, result: TestResult, step: TestStep): void {
+  onStepEnd(test: TestCase, _result: TestResult, step: TestStep): void {
     if (step.error) {
       this.emit({
         surface: "ui",

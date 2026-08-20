@@ -222,6 +222,13 @@ func (s *toolScheduler) Offer(ctx context.Context, tc bifrostai.ToolCall) {
 	// ends up running it.
 	sl.logAt = s.log.Start(s.action(sl))
 
+	// Skill activation immediately registers read-only roots on the workspace so that
+	// subsequent read/search tools offered in the same model step are permitted to read them.
+	if def.Name == tools.NameSkill {
+		s.execute(ctx, sl)
+		return
+	}
+
 	if def.Concurrency() == tools.Parallel {
 		s.wg.Add(1)
 		go func() {

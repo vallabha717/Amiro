@@ -145,10 +145,20 @@ func Compact(ctx context.Context, messages []bifrostai.Message, p Policy, summar
 	// Every user message from the compacted range, verbatim and in order,
 	// after the summary. They are cheap (a user message is a sentence, a
 	// tool result is a file) and they are the instructions the run is
-	// answering.
+	// answering. Activated <skill_content> blocks are also preserved so skill
+	// instructions survive compaction.
 	for _, m := range older {
 		if m.Role == bifrostai.RoleUser && strings.TrimSpace(m.Text) != "" {
 			out = append(out, m)
+		} else if strings.Contains(m.Text, "<skill_content") {
+			if m.Role == bifrostai.RoleTool {
+				out = append(out, bifrostai.Message{
+					Role: bifrostai.RoleUser,
+					Text: m.Text,
+				})
+			} else {
+				out = append(out, m)
+			}
 		}
 	}
 	out = append(out, recent...)

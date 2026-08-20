@@ -88,7 +88,7 @@ func globTool(ws *workspace.Workspace) Definition {
 				if err != nil {
 					return nil
 				}
-				wsRel, relErr := ws.Rel(p)
+				wsRel, relErr := ws.RelReadable(p)
 				if relErr != nil {
 					return nil
 				}
@@ -232,7 +232,7 @@ func grepTool(ws *workspace.Workspace) Definition {
 				if ctx.Err() != nil {
 					return ctx.Err()
 				}
-				wsRel, relErr := ws.Rel(p)
+				wsRel, relErr := ws.RelReadable(p)
 				if relErr != nil {
 					return nil
 				}
@@ -298,7 +298,7 @@ func resolveSearchRoot(ws *workspace.Workspace, path string) (string, error) {
 	if strings.TrimSpace(path) == "" {
 		path = "."
 	}
-	abs, err := ws.Resolve(path)
+	abs, err := ws.ResolveReadable(path)
 	if err != nil {
 		return "", err
 	}

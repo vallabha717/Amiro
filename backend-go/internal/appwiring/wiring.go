@@ -43,6 +43,7 @@ import (
 	exportapi "amiro/backend/internal/api/export"
 	mcpapi "amiro/backend/internal/api/mcp"
 	searchapi "amiro/backend/internal/api/search"
+	skillsapi "amiro/backend/internal/api/skills"
 	storageapi "amiro/backend/internal/api/storage"
 	threadapi "amiro/backend/internal/api/thread"
 	userapi "amiro/backend/internal/api/user"
@@ -53,6 +54,7 @@ import (
 	"amiro/backend/internal/db/repository"
 	"amiro/backend/internal/httpserver"
 	"amiro/backend/internal/mcp"
+	"amiro/backend/internal/skills"
 	"amiro/backend/internal/storage"
 )
 
@@ -68,6 +70,7 @@ type App struct {
 	Auth   *auth.Service
 	MCP    *mcp.Manager
 	Chat   *chatapi.Handler
+	Skills *skills.Service
 
 	// Handlers is what httpserver.New needs. Storage is filled in by
 	// AttachPort -- see its doc comment for why that one cannot be built
@@ -166,6 +169,9 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		app.closers = append(app.closers, chatHandler.Close)
 		app.WorkspaceRoot = ws.Root()
 	}
+	skillsService := skills.NewService()
+	app.Skills = skillsService
+	chatHandler = chatHandler.WithSkills(skillsService)
 	app.Chat = chatHandler
 
 	app.Handlers = httpserver.Handlers{
@@ -182,6 +188,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		Thread:   threadapi.NewHandler(chatRepo),
 		User:     userapi.NewHandler(userRepo, app.Auth),
 		Search:   searchapi.NewHandler(searchRepo),
+		Skills:   skillsapi.NewHandler(skillsService),
 	}
 
 	return app, nil

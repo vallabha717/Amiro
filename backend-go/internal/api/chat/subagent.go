@@ -39,6 +39,7 @@ var subagentToolNames = map[string]bool{
 	tools.NameGrep:       true,
 	tools.NameWebSearch:  true,
 	tools.NameWebContent: true,
+	tools.NameSkill:      true,
 }
 
 type subagentInput struct {

@@ -192,3 +192,84 @@ func asEscape(err error, target **EscapeError) bool {
 	}
 	return ok
 }
+
+func TestResolveReadable_AllowsWorkspaceAndReadOnlyRoots(t *testing.T) {
+	w, root := newTestWorkspace(t)
+
+	// Create an external read-only skill directory
+	skillDir := t.TempDir()
+	refFile := filepath.Join(skillDir, "references", "guide.md")
+	if err := os.MkdirAll(filepath.Dir(refFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(refFile, []byte("# Guide"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wWithRoots := w.WithReadOnlyRoots([]string{skillDir})
+
+	// Inside workspace: works with both Resolve and ResolveReadable
+	wsFile := filepath.Join(root, "src", "lib", "utils.go")
+	if got, err := wWithRoots.Resolve(wsFile); err != nil || got != wsFile {
+		t.Fatalf("Resolve(%q) = %q, %v", wsFile, got, err)
+	}
+	if got, err := wWithRoots.ResolveReadable(wsFile); err != nil || got != wsFile {
+		t.Fatalf("ResolveReadable(%q) = %q, %v", wsFile, got, err)
+	}
+
+	// Inside read-only root: ResolveReadable succeeds, Resolve fails!
+	if got, err := wWithRoots.ResolveReadable(refFile); err != nil || got != refFile {
+		t.Fatalf("ResolveReadable(%q) = %q, %v", refFile, got, err)
+	}
+	if _, err := wWithRoots.Resolve(refFile); err == nil {
+		t.Fatalf("Resolve(%q) must refuse a path outside the workspace root even if in ReadOnlyRoots", refFile)
+	}
+
+	// Outside both: both fail
+	outside := filepath.Join(t.TempDir(), "other.txt")
+	if _, err := wWithRoots.Resolve(outside); err == nil {
+		t.Fatalf("Resolve(%q) must fail", outside)
+	}
+	if _, err := wWithRoots.ResolveReadable(outside); err == nil {
+		t.Fatalf("ResolveReadable(%q) must fail", outside)
+	}
+
+	// RelReadable returns relative path
+	rel, err := wWithRoots.RelReadable(refFile)
+	if err != nil {
+		t.Fatalf("RelReadable(%q): %v", refFile, err)
+	}
+	if rel != filepath.Join("references", "guide.md") {
+		t.Errorf("RelReadable(%q) = %q, want references/guide.md", refFile, rel)
+	}
+}
+
+func TestWorkspace_ConcurrentAddAndResolve_Race(t *testing.T) {
+	w, _ := newTestWorkspace(t)
+
+	// Outside root path so ResolveReadable traverses readOnlyRoots under lock
+	outsideDir := t.TempDir()
+	outsideFile := filepath.Join(outsideDir, "doc.txt")
+	if err := os.WriteFile(outsideFile, []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		for i := 0; i < 200; i++ {
+			select {
+			case <-done:
+				return
+			default:
+				w.AddReadOnlyRoots(t.TempDir(), outsideDir)
+			}
+		}
+	}()
+
+	for i := 0; i < 200; i++ {
+		_, _ = w.ResolveReadable(outsideFile)
+		_ = w.ReadOnlyRoots()
+		_, _ = w.RelReadable(outsideFile)
+	}
+	close(done)
+}

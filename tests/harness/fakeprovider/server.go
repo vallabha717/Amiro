@@ -95,6 +95,25 @@ func (s *Server) LastMessages() []Message {
 	return s.lastMessages
 }
 
+// Exchanges returns a copy of all HTTP interactions handled by fakeprovider.
+func (s *Server) Exchanges() []Exchange {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]Exchange, len(s.exchanges))
+	copy(out, s.exchanges)
+	return out
+}
+
+// LastRequestBody returns the body of the most recent HTTP request.
+func (s *Server) LastRequestBody() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.exchanges) == 0 {
+		return ""
+	}
+	return s.exchanges[len(s.exchanges)-1].Body
+}
+
 // ServeHTTP implements http.Handler.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.handleHTTP(w, r)
@@ -312,8 +331,12 @@ func (s *Server) handleOpenAI(w http.ResponseWriter, rule *Rule, prompt string, 
 					return
 				}
 				chunkIdx++
+				var finishReason any
+				if i == len(toolCalls)-1 {
+					finishReason = "tool_calls"
+				}
 				payload := map[string]any{
-					"id":      "chatcmpl-fake-tool",
+					"id":      "chatcmpl-fake-stream",
 					"object":  "chat.completion.chunk",
 					"created": 1700000000,
 					"model":   "gpt-4.1",
@@ -334,7 +357,7 @@ func (s *Server) handleOpenAI(w http.ResponseWriter, rule *Rule, prompt string, 
 									},
 								},
 							},
-							"finish_reason": "tool_calls",
+							"finish_reason": finishReason,
 						},
 					},
 				}

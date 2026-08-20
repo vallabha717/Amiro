@@ -1,4 +1,4 @@
-# Adding skills
+# Skills
 
 This directory holds agent skills: self-contained bundles of guidance (and,
 sometimes, scripts) that an agent reads when a task matches what the skill
@@ -17,13 +17,25 @@ step, import, or manifest to also update.
 ```
 
 - **One directory per skill**, named in kebab-case. The directory name and
-  the frontmatter `name:` must match (e.g. `.agents/skills/ask-sonner/`,
-  `name: ask-sonner`).
-- Existing examples worth reading before writing a new one: `ask-sonner`
-  (a guide skill with a companion `API.md`), `pick-ui-library` (a lookup
-  skill, explicit-invoke only), `local-dev-vm` (a short how-to with no
-  companion files), `improve-animations` (a multi-phase workflow skill with
-  `AUDIT.md`/`PLAN-TEMPLATE.md` reference files).
+  the frontmatter `name:` must match (e.g. `.agents/skills/backend/`,
+  `name: backend`).
+
+## The five skills that live here
+
+| Skill | Covers |
+| --- | --- |
+| [`ui`](ui/SKILL.md) | Standards for anything a user sees: `src/**` (the Next.js dashboard, which ships to the Tauri desktop app, to the browser via `amiro serve`, and to `next dev`) and `backend-go/internal/tui/**` (the terminal UI). Folder structure, static-export constraints, backend access, styling tokens, i18n, state. |
+| [`backend`](backend/SKILL.md) | Standards for `backend-go/**`: package layout, adding an API route, the three auth guards, dual-dialect migrations, repositories, secrets, providers, MCP, build tags, and the test gates. |
+| [`test`](test/SKILL.md) | Standards for the `tests/` harness and how every change gets proven end to end across all five surfaces: where a test goes, how to write one, the fake provider and cassettes, golden screens, the `suites/meta/` guards that fail the build on an untested route, and the selection commands. |
+| [`plan`](plan/SKILL.md) | How work gets planned — the phased plan-folder method behind `docs/testing/`. Produces `docs/<initiative>/` with design docs, `phases/`, and a seeded `progress/`. Writes documents, never code. |
+| [`implement`](implement/SKILL.md) | How a planned phase gets executed and recorded: entry conditions, building to the `ui`/`backend` standards, verifying every exit criterion by running it, then writing the progress record and verification log and updating every doc the phase invalidated. |
+
+`plan` → `implement` is the intended loop. Both of them load `test`, and
+`implement` also loads `ui` and `backend` for the standards it builds to —
+so a phase is planned with its test coverage and shipped with it, on every
+surface it reaches. Each of `plan` and `implement` keeps its templates in
+sibling `*-TEMPLATE.md` files — the progressive-disclosure pattern
+described below.
 
 ## SKILL.md frontmatter
 
@@ -45,8 +57,8 @@ disable-model-invocation: true   # optional — see below
 - `disable-model-invocation: true` — add this when the skill should only run
   if explicitly named or requested, not auto-triggered by task similarity.
   Use it for narrow lookup tools where a false-positive auto-trigger would be
-  annoying (see `pick-ui-library`). Leave it off for skills that should kick
-  in whenever the task matches, which is the default and the common case.
+  annoying. None of the five skills here set it: all five should kick in
+  whenever the task matches, which is the default and the common case.
 
 ## Body
 
@@ -57,12 +69,11 @@ disable-model-invocation: true   # optional — see below
   If the topic needs exhaustive reference material, a rule catalog, or a
   template, push it into a same-directory file and link to it — that's
   progressive disclosure, and it's why `SKILL.md` stays skimmable while the
-  detail is still one hop away when actually needed (see `ask-sonner/API.md`,
-  `improve-animations/AUDIT.md` + `PLAN-TEMPLATE.md`).
+  detail is still one hop away when actually needed (see
+  `plan/PHASE-TEMPLATE.md`, `implement/PROGRESS-TEMPLATE.md`).
 - If the skill carries executable helpers, put them under `scripts/` next to
-  `SKILL.md` (see `impeccable/scripts/`). They're invoked by the agent
-  through the terminal, not imported by the app — nothing in `src/` or
-  `backend-go/` depends on them.
+  `SKILL.md`. They're invoked by the agent through the terminal, not
+  imported by the app — nothing in `src/` or `backend-go/` depends on them.
 
 ## Steps to add a new skill
 
@@ -72,8 +83,8 @@ disable-model-invocation: true   # optional — see below
    to keep the shape consistent).
 3. Decide the trigger mode: default (auto-invoked when the description
    matches) vs. `disable-model-invocation: true` (explicit-invoke only).
-4. Write the guidance. Match the tone of `ask-sonner` or `pick-ui-library`
-   rather than writing a design doc.
+4. Write the guidance. Match the tone of `backend/SKILL.md` — short,
+   imperative, table-heavy — rather than writing a design doc.
 5. If the skill needs deep reference material or scripts, split those into
    `reference/*.md` or `scripts/*` and link to them from `SKILL.md`.
 6. Nothing else to wire up — the skill is live as soon as the folder exists

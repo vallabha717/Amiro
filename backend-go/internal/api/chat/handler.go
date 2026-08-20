@@ -13,6 +13,7 @@ import (
 	"amiro/backend/internal/ai/workflow/executor"
 	"amiro/backend/internal/db/repository"
 	"amiro/backend/internal/mcp"
+	"amiro/backend/internal/skills"
 )
 
 // Engine is the subset of *bifrostai.Client the chat handlers call,
@@ -93,6 +94,15 @@ type Handler struct {
 	// workspace uses; that is the common case and the `lsp` tool is then
 	// never offered.
 	lsp *lsp.Pool
+
+	// skills discovers and resolves Agent Skills for prompt disclosure and activation.
+	skills *skills.Service
+}
+
+// WithSkills binds the discovery service to this handler.
+func (h *Handler) WithSkills(s *skills.Service) *Handler {
+	h.skills = s
+	return h
 }
 
 // WithWorkspace scopes this handler's file tools to ws, and brings up the

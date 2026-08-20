@@ -145,7 +145,13 @@ func (e *Engine) Evaluate(c Call) Decision {
 	// actually enforces it inside each tool, but catching an out-of-root
 	// path here means the approval card never asks the user to bless a
 	// write that would have failed anyway.
-	if c.Risk == tools.RiskWrite || c.Risk == tools.RiskRead {
+	if c.Risk == tools.RiskRead {
+		if p, ok := pathArg(c.Input); ok && e.ws != nil {
+			if _, err := e.ws.ResolveReadable(p); err != nil {
+				return refuse(fmt.Sprintf("%q is outside the workspace and read-only roots", p))
+			}
+		}
+	} else if c.Risk == tools.RiskWrite {
 		if p, ok := pathArg(c.Input); ok && e.ws != nil {
 			if _, err := e.ws.Resolve(p); err != nil {
 				return refuse(fmt.Sprintf("%q is outside the workspace", p))

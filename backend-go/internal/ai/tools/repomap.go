@@ -74,7 +74,7 @@ func repoMapTool(ws *workspace.Workspace) Definition {
 
 			root := ws.Root()
 			if p := strings.TrimSpace(in.Path); p != "" && p != "." {
-				resolved, err := ws.Resolve(p)
+				resolved, err := ws.ResolveReadable(p)
 				if err != nil {
 					return nil, err
 				}

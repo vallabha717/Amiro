@@ -19,6 +19,7 @@ import (
 	"amiro/backend/internal/db"
 	"amiro/backend/internal/db/models"
 	"amiro/backend/internal/db/repository"
+	"amiro/backend/internal/skills"
 )
 
 // runnerEnv is a Handler with a real database and a canned engine -- the
@@ -317,3 +318,61 @@ func normalizeFrame(t *testing.T, f uimessage.Frame) uimessage.Frame {
 	}
 	return f
 }
+
+type captureSystemEngine struct {
+	capturedSystem string
+}
+
+func (c *captureSystemEngine) StreamStep(ctx context.Context, _ bifrostai.ResolvedModel, system string, _ []bifrostai.Message, _ []bifrostai.ToolSpec, hooks bifrostai.StepHooks) (*bifrostai.StepResult, error) {
+	c.capturedSystem = system
+	if hooks.OnTextDelta != nil {
+		hooks.OnTextDelta("done")
+	}
+	return &bifrostai.StepResult{}, nil
+}
+
+func (c *captureSystemEngine) Stream(context.Context, bifrostai.ResolvedModel, string, []bifrostai.Message) (<-chan bifrostai.Chunk, error) {
+	panic("not implemented")
+}
+
+func TestRunner_SkillsMention_InjectsSkillContent(t *testing.T) {
+	tempDir := t.TempDir()
+	skillDir := filepath.Join(tempDir, ".agents", "skills", "my-skill")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	skillContent := "---\nname: my-skill\ndescription: Test skill.\ndisable-model-invocation: true\n---\n# My Skill Body\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	engine := &captureSystemEngine{}
+	env := newRunnerEnv(t, engine)
+	skillsService := skills.NewService()
+	env.h = env.h.WithSkills(skillsService)
+
+	w := httptest.NewRecorder()
+	_, err := env.h.RunTurn(context.Background(), TurnRequest{
+		User:     env.user,
+		ThreadID: "test-thread-skills",
+		Message: uiMessage{
+			ID:    "msg-1",
+			Role:  "user",
+			Parts: []json.RawMessage{json.RawMessage(`{"type":"text","text":"run skill"}`)},
+		},
+		Mentions:      []mentionDTO{{Type: "skill", Name: "my-skill"}},
+		WorkspaceRoot: tempDir,
+	}, uimessage.NewWriter(w))
+
+	if err != nil {
+		t.Fatalf("RunTurn: %v", err)
+	}
+
+	if !strings.Contains(engine.capturedSystem, `<skill_content name="my-skill">`) {
+		t.Fatalf("expected <skill_content name=\"my-skill\"> in captured system prompt, got:\n%s", engine.capturedSystem)
+	}
+	if !strings.Contains(engine.capturedSystem, "# My Skill Body") {
+		t.Fatalf("expected skill body in captured system prompt, got:\n%s", engine.capturedSystem)
+	}
+}
+

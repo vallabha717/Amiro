@@ -11,12 +11,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sort"
+	"strings"
 
 	"amiro/backend/internal/ai/prompts"
 	"amiro/backend/internal/ai/tools"
 	"amiro/backend/internal/ai/workflow/executor"
 	"amiro/backend/internal/mcp"
+	"amiro/backend/internal/skills"
 )
 
 // agentInstructionsDTO reads Agent.Instructions (AgentInstructionsSchema,
@@ -73,6 +76,40 @@ func (h *Handler) resolveAgent(ctx context.Context, userID string, mentions []me
 		Name: found.Agent.Name,
 		Info: &prompts.AgentPromptInfo{Name: found.Agent.Name, Role: instr.Role, SystemPrompt: instr.SystemPrompt},
 	}, out
+}
+
+// resolveSkills resolves every `{type: "skill", name}` mention.
+// An unresolvable skill name returns an error, surfacing as a visible turn error.
+// Explicit selection ignores disable-model-invocation.
+func (h *Handler) resolveSkills(ctx context.Context, home, project string, mentions []mentionDTO) ([]skills.Skill, error) {
+	var skillNames []string
+	for _, m := range mentions {
+		if m.Type == "skill" && m.Name != "" {
+			skillNames = append(skillNames, m.Name)
+		}
+	}
+	if len(skillNames) == 0 {
+		return nil, nil
+	}
+	if h.skills == nil {
+		return nil, errors.New("skill discovery service is not configured")
+	}
+
+	seen := make(map[string]bool)
+	var resolved []skills.Skill
+	for _, name := range skillNames {
+		norm := strings.ToLower(strings.TrimSpace(name))
+		if seen[norm] {
+			continue
+		}
+		sk, err := h.skills.Get(ctx, home, project, name)
+		if err != nil {
+			return nil, fmt.Errorf("skill %q could not be resolved: %w", name, err)
+		}
+		seen[norm] = true
+		resolved = append(resolved, *sk)
+	}
+	return resolved, nil
 }
 
 // activeMCPTools is loadMcpTools' result: the callable tool.Definitions

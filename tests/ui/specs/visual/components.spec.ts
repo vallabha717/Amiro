@@ -2,7 +2,7 @@ import { test, expect } from "../../support/fixtures";
 import { SignInPage, ChatPage } from "../../pages";
 
 test.describe("visual", () => {
-  test("sign-in form component layout renders consistently", async ({ page, amiro }) => {
+  test("sign-in form component layout renders consistently", async ({ page, amiro: _amiro }) => {
     const signIn = new SignInPage(page);
     await signIn.goto();
 

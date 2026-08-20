@@ -89,7 +89,7 @@ func readFileTool(ws *workspace.Workspace) Definition {
 			if err := json.Unmarshal(raw, &in); err != nil {
 				return nil, fmt.Errorf("read_file: %w", err)
 			}
-			abs, err := ws.Resolve(in.Path)
+			abs, err := ws.ResolveReadable(in.Path)
 			if err != nil {
 				return nil, err
 			}
@@ -202,7 +202,7 @@ func listDirTool(ws *workspace.Workspace) Definition {
 			if strings.TrimSpace(in.Path) == "" {
 				in.Path = "."
 			}
-			abs, err := ws.Resolve(in.Path)
+			abs, err := ws.ResolveReadable(in.Path)
 			if err != nil {
 				return nil, err
 			}
@@ -224,7 +224,7 @@ func listDirTool(ws *workspace.Workspace) Definition {
 
 			ig := loadIgnore(ws.Root())
 			out := ListDirOutput{}
-			out.Path, _ = ws.Rel(abs)
+			out.Path, _ = ws.RelReadable(abs)
 
 			err = filepath.WalkDir(abs, func(p string, d os.DirEntry, err error) error {
 				if err != nil {
@@ -242,7 +242,7 @@ func listDirTool(ws *workspace.Workspace) Definition {
 						return filepath.SkipDir
 					}
 				}
-				wsRel, _ := ws.Rel(p)
+				wsRel, _ := ws.RelReadable(p)
 				if ig.match(wsRel, d.IsDir()) {
 					if d.IsDir() {
 						return filepath.SkipDir

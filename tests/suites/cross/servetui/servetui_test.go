@@ -227,6 +227,7 @@ func TestCrossSurface_ServeAndTUIShareOneEmbeddedBackend(t *testing.T) {
 	if err := sess.WaitForText("Ask Amiro", 15*time.Second); err != nil {
 		t.Fatalf("the picker did not close back to the composer: %v\nframe:\n%s", err, sess.Frame())
 	}
+	_ = sess.WaitForStable(1 * time.Second)
 
 	if err := sess.SendLine(probe); err != nil {
 		t.Fatalf("sending the probe into the TUI: %v", err)

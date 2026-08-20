@@ -14,6 +14,7 @@ import (
 	"amiro/backend/internal/agent/memory"
 	"amiro/backend/internal/agent/workspace"
 	"amiro/backend/internal/db/repository"
+	"amiro/backend/internal/skills"
 )
 
 // Toolkit names, matching AppDefaultToolkit's string values exactly.
@@ -27,6 +28,7 @@ const (
 	ToolkitTodo          = "todo"
 	ToolkitTask          = "task"
 	ToolkitMemory        = "memory"
+	ToolkitSkill         = "skill"
 )
 
 // Tool names, matching DefaultToolName's string values.
@@ -42,6 +44,7 @@ const (
 	NameRunShell          = "run_shell"
 	NameShellTaskOutput   = "shell_task_output"
 	NameShellTaskKill     = "shell_task_kill"
+	NameSkill             = "skill"
 
 	// File ACI (docs/agentic-loop-implementation-plan.md, Phase 2). These
 	// are only offered when a workspace root is configured -- see Defaults.
@@ -152,9 +155,20 @@ func (d Definition) Concurrency() Concurrency {
 	return Sequential
 }
 
-// Deps is what the built-in toolkit needs from its caller.
+// Deps carries the stateful backends the built-in toolset needs.
 //
-// A struct rather than a growing parameter list because every field is
+// Constructed once per request (or per turn) and passed to Defaults. A nil
+// field means "that tool cannot run", matching how the tool definitions
+// themselves handle a missing dependency: the corresponding Definition is
+// omitted from Defaults rather than registered with an executor that fails
+// on first call.
+//
+// Why this is not a package-level registry: tests construct isolated
+// workspaces, todos stores, and memory pools per test and run them in
+// parallel. Global tool instances would share those backends and race.
+//
+// The rule: every tool with state takes its backend from here; tools with
+// no state (createPieChart, http) take nothing. New dependencies are
 // optional in the same way -- absent means "that toolkit is not offered
 // this turn", never "substitute a default". A tool that quietly falls back
 // to the process working directory, or to a shared global list, is worse
@@ -166,6 +180,20 @@ type Deps struct {
 	// working directory", which on the packaged desktop app is wherever the
 	// shell happened to launch the sidecar.
 	Workspace *workspace.Workspace
+
+	// ReadOnlyRoots are additional directories (such as active skills) that
+	// file, search and repomap tools can read without permitting mutations.
+	ReadOnlyRoots []string
+
+	// DiscoveredSkills is the set of skills discovered for the request.
+	// When non-empty, the skill() tool is registered.
+	DiscoveredSkills []skills.Skill
+
+	// OnActivateSkill is called when the skill tool successfully executes.
+	OnActivateSkill func(s *skills.Skill)
+
+	// ActivatedSkills tracks skills already activated in this turn.
+	ActivatedSkills *ActivationSet
 
 	// Todos and SessionID together enable the plan tools. The session is
 	// supplied by the caller and never appears in a tool's parameters --
@@ -193,6 +221,9 @@ type Deps struct {
 // Defaults returns every APP_DEFAULT_TOOL_KIT tool, freshly constructed per call.
 func Defaults(d Deps) []Definition {
 	ws := d.Workspace
+	if ws != nil && len(d.ReadOnlyRoots) > 0 {
+		ws.AddReadOnlyRoots(d.ReadOnlyRoots...)
+	}
 	defs := append(append(visualizationTools(), httpFetchTool()), webSearchTools(d.SearchRepo)...)
 	defs = append(defs, terminalTools(ws)...)
 	defs = append(defs, fileTools(ws)...)
@@ -211,6 +242,9 @@ func Defaults(d Deps) []Definition {
 	// one-shot summary, so both are stateless and always available.
 	defs = append(defs, planTools(ws)...)
 	defs = append(defs, memoryTools(d.Memory, d.SessionID)...)
+	if skTool, ok := skillTool(d.DiscoveredSkills, d.OnActivateSkill, d.ActivatedSkills); ok {
+		defs = append(defs, skTool)
+	}
 	return defs
 }
 
@@ -231,7 +265,8 @@ func Defaults(d Deps) []Definition {
 // toggle. `task` needs no entry because route.go appends it after this
 // filter runs, over whatever tools survived.
 var alwaysOffered = map[string]bool{
-	ToolkitTodo: true,
+	ToolkitTodo:  true,
+	ToolkitSkill: true,
 }
 
 // Filter ports loadAppDefaultTools' selection logic:
@@ -243,7 +278,7 @@ func Filter(defs []Definition, allowedToolkits *[]string, defaultToolNames []str
 		}
 		out := make([]Definition, 0, len(defaultToolNames))
 		for _, d := range defs {
-			if wanted[d.Name] {
+			if wanted[d.Name] || alwaysOffered[d.Toolkit] {
 				out = append(out, d)
 			}
 		}

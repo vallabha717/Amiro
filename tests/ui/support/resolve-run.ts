@@ -68,7 +68,7 @@ export function resolveRun(): ResolvedRun {
           process.env[k] = v as string;
         }
       }
-    } catch (err) {
+    } catch (_err) {
       // Fallback: create a local logs directory if go run fails
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       runDir = path.join(testsDir, "logs", timestamp);

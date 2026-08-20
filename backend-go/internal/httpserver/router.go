@@ -16,6 +16,7 @@ import (
 	exportapi "amiro/backend/internal/api/export"
 	mcpapi "amiro/backend/internal/api/mcp"
 	searchapi "amiro/backend/internal/api/search"
+	skillsapi "amiro/backend/internal/api/skills"
 	storageapi "amiro/backend/internal/api/storage"
 	threadapi "amiro/backend/internal/api/thread"
 	userapi "amiro/backend/internal/api/user"
@@ -57,6 +58,7 @@ type Handlers struct {
 	User     *userapi.Handler
 	Storage  *storageapi.Handler
 	Search   *searchapi.Handler
+	Skills   *skillsapi.Handler
 }
 
 // Options configures the route families and guards that only some
@@ -292,6 +294,12 @@ func NewWithOptions(cfg config.Config, h Handlers, opts Options) http.Handler {
 		mux.Handle("PUT /api/admin/users/{id}/role", session(http.HandlerFunc(h.Admin.UpdateRole)))
 		mux.Handle("PUT /api/admin/users/{id}/ban", session(http.HandlerFunc(h.Admin.UpdateBanStatus)))
 		mux.Handle("DELETE /api/admin/users/{id}", session(http.HandlerFunc(h.Admin.Delete)))
+	}
+
+	if h.Skills != nil && h.Auth != nil {
+		session := auth.RequireSession(h.Auth)
+		mux.Handle("GET /api/skills", session(http.HandlerFunc(h.Skills.List)))
+		mux.Handle("GET /api/skills/items/{name}", session(http.HandlerFunc(h.Skills.Get)))
 	}
 
 	if h.Storage != nil {

@@ -117,6 +117,7 @@ func TestSubagent_CannotSpawnASubagent(t *testing.T) {
 			readTool(tools.NameReadFile, nil), readTool(tools.NameListDir, nil),
 			readTool(tools.NameGlob, nil), readTool(tools.NameGrep, nil),
 			readTool(tools.NameWebSearch, nil), readTool(tools.NameWebContent, nil),
+			readTool(tools.NameSkill, nil),
 		}, name)
 		if !ok {
 			t.Fatalf("%s is in the subagent subset but is not a known read tool", name)

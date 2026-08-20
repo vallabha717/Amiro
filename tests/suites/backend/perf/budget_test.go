@@ -64,18 +64,20 @@ const (
 	budgetThreadList    = "thread.list_500"
 	budgetRepomap       = "agent.repomap_large_workspace"
 	budgetMemoryRSS     = "backend.rss_after_100_turns"
+	budgetSkillsDiscovery = "skills.discovery_200_skills"
 )
 
 // The targets, transcribed verbatim from the phase document's table. Kept
 // beside the names so the whole budget table is readable in one place.
 const (
-	limitColdStart   = 2 * time.Second
-	limitTUIEmbedded = 3 * time.Second
-	limitTUIAttached = 1 * time.Second
-	limitDashboard   = 2 * time.Second
-	limitFirstToken  = 500 * time.Millisecond
-	limitThreadList  = 300 * time.Millisecond
-	limitRepomap     = 5 * time.Second
+	limitColdStart       = 2 * time.Second
+	limitTUIEmbedded     = 3 * time.Second
+	limitTUIAttached     = 1 * time.Second
+	limitDashboard       = 2 * time.Second
+	limitFirstToken      = 500 * time.Millisecond
+	limitThreadList      = 300 * time.Millisecond
+	limitRepomap         = 5 * time.Second
+	limitSkillsDiscovery = 1 * time.Second
 
 	// limitMemoryRSS is "< 500MB RSS". Recorded in bytes and compared in
 	// bytes; the trend file's ElapsedMS field carries megabytes for this one

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"gorm.io/datatypes"
@@ -17,6 +19,7 @@ import (
 	"amiro/backend/internal/ai/tools"
 	"amiro/backend/internal/ai/uimessage"
 	"amiro/backend/internal/db/models"
+	"amiro/backend/internal/skills"
 	"amiro/backend/internal/user"
 )
 
@@ -242,8 +245,9 @@ func (h *Handler) RunTurn(ctx context.Context, req TurnRequest, em uimessage.Emi
 	}
 
 	// Resolve active workspace: prioritize user-selected workspace directory if supplied,
-	// falling back to handler's configured default workspace.
-	activeWS := h.workspace
+	// falling back to a per-turn clone of the handler's configured default workspace so that
+	// process-lifetime workspace roots are never mutated across turns.
+	var activeWS *workspace.Workspace
 	targetWS := req.WorkspaceRoot
 	if targetWS == "" {
 		targetWS = req.ProjectDir
@@ -252,6 +256,70 @@ func (h *Handler) RunTurn(ctx context.Context, req TurnRequest, em uimessage.Emi
 		if ws, err := workspace.New(targetWS); err == nil {
 			activeWS = ws
 		}
+	}
+	if activeWS == nil && h.workspace != nil {
+		activeWS = h.workspace.Clone()
+	}
+
+	// Discover skills for catalog prompt and skill tool
+	homeDir, _ := os.UserHomeDir()
+	projectDir := ""
+	if activeWS != nil {
+		projectDir = activeWS.Root()
+	} else if req.WorkspaceRoot != "" {
+		projectDir = req.WorkspaceRoot
+	} else if req.ProjectDir != "" {
+		projectDir = req.ProjectDir
+	}
+
+	var discoveredSkills []skills.Skill
+	if h.skills != nil {
+		if res, err := h.skills.List(ctx, homeDir, projectDir); err == nil && res != nil {
+			discoveredSkills = res.Items
+		}
+	}
+
+	// Resolve skill mentions (explicit user selection)
+	resolvedMentionSkills, skillMentionErr := h.resolveSkills(ctx, homeDir, projectDir, req.Mentions)
+	if skillMentionErr != nil {
+		return TurnResult{}, fmt.Errorf("chat: resolve skill mention: %w", skillMentionErr)
+	}
+
+	activatedSkills := tools.NewActivationSet()
+	var activeReadRoots []string
+	var mentionSkillContents []string
+
+	for _, sk := range resolvedMentionSkills {
+		activatedSkills.MarkActive(sk.Name)
+		if sk.Path != "" {
+			activeReadRoots = append(activeReadRoots, sk.Path)
+		}
+		if sk.RealPath != "" && sk.RealPath != sk.Path {
+			activeReadRoots = append(activeReadRoots, sk.RealPath)
+		}
+		mentionSkillContents = append(mentionSkillContents, tools.FormatSkillContent(sk))
+		_ = em.Data("skill-activation", sk.Name, map[string]any{"name": sk.Name, "path": sk.Path, "source": "mention"})
+	}
+
+	if activeWS != nil && len(activeReadRoots) > 0 {
+		activeWS.AddReadOnlyRoots(activeReadRoots...)
+	}
+
+	onActivateSkill := func(s *skills.Skill) {
+		if s == nil {
+			return
+		}
+		if s.Path != "" {
+			if activeWS != nil {
+				activeWS.AddReadOnlyRoots(s.Path)
+			}
+		}
+		if s.RealPath != "" && s.RealPath != s.Path {
+			if activeWS != nil {
+				activeWS.AddReadOnlyRoots(s.RealPath)
+			}
+		}
+		_ = em.Data("skill-activation", s.Name, map[string]any{"name": s.Name, "path": s.Path, "source": "tool"})
 	}
 
 	// Run activeAppDefaultTools against the agent-merged mentions, not just
@@ -262,8 +330,13 @@ func (h *Handler) RunTurn(ctx context.Context, req TurnRequest, em uimessage.Emi
 	// loadAppDefaultTools later reads (route.ts:176-187, shared.chat.ts:427).
 	reqForDefaults := req
 	reqForDefaults.Mentions = mentions
+	deps := h.toolDeps(activeWS, details.Thread.ID)
+	deps.ReadOnlyRoots = activeReadRoots
+	deps.DiscoveredSkills = discoveredSkills
+	deps.OnActivateSkill = onActivateSkill
+	deps.ActivatedSkills = activatedSkills
 	activeTools = mergeToolDefinitions(activeTools, activeAppDefaultTools(
-		reqForDefaults, h.toolDeps(activeWS, details.Thread.ID),
+		reqForDefaults, deps,
 	))
 
 	perms := permission.New(
@@ -339,11 +412,35 @@ func (h *Handler) RunTurn(ctx context.Context, req TurnRequest, em uimessage.Emi
 		planContract = prompts.BuildPlanContractPrompt(req.PermissionMode)
 	}
 
+	// Build the skill catalog prompt only when the skill tool is actually offered
+	// in this turn (matching notes and planContract above).
+	catalogPrompt := ""
+	if _, ok := tools.FindByName(activeTools, tools.NameSkill); ok {
+		var report prompts.SkillCatalogReport
+		catalogPrompt, report = prompts.BuildSkillCatalogPromptWithReport(discoveredSkills)
+		if report.SkillsTruncated || report.TruncatedDescriptionCount > 0 {
+			_ = em.Data("skill-catalog-truncation", "", map[string]any{
+				"skillsTruncated":           report.SkillsTruncated,
+				"totalSkills":               report.TotalInvocableCount,
+				"includedSkills":            report.IncludedCount,
+				"truncatedDescriptionCount": report.TruncatedDescriptionCount,
+				"truncatedSkillNames":       report.TruncatedSkillNames,
+			})
+		}
+	}
+
+	mentionPrompt := ""
+	if len(mentionSkillContents) > 0 {
+		mentionPrompt = strings.Join(mentionSkillContents, "\n\n")
+	}
+
 	system := prompts.MergeSystemPrompt(
 		prompts.BuildUserSystemPrompt(req.User, user.ParsePreferences(details.Preferences), agentInfo),
 		systemExtra,
+		mentionPrompt,
 		notes,
 		planContract,
+		catalogPrompt,
 	)
 
 	// A turn that stopped to ask for approval resumes as a *continuation* of

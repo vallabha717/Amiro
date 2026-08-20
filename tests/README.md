@@ -179,15 +179,9 @@ build if one does. And **nothing here imports the application** — the test
 system talks to Amiro over HTTP, a PTY and a browser, exactly as a user
 does.
 
-## Not built yet
+## Suite status
 
-Phase 1 is the harness foundation. The `ui/`, `tui/`, `desktop/` and
-`cross/` suites, the cassette proxy, the PTY driver and
-`playwright.config.ts` arrive in later phases —
-`package.json` is committed but no browsers are installed and `pnpm install`
-here is a Phase 5 step. See
-[`docs/testing/progress/`](../docs/testing/progress/README.md) for exactly
-what exists.
+All core testing surfaces are active: `meta/`, `backend/`, `tui/`, `ui/`, `cross/`, and `desktop/`. All tests run via `go run ./cmd/amirotest run` or `go test` within individual suite directories. See [`docs/testing/progress/`](../docs/testing/progress/README.md) for the testing foundation record and [`docs/skills/progress/`](../docs/skills/progress/README.md) for the skills initiative progress records.
 
 ## Exit codes
 

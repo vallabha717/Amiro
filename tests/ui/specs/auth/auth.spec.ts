@@ -26,7 +26,7 @@ test.describe("auth", () => {
     await expect(toast).toBeVisible({ timeout: 10000 });
   });
 
-  test("protected route redirects unauthenticated user to sign in", async ({ amiro, page }) => {
+  test("protected route redirects unauthenticated user to sign in", async ({ amiro: _amiro, page }) => {
     await page.goto("/admin");
     await page.waitForURL((url) => url.pathname.includes("/sign-in") || url.pathname === "/", { timeout: 15000 });
   });

@@ -178,3 +178,34 @@ func truncate(s string) string {
 	}
 	return s
 }
+
+func TestCompact_KeepsSkillContentMessagesVerbatim(t *testing.T) {
+	in := history(200, true)
+	// Inject a skill_content-bearing message in the older half
+	skillMsg := msg(bifrostai.RoleAssistant, `<skill_content name="test-skill">
+# Instructions
+Special guidelines here.
+</skill_content>`)
+	in[15] = skillMsg
+
+	p := Policy{MaxTokens: 1000, KeepRecent: 5}
+
+	res, err := Compact(context.Background(), in, p, stubSummary("a summary"))
+	if err != nil {
+		t.Fatalf("Compact: %v", err)
+	}
+	if !res.Compacted {
+		t.Fatal("expected compaction")
+	}
+
+	found := false
+	for _, m := range res.Messages {
+		if strings.Contains(m.Text, "<skill_content") && strings.Contains(m.Text, "test-skill") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected <skill_content> message to survive compaction, but was dropped")
+	}
+}

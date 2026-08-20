@@ -72,7 +72,7 @@ func (r *Rule) ToolCall(name string, args any) *Rule {
 		argsStr = string(b)
 	}
 	r.ToolCalls = append(r.ToolCalls, ToolCallSpec{
-		ID:        "call_fake_1",
+		ID:        fmt.Sprintf("call_fake_%d", len(r.ToolCalls)+1),
 		Name:      name,
 		Arguments: argsStr,
 	})

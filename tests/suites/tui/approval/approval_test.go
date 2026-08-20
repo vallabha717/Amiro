@@ -176,36 +176,15 @@ func TestApproval_ApproveDialogInteractions(t *testing.T) {
 
 
 func TestApproval_AllFourPermissionModes(t *testing.T) {
-	h := harness.New(t, harness.Tags("smoke"), harness.WithFake(func(s *fakeprovider.Server) {
-		s.OnPrompt(fakeprovider.Contains("plan mode action")).ToolCall("write_file", map[string]any{
-			"path":    "plan_refused.txt",
-			"content": "plan content",
-		}).ThenStreamText("Plan done.")
-
-		s.OnPrompt(fakeprovider.Contains("interactive mode action")).ToolCall("write_file", map[string]any{
-			"path":    "interactive_out.txt",
-			"content": "interactive content",
-		}).ThenStreamText("Interactive done.")
-
-		s.OnPrompt(fakeprovider.Contains("edit mode write")).ToolCall("write_file", map[string]any{
-			"path":    "edit_out.txt",
-			"content": "edit content",
-		}).ThenStreamText("Edit write done.")
-
-		s.OnPrompt(fakeprovider.Contains("edit mode shell")).ToolCall("run_shell", map[string]any{
-			"command": "rm -rf /tmp/edit_test",
-		}).ThenStreamText("Edit shell done.")
-
-
-		s.OnPrompt(fakeprovider.Contains("auto mode action")).ToolCall("write_file", map[string]any{
-			"path":    "auto_out.txt",
-			"content": "auto content",
-		}).ThenStreamText("Auto done.")
-	}))
-	be := h.Backend()
-
 	// 1. Plan Mode: read-only, refused outright without showing approval modal
 	t.Run("plan mode refuses write tools", func(t *testing.T) {
+		h := harness.New(t, harness.Tags("smoke"), harness.WithFake(func(s *fakeprovider.Server) {
+			s.OnPrompt(fakeprovider.Contains("plan mode action")).ToolCall("write_file", map[string]any{
+				"path":    "plan_refused.txt",
+				"content": "plan content",
+			}).ThenStreamText("Plan done.")
+		}))
+		be := h.Backend()
 		sess := h.PTY(
 			harness.PTYAppDataDir(be.AppDataDir),
 			harness.PTYDir(be.WorkspaceRoot),
@@ -237,6 +216,13 @@ func TestApproval_AllFourPermissionModes(t *testing.T) {
 
 	// 2. Interactive Mode: gates write tools with approval modal
 	t.Run("interactive mode gates writes", func(t *testing.T) {
+		h := harness.New(t, harness.Tags("smoke"), harness.WithFake(func(s *fakeprovider.Server) {
+			s.OnPrompt(fakeprovider.Contains("interactive mode action")).ToolCall("write_file", map[string]any{
+				"path":    "interactive_out.txt",
+				"content": "interactive content",
+			}).ThenStreamText("Interactive done.")
+		}))
+		be := h.Backend()
 		sess := h.PTY(
 			harness.PTYAppDataDir(be.AppDataDir),
 			harness.PTYDir(be.WorkspaceRoot),
@@ -271,6 +257,17 @@ func TestApproval_AllFourPermissionModes(t *testing.T) {
 
 	// 3. Edit Mode: auto-allows file writes, but gates shell commands
 	t.Run("edit mode auto-allows writes and gates commands", func(t *testing.T) {
+		h := harness.New(t, harness.Tags("smoke"), harness.WithFake(func(s *fakeprovider.Server) {
+			s.OnPrompt(fakeprovider.Contains("edit mode write")).ToolCall("write_file", map[string]any{
+				"path":    "edit_out.txt",
+				"content": "edit content",
+			}).ThenStreamText("Edit write done.")
+
+			s.OnPrompt(fakeprovider.Contains("edit mode shell")).ToolCall("run_shell", map[string]any{
+				"command": "rm -rf /tmp/edit_test",
+			}).ThenStreamText("Edit shell done.")
+		}))
+		be := h.Backend()
 		sess := h.PTY(
 			harness.PTYAppDataDir(be.AppDataDir),
 			harness.PTYDir(be.WorkspaceRoot),
@@ -310,6 +307,13 @@ func TestApproval_AllFourPermissionModes(t *testing.T) {
 
 	// 4. Auto Mode: runs writes and commands automatically without asking
 	t.Run("auto mode auto-allows all consequential actions", func(t *testing.T) {
+		h := harness.New(t, harness.Tags("smoke"), harness.WithFake(func(s *fakeprovider.Server) {
+			s.OnPrompt(fakeprovider.Contains("auto mode action")).ToolCall("write_file", map[string]any{
+				"path":    "auto_out.txt",
+				"content": "auto content",
+			}).ThenStreamText("Auto done.")
+		}))
+		be := h.Backend()
 		sess := h.PTY(
 			harness.PTYAppDataDir(be.AppDataDir),
 			harness.PTYDir(be.WorkspaceRoot),

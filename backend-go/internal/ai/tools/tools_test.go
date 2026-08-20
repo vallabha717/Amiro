@@ -5,8 +5,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"amiro/backend/internal/skills"
 )
 
 func TestDefaults_ReturnsThirteenToolsAcrossFiveToolkits(t *testing.T) {
@@ -153,16 +157,196 @@ func TestFilter_DefaultToolNamesTakesPriorityOverToolkits(t *testing.T) {
 	defs := Defaults(Deps{})
 	empty := []string{} // would select nothing on its own
 	got := Filter(defs, &empty, []string{NameCreatePieChart, NameHttp})
-	if len(got) != 2 {
-		t.Fatalf("got %d tools, want 2: %+v", len(got), got)
+	// 2 named tools + alwaysOffered (propose_plan, walkthrough)
+	if len(got) != 4 {
+		t.Fatalf("got %d tools, want 4: %+v", len(got), got)
 	}
 	names := map[string]bool{}
 	for _, d := range got {
 		names[d.Name] = true
 	}
-	if !names[NameCreatePieChart] || !names[NameHttp] {
-		t.Fatalf("got %+v, want createPieChart and http", names)
+	if !names[NameCreatePieChart] || !names[NameHttp] || !names[NameProposePlan] || !names[NameWalkthrough] {
+		t.Fatalf("got %+v, want createPieChart, http, and exempt todo tools", names)
 	}
+}
+
+func TestFilter_SkillToolSurvivesExplicitAllowlistThatDoesNotNameIt(t *testing.T) {
+	discovered := []skills.Skill{{Name: "code-review", Description: "Reviews code", Path: "/skills/cr"}}
+	defs := Defaults(Deps{DiscoveredSkills: discovered})
+	allowed := []string{ToolkitVisualization}
+	got := Filter(defs, &allowed, nil)
+	sk, ok := FindByName(got, NameSkill)
+	if !ok {
+		t.Fatalf("skill tool was dropped by explicit allowlist %+v", allowed)
+	}
+	if sk.Toolkit != ToolkitSkill {
+		t.Fatalf("got toolkit %q, want %q", sk.Toolkit, ToolkitSkill)
+	}
+}
+
+func TestFilter_SkillToolSurvivesDefaultToolNamesBranch(t *testing.T) {
+	ws, _ := testWorkspace(t)
+	discovered := []skills.Skill{{Name: "code-review", Description: "Reviews code", Path: "/skills/cr"}}
+	defs := Defaults(Deps{Workspace: ws, DiscoveredSkills: discovered})
+	empty := []string{}
+	got := Filter(defs, &empty, []string{NameReadFile})
+	if _, ok := FindByName(got, NameSkill); !ok {
+		t.Fatalf("skill tool was dropped by defaultToolNames branch")
+	}
+	if _, ok := FindByName(got, NameReadFile); !ok {
+		t.Fatalf("read_file was not returned by defaultToolNames branch")
+	}
+}
+
+func TestSkillTool_ExecutionFrontmatterStrippedAndDedup(t *testing.T) {
+	activated := NewActivationSet()
+	var activatedDirs []string
+	discovered := []skills.Skill{
+		{
+			Name:        "code-review",
+			Description: "Reviews code.",
+			Path:        "/home/u/.agents/skills/code-review",
+			RealPath:    "/home/u/.agents/skills/code-review",
+			Body:        "# Code Review Instructions\nFollow these guidelines.",
+			Resources:   []string{"references/checklist.md", "scripts/diffstat.sh"},
+		},
+	}
+
+	d, ok := FindByName(Defaults(Deps{
+		DiscoveredSkills: discovered,
+		ActivatedSkills:  activated,
+		OnActivateSkill: func(s *skills.Skill) {
+			activatedDirs = append(activatedDirs, s.Path)
+		},
+	}), NameSkill)
+	if !ok {
+		t.Fatal("skill tool not in Defaults when discovered skills present")
+	}
+
+	if d.Risk != RiskRead {
+		t.Errorf("got Risk %v, want RiskRead", d.Risk)
+	}
+
+	// First execution
+	input, _ := json.Marshal(map[string]any{"name": "code-review"})
+	out, err := d.Execute(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Execute error: %v", err)
+	}
+	content, ok := out.(string)
+	if !ok {
+		t.Fatalf("got %T, want string", out)
+	}
+	if !strings.Contains(content, `<skill_content name="code-review">`) {
+		t.Errorf("missing <skill_content> tag in output:\n%s", content)
+	}
+	if !strings.Contains(content, "Skill directory: /home/u/.agents/skills/code-review") {
+		t.Errorf("missing skill directory in output:\n%s", content)
+	}
+	if !strings.Contains(content, "<file>references/checklist.md</file>") {
+		t.Errorf("missing resource in output:\n%s", content)
+	}
+	if len(activatedDirs) != 1 || activatedDirs[0] != "/home/u/.agents/skills/code-review" {
+		t.Errorf("OnActivateSkill not called with expected dir, got %v", activatedDirs)
+	}
+
+	// Second execution in same turn -> returns already active notice
+	out2, err := d.Execute(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Execute second activation error: %v", err)
+	}
+	content2, ok := out2.(string)
+	if !ok || !strings.Contains(content2, "already active") {
+		t.Fatalf("second activation output = %q, want 'already active'", content2)
+	}
+}
+
+func TestSkillTool_MentionAndModelActivation_BundledResourceReadable(t *testing.T) {
+	ws, _ := testWorkspace(t)
+	mentionedSkillDir := t.TempDir()
+	modelSkillDir := t.TempDir()
+
+	refFile := filepath.Join(modelSkillDir, "references", "x.md")
+	if err := os.MkdirAll(filepath.Dir(refFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(refFile, []byte("# X content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	deps := Deps{
+		Workspace:        ws,
+		ReadOnlyRoots:    []string{mentionedSkillDir}, // from a skill mention
+		ActivatedSkills:  NewActivationSet(),
+		DiscoveredSkills: []skills.Skill{{Name: "b", Description: "d", Path: modelSkillDir, Body: "body"}},
+		OnActivateSkill:  func(s *skills.Skill) { ws.AddReadOnlyRoots(s.Path) },
+	}
+	defs := Filter(Defaults(deps), nil, nil)
+
+	// Activate "b" through the skill tool
+	skTool, ok := FindByName(defs, NameSkill)
+	if !ok {
+		t.Fatal("skill tool not found in defs")
+	}
+	input, _ := json.Marshal(map[string]any{"name": "b"})
+	if _, err := skTool.Execute(context.Background(), input); err != nil {
+		t.Fatalf("activating skill b: %v", err)
+	}
+
+	// Read modelSkillDir/references/x.md through read_file -- must succeed!
+	readFileTool, ok := FindByName(defs, NameReadFile)
+	if !ok {
+		t.Fatal("read_file tool not found in defs")
+	}
+	readInput, _ := json.Marshal(map[string]any{"path": refFile})
+	out, err := readFileTool.Execute(context.Background(), readInput)
+	if err != nil {
+		t.Fatalf("read_file of activated skill bundled resource failed: %v", err)
+	}
+	res, ok := out.(ReadFileOutput)
+	if !ok {
+		t.Fatalf("expected ReadFileOutput, got %T", out)
+	}
+	if !strings.Contains(res.Content, "# X content") {
+		t.Fatalf("expected content '# X content', got %q", res.Content)
+	}
+}
+
+func TestSkillTool_ConcurrentActivation_Race(t *testing.T) {
+	ws, _ := testWorkspace(t)
+	s1Dir := t.TempDir()
+	s2Dir := t.TempDir()
+
+	actSet := NewActivationSet()
+	deps := Deps{
+		Workspace:       ws,
+		ActivatedSkills: actSet,
+		DiscoveredSkills: []skills.Skill{
+			{Name: "skill-1", Description: "d1", Path: s1Dir, Body: "b1"},
+			{Name: "skill-2", Description: "d2", Path: s2Dir, Body: "b2"},
+		},
+		OnActivateSkill: func(s *skills.Skill) { ws.AddReadOnlyRoots(s.Path) },
+	}
+	defs := Defaults(deps)
+	skTool, ok := FindByName(defs, NameSkill)
+	if !ok {
+		t.Fatal("skill tool not found")
+	}
+
+	done := make(chan struct{})
+	go func() {
+		for i := 0; i < 100; i++ {
+			raw1, _ := json.Marshal(map[string]any{"name": "skill-1"})
+			_, _ = skTool.Execute(context.Background(), raw1)
+		}
+		close(done)
+	}()
+
+	for i := 0; i < 100; i++ {
+		raw2, _ := json.Marshal(map[string]any{"name": "skill-2"})
+		_, _ = skTool.Execute(context.Background(), raw2)
+	}
+	<-done
 }
 
 func TestFindByName_UnknownNameReturnsFalse(t *testing.T) {
