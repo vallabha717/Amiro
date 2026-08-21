@@ -41,9 +41,9 @@ Skills UI replaces, and doing it earlier leaves the dashboard with a hole.
 |---|---|---|---|---|---|---|
 | [0](phase-00-discovery.md) | Discovery core + read API | backend | M | — | 1, 2, 3, 4 | ✅ Shipped |
 | [1](phase-01-activation.md) | Disclosure, activation tool, skill mentions | backend | M | 0 | 2, 3, 6 | ✅ Shipped |
-| [2](phase-02-web-palette.md) | `/` palette in the web composer | web · desktop | M | 1 | 6 |
-| [3](phase-03-tui-palette.md) | `/` palette in the TUI | terminal | S | 1 | 6 |
-| [4](phase-04-authoring-api.md) | Create / edit / delete API | backend | M | 0 | 5 |
+| [2](phase-02-web-palette.md) | `/` palette in the web composer | web · desktop | M | 1 | 6 | ✅ Shipped |
+| [3](phase-03-tui-palette.md) | `/` palette in the TUI | terminal | S | 1 | 6 | ✅ Shipped |
+| [4](phase-04-authoring-api.md) | Create / edit / delete API | backend | M | 0 | 5 | ✅ Shipped |
 | [5](phase-05-skills-ui.md) | Skills section + Generate with AI | web · desktop · backend | L | 4 (2 for the palette chip) | 6 |
 | [6](phase-06-decommission-agents.md) | Remove agents | backend · web · desktop · terminal | M | 1, 2, 3, 5 | — |
 

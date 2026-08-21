@@ -70,6 +70,7 @@ type SendMessageRequest struct {
 //	{Type: "mcpTool", ServerID: id, Name: toolName}  -- one tool on that server
 //	{Type: "workflow", WorkflowID: id}               -- a workflow-as-tool
 //	{Type: "defaultTool", Name: toolName}            -- one of Amiro's own tools
+//	{Type: "skill", Name: skillName}                 -- full skill instructions injected into turn
 type Mention struct {
 	Type       string
 	Name       string
@@ -159,6 +160,44 @@ type Workflow struct {
 	Name string
 }
 
+// ShadowedSkill describes a skill shadowed by another skill of higher precedence.
+type ShadowedSkill struct {
+	Name     string
+	Scope    string
+	Source   string
+	Path     string
+	RealPath string
+	Reason   string
+}
+
+// SkillDiagnostic describes a parsing or structural issue encountered while scanning a skill.
+type SkillDiagnostic struct {
+	Path     string
+	Skill    string
+	Severity string
+	Message  string
+}
+
+// SkillSummary is one discovered skill, GET /api/skills's row shape.
+type SkillSummary struct {
+	Name                   string
+	Description            string
+	Scope                  string
+	Source                 string
+	Path                   string
+	RealPath               string
+	Writable               bool
+	DisableModelInvocation bool
+	Shadows                []ShadowedSkill
+}
+
+// SkillListResult is the response from GET /api/skills.
+type SkillListResult struct {
+	Items       []SkillSummary
+	Diagnostics []SkillDiagnostic
+	Truncated   bool
+}
+
 // ProviderStatus is one configured (or configurable) AI provider -- the
 // settings page's (page/settings.go) view of GET /api/ai/providers.
 type ProviderStatus struct {
@@ -203,6 +242,10 @@ type Client interface {
 	ListAgents(ctx context.Context) ([]Agent, error)
 	ListMCPServers(ctx context.Context) ([]MCPServer, error)
 	ListWorkflows(ctx context.Context) ([]Workflow, error)
+
+	// ListSkills backs slash-command completion and the `/skills` command,
+	// fetching skills for the given project workspace root from GET /api/skills.
+	ListSkills(ctx context.Context, project string) (SkillListResult, error)
 
 	// ExportThread creates a shareable export of a thread and returns its
 	// id -- the TUI's `/export` command. The share URL is

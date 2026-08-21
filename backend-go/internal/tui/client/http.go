@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 
 	"amiro/backend/internal/ai/uimessage"
@@ -620,3 +621,96 @@ func (c *HTTPClient) SetProviderKey(ctx context.Context, provider, name, apiKey 
 	}
 	return nil
 }
+
+type shadowedSkillWire struct {
+	Name     string `json:"name"`
+	Scope    string `json:"scope"`
+	Source   string `json:"source"`
+	Path     string `json:"path"`
+	RealPath string `json:"realPath,omitempty"`
+	Reason   string `json:"reason"`
+}
+
+type skillDiagnosticWire struct {
+	Path     string `json:"path"`
+	Skill    string `json:"skill,omitempty"`
+	Severity string `json:"severity"`
+	Message  string `json:"message"`
+}
+
+type skillSummaryWire struct {
+	Name                   string              `json:"name"`
+	Description            string              `json:"description"`
+	Scope                  string              `json:"scope"`
+	Source                 string              `json:"source"`
+	Path                   string              `json:"path"`
+	RealPath               string              `json:"realPath,omitempty"`
+	Writable               bool                `json:"writable"`
+	DisableModelInvocation bool                `json:"disableModelInvocation,omitempty"`
+	Shadows                []shadowedSkillWire `json:"shadows,omitempty"`
+}
+
+type skillsListResponseWire struct {
+	Items       []skillSummaryWire    `json:"items"`
+	Diagnostics []skillDiagnosticWire `json:"diagnostics"`
+	Truncated   bool                  `json:"truncated"`
+}
+
+// ListSkills implements Client.
+func (c *HTTPClient) ListSkills(ctx context.Context, project string) (SkillListResult, error) {
+	reqPath := "/api/skills"
+	if project != "" {
+		reqPath += "?project=" + url.QueryEscape(project)
+	}
+	var resp skillsListResponseWire
+	status, err := c.do(ctx, http.MethodGet, reqPath, nil, &resp)
+	if err != nil {
+		return SkillListResult{}, err
+	}
+	if status != http.StatusOK {
+		return SkillListResult{}, fmt.Errorf("client: list skills: server returned %d", status)
+	}
+
+	items := make([]SkillSummary, len(resp.Items))
+	for i, it := range resp.Items {
+		var shadows []ShadowedSkill
+		for _, sh := range it.Shadows {
+			shadows = append(shadows, ShadowedSkill{
+				Name:     sh.Name,
+				Scope:    sh.Scope,
+				Source:   sh.Source,
+				Path:     sh.Path,
+				RealPath: sh.RealPath,
+				Reason:   sh.Reason,
+			})
+		}
+		items[i] = SkillSummary{
+			Name:                   it.Name,
+			Description:            it.Description,
+			Scope:                  it.Scope,
+			Source:                 it.Source,
+			Path:                   it.Path,
+			RealPath:               it.RealPath,
+			Writable:               it.Writable,
+			DisableModelInvocation: it.DisableModelInvocation,
+			Shadows:                shadows,
+		}
+	}
+
+	diags := make([]SkillDiagnostic, len(resp.Diagnostics))
+	for i, d := range resp.Diagnostics {
+		diags[i] = SkillDiagnostic{
+			Path:     d.Path,
+			Skill:    d.Skill,
+			Severity: d.Severity,
+			Message:  d.Message,
+		}
+	}
+
+	return SkillListResult{
+		Items:       items,
+		Diagnostics: diags,
+		Truncated:   resp.Truncated,
+	}, nil
+}
+

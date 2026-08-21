@@ -24,6 +24,7 @@ type Info struct {
 	Model         string
 	Mode          string
 	WorkspaceRoot string
+	Skill         string
 	Usage         *session.Usage
 	Elapsed       time.Duration
 	Streaming     bool
@@ -54,6 +55,9 @@ func Render(width int, info Info) string {
 	}
 	if info.WorkspaceRoot != "" {
 		fields = append(fields, shortenPath(info.WorkspaceRoot, 32))
+	}
+	if info.Skill != "" {
+		fields = append(fields, "skill:"+info.Skill)
 	}
 	if info.Model != "" {
 		fields = append(fields, info.Model)

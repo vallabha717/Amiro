@@ -33,13 +33,18 @@ func Error(w http.ResponseWriter, status int, msg string) {
 	Write(w, status, map[string]string{"error": msg})
 }
 
-// Unauthorized / Forbidden / NotFound / BadRequest / ServerError are the
-// five statuses the ported routes actually return.
+// Unauthorized / Forbidden / NotFound / BadRequest / Conflict / ServerError are
+// the standard HTTP error status helpers.
 func Unauthorized(w http.ResponseWriter)         { Error(w, http.StatusUnauthorized, "Unauthorized") }
 func Forbidden(w http.ResponseWriter)            { Error(w, http.StatusForbidden, "Forbidden") }
 func NotFound(w http.ResponseWriter, msg string) { Error(w, http.StatusNotFound, msg) }
 func BadRequest(w http.ResponseWriter, msg string) {
 	Error(w, http.StatusBadRequest, msg)
+}
+
+// Conflict writes a `{"error": msg}` body with HTTP 409 status.
+func Conflict(w http.ResponseWriter, msg string) {
+	Error(w, http.StatusConflict, msg)
 }
 
 // ServerError deliberately reports err.Error() rather than a generic

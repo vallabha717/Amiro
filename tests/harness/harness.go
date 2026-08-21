@@ -209,6 +209,23 @@ func openProcessRun() (*run.Run, error) {
 	return run.Open(res, selectionFor(&res.Config))
 }
 
+// PlantSkill creates a SKILL.md under baseDir/<source>/skills/<name>/SKILL.md.
+// source is e.g. ".agents", ".amiro", ".claude", ".codex".
+// baseDir is typically be.Home or be.WorkspaceRoot.
+func (h *Harness) PlantSkill(baseDir, source, name, description, body string) string {
+	h.T.Helper()
+	dir := filepath.Join(baseDir, source, "skills", name)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		h.T.Fatalf("PlantSkill mkdir %s: %v", dir, err)
+	}
+	content := fmt.Sprintf("---\nname: %s\ndescription: %s\n---\n%s\n", name, description, body)
+	filePath := filepath.Join(dir, "SKILL.md")
+	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
+		h.T.Fatalf("PlantSkill write %s: %v", filePath, err)
+	}
+	return dir
+}
+
 func selectionFor(cfg *config.Config) selector.Selection {
 	return selector.Selection{
 		Surfaces:    cfg.Run.Surfaces,

@@ -122,3 +122,103 @@ func TestSecurity_WorkspaceEscapeIsRefusedThroughTheDashboard(t *testing.T) {
 		})
 	}
 }
+
+// TestSkills_Authoring_TraversalAndSymlinkEscapeRejected verifies that Create, Update,
+// and Delete via the authoring API strictly enforce containment within ~/.agents/skills/
+// and never modify, create, or delete directories/files outside the writable root.
+func TestSkills_Authoring_TraversalAndSymlinkEscapeRejected(t *testing.T) {
+	h := harness.New(t, harness.Tags("smoke"))
+	be := h.Backend()
+	user := h.As("user")
+
+	outsideDir := t.TempDir()
+	outsideSecret := filepath.Join(outsideDir, "external_skill")
+	if err := os.MkdirAll(outsideSecret, 0o755); err != nil {
+		t.Fatalf("mkdir outside: %v", err)
+	}
+	outsideSKILL := filepath.Join(outsideSecret, "SKILL.md")
+	originalContent := []byte("---\nname: external-skill\ndescription: External secret\n---\n# Secret instructions\n")
+	if err := os.WriteFile(outsideSKILL, originalContent, 0o644); err != nil {
+		t.Fatalf("write outside SKILL.md: %v", err)
+	}
+
+	// 1. Create with traversal name is rejected with 400 and creates nothing outside
+	_, err := user.CreateSkill(t.Context(), apiclient.SkillWriteRequest{
+		Name:        "../escaped-skill",
+		Description: "Should be rejected",
+		Body:        "malicious body",
+	})
+	if err == nil {
+		t.Fatal("expected CreateSkill with traversal name to fail, got nil")
+	}
+	if apiclient.StatusOf(err) != 400 {
+		t.Errorf("traversal create status = %d, want 400", apiclient.StatusOf(err))
+	}
+	if _, statErr := os.Stat(filepath.Join(be.Home, "escaped-skill")); statErr == nil {
+		t.Fatal("CRITICAL: CreateSkill with ../ name created directory outside writable root")
+	}
+
+	// 2. Plant a symlink inside ~/.agents/skills/ pointing to outside directory
+	writableRoot := filepath.Join(be.Home, ".agents", "skills")
+	if err := os.MkdirAll(writableRoot, 0o755); err != nil {
+		t.Fatalf("mkdir writable root: %v", err)
+	}
+	symlinkPath := filepath.Join(writableRoot, "symlink-target")
+	_ = os.Symlink(outsideSecret, symlinkPath)
+
+	// Attempt Create with the colliding symlink name -> 409 Conflict, outside file untouched
+	_, err = user.CreateSkill(t.Context(), apiclient.SkillWriteRequest{
+		Name:        "symlink-target",
+		Description: "Overwrite attempt",
+		Body:        "overwritten content",
+	})
+	if err == nil {
+		t.Fatal("expected CreateSkill with existing symlink name to fail 409, got nil")
+	}
+	if apiclient.StatusOf(err) != 409 {
+		t.Errorf("symlink collision create status = %d, want 409", apiclient.StatusOf(err))
+	}
+	afterContent, _ := os.ReadFile(outsideSKILL)
+	if string(afterContent) != string(originalContent) {
+		t.Fatal("CRITICAL: CreateSkill modified content of external symlinked target")
+	}
+
+	// 3. Update on a read-only skill outside ~/.agents/skills/ is refused (409) and file unchanged
+	claudeDir := filepath.Join(be.Home, ".claude", "skills", "ro-skill")
+	if err := os.MkdirAll(claudeDir, 0o755); err != nil {
+		t.Fatalf("mkdir claude dir: %v", err)
+	}
+	roSKILL := filepath.Join(claudeDir, "SKILL.md")
+	roContent := []byte("---\nname: ro-skill\ndescription: Read-only skill\n---\n# Original\n")
+	if err := os.WriteFile(roSKILL, roContent, 0o644); err != nil {
+		t.Fatalf("write ro SKILL.md: %v", err)
+	}
+
+	_, err = user.UpdateSkill(t.Context(), "ro-skill", apiclient.SkillWriteRequest{
+		Name:        "ro-skill",
+		Description: "Malicious update",
+		Body:        "modified body",
+	})
+	if err == nil {
+		t.Fatal("expected UpdateSkill on non-writable skill to fail, got nil")
+	}
+	if apiclient.StatusOf(err) != 409 {
+		t.Errorf("update read-only skill status = %d, want 409", apiclient.StatusOf(err))
+	}
+	roAfter, _ := os.ReadFile(roSKILL)
+	if string(roAfter) != string(roContent) {
+		t.Fatal("CRITICAL: UpdateSkill modified read-only skill outside writable root")
+	}
+
+	// 4. Delete on a read-only skill outside ~/.agents/skills/ is refused (409) and directory preserved
+	err = user.DeleteSkill(t.Context(), "ro-skill", true)
+	if err == nil {
+		t.Fatal("expected DeleteSkill on read-only skill to fail, got nil")
+	}
+	if apiclient.StatusOf(err) != 409 {
+		t.Errorf("delete read-only skill status = %d, want 409", apiclient.StatusOf(err))
+	}
+	if _, statErr := os.Stat(claudeDir); statErr != nil {
+		t.Fatal("CRITICAL: DeleteSkill removed read-only directory outside writable root")
+	}
+}

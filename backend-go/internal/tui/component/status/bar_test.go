@@ -47,6 +47,18 @@ func TestRender_OmitsUsageFieldsBeforeAnyTurnFinishes(t *testing.T) {
 	}
 }
 
+func TestRender_ShowsSkillWhenPresent(t *testing.T) {
+	line := Render(200, Info{
+		Mode:          "interactive",
+		WorkspaceRoot: "/repo",
+		Skill:         "summarize",
+		Elapsed:       2 * time.Second,
+	})
+	if !strings.Contains(line, "skill:summarize") {
+		t.Fatalf("Render = %q, want 'skill:summarize' in status bar", line)
+	}
+}
+
 func TestRender_ElapsedFormatsMinutesAndSeconds(t *testing.T) {
 	cases := []struct {
 		d    time.Duration

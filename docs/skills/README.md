@@ -7,7 +7,7 @@ dashboard. The Agents feature is removed and replaced by this.
 
 `phases/` is intent. [`progress/`](progress/README.md) is reality. They are
 separate folders so a confidently-written plan is never mistaken for a
-status report — nothing in this folder is built yet.
+status report.
 
 ## Read in order
 
@@ -20,21 +20,21 @@ status report — nothing in this folder is built yet.
 | 04 | [04-surfaces.md](04-surfaces.md) | Parity matrix, the web `/` palette, the Agents→Skills UI mapping, the TUI palette, desktop |
 | — | [reference/agent-skills-standard.md](reference/agent-skills-standard.md) | The external standard as researched, with sources |
 | — | [phases/README.md](phases/README.md) | Dependency graph, phase table, rules for every phase |
-| — | [progress/README.md](progress/README.md) | What is actually built (nothing yet) |
+| — | [progress/README.md](progress/README.md) | What is actually built |
 
 ## Phases
 
 | # | Title | Surfaces | Size | Depends on | Blocks | Status |
 |---|---|---|---|---|---|---|
 | [0](phases/phase-00-discovery.md) | Discovery core + read API | backend | M | — | 1, 2, 3, 4 | ✅ Shipped |
-| [1](phases/phase-01-activation.md) | Disclosure, activation tool, skill mentions | backend | M | 0 | 2, 3, 6 | Unblocked |
-| [2](phases/phase-02-web-palette.md) | `/` palette in the web composer | web · desktop | M | 1 | 6 | |
-| [3](phases/phase-03-tui-palette.md) | `/` palette in the TUI | terminal | S | 1 | 6 | |
+| [1](phases/phase-01-activation.md) | Disclosure, activation tool, skill mentions | backend | M | 0 | 2, 3, 6 | ✅ Shipped |
+| [2](phases/phase-02-web-palette.md) | `/` palette in the web composer | web · desktop | M | 1 | 6 | ✅ Shipped |
+| [3](phases/phase-03-tui-palette.md) | `/` palette in the TUI | terminal | S | 1 | 6 | ✅ Shipped |
 | [4](phases/phase-04-authoring-api.md) | Create / edit / delete API | backend | M | 0 | 5 | Unblocked |
 | [5](phases/phase-05-skills-ui.md) | Skills section + Generate with AI | web · desktop · backend | L | 4 | 6 | |
 | [6](phases/phase-06-decommission-agents.md) | Remove agents | all four | M | 1, 2, 3, 5 | — | |
 
-**Next up:** [Phase 1](phases/phase-01-activation.md) or [Phase 4](phases/phase-04-authoring-api.md) — both are unblocked.
+**Next up:** [Phase 4](phases/phase-04-authoring-api.md) — unblocked.
 
 ## Decisions already made
 
@@ -99,6 +99,7 @@ Recorded so the same argument does not recur in every phase.
     the ordinary create endpoint and its validator are the only path to disk.
     *Why:* there must be no route from a generation to a file that skips
     validation.
+14. **Skills with `disable-model-invocation: true` are discovered and presented in the `/` palette identically to other skills.** *Why:* the attribute governs whether the agent runner injects them into model system prompts during auto-invocation, not whether the user can explicitly invoke them from the palette (Decision D). Note that Phase 2 Decision A (trigger at column 0 of empty composer) is already governed by Decisions 7 and 8.
 
 ## What this plan does not do
 

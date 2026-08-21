@@ -192,6 +192,15 @@
     }
   },
   "Chat": {
+    "SkillPalette": {
+      "loading": "Loading skills...",
+      "errorLoading": "Failed to load skills",
+      "projectSkills": "Project Skills",
+      "userSkills": "User Skills",
+      "noSkillsFound": "No skills found",
+      "createOne": "create one",
+      "moreCount": "+{count} more"
+    },
     "Error": "Chat Error",
     "thisMessageWasNotSavedPleaseTryTheChatAgain": "This message was not saved. Please try the chat again.",
     "uploadImage": "Upload File",

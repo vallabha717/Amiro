@@ -228,6 +228,7 @@ func cmdBackendStart(args []string) int {
 			"token":           b.Token,
 			"pid":             b.Process().Pid(),
 			"appDataDir":      b.AppDataDir,
+			"home":            b.Home,
 			"workspace":       b.WorkspaceRoot,
 			"dbDsn":           b.DB.DSN,
 			"testId":          id,

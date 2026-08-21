@@ -14,7 +14,8 @@ tests/suites/tui/
 ├── launch/       # Attach to running backend vs embed server, flag validation and directory flags (-C)
 ├── palette/      # Command palette (ctrl+p, typing '/', Tab completion, @-mentions)
 ├── pickers/      # Thread switcher (ctrl+t) and Model picker (ctrl+o)
-└── rendering/    # Terminal dimensions, resize reflow, Unicode/CJK double-width characters, raw ANSI safety, golden screens
+├── rendering/    # Terminal dimensions, resize reflow, Unicode/CJK double-width characters, raw ANSI safety, golden screens
+└── skills/       # Agent Skills discovery in slash palette (/), prefix matching, shadow resolution, /skills command
 ```
 
 ## Running

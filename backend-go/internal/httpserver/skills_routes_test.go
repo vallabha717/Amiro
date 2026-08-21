@@ -50,6 +50,22 @@ func (c *cannedSkillsService) Get(ctx context.Context, home, project, name strin
 	return nil, skills.ErrSkillNotFound
 }
 
+func (c *cannedSkillsService) Create(ctx context.Context, home string, in skills.WriteInput) (*skills.Skill, []skills.FieldError, error) {
+	return nil, nil, nil
+}
+
+func (c *cannedSkillsService) Update(ctx context.Context, home, name string, in skills.WriteInput) (*skills.Skill, []skills.FieldError, error) {
+	return nil, nil, nil
+}
+
+func (c *cannedSkillsService) Delete(ctx context.Context, home, name string, force bool) error {
+	return nil
+}
+
+func (c *cannedSkillsService) Duplicate(ctx context.Context, home, name, project string) (*skills.Skill, error) {
+	return nil, nil
+}
+
 func TestSkillsRoutes(t *testing.T) {
 	dir := t.TempDir()
 	gdb, err := db.Open(db.DialectSQLite, filepath.Join(dir, "test.db"))

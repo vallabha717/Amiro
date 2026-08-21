@@ -72,6 +72,15 @@
     }
   },
   "Chat": {
+    "SkillPalette": {
+      "loading": "Chargement des compétences...",
+      "errorLoading": "Échec du chargement des compétences",
+      "projectSkills": "Compétences du projet",
+      "userSkills": "Compétences de l'utilisateur",
+      "noSkillsFound": "Aucune compétence trouvée",
+      "createOne": "en créer une",
+      "moreCount": "+{count} de plus"
+    },
     "Error": "Erreur de Chat",
     "thisMessageWasNotSavedPleaseTryTheChatAgain": "Ce message n'a pas été enregistré. Veuillez réessayer le chat.",
     "uploadImage": "Téléverser un fichier",

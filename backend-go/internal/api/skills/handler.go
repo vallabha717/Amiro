@@ -11,6 +11,10 @@ import (
 type Service interface {
 	List(ctx context.Context, home, project string) (*skills.ListResult, error)
 	Get(ctx context.Context, home, project, name string) (*skills.Skill, error)
+	Create(ctx context.Context, home string, in skills.WriteInput) (*skills.Skill, []skills.FieldError, error)
+	Update(ctx context.Context, home, name string, in skills.WriteInput) (*skills.Skill, []skills.FieldError, error)
+	Delete(ctx context.Context, home, name string, force bool) error
+	Duplicate(ctx context.Context, home, name, project string) (*skills.Skill, error)
 }
 
 // Handler serves Agent Skills read endpoints.
@@ -78,8 +82,45 @@ type SkillDTO struct {
 
 type ListResponse struct {
 	Items       []SkillSummaryDTO `json:"items"`
-	Diagnostics []DiagnosticDTO    `json:"diagnostics"`
+	Diagnostics []DiagnosticDTO   `json:"diagnostics"`
 	Truncated   bool              `json:"truncated"`
+}
+
+// WriteRequest is the create / update body.
+type WriteRequest struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Body        string         `json:"body"`
+	Frontmatter map[string]any `json:"frontmatter,omitempty"`
+}
+
+// FieldErrorDTO is a field-scoped error for the API response.
+type FieldErrorDTO struct {
+	Field   string `json:"field"`
+	Message string `json:"message"`
+}
+
+// WriteResponse is returned on successful create / update / duplicate.
+type WriteResponse struct {
+	Skill    SkillDTO        `json:"skill"`
+	Warnings []FieldErrorDTO `json:"warnings,omitempty"`
+}
+
+// ValidationErrorResponse is returned on 400 when input fails validation.
+type ValidationErrorResponse struct {
+	Errors   []FieldErrorDTO `json:"errors"`
+	Warnings []FieldErrorDTO `json:"warnings,omitempty"`
+}
+
+func toFieldErrorDTOs(errs []skills.FieldError) []FieldErrorDTO {
+	if len(errs) == 0 {
+		return nil
+	}
+	out := make([]FieldErrorDTO, len(errs))
+	for i, e := range errs {
+		out[i] = FieldErrorDTO{Field: e.Field, Message: e.Message}
+	}
+	return out
 }
 
 func toShadowDTOs(shadows []skills.ShadowedSkill) []ShadowedSkillDTO {

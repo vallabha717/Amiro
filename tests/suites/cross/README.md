@@ -54,7 +54,8 @@ tests/suites/cross/
 ├── approvals/        # A turn's approval gate can be answered by a DIFFERENT client than the one that started it
 ├── mcpsharing/       # An MCP server configured by one client is visible, callable, and @-mentionable from another
 ├── export/           # A thread exported from the TUI is readable by a genuinely signed-out client
-└── servetui/         # `amiro --serve --port N`: the TUI and that port serve one embedded backend
+├── servetui/         # `amiro --serve --port N`: the TUI and that port serve one embedded backend
+└── skills/           # Dynamic skills discovered in project and user locations are visible identically in dashboard and TUI
 ```
 
 ## Known gaps (recorded here so they are not silently assumed covered)

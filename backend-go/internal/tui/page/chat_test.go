@@ -3,6 +3,7 @@ package page
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -28,6 +29,8 @@ type fakeClient struct {
 	agents    []client.Agent
 	mcp       []client.MCPServer
 	workflows []client.Workflow
+	skills    client.SkillListResult
+	skillsErr error
 	providers []client.ProviderStatus
 
 	lastSend        *client.SendMessageRequest
@@ -77,6 +80,13 @@ func (c *fakeClient) ListAgents(context.Context) ([]client.Agent, error)        
 func (c *fakeClient) ListMCPServers(context.Context) ([]client.MCPServer, error) { return c.mcp, nil }
 func (c *fakeClient) ListWorkflows(context.Context) ([]client.Workflow, error) {
 	return c.workflows, nil
+}
+
+func (c *fakeClient) ListSkills(context.Context, string) (client.SkillListResult, error) {
+	if c.skillsErr != nil {
+		return client.SkillListResult{}, c.skillsErr
+	}
+	return c.skills, nil
 }
 
 func (c *fakeClient) ExportThread(_ context.Context, threadID string) (string, error) {
@@ -198,6 +208,16 @@ func TestChat_Golden_Interrupted(t *testing.T) {
 			}
 			m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
 
+			golden.RequireEqual(t, []byte(m.View()))
+		})
+	}
+}
+
+func TestChat_Golden_SlashPalette(t *testing.T) {
+	for _, width := range []int{80, 120} {
+		t.Run(fmt.Sprintf("width_%d", width), func(t *testing.T) {
+			m, _ := newGoldenChat(width, 24)
+			m.input.SetValue("/")
 			golden.RequireEqual(t, []byte(m.View()))
 		})
 	}
@@ -371,3 +391,191 @@ func TestChat_ElapsedTicksWhileStreaming(t *testing.T) {
 		t.Fatalf("elapsed() after the clock advanced post-finish = %v, want %v (still frozen)", got, want)
 	}
 }
+
+func TestChat_SkillSelection_AttachesMentionAndClears(t *testing.T) {
+	fc := &fakeClient{
+		skills: client.SkillListResult{
+			Items: []client.SkillSummary{
+				{Name: "my-skill", Description: "custom skill", Source: ".agents", Scope: "project"},
+			},
+		},
+	}
+	m := NewChat(fc, "thread-1", "/workspace")
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+
+	// Load skills
+	m, _ = m.Update(skillsLoadedMsg{result: fc.skills})
+
+	// Type "/my" and hit Tab to accept skill
+	m.input.SetValue("/my")
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+
+	// Input should be cleared and pendingSkill should be set
+	if m.input.Value() != "" {
+		t.Fatalf("composer value = %q, want empty after accepting skill", m.input.Value())
+	}
+	if m.pendingSkill != "my-skill" {
+		t.Fatalf("pendingSkill = %q, want 'my-skill'", m.pendingSkill)
+	}
+
+	// Status bar should render "skill:my-skill"
+	view := m.View()
+	if !strings.Contains(view, "skill:my-skill") {
+		t.Fatalf("View() does not show skill in status bar:\n%s", view)
+	}
+
+	// Type prompt and send
+	m.input.SetValue("please execute the task")
+	m, _ = m.send()
+
+	if fc.lastSend == nil {
+		t.Fatal("SendMessage was not called")
+	}
+	if len(fc.lastSend.Mentions) != 1 || fc.lastSend.Mentions[0].Type != "skill" || fc.lastSend.Mentions[0].Name != "my-skill" {
+		t.Fatalf("lastSend.Mentions = %+v, want [{Type: \"skill\", Name: \"my-skill\"}]", fc.lastSend.Mentions)
+	}
+
+	// Pending skill should be cleared after turn is sent
+	if m.pendingSkill != "" {
+		t.Fatalf("pendingSkill after send = %q, want empty", m.pendingSkill)
+	}
+}
+
+func TestChat_SkillSelection_ViaEnterDirectly(t *testing.T) {
+	fc := &fakeClient{
+		skills: client.SkillListResult{
+			Items: []client.SkillSummary{
+				{Name: "summarize", Description: "summarize skill", Source: ".agents", Scope: "project"},
+			},
+		},
+	}
+	m := NewChat(fc, "thread-1", "/workspace")
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	m, _ = m.Update(skillsLoadedMsg{result: fc.skills})
+
+	// User types "/summarize" and presses enter
+	m.input.SetValue("/summarize")
+	m, _ = m.send()
+
+	if m.pendingSkill != "summarize" {
+		t.Fatalf("pendingSkill = %q, want 'summarize'", m.pendingSkill)
+	}
+	if m.state.Err != nil {
+		t.Fatalf("state.Err = %v, want nil", m.state.Err)
+	}
+}
+
+func TestChat_SkillReservation_ExportSkillReachableOnlyAsSkillExport(t *testing.T) {
+	fc := &fakeClient{
+		skills: client.SkillListResult{
+			Items: []client.SkillSummary{
+				{Name: "export", Description: "shadowed user export skill", Source: ".claude", Scope: "user"},
+			},
+		},
+	}
+	m := NewChat(fc, "thread-1", "/workspace")
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	m, _ = m.Update(skillsLoadedMsg{result: fc.skills})
+
+	// Built-in /export must invoke exportCurrentThread, not set pendingSkill
+	m.input.SetValue("/export")
+	m, cmd := m.send()
+	if cmd == nil {
+		t.Fatal("expected export cmd, got nil")
+	}
+	if m.pendingSkill != "" {
+		t.Fatalf("pendingSkill = %q, want empty (built-in export should not set pendingSkill)", m.pendingSkill)
+	}
+
+	// /skill:export sets pendingSkill="export"
+	m.input.SetValue("/skill:export")
+	m, _ = m.send()
+	if m.pendingSkill != "export" {
+		t.Fatalf("pendingSkill = %q, want 'export' after typing /skill:export", m.pendingSkill)
+	}
+}
+
+func TestChat_SlashSkillsNotice_FormatsDiscoveredAndSkipped(t *testing.T) {
+	fc := &fakeClient{
+		skills: client.SkillListResult{
+			Items: []client.SkillSummary{
+				{
+					Name:        "skill-one",
+					Description: "first skill",
+					Source:      ".agents",
+					Scope:       "project",
+					Shadows: []client.ShadowedSkill{
+						{Name: "skill-one", Source: ".claude", Scope: "user", Reason: "precedence: project .agents beats user .claude"},
+					},
+				},
+			},
+			Diagnostics: []client.SkillDiagnostic{
+				{Path: "~/.claude/skills/bad", Message: "invalid YAML"},
+			},
+		},
+	}
+	m := NewChat(fc, "thread-1", "/workspace")
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	m, _ = m.Update(skillsLoadedMsg{result: fc.skills})
+
+	m.input.SetValue("/skills")
+	m, _ = m.send()
+
+	if m.state.Err != nil {
+		t.Fatalf("state.Err = %v, want nil", m.state.Err)
+	}
+	if !strings.Contains(m.notice, "skill-one (.agents, project)") {
+		t.Errorf("notice missing skill-one: %q", m.notice)
+	}
+	if !strings.Contains(m.notice, "skipped (2):") {
+		t.Errorf("notice missing skipped count: %q", m.notice)
+	}
+}
+
+func TestChat_SkillsFetchFailure_DegradesIndependently(t *testing.T) {
+	fc := &fakeClient{
+		skillsErr: fmt.Errorf("network connection refused"),
+	}
+	m := NewChat(fc, "thread-1", "/workspace")
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	m, _ = m.Update(skillsLoadedMsg{err: fc.skillsErr})
+
+	// /mode should still work
+	m.input.SetValue("/mode auto")
+	m, _ = m.send()
+	if m.state.PermissionMode != "auto" {
+		t.Fatalf("PermissionMode = %q, want 'auto'", m.state.PermissionMode)
+	}
+	if m.state.Err != nil {
+		t.Fatalf("state.Err = %v, want nil", m.state.Err)
+	}
+}
+
+func TestChat_DuplicateInvokeNames_DedupesDeterministically(t *testing.T) {
+	fc := &fakeClient{
+		skills: client.SkillListResult{
+			Items: []client.SkillSummary{
+				// Higher precedence item: shadowed export skill -> Invoke="skill:export"
+				{Name: "export", Description: "project export skill", Source: ".agents", Scope: "project"},
+				// Lower precedence item: literal name skill:export -> Invoke="skill:export"
+				{Name: "skill:export", Description: "colliding literal skill", Source: ".claude", Scope: "user"},
+			},
+		},
+	}
+	m := NewChat(fc, "thread-1", "/workspace")
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	m, _ = m.Update(skillsLoadedMsg{result: fc.skills})
+
+	// Exactly 1 skill command should be registered in m.skillCommands
+	if len(m.skillCommands) != 1 {
+		t.Fatalf("len(skillCommands) = %d, want 1", len(m.skillCommands))
+	}
+	if m.skillCommands[0].Description != "project export skill" {
+		t.Errorf("skillCommands[0] = %+v, want first item to win", m.skillCommands[0])
+	}
+	if len(m.skillLookup) != 1 {
+		t.Fatalf("len(skillLookup) = %d, want 1", len(m.skillLookup))
+	}
+}
+
+

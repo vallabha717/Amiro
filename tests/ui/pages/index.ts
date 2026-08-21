@@ -348,3 +348,51 @@ export class SettingsPage {
     await expect(this.content).toBeVisible({ timeout: 15000 });
   }
 }
+
+export class SkillPalette {
+  readonly page: Page;
+  readonly container: Locator;
+  readonly emptyState: Locator;
+  readonly errorState: Locator;
+  readonly loadingState: Locator;
+  readonly groupProject: Locator;
+  readonly groupUser: Locator;
+
+  constructor(page: Page) {
+    this.page = page;
+    this.container = page.locator('[data-testid="skill-palette"]');
+    this.emptyState = page.locator('[data-testid="skill-palette-empty"]');
+    this.errorState = page.locator('[data-testid="skill-palette-error"]');
+    this.loadingState = page.locator('[data-testid="skill-palette-loading"]');
+    this.groupProject = page.locator('[data-testid="skill-palette-group-project"]');
+    this.groupUser = page.locator('[data-testid="skill-palette-group-user"]');
+  }
+
+  item(name: string): Locator {
+    return this.page.locator(`[data-testid="skill-palette-item-${name}"]`);
+  }
+
+  sourceBadge(source: string): Locator {
+    return this.page.locator(`[data-testid="skill-palette-source-${source}"]`);
+  }
+
+  chip(name: string): Locator {
+    return this.page.locator(`[data-testid="skill-chip-${name}"]`);
+  }
+
+  chipRemoveButton(name: string): Locator {
+    return this.page.locator(`[data-testid="skill-chip-remove-${name}"]`);
+  }
+
+  async selectItem(name: string) {
+    const itemLocator = this.item(name);
+    await expect(itemLocator).toBeVisible({ timeout: 15000 });
+    await itemLocator.click();
+  }
+
+  async removeChip(name: string) {
+    const removeBtn = this.chipRemoveButton(name);
+    await expect(removeBtn).toBeVisible({ timeout: 15000 });
+    await removeBtn.click();
+  }
+}

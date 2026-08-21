@@ -300,6 +300,10 @@ func NewWithOptions(cfg config.Config, h Handlers, opts Options) http.Handler {
 		session := auth.RequireSession(h.Auth)
 		mux.Handle("GET /api/skills", session(http.HandlerFunc(h.Skills.List)))
 		mux.Handle("GET /api/skills/items/{name}", session(http.HandlerFunc(h.Skills.Get)))
+		mux.Handle("POST /api/skills", session(http.HandlerFunc(h.Skills.Create)))
+		mux.Handle("PUT /api/skills/items/{name}", session(http.HandlerFunc(h.Skills.Update)))
+		mux.Handle("DELETE /api/skills/items/{name}", session(http.HandlerFunc(h.Skills.Delete)))
+		mux.Handle("POST /api/skills/items/{name}/duplicate", session(http.HandlerFunc(h.Skills.Duplicate)))
 	}
 
 	if h.Storage != nil {

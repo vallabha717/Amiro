@@ -10,7 +10,7 @@ Skills UI, and what parity between surfaces means concretely.
 | Discover + dedupe | owns it | consumes | consumes | consumes |
 | Catalog in system prompt | owns it | — | — | — |
 | `skill()` activation tool | owns it | sees the event | sees the event | sees the event |
-| `/` palette | — | Phase 2 | Phase 2 (same bundle) | Phase 3 |
+| `/` palette | — | ✅ Shipped (Phase 2) | ✅ Shipped (Phase 2, same bundle) | ✅ Shipped (Phase 3) |
 | Create / edit / delete | owns it | Phase 5 | Phase 5 (same bundle) | **no** |
 | Generate with AI | owns it | Phase 5 | Phase 5 | **no** |
 
@@ -47,6 +47,8 @@ suggestion source, not a replacement.
   with the same affordance, cleared by Escape with them.
 - Fetch on palette open through SWR (`src/hooks/queries/use-skills.ts`),
   keyed on the project directory so switching projects re-reads.
+
+> **Shipped in Phase 2 (2026-08-21):** Implemented `src/components/chat/skill-palette.tsx` and custom `skillSuggestion` Tiptap extension in `mention-input.tsx`. Selection directly deletes the `/query` range and calls `addMention({ type: "skill", name, description })` with Lucide `Sparkles` icon chip rendering. Tool stripping bug (Trap 2) resolved so default tools are preserved when only skills are attached. Verified with 9 UI Playwright specs and desktop sidecar coverage (see [`progress/phase-02-web-palette.md`](progress/phase-02-web-palette.md)).
 
 ## Web — Skills section (replacing Agents)
 

@@ -237,6 +237,10 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
           (p) => (p as any)?.type === "file",
         );
 
+        const hasNonSkillMention = latestRef.current.mentions?.some(
+          (m) => m.type !== "skill",
+        );
+
         const requestBody: ChatApiSchemaRequestBody = {
           ...body,
           id,
@@ -246,10 +250,10 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
           permissionMode: latestRef.current.permissionMode,
           workspaceRoot: latestRef.current.projectDirectory || undefined,
           allowedAppDefaultToolkit:
-            latestRef.current.mentions?.length || hasFilePart
+            hasNonSkillMention || hasFilePart
               ? []
               : latestRef.current.allowedAppDefaultToolkit,
-          allowedMcpServers: latestRef.current.mentions?.length
+          allowedMcpServers: hasNonSkillMention
             ? {}
             : latestRef.current.allowedMcpServers,
           mentions: latestRef.current.mentions,

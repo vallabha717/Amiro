@@ -45,6 +45,19 @@ func (m Chat) loadMentionables() tea.Msg {
 	return mentionablesLoadedMsg{candidates: candidates}
 }
 
+// skillsLoadedMsg carries the fetched skills result back into Update --
+// loaded once at startup alongside mentionables with independent degradation.
+type skillsLoadedMsg struct {
+	result client.SkillListResult
+	err    error
+}
+
+func (m Chat) loadSkills() tea.Msg {
+	ctx := context.Background()
+	res, err := m.c.ListSkills(ctx, m.workspaceRoot)
+	return skillsLoadedMsg{result: res, err: err}
+}
+
 // toClientMention converts an accepted completion into the wire-shaped
 // value SendMessageRequest.Mentions carries.
 func toClientMention(m editor.Mentionable) client.Mention {

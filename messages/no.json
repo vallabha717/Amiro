@@ -192,6 +192,15 @@
     }
   },
   "Chat": {
+    "SkillPalette": {
+      "loading": "Laster ferdigheter...",
+      "errorLoading": "Kunne ikke laste ferdigheter",
+      "projectSkills": "Prosjektferdigheter",
+      "userSkills": "Brukerferdigheter",
+      "noSkillsFound": "Ingen ferdigheter funnet",
+      "createOne": "opprett en",
+      "moreCount": "+{count} flere"
+    },
     "Error": "Chatfeil",
     "thisMessageWasNotSavedPleaseTryTheChatAgain": "Denne meldingen ble ikke lagret. Prøv chatten på nytt.",
     "uploadImage": "Last opp fil",

@@ -30,6 +30,27 @@ type Skill struct {
 	Shadows                []ShadowedSkill   `json:"shadows,omitempty"`
 }
 
+// FrontmatterExtras converts the optional frontmatter fields into a map suitable for serialization.
+func (s *Skill) FrontmatterExtras() map[string]any {
+	extras := make(map[string]any)
+	if s.License != "" {
+		extras["license"] = s.License
+	}
+	if s.Compatibility != "" {
+		extras["compatibility"] = s.Compatibility
+	}
+	if len(s.Metadata) > 0 {
+		extras["metadata"] = s.Metadata
+	}
+	if len(s.AllowedTools) > 0 {
+		extras["allowed-tools"] = s.AllowedTools
+	}
+	if s.DisableModelInvocation {
+		extras["disable-model-invocation"] = s.DisableModelInvocation
+	}
+	return extras
+}
+
 // ShadowedSkill describes another skill discovered with the same name or path that was shadowed by precedence.
 type ShadowedSkill struct {
 	Name     string     `json:"name"`

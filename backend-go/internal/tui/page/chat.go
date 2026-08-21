@@ -123,6 +123,16 @@ type Chat struct {
 	mentionCandidates []editor.Mentionable
 	pendingMentions   []client.Mention
 
+	// skillCommands and skillLookup are populated at startup (loadSkills).
+	// pendingSkill is set when a skill is accepted via Tab completion or
+	// typed as "/<skill-name>" / "/skill:<skill-name>", displayed in the
+	// status bar, attached to the next SendMessageRequest as a skill mention,
+	// and cleared after sending.
+	skillCommands []editor.SkillCommand
+	skillLookup   map[string]client.SkillSummary
+	skillsResult  client.SkillListResult
+	pendingSkill  string
+
 	// notice is a one-line, non-error status set by a slash command that
 	// completes asynchronously (/export) -- rendered like state.Err's line
 	// but in System's tone, not Error's, and cleared the next time the user
@@ -158,7 +168,7 @@ func NewChat(c client.Client, threadID, workspaceRoot string) Chat {
 }
 
 func (m Chat) Init() tea.Cmd {
-	return tea.Batch(textarea.Blink, m.loadMentionables)
+	return tea.Batch(textarea.Blink, m.loadMentionables, m.loadSkills)
 }
 
 func (m Chat) Update(msg tea.Msg) (Chat, tea.Cmd) {
@@ -204,9 +214,14 @@ func (m Chat) Update(msg tea.Msg) (Chat, tea.Cmd) {
 			return m.send()
 
 		case msg.Type == tea.KeyTab && !m.sending:
-			if cmd, ok := m.acceptSlashSuggestion(); ok {
-				m.input.SetValue("/" + cmd + " ")
-				m.input.CursorEnd()
+			if match, ok := m.acceptSlashSuggestion(); ok {
+				if match.IsSkill {
+					m.pendingSkill = match.Name
+					m.input.Reset()
+				} else {
+					m.input.SetValue("/" + match.Invoke + " ")
+					m.input.CursorEnd()
+				}
 				return m, nil
 			}
 			if mention, ok := m.acceptMentionSuggestion(); ok {
@@ -224,6 +239,38 @@ func (m Chat) Update(msg tea.Msg) (Chat, tea.Cmd) {
 
 	case mentionablesLoadedMsg:
 		m.mentionCandidates = msg.candidates
+		return m, nil
+
+	case skillsLoadedMsg:
+		if msg.err != nil {
+			m.skillCommands = nil
+			m.skillLookup = nil
+			m.skillsResult = client.SkillListResult{}
+			return m, nil
+		}
+		m.skillsResult = msg.result
+		builtinNames := map[string]bool{
+			"mode": true, "threads": true, "models": true, "settings": true,
+			"compact": true, "export": true, "help": true, "skills": true,
+		}
+		m.skillCommands = make([]editor.SkillCommand, 0, len(msg.result.Items))
+		m.skillLookup = make(map[string]client.SkillSummary, len(msg.result.Items))
+		for _, s := range msg.result.Items {
+			invoke := s.Name
+			if builtinNames[s.Name] {
+				invoke = "skill:" + s.Name
+			}
+			if _, exists := m.skillLookup[invoke]; !exists {
+				m.skillLookup[invoke] = s
+				m.skillCommands = append(m.skillCommands, editor.SkillCommand{
+					Name:        s.Name,
+					Invoke:      invoke,
+					Description: s.Description,
+					Source:      s.Source,
+					Scope:       s.Scope,
+				})
+			}
+		}
 		return m, nil
 
 	case exportedMsg:
@@ -291,7 +338,7 @@ func (m Chat) composerSuggestions() string {
 		return ""
 	}
 	width := max(m.width-2, 1)
-	if matches := editor.Suggest(m.input.Value()); matches != nil {
+	if matches := editor.Suggest(m.input.Value(), m.skillCommands); matches != nil {
 		return editor.RenderSuggestions(width, matches, 0)
 	}
 	if matches := editor.SuggestMentions(m.input.Value(), m.mentionCandidates); matches != nil {
@@ -332,7 +379,9 @@ func (m *Chat) send() (Chat, tea.Cmd) {
 	m.notice = ""
 	if name, args, ok := editor.Parse(text); ok {
 		m.input.Reset()
-		return m.executeSlashCommand(name, args)
+		res, cmd := m.executeSlashCommand(name, args)
+		res.refreshTranscript()
+		return res, cmd
 	}
 	m.input.Reset()
 
@@ -344,6 +393,12 @@ func (m *Chat) send() (Chat, tea.Cmd) {
 	m.cancel = cancel
 	m.sending = true
 
+	mentions := m.pendingMentions
+	if m.pendingSkill != "" {
+		mentions = append(mentions, client.Mention{Type: "skill", Name: m.pendingSkill})
+		m.pendingSkill = ""
+	}
+
 	frames, wait := m.c.SendMessage(ctx, client.SendMessageRequest{
 		ThreadID:       m.state.ThreadID,
 		MessageID:      msgID,
@@ -351,7 +406,7 @@ func (m *Chat) send() (Chat, tea.Cmd) {
 		WorkspaceRoot:  m.workspaceRoot,
 		PermissionMode: m.state.PermissionMode,
 		ChatModel:      m.chatModel,
-		Mentions:       m.pendingMentions,
+		Mentions:       mentions,
 	})
 	m.pendingMentions = nil
 	m.frames = frames
@@ -366,12 +421,12 @@ func (m *Chat) send() (Chat, tea.Cmd) {
 // accept completion", scoped to one match rather than a cycled selection,
 // since the palette is short enough that the top match is almost always
 // the one the user meant.
-func (m Chat) acceptSlashSuggestion() (name string, ok bool) {
-	matches := editor.Suggest(m.input.Value())
+func (m Chat) acceptSlashSuggestion() (editor.SlashMatch, bool) {
+	matches := editor.Suggest(m.input.Value(), m.skillCommands)
 	if len(matches) == 0 {
-		return "", false
+		return editor.SlashMatch{}, false
 	}
-	return matches[0].Name, true
+	return matches[0], true
 }
 
 // acceptMentionSuggestion is acceptSlashSuggestion's mirror for "@" --
@@ -409,13 +464,48 @@ func (m *Chat) executeSlashCommand(name, args string) (Chat, tea.Cmd) {
 		return m.sendCompactNow()
 	case "export":
 		return *m, m.exportCurrentThread
+	case "skills":
+		return m.showSkillsNotice()
 	case "help", "":
 		m.state.Err = nil
 		return *m, nil
 	default:
-		m.state.Err = fmt.Errorf("unknown command /%s -- try /mode, /threads, /models, /settings, /compact or /export", name)
+		if s, ok := m.skillLookup[name]; ok {
+			m.pendingSkill = s.Name
+			m.state.Err = nil
+			return *m, nil
+		}
+		m.state.Err = fmt.Errorf("unknown command /%s -- try /mode, /threads, /models, /settings, /compact, /export or /skills", name)
 		return *m, nil
 	}
+}
+
+func (m *Chat) showSkillsNotice() (Chat, tea.Cmd) {
+	m.state.Err = nil
+	if len(m.skillsResult.Items) == 0 && len(m.skillsResult.Diagnostics) == 0 {
+		m.notice = "no skills discovered"
+		return *m, nil
+	}
+	var lines []string
+	lines = append(lines, "skills:")
+	for _, item := range m.skillsResult.Items {
+		lines = append(lines, fmt.Sprintf("  %s (%s, %s)", item.Name, item.Source, item.Scope))
+	}
+	var skipped []string
+	for _, item := range m.skillsResult.Items {
+		for _, sh := range item.Shadows {
+			skipped = append(skipped, fmt.Sprintf("  %s (%s, %s) skipped: %s", sh.Name, sh.Source, sh.Scope, sh.Reason))
+		}
+	}
+	for _, d := range m.skillsResult.Diagnostics {
+		skipped = append(skipped, fmt.Sprintf("  %s skipped: %s", d.Path, d.Message))
+	}
+	if len(skipped) > 0 {
+		lines = append(lines, fmt.Sprintf("skipped (%d):", len(skipped)))
+		lines = append(lines, skipped...)
+	}
+	m.notice = strings.Join(lines, "\n")
+	return *m, nil
 }
 
 // sendCompactNow sends a turn with CompactNow set -- the same send path as
@@ -664,6 +754,7 @@ func (m Chat) statusBar() string {
 		Model:         m.state.Model,
 		Mode:          m.modeLabel(),
 		WorkspaceRoot: m.workspaceRoot,
+		Skill:         m.pendingSkill,
 		Dashboard:     m.dashboardURL,
 		Usage:         m.state.Usage,
 		Elapsed:       m.elapsed(),

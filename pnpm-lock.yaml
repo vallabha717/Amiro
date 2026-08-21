@@ -101,6 +101,9 @@ importers:
       '@tiptap/extension-mention':
         specifier: ^2.27.1
         version: 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))(@tiptap/pm@2.27.2)(@tiptap/suggestion@2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))(@tiptap/pm@2.27.2))
+      '@tiptap/pm':
+        specifier: ^2.27.1
+        version: 2.27.2
       '@tiptap/react':
         specifier: ^2.27.1
         version: 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))(@tiptap/pm@2.27.2)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)

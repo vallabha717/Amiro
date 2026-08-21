@@ -10,6 +10,7 @@ import {
   Loader2,
   PaperclipIcon,
   PlusIcon,
+  Sparkles,
   Square,
   XIcon,
 } from "lucide-react";
@@ -107,6 +108,7 @@ export default function PromptInput({
     threadMentions,
     threadFiles,
     threadImageToolModel,
+    projectDirectory,
     appStoreMutate,
   ] = appStore(
     useShallow((state) => [
@@ -114,6 +116,7 @@ export default function PromptInput({
       state.threadMentions,
       state.threadFiles,
       state.threadImageToolModel,
+      state.projectDirectory,
       state.mutate,
     ]),
   );
@@ -281,6 +284,17 @@ export default function PromptInput({
     [addMention],
   );
 
+  const onSelectSkill = useCallback(
+    (skill: { name: string; description?: string }) => {
+      addMention({
+        type: "skill",
+        name: skill.name,
+        description: skill.description,
+      });
+    },
+    [addMention],
+  );
+
   const onSelectAgent = useCallback(
     (agent: AgentSummary) => {
       appStoreMutate((prev) => {
@@ -419,6 +433,41 @@ export default function PromptInput({
             {mentions.length > 0 && (
               <div className="bg-input rounded-b-sm rounded-t-3xl p-3 flex flex-col gap-4 mx-2 my-2">
                 {mentions.map((mention, i) => {
+                  if (mention.type === "skill") {
+                    return (
+                      <div
+                        key={`skill-${mention.name}-${i}`}
+                        data-testid={`skill-chip-${mention.name}`}
+                        className="flex items-center gap-2"
+                      >
+                        <div className="size-6 flex items-center justify-center ring ring-border rounded-full flex-shrink-0 p-0.5 bg-primary/10 text-primary">
+                          <Sparkles className="size-3.5" />
+                        </div>
+                        <div className="flex flex-col flex-1 min-w-0">
+                          <span className="text-sm font-semibold truncate">
+                            {mention.name}
+                          </span>
+                          {mention.description ? (
+                            <span className="text-muted-foreground text-xs truncate">
+                              {mention.description}
+                            </span>
+                          ) : null}
+                        </div>
+                        <Button
+                          variant={"ghost"}
+                          size={"icon"}
+                          disabled={!threadId}
+                          data-testid={`skill-chip-remove-${mention.name}`}
+                          className="rounded-full hover:bg-input! flex-shrink-0"
+                          onClick={() => {
+                            deleteMention(mention);
+                          }}
+                        >
+                          <XIcon />
+                        </Button>
+                      </div>
+                    );
+                  }
                   return (
                     <div key={i} className="flex items-center gap-2">
                       {mention.type === "workflow" ||
@@ -487,6 +536,8 @@ export default function PromptInput({
                   ref={editorRef}
                   disabledMention={disabledMention}
                   onFocus={onFocus}
+                  onSelectSkill={onSelectSkill}
+                  projectDirectory={projectDirectory}
                 />
               </div>
               <div className="flex w-full items-center z-30">

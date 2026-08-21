@@ -41,7 +41,10 @@ func (fakeClient) DeleteThread(context.Context, string) error                   
 func (c fakeClient) ListAgents(context.Context) ([]client.Agent, error)         { return nil, nil }
 func (c fakeClient) ListMCPServers(context.Context) ([]client.MCPServer, error) { return nil, nil }
 func (c fakeClient) ListWorkflows(context.Context) ([]client.Workflow, error)   { return nil, nil }
-func (c fakeClient) ExportThread(context.Context, string) (string, error)       { return "", nil }
+func (c fakeClient) ListSkills(context.Context, string) (client.SkillListResult, error) {
+	return client.SkillListResult{}, nil
+}
+func (c fakeClient) ExportThread(context.Context, string) (string, error) { return "", nil }
 func (c fakeClient) ListProviders(context.Context) ([]client.ProviderStatus, error) {
 	return nil, nil
 }

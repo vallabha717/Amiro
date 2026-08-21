@@ -72,6 +72,15 @@
     }
   },
   "Chat": {
+    "SkillPalette": {
+      "loading": "スキルを読み込み中...",
+      "errorLoading": "スキルの読み込みに失敗しました",
+      "projectSkills": "プロジェクトスキル",
+      "userSkills": "ユーザースキル",
+      "noSkillsFound": "スキルが見つかりません",
+      "createOne": "作成する",
+      "moreCount": "他 {count} 件"
+    },
     "Error": "チャットエラー",
     "thisMessageWasNotSavedPleaseTryTheChatAgain": "このメッセージは保存されませんでした。もう一度チャットをお試しください。",
     "uploadImage": "ファイルをアップロード",

@@ -33,6 +33,22 @@ func (f *fakeService) Get(ctx context.Context, home, project, name string) (*ski
 	return f.getRes, f.getErr
 }
 
+func (f *fakeService) Create(ctx context.Context, home string, in skills.WriteInput) (*skills.Skill, []skills.FieldError, error) {
+	return nil, nil, nil
+}
+
+func (f *fakeService) Update(ctx context.Context, home, name string, in skills.WriteInput) (*skills.Skill, []skills.FieldError, error) {
+	return nil, nil, nil
+}
+
+func (f *fakeService) Delete(ctx context.Context, home, name string, force bool) error {
+	return nil
+}
+
+func (f *fakeService) Duplicate(ctx context.Context, home, name, project string) (*skills.Skill, error) {
+	return nil, nil
+}
+
 func authedContext() context.Context {
 	return auth.ContextWithUser(context.Background(), &models.User{
 		ID:    "test-user-id",

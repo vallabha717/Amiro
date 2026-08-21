@@ -73,6 +73,15 @@
     }
   },
   "Chat": {
+    "SkillPalette": {
+      "loading": "正在加载技能...",
+      "errorLoading": "加载技能失败",
+      "projectSkills": "项目技能",
+      "userSkills": "用户技能",
+      "noSkillsFound": "未找到技能",
+      "createOne": "创建技能",
+      "moreCount": "还有 {count} 项"
+    },
     "Error": "聊天错误",
     "thisMessageWasNotSavedPleaseTryTheChatAgain": "此消息未保存。请重试聊天。",
     "uploadImage": "上传文件",

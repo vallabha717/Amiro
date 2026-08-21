@@ -22,6 +22,7 @@ export interface AmiroBackendInfo {
   pid: number;
   testId: string;
   appDataDir: string;
+  home: string;
   workspace: string;
   runDir: string;
   runId: string;

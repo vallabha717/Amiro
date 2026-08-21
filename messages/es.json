@@ -72,6 +72,15 @@
     }
   },
   "Chat": {
+    "SkillPalette": {
+      "loading": "Cargando habilidades...",
+      "errorLoading": "Error al cargar habilidades",
+      "projectSkills": "Habilidades del proyecto",
+      "userSkills": "Habilidades del usuario",
+      "noSkillsFound": "No se encontraron habilidades",
+      "createOne": "crear una",
+      "moreCount": "+{count} más"
+    },
     "Error": "Error de Chat",
     "thisMessageWasNotSavedPleaseTryTheChatAgain": "Este mensaje no se guardó. Por favor, intenta el chat nuevamente.",
     "uploadImage": "Subir archivo",

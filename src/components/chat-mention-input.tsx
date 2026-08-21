@@ -14,6 +14,7 @@ import { MCPIcon } from "ui/mcp-icon";
 import { ChatMention } from "app-types/chat";
 
 import MentionInput from "./mention-input";
+import { SkillPalette } from "./chat/skill-palette";
 import { useTranslations } from "next-intl";
 import { Popover, PopoverContent, PopoverTrigger } from "ui/popover";
 
@@ -48,6 +49,8 @@ interface ChatMentionInputProps {
   ref?: RefObject<Editor | null>;
   onFocus?: () => void;
   onBlur?: () => void;
+  onSelectSkill?: (skill: { name: string; description?: string }) => void;
+  projectDirectory?: string;
 }
 
 export default function ChatMentionInput({
@@ -60,6 +63,8 @@ export default function ChatMentionInput({
   disabledMention,
   onFocus,
   onBlur,
+  onSelectSkill,
+  projectDirectory,
 }: ChatMentionInputProps) {
   const latestMentions = useRef<string[]>([]);
 
@@ -90,10 +95,14 @@ export default function ChatMentionInput({
       onChange={handleChange}
       MentionItem={ChatMentionInputMentionItem}
       Suggestion={ChatMentionInputSuggestion}
+      SkillSuggestion={SkillPalette}
       editorRef={ref}
       onFocus={onFocus}
       onBlur={onBlur}
       fullWidthSuggestion={true}
+      enableSkillSuggestion={true}
+      onSelectSkill={onSelectSkill}
+      projectDirectory={projectDirectory}
     />
   );
 }
@@ -492,6 +501,7 @@ export function ChatMentionInputSuggestion({
     >
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       <PopoverContent
+        data-testid="chat-mention-suggestion"
         className={cn("p-0", className)}
         align="start"
         side="top"
@@ -811,6 +821,7 @@ const MentionItem = React.forwardRef<
   return (
     <button
       ref={ref}
+      data-testid={`chat-mention-item-${item.label}`}
       className={cn(
         "flex items-center gap-2 w-full rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground cursor-pointer",
         isSelected && "bg-accent text-accent-foreground",
