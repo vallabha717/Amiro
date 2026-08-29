@@ -26,7 +26,6 @@ type fakeClient struct {
 	threads   []client.ThreadSummary
 	thread    client.ThreadDetail
 	models    []client.ProviderModels
-	agents    []client.Agent
 	mcp       []client.MCPServer
 	workflows []client.Workflow
 	skills    client.SkillListResult
@@ -40,6 +39,41 @@ type fakeClient struct {
 	exportID        string
 	exportErr       error
 	lastProviderKey *setProviderKeyCall
+
+	// workspaceUntrusted makes WorkspaceTrustStatus report false, so a test
+	// can opt into exercising the trust prompt. Defaulting to trusted (the
+	// zero value's opposite -- see WorkspaceTrustStatus below) is what lets
+	// every pre-existing test keep passing unmodified: only a test that sets
+	// this ever sees the prompt.
+	workspaceUntrusted    bool
+	grantedWorkspaceTrust string
+
+	// latestCheckpointTurn/latestCheckpointFiles are LatestCheckpoint's
+	// canned answer -- empty (the zero value) is "nothing to rewind", which
+	// is what lets every pre-existing test keep passing unmodified.
+	latestCheckpointTurn  string
+	latestCheckpointFiles []client.CheckpointFile
+	latestCheckpointErr   error
+
+	// restoredCheckpoint records RestoreCheckpoint's arguments and returns
+	// restoreCheckpointResult/Err, so a test can assert on the outgoing
+	// request without a real transport underneath.
+	restoredCheckpoint      *restoreCheckpointCall
+	restoreCheckpointResult []client.CheckpointRestoreResult
+	restoreCheckpointErr    error
+
+	// sandboxBackend/sandboxSandboxed are SandboxStatus's canned answer.
+	// Empty backend (the zero value) means "not yet resolved" -- the page
+	// treats that the same as a Sandbox field never set at all, so every
+	// pre-existing test keeps passing unmodified.
+	sandboxBackend   string
+	sandboxSandboxed bool
+	sandboxStatusErr error
+}
+
+// restoreCheckpointCall records RestoreCheckpoint's arguments.
+type restoreCheckpointCall struct {
+	ThreadID, TurnID string
 }
 
 // setProviderKeyCall records SetProviderKey's arguments -- fakeClient has
@@ -76,7 +110,6 @@ func (c *fakeClient) ListModels(context.Context) ([]client.ProviderModels, error
 	return c.models, nil
 }
 
-func (c *fakeClient) ListAgents(context.Context) ([]client.Agent, error)         { return c.agents, nil }
 func (c *fakeClient) ListMCPServers(context.Context) ([]client.MCPServer, error) { return c.mcp, nil }
 func (c *fakeClient) ListWorkflows(context.Context) ([]client.Workflow, error) {
 	return c.workflows, nil
@@ -104,6 +137,38 @@ func (c *fakeClient) ListProviders(context.Context) ([]client.ProviderStatus, er
 func (c *fakeClient) SetProviderKey(_ context.Context, provider, name, apiKey string) error {
 	c.lastProviderKey = &setProviderKeyCall{Provider: provider, Name: name, APIKey: apiKey}
 	return nil
+}
+
+func (c *fakeClient) WorkspaceTrustStatus(_ context.Context, root string) (bool, string, error) {
+	return !c.workspaceUntrusted, root, nil
+}
+
+func (c *fakeClient) GrantWorkspaceTrust(_ context.Context, root string) error {
+	c.grantedWorkspaceTrust = root
+	c.workspaceUntrusted = false
+	return nil
+}
+
+func (c *fakeClient) LatestCheckpoint(context.Context, string) (string, []client.CheckpointFile, error) {
+	if c.latestCheckpointErr != nil {
+		return "", nil, c.latestCheckpointErr
+	}
+	return c.latestCheckpointTurn, c.latestCheckpointFiles, nil
+}
+
+func (c *fakeClient) RestoreCheckpoint(_ context.Context, threadID, turnID string) ([]client.CheckpointRestoreResult, error) {
+	c.restoredCheckpoint = &restoreCheckpointCall{ThreadID: threadID, TurnID: turnID}
+	if c.restoreCheckpointErr != nil {
+		return nil, c.restoreCheckpointErr
+	}
+	return c.restoreCheckpointResult, nil
+}
+
+func (c *fakeClient) SandboxStatus(context.Context) (string, bool, error) {
+	if c.sandboxStatusErr != nil {
+		return "", false, c.sandboxStatusErr
+	}
+	return c.sandboxBackend, c.sandboxSandboxed, nil
 }
 
 var _ client.Client = (*fakeClient)(nil)
@@ -578,4 +643,44 @@ func TestChat_DuplicateInvokeNames_DedupesDeterministically(t *testing.T) {
 	}
 }
 
+// TestChat_LoadSandboxStatus_PopulatesStatusBar is this phase's page-level
+// coverage: loadSandboxStatus's result reaches Chat.sandbox, and from there
+// the status bar's rendering -- the actual wiring exit criterion 4's golden
+// test (in internal/tui/component/status) assumes exists upstream.
+func TestChat_LoadSandboxStatus_PopulatesStatusBar(t *testing.T) {
+	fc := &fakeClient{sandboxBackend: "bubblewrap", sandboxSandboxed: true}
+	m := NewChat(fc, "thread-sandbox-status", "/repo")
+	m.width, m.height = 120, 20
+	m.ready = true
 
+	msg := m.loadSandboxStatus()
+	updated, _ := m.Update(msg)
+
+	if updated.sandbox != "bubblewrap" {
+		t.Fatalf("Chat.sandbox = %q, want %q", updated.sandbox, "bubblewrap")
+	}
+	if bar := updated.statusBar(); !strings.Contains(bar, "sandbox:bubblewrap") {
+		t.Fatalf("statusBar() = %q, want it to contain the sandbox indicator", bar)
+	}
+}
+
+// TestChat_LoadSandboxStatus_ErrorLeavesFieldUnset pins the degrade-quietly
+// contract: a failed status call (older server, request error) must not
+// show a wrong value, so the field stays empty and the status bar renders
+// no sandbox indicator at all.
+func TestChat_LoadSandboxStatus_ErrorLeavesFieldUnset(t *testing.T) {
+	fc := &fakeClient{sandboxStatusErr: fmt.Errorf("boom")}
+	m := NewChat(fc, "thread-sandbox-status-err", "/repo")
+	m.width, m.height = 120, 20
+	m.ready = true
+
+	msg := m.loadSandboxStatus()
+	updated, _ := m.Update(msg)
+
+	if updated.sandbox != "" {
+		t.Fatalf("Chat.sandbox = %q, want empty after a failed status call", updated.sandbox)
+	}
+	if bar := updated.statusBar(); strings.Contains(bar, "sandbox:") {
+		t.Fatalf("statusBar() = %q, want no sandbox field after a failed status call", bar)
+	}
+}

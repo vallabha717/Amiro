@@ -38,7 +38,6 @@ func (c fakeClient) GetThread(context.Context, string) (client.ThreadDetail, err
 	return c.thread, nil
 }
 func (fakeClient) DeleteThread(context.Context, string) error                   { return nil }
-func (c fakeClient) ListAgents(context.Context) ([]client.Agent, error)         { return nil, nil }
 func (c fakeClient) ListMCPServers(context.Context) ([]client.MCPServer, error) { return nil, nil }
 func (c fakeClient) ListWorkflows(context.Context) ([]client.Workflow, error)   { return nil, nil }
 func (c fakeClient) ListSkills(context.Context, string) (client.SkillListResult, error) {
@@ -51,6 +50,31 @@ func (c fakeClient) ListProviders(context.Context) ([]client.ProviderStatus, err
 func (c fakeClient) SetProviderKey(context.Context, string, string, string) error { return nil }
 func (c fakeClient) ListModels(context.Context) ([]client.ProviderModels, error) {
 	return c.models, nil
+}
+
+// WorkspaceTrustStatus/GrantWorkspaceTrust default to trusted: app.Model's
+// own tests route between pages and never exercise the trust prompt, which
+// belongs to page's own tests (chat_test.go's fakeClient).
+func (c fakeClient) WorkspaceTrustStatus(_ context.Context, root string) (bool, string, error) {
+	return true, root, nil
+}
+func (c fakeClient) GrantWorkspaceTrust(context.Context, string) error { return nil }
+
+// LatestCheckpoint defaults to "nothing to rewind": app.Model's own tests
+// route between pages and never exercise /rewind, which belongs to page's
+// own tests (chat_test.go's fakeClient).
+func (c fakeClient) LatestCheckpoint(context.Context, string) (string, []client.CheckpointFile, error) {
+	return "", nil, nil
+}
+func (c fakeClient) RestoreCheckpoint(context.Context, string, string) ([]client.CheckpointRestoreResult, error) {
+	return nil, nil
+}
+
+// SandboxStatus defaults to "none" -- app.Model's own tests route between
+// pages and never exercise the status bar's sandbox indicator, which
+// belongs to page's own tests (chat_test.go's fakeClient).
+func (c fakeClient) SandboxStatus(context.Context) (string, bool, error) {
+	return "none", false, nil
 }
 
 var _ client.Client = fakeClient{}

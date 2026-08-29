@@ -14,6 +14,7 @@ import (
 	"amiro/backend/internal/db/repository"
 	"amiro/backend/internal/mcp"
 	"amiro/backend/internal/skills"
+	"amiro/backend/internal/storage"
 )
 
 // Engine is the subset of *bifrostai.Client the chat handlers call,
@@ -43,13 +44,6 @@ type WorkflowTools interface {
 	SelectStructureByID(ctx context.Context, id string, ignoreNote bool) (*repository.WorkflowStructure, error)
 }
 
-// AgentTools is the subset of *repository.AgentRepository an agent
-// @-mention needs: the agent's own instructions (systemPrompt/role/
-// mentions), gated by the same ownership/visibility rule agent CRUD uses.
-type AgentTools interface {
-	SelectByID(ctx context.Context, id, userID string) (*repository.AgentWithMeta, error)
-}
-
 // Handler holds every dependency the api/chat/** routes need. Constructed
 // once in httpserver.New and its methods registered as
 // net/http.HandlerFunc values, the same wiring shape internal/api/auth
@@ -61,7 +55,6 @@ type Handler struct {
 	workflowEngine  executor.Engine // same underlying *bifrostai.Client as engine, under the wider interface workflow-as-tool execution needs
 	mcp             MCPTools
 	workflows       WorkflowTools
-	agents          AgentTools
 	mcpServerCustom *repository.McpServerCustomizationRepository
 	mcpToolCustom   *repository.McpToolCustomizationRepository
 	providerRepo    *repository.ProviderRepository
@@ -97,6 +90,65 @@ type Handler struct {
 
 	// skills discovers and resolves Agent Skills for prompt disclosure and activation.
 	skills *skills.Service
+
+	// trust backs the workspace-trust gate
+	// (docs/coding-agent-parity/01-workspace-trust-and-rules.md). Nil means
+	// no trust repository was wired -- runner.go then leaves every
+	// permission.Engine at its New default (trusted), which is the same
+	// "optional dependency degrades rather than panics" contract every
+	// other nil field on this struct already has.
+	trust *repository.WorkspaceTrustRepository
+
+	// checkpoints and checkpointBlobs back /rewind
+	// (docs/coding-agent-parity/02-checkpoints-and-rewind.md). Both nil
+	// until WithCheckpoints is called -- appwiring.App.AttachPort, since
+	// the blob store can't be built until a port is bound (see
+	// appwiring.App.newStorage). runner.go degrades to capturing nothing
+	// when either is nil, the same contract every other optional
+	// dependency on this struct already has.
+	checkpoints     *repository.CheckpointFileRepository
+	checkpointBlobs storage.Storage
+
+	// sandboxNetworkAllow is internal/config.Config.SandboxNetworkAllow,
+	// carried onto the handler the same way workspace/trust are: set via a
+	// chained method so the existing NewHandler call sites and tests keep
+	// working unchanged. Nil (the default) denies network to every
+	// sandboxed shell command -- see internal/agent/sandbox.NetworkAllowed.
+	sandboxNetworkAllow []string
+}
+
+// WithSandboxNetworkAllow binds the project's shell-network allow-list
+// (docs/coding-agent-parity/03-sandboxed-execution.md) to this handler.
+func (h *Handler) WithSandboxNetworkAllow(allow []string) *Handler {
+	h.sandboxNetworkAllow = allow
+	return h
+}
+
+// WithCheckpoints binds the checkpoint index and blob store to this
+// handler. A chained method for the same reason WithWorkspaceTrust is: it
+// keeps the many existing NewHandler call sites and tests working
+// unchanged, and (unlike those) the blob store genuinely cannot exist at
+// construction time -- see the struct field's doc comment.
+func (h *Handler) WithCheckpoints(repo *repository.CheckpointFileRepository, blobs storage.Storage) *Handler {
+	h.checkpoints = repo
+	h.checkpointBlobs = blobs
+	return h
+}
+
+// Grants exposes the per-thread grant/lock store so the checkpoint restore
+// route (internal/api/checkpoint) can take the same thread's write-lock a
+// live turn holds while it runs -- see runner.go's sess.RLock/RUnlock and
+// permission.Session.writeMu's doc comment for why they must be the same
+// underlying Session.
+func (h *Handler) Grants() *permission.Store { return h.grants }
+
+// WithWorkspaceTrust binds the trust-grant repository to this handler. Set
+// via a chained method rather than the constructor for the same reason as
+// WithWorkspace and WithSkills: the many existing NewHandler call sites and
+// tests keep working unchanged.
+func (h *Handler) WithWorkspaceTrust(trust *repository.WorkspaceTrustRepository) *Handler {
+	h.trust = trust
+	return h
 }
 
 // WithSkills binds the discovery service to this handler.
@@ -149,7 +201,6 @@ func NewHandler(
 	workflowEngine executor.Engine,
 	mcpTools MCPTools,
 	workflows WorkflowTools,
-	agents AgentTools,
 	mcpServerCustom *repository.McpServerCustomizationRepository,
 	mcpToolCustom *repository.McpToolCustomizationRepository,
 	providerRepo *repository.ProviderRepository,
@@ -162,7 +213,6 @@ func NewHandler(
 		workflowEngine:  workflowEngine,
 		mcp:             mcpTools,
 		workflows:       workflows,
-		agents:          agents,
 		mcpServerCustom: mcpServerCustom,
 		mcpToolCustom:   mcpToolCustom,
 		providerRepo:    providerRepo,

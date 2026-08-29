@@ -65,7 +65,6 @@ type SendMessageRequest struct {
 // chatapi's unexported mentionDTO exactly (field-for-field, so http.go's
 // wire encoding needs no translation beyond the json tags):
 //
-//	{Type: "agent", AgentID: id}                    -- apply an agent's system prompt + pre-bound mentions
 //	{Type: "mcpServer", ServerID: id}                -- every tool on that server
 //	{Type: "mcpTool", ServerID: id, Name: toolName}  -- one tool on that server
 //	{Type: "workflow", WorkflowID: id}               -- a workflow-as-tool
@@ -76,7 +75,6 @@ type Mention struct {
 	Name       string
 	ServerID   string
 	WorkflowID string
-	AgentID    string
 }
 
 // ChatModel selects a provider/model pair, mirroring chatapi's unexported
@@ -136,13 +134,6 @@ type ProviderModels struct {
 	Provider     string
 	ProviderName string
 	Models       []string
-}
-
-// Agent is a mentionable agent, GET /api/agent's row shape reduced to what
-// a mention needs.
-type Agent struct {
-	ID   string
-	Name string
 }
 
 // MCPServer is a mentionable server plus the tools on it, GET
@@ -207,6 +198,24 @@ type ProviderStatus struct {
 	Configured bool
 }
 
+// CheckpointFile is one file a turn checkpointed -- what /rewind's
+// confirmation lists before reverting
+// (docs/coding-agent-parity/02-checkpoints-and-rewind.md).
+type CheckpointFile struct {
+	Path          string
+	ExistedBefore bool
+}
+
+// CheckpointRestoreResult is one file's outcome from a restore -- Restored
+// false with a non-empty Error means that one file was refused (a moved
+// workspace, an evicted blob) without aborting the rest.
+type CheckpointRestoreResult struct {
+	Path          string
+	ExistedBefore bool
+	Restored      bool
+	Error         string
+}
+
 // Client is what a page talks to. A page must never reach past it for an
 // http.Client, a base URL, or a token -- see the package doc for why.
 type Client interface {
@@ -235,11 +244,10 @@ type Client interface {
 	// ListModels backs the model picker (page/models.go).
 	ListModels(ctx context.Context) ([]ProviderModels, error)
 
-	// ListAgents, ListMCPServers and ListWorkflows back @-mention
-	// completion (component/editor/mention.go) -- every mentionable thing
-	// that isn't one of Amiro's own built-in tools (which need no fetch;
+	// ListMCPServers and ListWorkflows back @-mention completion
+	// (component/editor/mention.go) -- every mentionable thing that isn't
+	// one of Amiro's own built-in tools (which need no fetch;
 	// editor.DefaultToolMentions is a static list).
-	ListAgents(ctx context.Context) ([]Agent, error)
 	ListMCPServers(ctx context.Context) ([]MCPServer, error)
 	ListWorkflows(ctx context.Context) ([]Workflow, error)
 
@@ -259,4 +267,33 @@ type Client interface {
 	// app's own settings screen reads and writes.
 	ListProviders(ctx context.Context) ([]ProviderStatus, error)
 	SetProviderKey(ctx context.Context, provider, name, apiKey string) error
+
+	// WorkspaceTrustStatus reports whether the signed-in user has already
+	// granted root -- checked once at Chat startup (page/workspace_trust.go)
+	// so the trust prompt can appear before the first message, rather than
+	// as a stream of refused tool calls. resolvedRoot is the server's
+	// symlink-resolved form of root, shown in the prompt so the user knows
+	// exactly what they're being asked to trust.
+	WorkspaceTrustStatus(ctx context.Context, root string) (trusted bool, resolvedRoot string, err error)
+
+	// GrantWorkspaceTrust is the human's "yes" answer to the trust prompt.
+	GrantWorkspaceTrust(ctx context.Context, root string) error
+
+	// LatestCheckpoint resolves "the most recent turn with checkpoints" for
+	// threadID -- what /rewind and Esc-Esc target, since neither names a
+	// specific message the way the web dashboard's per-message action does.
+	// An empty turnID (with no files) means there is nothing to rewind,
+	// rendered as that state explicitly rather than an empty confirmation.
+	LatestCheckpoint(ctx context.Context, threadID string) (turnID string, files []CheckpointFile, err error)
+
+	// RestoreCheckpoint reverts every file checkpointed for (threadID,
+	// turnID) -- the human's "yes" answer to the rewind confirmation.
+	RestoreCheckpoint(ctx context.Context, threadID, turnID string) ([]CheckpointRestoreResult, error)
+
+	// SandboxStatus reports the attached server's detected run_shell
+	// sandbox backend -- checked once at Chat startup
+	// (page/chat.go's loadSandboxStatus) so the status bar's indicator
+	// (docs/coding-agent-parity/03-sandboxed-execution.md) is populated
+	// before the first command ever runs, not only after one does.
+	SandboxStatus(ctx context.Context) (backend string, sandboxed bool, err error)
 }

@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"amiro/backend/internal/agent/sandbox"
 	"amiro/backend/internal/agent/workspace"
 )
 
@@ -40,6 +41,13 @@ type terminalOutput struct {
 	TimedOut  bool   `json:"timed_out"`
 	Truncated bool   `json:"truncated"`
 	Error     string `json:"error,omitempty"`
+	// Sandboxed and SandboxBackend are the honesty contract
+	// docs/coding-agent-parity/03-sandboxed-execution.md requires: every
+	// result states plainly whether isolation actually happened for this
+	// command, and which backend provided it ("bubblewrap", "seatbelt", or
+	// "none"). See internal/agent/sandbox.Result.
+	Sandboxed      bool   `json:"sandboxed"`
+	SandboxBackend string `json:"sandbox_backend"`
 }
 
 type bgTaskInput struct {
@@ -126,9 +134,9 @@ func randomMarker() string {
 	return "__AMIRO_DONE_" + hex.EncodeToString(b) + "__"
 }
 
-func (e *TerminalExecutor) Run(ctx context.Context, in terminalInput) terminalOutput {
+func (e *TerminalExecutor) Run(ctx context.Context, in terminalInput, networkAllow []string) terminalOutput {
 	if in.RunInBackground {
-		res := e.runBackground(in.Command)
+		res := e.runBackground(in.Command, networkAllow)
 		b, _ := json.Marshal(res)
 		return terminalOutput{
 			Command:  in.Command,
@@ -155,43 +163,45 @@ func (e *TerminalExecutor) Run(ctx context.Context, in terminalInput) terminalOu
 	defer cancel()
 
 	marker := randomMarker()
-	var cmd *exec.Cmd
+	var argv []string
 
 	if runtime.GOOS == "windows" {
 		psScript := fmt.Sprintf("%s; Write-Output \"`n%s $LASTEXITCODE $($PWD.Path)\"", in.Command, marker)
-		cmd = exec.CommandContext(execCtx, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", psScript)
+		argv = []string{"powershell.exe", "-NoProfile", "-NonInteractive", "-Command", psScript}
 	} else {
 		script := fmt.Sprintf("{ %s\n}; __amiro_ec=$?; echo ''; echo '%s' $__amiro_ec \"$PWD\"", in.Command, marker)
-		cmd = exec.CommandContext(execCtx, shellPath, "-c", script)
+		argv = []string{shellPath, "-c", script}
 	}
 
-	cmd.Dir = cwd
-	cmd.Env = append(os.Environ(),
-		"GIT_TERMINAL_PROMPT=0",
-		"DEBIAN_FRONTEND=noninteractive",
-		"PYTHONUNBUFFERED=1",
-		"PIP_NO_INPUT=1",
-	)
-
+	// Windows has no sandbox backend this phase (sandbox.Detect always
+	// returns the "none" fallback there -- see
+	// internal/agent/sandbox/detect_other.go), so cwd is set the same way
+	// os/exec always set it; a real backend instead binds cwd itself
+	// (bubblewrap's --chdir, seatbelt's subpath rule) as part of wrap().
 	var outBuf bytes.Buffer
-	cmd.Stdout = &outBuf
-	cmd.Stderr = &outBuf
+	networkAllowed := sandbox.NetworkAllowed(networkAllow, in.Command)
+	result, runErr := sandbox.Run(execCtx, argv, sandbox.RunOpts{
+		Dir: cwd,
+		Env: append(os.Environ(),
+			"GIT_TERMINAL_PROMPT=0",
+			"DEBIAN_FRONTEND=noninteractive",
+			"PYTHONUNBUFFERED=1",
+			"PIP_NO_INPUT=1",
+		),
+		Stdout:         &outBuf,
+		Stderr:         &outBuf,
+		NetworkAllowed: networkAllowed,
+	})
 
-	err := cmd.Run()
 	timedOut := execCtx.Err() == context.DeadlineExceeded
 
 	rawOutput := outBuf.String()
 	cleanOutput := rawOutput
-	exitCode := 0
-	newCWD := cwd
-
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			exitCode = exitErr.ExitCode()
-		} else {
-			exitCode = 1
-		}
+	exitCode := result.ExitCode
+	if runErr != nil && exitCode == 0 {
+		exitCode = 1
 	}
+	newCWD := cwd
 
 	// Parse marker line
 	if idx := strings.Index(rawOutput, marker); idx != -1 {
@@ -225,17 +235,19 @@ func (e *TerminalExecutor) Run(ctx context.Context, in terminalInput) terminalOu
 	}
 
 	return terminalOutput{
-		Command:   in.Command,
-		CWD:       newCWD,
-		ExitCode:  exitCode,
-		Output:    cleanOutput,
-		TimedOut:  timedOut,
-		Truncated: truncated,
-		Error:     errMsg,
+		Command:        in.Command,
+		CWD:            newCWD,
+		ExitCode:       exitCode,
+		Output:         cleanOutput,
+		TimedOut:       timedOut,
+		Truncated:      truncated,
+		Error:          errMsg,
+		Sandboxed:      result.Sandboxed,
+		SandboxBackend: result.Backend,
 	}
 }
 
-func (e *TerminalExecutor) runBackground(command string) map[string]any {
+func (e *TerminalExecutor) runBackground(command string, networkAllow []string) map[string]any {
 	e.mu.Lock()
 	e.bgCounter++
 	taskID := fmt.Sprintf("bg-%d", e.bgCounter)
@@ -251,13 +263,16 @@ func (e *TerminalExecutor) runBackground(command string) map[string]any {
 	// flags as a leak and which was also just a lie: nothing could ever
 	// call it. shell_task_kill is the real stop, and it kills the process
 	// directly.
-	var cmd *exec.Cmd
+	var argv []string
 	if runtime.GOOS == "windows" {
-		cmd = exec.Command("powershell.exe", "-NoProfile", "-Command", command)
+		argv = []string{"powershell.exe", "-NoProfile", "-Command", command}
 	} else {
-		cmd = exec.Command(shellPath, "-c", command)
+		argv = []string{shellPath, "-c", command}
 	}
-	cmd.Dir = cwd
+	cmd, sandboxResult := sandbox.Command(context.Background(), argv, sandbox.CommandOpts{
+		Dir:            cwd,
+		NetworkAllowed: sandbox.NetworkAllowed(networkAllow, command),
+	})
 	cmd.Env = append(os.Environ(),
 		"GIT_TERMINAL_PROMPT=0",
 		"DEBIAN_FRONTEND=noninteractive",
@@ -324,10 +339,12 @@ func (e *TerminalExecutor) runBackground(command string) map[string]any {
 	}()
 
 	return map[string]any{
-		"task_id": taskID,
-		"command": command,
-		"status":  "running",
-		"note":    "use shell_task_output to read its output, shell_task_kill to stop it",
+		"task_id":         taskID,
+		"command":         command,
+		"status":          "running",
+		"note":            "use shell_task_output to read its output, shell_task_kill to stop it",
+		"sandboxed":       sandboxResult.Sandboxed,
+		"sandbox_backend": sandboxResult.Backend,
 	}
 }
 
@@ -405,7 +422,7 @@ func (e *TerminalExecutor) backgroundKill(taskID string) map[string]any {
 // bounds shell is the permission gate (RiskExec below), not this. Files are
 // different -- workspace.Resolve genuinely confines them -- and conflating
 // the two would be the mistake.
-func terminalTools(ws *workspace.Workspace) []Definition {
+func terminalTools(ws *workspace.Workspace, networkAllow []string) []Definition {
 	root := ""
 	if ws != nil {
 		root = ws.Root()
@@ -417,7 +434,7 @@ func terminalTools(ws *workspace.Workspace) []Definition {
 		if err := json.Unmarshal(rawInput, &in); err != nil {
 			return nil, err
 		}
-		out := executor.Run(ctx, in)
+		out := executor.Run(ctx, in, networkAllow)
 		return out, nil
 	}
 

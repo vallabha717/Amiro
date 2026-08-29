@@ -10,6 +10,8 @@ import {
   ChevronRightIcon,
   FolderIcon,
   Maximize2Icon,
+  ShieldCheckIcon,
+  ShieldOffIcon,
 } from "lucide-react";
 import { Button } from "ui/button";
 import { cn } from "lib/utils";
@@ -40,6 +42,49 @@ export interface TerminalWindowProps {
   forceExpanded?: boolean;
   /** Cap on the collapsed/inline body height. */
   maxBodyHeight?: string;
+  /**
+   * Whether this command actually ran under a real sandbox backend --
+   * internal/agent/sandbox.Result.Sandboxed
+   * (docs/coding-agent-parity/03-sandboxed-execution.md). undefined means
+   * not known yet (still pending, or an older server with no sandbox
+   * fields), which renders no badge at all -- the same "absent means not
+   * known, not shown as false" contract the status bar's Sandbox field
+   * has. `false` is not hidden or softened once known: it renders exactly
+   * as plainly as `true`, because the failure mode this exists to prevent
+   * is a caller mistaking "we don't know" for "it's fine."
+   */
+  sandboxed?: boolean;
+  /** Which backend produced `sandboxed` -- "bubblewrap", "seatbelt", "none". */
+  sandboxBackend?: string;
+}
+
+function SandboxBadge({
+  sandboxed,
+  backend,
+}: {
+  sandboxed: boolean;
+  backend?: string;
+}) {
+  if (sandboxed) {
+    return (
+      <span
+        className="hidden sm:flex items-center gap-1 text-[11px] text-emerald-400 bg-emerald-950/30 border border-emerald-800/40 px-1.5 py-0.5 rounded shrink-0 whitespace-nowrap"
+        title={`Sandboxed via ${backend ?? "unknown backend"}`}
+      >
+        <ShieldCheckIcon className="size-3" />
+        sandboxed
+      </span>
+    );
+  }
+  return (
+    <span
+      className="hidden sm:flex items-center gap-1 text-[11px] text-amber-400 bg-amber-950/30 border border-amber-800/40 px-1.5 py-0.5 rounded shrink-0 whitespace-nowrap"
+      title="This command ran with no filesystem/network isolation -- no sandbox backend was available."
+    >
+      <ShieldOffIcon className="size-3" />
+      unsandboxed
+    </span>
+  );
 }
 
 function StatusBadge({
@@ -147,6 +192,8 @@ function PureTerminalWindow({
   hideMaximize,
   forceExpanded,
   maxBodyHeight,
+  sandboxed,
+  sandboxBackend,
 }: TerminalWindowProps) {
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(true);
@@ -213,6 +260,9 @@ function PureTerminalWindow({
         )}
 
         <div className="flex items-center gap-1 shrink-0 ml-auto order-3 sm:order-6">
+          {sandboxed !== undefined && (
+            <SandboxBadge sandboxed={sandboxed} backend={sandboxBackend} />
+          )}
           <StatusBadge status={status} exitCode={exitCode} />
 
           {!hideMaximize && (

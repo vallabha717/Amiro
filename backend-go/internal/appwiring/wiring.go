@@ -35,19 +35,21 @@ import (
 	"amiro/backend/internal/agent/workspace"
 	bifrostai "amiro/backend/internal/ai/bifrost"
 	adminapi "amiro/backend/internal/api/admin"
-	agentapi "amiro/backend/internal/api/agent"
 	aiapi "amiro/backend/internal/api/ai"
 	archiveapi "amiro/backend/internal/api/archive"
 	bookmarkapi "amiro/backend/internal/api/bookmark"
 	chatapi "amiro/backend/internal/api/chat"
+	checkpointapi "amiro/backend/internal/api/checkpoint"
 	exportapi "amiro/backend/internal/api/export"
 	mcpapi "amiro/backend/internal/api/mcp"
+	sandboxapi "amiro/backend/internal/api/sandbox"
 	searchapi "amiro/backend/internal/api/search"
 	skillsapi "amiro/backend/internal/api/skills"
 	storageapi "amiro/backend/internal/api/storage"
 	threadapi "amiro/backend/internal/api/thread"
 	userapi "amiro/backend/internal/api/user"
 	workflowapi "amiro/backend/internal/api/workflow"
+	workspacetrustapi "amiro/backend/internal/api/workspacetrust"
 	"amiro/backend/internal/auth"
 	"amiro/backend/internal/config"
 	"amiro/backend/internal/db"
@@ -135,10 +137,10 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	app.MCP = mcp.NewManager(mcpRepo, bifrostClient)
 
 	workflowRepo := repository.NewWorkflowRepository(gdb)
-	agentRepo := repository.NewAgentRepository(gdb)
 	archiveRepo := repository.NewArchiveRepository(gdb)
 	bookmarkRepo := repository.NewBookmarkRepository(gdb)
 	userRepo := repository.NewUserRepository(gdb)
+	workspaceTrustRepo := repository.NewWorkspaceTrustRepository(gdb)
 
 	chatHandler := chatapi.NewHandler(
 		chatRepo,
@@ -147,12 +149,11 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		bifrostClient,
 		app.MCP,
 		workflowRepo,
-		agentRepo,
 		mcpServerCustomRepo,
 		mcpToolCustomRepo,
 		providerRepo,
 		searchRepo,
-	)
+	).WithWorkspaceTrust(workspaceTrustRepo).WithSandboxNetworkAllow(cfg.SandboxNetworkAllow)
 
 	// The file toolkit only exists when a workspace root is configured, and
 	// a root that cannot be resolved is a hard startup error rather than a
@@ -181,14 +182,16 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		Chat:     chatHandler,
 		MCP:      mcpapi.NewHandler(app.MCP, mcpServerCustomRepo, mcpToolCustomRepo),
 		Workflow: workflowapi.NewHandler(workflowRepo, bifrostClient, app.MCP),
-		Agent:    agentapi.NewHandler(agentRepo, bifrostClient, app.MCP, workflowRepo),
 		Archive:  archiveapi.NewHandler(archiveRepo),
 		Bookmark: bookmarkapi.NewHandler(bookmarkRepo),
 		Export:   exportapi.NewHandler(chatExportRepo),
 		Thread:   threadapi.NewHandler(chatRepo),
 		User:     userapi.NewHandler(userRepo, app.Auth),
 		Search:   searchapi.NewHandler(searchRepo),
-		Skills:   skillsapi.NewHandler(skillsService),
+		Skills:   skillsapi.NewHandler(skillsService, bifrostClient),
+
+		WorkspaceTrust: workspacetrustapi.NewHandler(workspaceTrustRepo, app.WorkspaceRoot),
+		Sandbox:        sandboxapi.NewHandler(),
 	}
 
 	return app, nil
@@ -221,6 +224,15 @@ func (a *App) AttachPort(ctx context.Context, port int) error {
 		return fmt.Errorf("storage: %w", err)
 	}
 	a.Handlers.Storage = storageapi.NewHandler(fileStore)
+
+	// Checkpoints (docs/coding-agent-parity/02-checkpoints-and-rewind.md)
+	// wire here rather than in New(), for the same reason Storage does: the
+	// blob store its capture/restore path writes to can't be built until a
+	// port is bound. a.Chat is the same *chatapi.Handler already in
+	// a.Handlers.Chat, so this mutation is visible there too.
+	checkpointRepo := repository.NewCheckpointFileRepository(a.DB)
+	a.Chat = a.Chat.WithCheckpoints(checkpointRepo, fileStore)
+	a.Handlers.Checkpoint = checkpointapi.NewHandler(checkpointRepo, fileStore, repository.NewChatRepository(a.DB), a.Chat.Grants())
 	return nil
 }
 

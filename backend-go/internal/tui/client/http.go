@@ -73,7 +73,6 @@ type mentionWire struct {
 	Name       string `json:"name,omitempty"`
 	ServerID   string `json:"serverId,omitempty"`
 	WorkflowID string `json:"workflowId,omitempty"`
-	AgentID    string `json:"agentId,omitempty"`
 }
 
 // chatRequest mirrors internal/api/chat's unexported chatRequest -- the two
@@ -104,7 +103,7 @@ func mentionWires(mentions []Mention) []mentionWire {
 	}
 	out := make([]mentionWire, len(mentions))
 	for i, m := range mentions {
-		out[i] = mentionWire{Type: m.Type, Name: m.Name, ServerID: m.ServerID, WorkflowID: m.WorkflowID, AgentID: m.AgentID}
+		out[i] = mentionWire{Type: m.Type, Name: m.Name, ServerID: m.ServerID, WorkflowID: m.WorkflowID}
 	}
 	return out
 }
@@ -455,30 +454,6 @@ func (c *HTTPClient) ListModels(ctx context.Context) ([]ProviderModels, error) {
 	return out, nil
 }
 
-// agentWire mirrors agentapi's unexported agentResponse, reduced to what a
-// mention needs.
-type agentWire struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-}
-
-// ListAgents implements Client.
-func (c *HTTPClient) ListAgents(ctx context.Context) ([]Agent, error) {
-	var rows []agentWire
-	status, err := c.do(ctx, http.MethodGet, "/api/agent", nil, &rows)
-	if err != nil {
-		return nil, err
-	}
-	if status != http.StatusOK {
-		return nil, fmt.Errorf("client: list agents: server returned %d", status)
-	}
-	out := make([]Agent, len(rows))
-	for i, r := range rows {
-		out[i] = Agent{ID: r.ID, Name: r.Name}
-	}
-	return out, nil
-}
-
 // mcpToolInfoWire mirrors bifrostai.MCPToolInfo, reduced to its name.
 type mcpToolInfoWire struct {
 	Name string `json:"name"`
@@ -712,5 +687,134 @@ func (c *HTTPClient) ListSkills(ctx context.Context, project string) (SkillListR
 		Diagnostics: diags,
 		Truncated:   resp.Truncated,
 	}, nil
+}
+
+// workspaceTrustStatusWire mirrors workspacetrustapi's unexported
+// statusResponse.
+type workspaceTrustStatusWire struct {
+	Trusted      bool   `json:"trusted"`
+	ResolvedRoot string `json:"resolvedRoot"`
+}
+
+// WorkspaceTrustStatus implements Client.
+func (c *HTTPClient) WorkspaceTrustStatus(ctx context.Context, root string) (bool, string, error) {
+	reqPath := "/api/workspace-trust/status?root=" + url.QueryEscape(root)
+	var resp workspaceTrustStatusWire
+	status, err := c.do(ctx, http.MethodGet, reqPath, nil, &resp)
+	if err != nil {
+		return false, "", err
+	}
+	if status != http.StatusOK {
+		return false, "", fmt.Errorf("client: workspace trust status: server returned %d", status)
+	}
+	return resp.Trusted, resp.ResolvedRoot, nil
+}
+
+// workspaceTrustGrantWire mirrors workspacetrustapi's unexported
+// grantRequest.
+type workspaceTrustGrantWire struct {
+	Root string `json:"root"`
+}
+
+// GrantWorkspaceTrust implements Client.
+func (c *HTTPClient) GrantWorkspaceTrust(ctx context.Context, root string) error {
+	status, err := c.do(ctx, http.MethodPost, "/api/workspace-trust/grant", workspaceTrustGrantWire{Root: root}, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK {
+		return fmt.Errorf("client: grant workspace trust: server returned %d", status)
+	}
+	return nil
+}
+
+// checkpointFileWire mirrors checkpointapi's unexported fileResponse.
+type checkpointFileWire struct {
+	Path          string `json:"path"`
+	ExistedBefore bool   `json:"existedBefore"`
+}
+
+// checkpointFilesWire mirrors checkpointapi's unexported filesResponse.
+type checkpointFilesWire struct {
+	TurnID string               `json:"turnId"`
+	Files  []checkpointFileWire `json:"files"`
+}
+
+// LatestCheckpoint implements Client.
+func (c *HTTPClient) LatestCheckpoint(ctx context.Context, threadID string) (string, []CheckpointFile, error) {
+	reqPath := "/api/checkpoint/latest?threadId=" + url.QueryEscape(threadID)
+	var resp checkpointFilesWire
+	status, err := c.do(ctx, http.MethodGet, reqPath, nil, &resp)
+	if err != nil {
+		return "", nil, err
+	}
+	if status != http.StatusOK {
+		return "", nil, fmt.Errorf("client: latest checkpoint: server returned %d", status)
+	}
+	files := make([]CheckpointFile, len(resp.Files))
+	for i, f := range resp.Files {
+		files[i] = CheckpointFile{Path: f.Path, ExistedBefore: f.ExistedBefore}
+	}
+	return resp.TurnID, files, nil
+}
+
+// checkpointRestoreRequestWire mirrors checkpointapi's unexported
+// restoreRequest.
+type checkpointRestoreRequestWire struct {
+	ThreadID string `json:"threadId"`
+	TurnID   string `json:"turnId"`
+}
+
+// checkpointRestoreFileWire mirrors checkpointapi's unexported
+// restoreFileResponse.
+type checkpointRestoreFileWire struct {
+	Path          string `json:"path"`
+	ExistedBefore bool   `json:"existedBefore"`
+	Restored      bool   `json:"restored"`
+	Error         string `json:"error,omitempty"`
+}
+
+// checkpointRestoreResponseWire mirrors checkpointapi's unexported
+// restoreResponse.
+type checkpointRestoreResponseWire struct {
+	TurnID string                      `json:"turnId"`
+	Files  []checkpointRestoreFileWire `json:"files"`
+}
+
+// RestoreCheckpoint implements Client.
+func (c *HTTPClient) RestoreCheckpoint(ctx context.Context, threadID, turnID string) ([]CheckpointRestoreResult, error) {
+	var resp checkpointRestoreResponseWire
+	status, err := c.do(ctx, http.MethodPost, "/api/checkpoint/restore",
+		checkpointRestoreRequestWire{ThreadID: threadID, TurnID: turnID}, &resp)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("client: restore checkpoint: server returned %d", status)
+	}
+	results := make([]CheckpointRestoreResult, len(resp.Files))
+	for i, f := range resp.Files {
+		results[i] = CheckpointRestoreResult{Path: f.Path, ExistedBefore: f.ExistedBefore, Restored: f.Restored, Error: f.Error}
+	}
+	return results, nil
+}
+
+// sandboxStatusWire mirrors sandboxapi's unexported statusResponse.
+type sandboxStatusWire struct {
+	Backend   string `json:"backend"`
+	Sandboxed bool   `json:"sandboxed"`
+}
+
+// SandboxStatus implements Client.
+func (c *HTTPClient) SandboxStatus(ctx context.Context) (string, bool, error) {
+	var resp sandboxStatusWire
+	status, err := c.do(ctx, http.MethodGet, "/api/sandbox/status", nil, &resp)
+	if err != nil {
+		return "", false, err
+	}
+	if status != http.StatusOK {
+		return "", false, fmt.Errorf("client: sandbox status: server returned %d", status)
+	}
+	return resp.Backend, resp.Sandboxed, nil
 }
 

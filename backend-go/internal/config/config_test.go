@@ -174,3 +174,36 @@ func TestLoad_LinuxFallsBackToHomeLocalShareWhenNeitherEnvVarSet(t *testing.T) {
 		t.Fatalf("AppDataDir = %q, want %q", cfg.AppDataDir, want)
 	}
 }
+
+func TestLoad_ParsesSandboxNetworkAllowFromCommaSeparatedEnv(t *testing.T) {
+	t.Setenv("AMIRO_APP_DATA_DIR", t.TempDir())
+	t.Setenv("AMIRO_SANDBOX_NETWORK_ALLOW", "go build, npm install ,  npm ci")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	want := []string{"go build", "npm install", "npm ci"}
+	if len(cfg.SandboxNetworkAllow) != len(want) {
+		t.Fatalf("SandboxNetworkAllow = %v, want %v", cfg.SandboxNetworkAllow, want)
+	}
+	for i, w := range want {
+		if cfg.SandboxNetworkAllow[i] != w {
+			t.Errorf("SandboxNetworkAllow[%d] = %q, want %q", i, cfg.SandboxNetworkAllow[i], w)
+		}
+	}
+}
+
+func TestLoad_SandboxNetworkAllowDefaultsToNilNotEmptySlice(t *testing.T) {
+	t.Setenv("AMIRO_APP_DATA_DIR", t.TempDir())
+	t.Setenv("AMIRO_SANDBOX_NETWORK_ALLOW", "")
+	t.Setenv("BETTERCHATBOT_SANDBOX_NETWORK_ALLOW", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.SandboxNetworkAllow != nil {
+		t.Fatalf("SandboxNetworkAllow = %v, want nil when unset -- the safe default is to deny every command's network, not allow-list an empty string", cfg.SandboxNetworkAllow)
+	}
+}

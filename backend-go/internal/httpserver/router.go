@@ -7,20 +7,22 @@ import (
 	"strings"
 
 	adminapi "amiro/backend/internal/api/admin"
-	agentapi "amiro/backend/internal/api/agent"
 	aiapi "amiro/backend/internal/api/ai"
 	archiveapi "amiro/backend/internal/api/archive"
 	authapi "amiro/backend/internal/api/auth"
 	bookmarkapi "amiro/backend/internal/api/bookmark"
 	chatapi "amiro/backend/internal/api/chat"
+	checkpointapi "amiro/backend/internal/api/checkpoint"
 	exportapi "amiro/backend/internal/api/export"
 	mcpapi "amiro/backend/internal/api/mcp"
+	sandboxapi "amiro/backend/internal/api/sandbox"
 	searchapi "amiro/backend/internal/api/search"
 	skillsapi "amiro/backend/internal/api/skills"
 	storageapi "amiro/backend/internal/api/storage"
 	threadapi "amiro/backend/internal/api/thread"
 	userapi "amiro/backend/internal/api/user"
 	workflowapi "amiro/backend/internal/api/workflow"
+	workspacetrustapi "amiro/backend/internal/api/workspacetrust"
 	"amiro/backend/internal/auth"
 	"amiro/backend/internal/config"
 	"amiro/backend/internal/middleware"
@@ -50,7 +52,6 @@ type Handlers struct {
 	Chat     *chatapi.Handler
 	MCP      *mcpapi.Handler
 	Workflow *workflowapi.Handler
-	Agent    *agentapi.Handler
 	Archive  *archiveapi.Handler
 	Bookmark *bookmarkapi.Handler
 	Export   *exportapi.Handler
@@ -59,6 +60,10 @@ type Handlers struct {
 	Storage  *storageapi.Handler
 	Search   *searchapi.Handler
 	Skills   *skillsapi.Handler
+
+	WorkspaceTrust *workspacetrustapi.Handler
+	Checkpoint     *checkpointapi.Handler
+	Sandbox        *sandboxapi.Handler
 }
 
 // Options configures the route families and guards that only some
@@ -218,19 +223,6 @@ func NewWithOptions(cfg config.Config, h Handlers, opts Options) http.Handler {
 		mux.Handle("POST /api/workflow/{id}/execute", session(http.HandlerFunc(h.Workflow.Execute)))
 	}
 
-	if h.Agent != nil && h.Auth != nil {
-		session := auth.RequireSession(h.Auth)
-		mux.Handle("GET /api/agent", session(http.HandlerFunc(h.Agent.List)))
-		mux.Handle("POST /api/agent", session(http.HandlerFunc(h.Agent.Create)))
-		// POST /api/agent/ai and GET|PUT|DELETE /api/agent/{id} coexist
-		// because ServeMux only rejects same-method patterns it can't
-		// order, and no {id} pattern is registered for POST.
-		mux.Handle("POST /api/agent/ai", session(http.HandlerFunc(h.Agent.Generate)))
-		mux.Handle("GET /api/agent/{id}", session(http.HandlerFunc(h.Agent.Get)))
-		mux.Handle("PUT /api/agent/{id}", session(http.HandlerFunc(h.Agent.Update)))
-		mux.Handle("DELETE /api/agent/{id}", session(http.HandlerFunc(h.Agent.Delete)))
-	}
-
 	if h.Archive != nil && h.Auth != nil {
 		session := auth.RequireSession(h.Auth)
 		mux.Handle("GET /api/archive", session(http.HandlerFunc(h.Archive.List)))
@@ -301,9 +293,30 @@ func NewWithOptions(cfg config.Config, h Handlers, opts Options) http.Handler {
 		mux.Handle("GET /api/skills", session(http.HandlerFunc(h.Skills.List)))
 		mux.Handle("GET /api/skills/items/{name}", session(http.HandlerFunc(h.Skills.Get)))
 		mux.Handle("POST /api/skills", session(http.HandlerFunc(h.Skills.Create)))
+		mux.Handle("POST /api/skills/generate", session(http.HandlerFunc(h.Skills.Generate)))
 		mux.Handle("PUT /api/skills/items/{name}", session(http.HandlerFunc(h.Skills.Update)))
 		mux.Handle("DELETE /api/skills/items/{name}", session(http.HandlerFunc(h.Skills.Delete)))
 		mux.Handle("POST /api/skills/items/{name}/duplicate", session(http.HandlerFunc(h.Skills.Duplicate)))
+	}
+
+	if h.WorkspaceTrust != nil && h.Auth != nil {
+		session := auth.RequireSession(h.Auth)
+		mux.Handle("GET /api/workspace-trust", session(http.HandlerFunc(h.WorkspaceTrust.List)))
+		mux.Handle("GET /api/workspace-trust/status", session(http.HandlerFunc(h.WorkspaceTrust.Status)))
+		mux.Handle("POST /api/workspace-trust/grant", session(http.HandlerFunc(h.WorkspaceTrust.Grant)))
+		mux.Handle("POST /api/workspace-trust/revoke", session(http.HandlerFunc(h.WorkspaceTrust.Revoke)))
+	}
+
+	if h.Sandbox != nil && h.Auth != nil {
+		session := auth.RequireSession(h.Auth)
+		mux.Handle("GET /api/sandbox/status", session(http.HandlerFunc(h.Sandbox.Status)))
+	}
+
+	if h.Checkpoint != nil && h.Auth != nil {
+		session := auth.RequireSession(h.Auth)
+		mux.Handle("GET /api/checkpoint/files", session(http.HandlerFunc(h.Checkpoint.Files)))
+		mux.Handle("GET /api/checkpoint/latest", session(http.HandlerFunc(h.Checkpoint.Latest)))
+		mux.Handle("POST /api/checkpoint/restore", session(http.HandlerFunc(h.Checkpoint.Restore)))
 	}
 
 	if h.Storage != nil {

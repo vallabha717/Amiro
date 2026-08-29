@@ -216,6 +216,15 @@ type Deps struct {
 
 	// SearchRepo is the DB repository for retrieving the configured search provider.
 	SearchRepo *repository.SearchProviderRepository
+
+	// SandboxNetworkAllow is internal/config.Config.SandboxNetworkAllow --
+	// see docs/coding-agent-parity/03-sandboxed-execution.md. Matched
+	// against a run_shell command's own prefix
+	// (internal/agent/sandbox.NetworkAllowed) to decide whether *this*
+	// command reaches the network under a real sandbox backend, which
+	// otherwise denies it by default. Nil is the safe default: no command
+	// gets network under sandboxing until a project opts one in.
+	SandboxNetworkAllow []string
 }
 
 // Defaults returns every APP_DEFAULT_TOOL_KIT tool, freshly constructed per call.
@@ -225,7 +234,7 @@ func Defaults(d Deps) []Definition {
 		ws.AddReadOnlyRoots(d.ReadOnlyRoots...)
 	}
 	defs := append(append(visualizationTools(), httpFetchTool()), webSearchTools(d.SearchRepo)...)
-	defs = append(defs, terminalTools(ws)...)
+	defs = append(defs, terminalTools(ws, d.SandboxNetworkAllow)...)
 	defs = append(defs, fileTools(ws)...)
 	defs = append(defs, searchTools(ws)...)
 	defs = append(defs, editTools(ws)...)

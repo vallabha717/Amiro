@@ -97,6 +97,8 @@ const runShell: ToolPresenter = {
           status={status === "pending" ? "pending" : isError ? "error" : "success"}
           exitCode={exitCode}
           output={output?.output || errorText || ""}
+          sandboxed={output?.sandboxed}
+          sandboxBackend={output?.sandbox_backend}
         />
       </div>
     );

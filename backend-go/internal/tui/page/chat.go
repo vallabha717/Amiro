@@ -49,6 +49,12 @@ const (
 // a turn is streaming.
 const tickInterval = time.Second
 
+// escEscWindow is how long a second Esc has to land after the first for
+// Esc-Esc to read as "rewind the most recent turn" rather than as two
+// unrelated single presses
+// (docs/coding-agent-parity/02-checkpoints-and-rewind.md).
+const escEscWindow = 600 * time.Millisecond
+
 // defaultMode is what the status bar and every outgoing request show before
 // any /mode command has run, matching permission.ParseMode's own fallback
 // for an empty string -- interactive, not permissive.
@@ -98,6 +104,13 @@ type Chat struct {
 	// a browser-reachable dashboard off one embedded backend.
 	dashboardURL string
 
+	// sandbox is the attached server's detected run_shell sandbox backend
+	// ("bubblewrap", "seatbelt", "none"), fetched once at startup
+	// (loadSandboxStatus, fired from Init) and shown in the status bar.
+	// Empty until that call resolves, which status.Info.Sandbox already
+	// treats as "don't render this field yet" rather than "none".
+	sandbox string
+
 	viewport viewport.Model
 	input    textarea.Model
 	ready    bool
@@ -139,6 +152,25 @@ type Chat struct {
 	// sends anything.
 	notice string
 
+	// trustPromptRoot is non-empty when workspaceRoot has not been granted
+	// trust yet, checked once at startup (loadWorkspaceTrust). While set,
+	// the trust dialog owns the keyboard the same way PendingApproval does
+	// -- see Update's key.Matches switch and updateTrustPrompt.
+	trustPromptRoot string
+
+	// rewindTurnID is non-empty when a /rewind (or Esc-Esc) confirmation is
+	// open -- the turn about to be reverted, with rewindFiles the exact
+	// files it will touch. While set, the rewind dialog owns the keyboard
+	// the same way trustPromptRoot and PendingApproval do.
+	rewindTurnID string
+	rewindFiles  []client.CheckpointFile
+
+	// lastEscAt is when Esc was last pressed with no rewind dialog open --
+	// a second Esc within escEscWindow reads as the Esc-Esc rewind
+	// shortcut; a solitary press, or one that arrives too late, does
+	// nothing (there is nothing else in this page for a bare Esc to do).
+	lastEscAt time.Time
+
 	// now is time.Now, overridden in tests so elapsed-time rendering is
 	// deterministic -- see chat_test.go's fakeClock.
 	now           func() time.Time
@@ -168,15 +200,24 @@ func NewChat(c client.Client, threadID, workspaceRoot string) Chat {
 }
 
 func (m Chat) Init() tea.Cmd {
-	return tea.Batch(textarea.Blink, m.loadMentionables, m.loadSkills)
+	return tea.Batch(textarea.Blink, m.loadMentionables, m.loadSkills, m.loadSandboxStatus)
 }
 
 func (m Chat) Update(msg tea.Msg) (Chat, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		return m.resize(msg.Width, msg.Height), nil
+		return m.resize(msg.Width, msg.Height)
 
 	case tea.KeyMsg:
+		// The trust prompt owns every keypress while it's open, the same way
+		// the tool-approval dialog below does -- checked first since it can
+		// only ever be open before the first turn, so this ordering can
+		// never shadow a pending tool approval (which structurally cannot
+		// exist yet).
+		if m.trustPromptRoot != "" {
+			return m.updateTrustPrompt(msg)
+		}
+
 		// The approval dialog owns every keypress while it's open -- the
 		// plan renders it "as though it were blocking" (§2.4), and the turn
 		// really is suspended server-side until y/a/n answers it. Nothing
@@ -184,6 +225,14 @@ func (m Chat) Update(msg tea.Msg) (Chat, tea.Cmd) {
 		// react while it's up.
 		if m.state.PendingApproval != nil {
 			return m.updateApproval(msg)
+		}
+
+		// The rewind confirmation owns every keypress while it's open,
+		// the same shape as the two dialogs above -- checked after
+		// PendingApproval since a live turn's own approval always takes
+		// priority over rewinding a *previous* turn.
+		if m.rewindTurnID != "" {
+			return m.updateRewindConfirm(msg)
 		}
 
 		switch {
@@ -235,10 +284,31 @@ func (m Chat) Update(msg tea.Msg) (Chat, tea.Cmd) {
 			var cmd tea.Cmd
 			m.viewport, cmd = m.viewport.Update(msg)
 			return m, cmd
+
+		case key.Matches(msg, keys.DefaultChatKeyMap.Rewind) && !m.sending:
+			// A single binding matches every Esc; the "twice" part is timed
+			// here, since key.Binding has no way to express it. A press
+			// that arrives too late (or is the first of the pair) just
+			// starts the window rather than doing anything visible -- the
+			// same "no-op until the second press" shape a real double-tap
+			// gesture has anywhere else.
+			now := m.now()
+			if !m.lastEscAt.IsZero() && now.Sub(m.lastEscAt) <= escEscWindow {
+				m.lastEscAt = time.Time{}
+				return m, m.loadRewindCandidate
+			}
+			m.lastEscAt = now
+			return m, nil
 		}
 
 	case mentionablesLoadedMsg:
 		m.mentionCandidates = msg.candidates
+		return m, nil
+
+	case sandboxStatusMsg:
+		if msg.err == nil {
+			m.sandbox = msg.backend
+		}
 		return m, nil
 
 	case skillsLoadedMsg:
@@ -251,7 +321,7 @@ func (m Chat) Update(msg tea.Msg) (Chat, tea.Cmd) {
 		m.skillsResult = msg.result
 		builtinNames := map[string]bool{
 			"mode": true, "threads": true, "models": true, "settings": true,
-			"compact": true, "export": true, "help": true, "skills": true,
+			"compact": true, "rewind": true, "export": true, "help": true, "skills": true,
 		}
 		m.skillCommands = make([]editor.SkillCommand, 0, len(msg.result.Items))
 		m.skillLookup = make(map[string]client.SkillSummary, len(msg.result.Items))
@@ -271,6 +341,60 @@ func (m Chat) Update(msg tea.Msg) (Chat, tea.Cmd) {
 				})
 			}
 		}
+		return m, nil
+
+	case workspaceTrustMsg:
+		if msg.err == nil && !msg.trusted {
+			m.trustPromptRoot = msg.resolvedRoot
+			m.refreshTranscript()
+			// ClearScreen requests a full repaint rather than a diffed one
+			// on the next render. This check can complete fast enough (an
+			// in-memory HTTP round trip) to land very early in the
+			// program's life, where a real PTY run was observed to drop
+			// the resulting redraw even though the model updates
+			// correctly (View() already returns the dialog on every
+			// subsequent call in that case). ClearScreen reduces how often
+			// that happens but was not confirmed to eliminate it -- see
+			// docs/coding-agent-parity/progress/ for the investigation and
+			// why this is recorded as a known flake, not a closed bug.
+			return m, tea.ClearScreen
+		}
+		return m, nil
+
+	case workspaceTrustGrantedMsg:
+		m.trustPromptRoot = ""
+		if msg.err != nil {
+			m.state.Err = fmt.Errorf("grant workspace trust: %w", msg.err)
+		}
+		m.refreshTranscript()
+		return m, nil
+
+	case rewindCandidateMsg:
+		m.notice = ""
+		if msg.err != nil {
+			m.state.Err = fmt.Errorf("check rewind candidates: %w", msg.err)
+			return m, nil
+		}
+		if msg.turnID == "" {
+			// Exit criterion 3: a clear "nothing to rewind" state, not an
+			// empty confirmation dialog.
+			m.notice = "nothing to rewind"
+			return m, nil
+		}
+		m.rewindTurnID = msg.turnID
+		m.rewindFiles = msg.files
+		m.refreshTranscript()
+		return m, nil
+
+	case rewindRestoredMsg:
+		m.rewindTurnID = ""
+		m.rewindFiles = nil
+		if msg.err != nil {
+			m.state.Err = fmt.Errorf("rewind failed: %w", msg.err)
+		} else {
+			m.notice = rewindResultNotice(msg.results)
+		}
+		m.refreshTranscript()
 		return m, nil
 
 	case exportedMsg:
@@ -360,15 +484,23 @@ func (m Chat) chromeHeight() int {
 	return h
 }
 
-func (m *Chat) resize(width, height int) Chat {
+func (m *Chat) resize(width, height int) (Chat, tea.Cmd) {
 	m.width, m.height = width, height
+	var cmd tea.Cmd
 	if !m.ready {
 		m.viewport = viewport.New(width, 1)
 		m.ready = true
+		// Fired from the first resize rather than Init: the page has a
+		// real terminal size to render into by this point, which Init
+		// does not guarantee. This does not fully close a startup render
+		// race this check can trigger -- see workspace_trust.go and
+		// docs/coding-agent-parity/progress/ for what was tried and why
+		// it's recorded as a known flake rather than "fixed".
+		cmd = m.loadWorkspaceTrust
 	}
 	m.input.SetWidth(max(width-2, 1))
 	m.refreshTranscript()
-	return *m
+	return *m, cmd
 }
 
 func (m *Chat) send() (Chat, tea.Cmd) {
@@ -462,6 +594,9 @@ func (m *Chat) executeSlashCommand(name, args string) (Chat, tea.Cmd) {
 		return *m, func() tea.Msg { return OpenSettingsMsg{} }
 	case "compact":
 		return m.sendCompactNow()
+	case "rewind":
+		m.state.Err = nil
+		return *m, m.loadRewindCandidate
 	case "export":
 		return *m, m.exportCurrentThread
 	case "skills":
@@ -475,7 +610,7 @@ func (m *Chat) executeSlashCommand(name, args string) (Chat, tea.Cmd) {
 			m.state.Err = nil
 			return *m, nil
 		}
-		m.state.Err = fmt.Errorf("unknown command /%s -- try /mode, /threads, /models, /settings, /compact, /export or /skills", name)
+		m.state.Err = fmt.Errorf("unknown command /%s -- try /mode, /threads, /models, /settings, /compact, /rewind, /export or /skills", name)
 		return *m, nil
 	}
 }
@@ -595,6 +730,61 @@ func (m *Chat) LoadThread(detail client.ThreadDetail) {
 	m.refreshTranscript()
 }
 
+// updateTrustPrompt handles a keypress while the trust prompt is open --
+// y (grant) or n (not now) only, reusing ApprovalKeyMap's bindings rather
+// than adding a second keymap for a decision that is the same "y/n while a
+// dialog owns the keyboard" shape. There is no "always" here: a workspace
+// grant has no once-vs-always axis for [a] to be an alternative to.
+func (m Chat) updateTrustPrompt(msg tea.KeyMsg) (Chat, tea.Cmd) {
+	switch {
+	case key.Matches(msg, keys.DefaultApprovalKeyMap.ApproveOnce):
+		return m, m.grantWorkspaceTrust
+	case key.Matches(msg, keys.DefaultApprovalKeyMap.Deny):
+		m.trustPromptRoot = ""
+		return m, nil
+	}
+	return m, nil
+}
+
+// updateRewindConfirm handles a keypress while the rewind confirmation is
+// open -- y (restore) or n (cancel) only, the same "y/n while a dialog owns
+// the keyboard" shape as updateTrustPrompt, and for the same reason: a
+// rewind has no once-vs-always axis for [a] to be an alternative to.
+func (m Chat) updateRewindConfirm(msg tea.KeyMsg) (Chat, tea.Cmd) {
+	switch {
+	case key.Matches(msg, keys.DefaultApprovalKeyMap.ApproveOnce):
+		return m, m.restoreRewind
+	case key.Matches(msg, keys.DefaultApprovalKeyMap.Deny):
+		m.rewindTurnID = ""
+		m.rewindFiles = nil
+		return m, nil
+	}
+	return m, nil
+}
+
+// rewindResultNotice summarizes a restore for the status notice line -- the
+// full per-file detail (including any refused file's reason) is available
+// via the server response, but a one-line summary is what fits where every
+// other slash-command result appears.
+func rewindResultNotice(results []client.CheckpointRestoreResult) string {
+	restored, failed := 0, 0
+	for _, r := range results {
+		if r.Restored {
+			restored++
+		} else {
+			failed++
+		}
+	}
+	switch {
+	case failed == 0:
+		return fmt.Sprintf("rewound %d file(s)", restored)
+	case restored == 0:
+		return fmt.Sprintf("rewind failed for all %d file(s)", failed)
+	default:
+		return fmt.Sprintf("rewound %d file(s), %d failed", restored, failed)
+	}
+}
+
 // updateApproval handles a keypress while an approval dialog is open --
 // y/a/n only, per keys.DefaultApprovalKeyMap's own doc comment on why there
 // is no Esc.
@@ -673,8 +863,20 @@ func (m *Chat) refreshTranscript() {
 func (m Chat) render() string {
 	width := max(m.width-2, 1)
 	var b strings.Builder
+	if m.trustPromptRoot != "" {
+		b.WriteString(approval.RenderWithHint(width, session.ApprovalRequest{
+			ToolName: "this workspace",
+			Reason:   "Amiro can write files, run commands, and reach external tools here once trusted.",
+		}, workspaceTrustPromptInput(m.trustPromptRoot), "[y] trust   [n] not now"))
+	}
+	if m.rewindTurnID != "" {
+		b.WriteString(approval.RenderWithHint(width, session.ApprovalRequest{
+			ToolName: "rewind to before this turn",
+			Reason:   "Reverts every file this turn wrote back to how it was before -- the conversation itself is untouched.",
+		}, rewindPromptInput(m.rewindFiles), "[y] rewind   [n] cancel"))
+	}
 	for i, msg := range m.state.Messages {
-		if i > 0 {
+		if i > 0 || b.Len() > 0 {
 			b.WriteString("\n\n")
 		}
 		label := theme.Default.User.Render("You")
@@ -755,6 +957,7 @@ func (m Chat) statusBar() string {
 		Mode:          m.modeLabel(),
 		WorkspaceRoot: m.workspaceRoot,
 		Skill:         m.pendingSkill,
+		Sandbox:       m.sandbox,
 		Dashboard:     m.dashboardURL,
 		Usage:         m.state.Usage,
 		Elapsed:       m.elapsed(),

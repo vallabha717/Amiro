@@ -42,6 +42,19 @@ type Info struct {
 	// logic as everything else, so a narrow terminal drops it before it
 	// drops the elapsed clock rather than wrapping the line.
 	Hint string
+
+	// Sandbox names the run_shell sandbox backend for this session --
+	// "bubblewrap", "seatbelt", or "none" -- from
+	// internal/agent/sandbox.Detect().Name(), probed once at launch. Empty
+	// means the caller has not resolved it yet, which renders no field
+	// rather than a misleading blank one (the same "absent means not
+	// known yet, not shown as false" contract Usage already has).
+	//
+	// This is docs/coding-agent-parity/03-sandboxed-execution.md's honesty
+	// contract surfaced where a user glances constantly rather than only
+	// on a run_shell card: "none" is not hidden or softened, it reads
+	// exactly as flatly as a real backend's name.
+	Sandbox string
 }
 
 // Render draws one line, eliding fields (never the elapsed clock or the
@@ -58,6 +71,9 @@ func Render(width int, info Info) string {
 	}
 	if info.Skill != "" {
 		fields = append(fields, "skill:"+info.Skill)
+	}
+	if info.Sandbox != "" {
+		fields = append(fields, sandboxLabel(info.Sandbox))
 	}
 	if info.Model != "" {
 		fields = append(fields, info.Model)
@@ -88,6 +104,13 @@ func Render(width int, info Info) string {
 		minimal = append([]string{fmt.Sprintf("%d tok", info.Usage.TotalTokens)}, minimal...)
 	}
 	return theme.Default.StatusBar.Render(joinFields(minimal))
+}
+
+// sandboxLabel renders Info.Sandbox for the status line. "none" reads as
+// "sandbox: none" rather than being hidden or euphemized -- see Info.Sandbox's
+// doc comment on why this field exists at all.
+func sandboxLabel(backend string) string {
+	return "sandbox:" + backend
 }
 
 func joinFields(fields []string) string {

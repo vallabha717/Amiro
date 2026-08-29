@@ -18,13 +18,13 @@ import (
 // internal/ai/workflow/types.go's WorkflowToolKey already makes) -- Type
 // selects which of the identifier fields is meaningful:
 // mcpTool/mcpServer -> ServerID (+ Name for mcpTool's specific tool name),
-// workflow -> WorkflowID, agent -> AgentID, defaultTool -> Name.
+// workflow -> WorkflowID, defaultTool -> Name. agent -> AgentID was removed
+// in Phase 6 (docs/skills/) along with the rest of the agent feature.
 type mentionDTO struct {
 	Type       string `json:"type"`
 	Name       string `json:"name"`
 	ServerID   string `json:"serverId,omitempty"`
 	WorkflowID string `json:"workflowId,omitempty"`
-	AgentID    string `json:"agentId,omitempty"`
 }
 
 // allowedMCPServerDTO ports AllowedMCPServer (types/mcp.ts).
@@ -64,7 +64,6 @@ type chatMetadata struct {
 	ChatModel  *chatModelDTO    `json:"chatModel,omitempty"`
 	ToolChoice string           `json:"toolChoice,omitempty"`
 	ToolCount  int              `json:"toolCount"`
-	AgentID    string           `json:"agentId,omitempty"`
 
 	// DurationMS is how long the whole turn spent working, summed across
 	// every round an approval split it into.
@@ -100,12 +99,13 @@ type chatMetadata struct {
 // had no such seam.
 func (h *Handler) toolDeps(ws *workspace.Workspace, sessionID string) tools.Deps {
 	return tools.Deps{
-		Workspace:  ws,
-		Todos:      h.todos,
-		SessionID:  sessionID,
-		Memory:     h.notes,
-		LSP:        h.lsp,
-		SearchRepo: h.searchRepo,
+		Workspace:           ws,
+		Todos:               h.todos,
+		SessionID:           sessionID,
+		Memory:              h.notes,
+		LSP:                 h.lsp,
+		SearchRepo:          h.searchRepo,
+		SandboxNetworkAllow: h.sandboxNetworkAllow,
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
@@ -43,6 +44,17 @@ type Config struct {
 	// WorkspaceRoot is the single directory tree the agent's file tools may
 	// read and write. Set via AMIRO_WORKSPACE_ROOT or BETTERCHATBOT_WORKSPACE_ROOT.
 	WorkspaceRoot string
+	// SandboxNetworkAllow is a per-project, deliberate opt-in: shell
+	// commands whose prefix matches an entry here reach the network even
+	// under a real sandbox backend, which otherwise denies it by default
+	// (docs/coding-agent-parity/03-sandboxed-execution.md). Matched the
+	// same way internal/agent/permission/command.go's shell allowlist
+	// matches -- see internal/agent/sandbox.NetworkAllowed. Set via
+	// AMIRO_SANDBOX_NETWORK_ALLOW as a comma-separated list, e.g.
+	// "go build,npm install,npm ci". Empty (the default) denies network to
+	// every sandboxed command -- the safe direction; a user who needs an
+	// exception adds it deliberately rather than the feature guessing one.
+	SandboxNetworkAllow []string
 }
 
 func getEnv(amiroKey, legacyKey string) string {
@@ -114,16 +126,34 @@ func Load() (Config, error) {
 	}
 
 	return Config{
-		AuthToken:      token,
-		AllowedOrigin:  origin,
-		AppDataDir:     dataDir,
-		BindHost:       bindHost,
-		Port:           port,
-		DatabaseDriver: dbDriver,
-		DatabaseDSN:    dbDSN,
-		S3Bucket:       s3Bucket,
-		WorkspaceRoot:  getEnv("AMIRO_WORKSPACE_ROOT", "BETTERCHATBOT_WORKSPACE_ROOT"),
+		AuthToken:           token,
+		AllowedOrigin:       origin,
+		AppDataDir:          dataDir,
+		BindHost:            bindHost,
+		Port:                port,
+		DatabaseDriver:      dbDriver,
+		DatabaseDSN:         dbDSN,
+		S3Bucket:            s3Bucket,
+		WorkspaceRoot:       getEnv("AMIRO_WORKSPACE_ROOT", "BETTERCHATBOT_WORKSPACE_ROOT"),
+		SandboxNetworkAllow: parseSandboxNetworkAllow(getEnv("AMIRO_SANDBOX_NETWORK_ALLOW", "BETTERCHATBOT_SANDBOX_NETWORK_ALLOW")),
 	}, nil
+}
+
+// parseSandboxNetworkAllow splits the comma-separated env value into
+// trimmed, non-empty entries. "" (unset) and "," (nothing between commas)
+// both yield nil, not a slice of empty strings that would never match
+// anything but would still make the allow-list look non-empty.
+func parseSandboxNetworkAllow(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
 }
 
 func randomToken(n int) (string, error) {

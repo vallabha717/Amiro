@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/exp/golden"
+
 	"amiro/backend/internal/tui/session"
 )
 
@@ -111,4 +113,48 @@ func TestRender_DropsMiddleFieldsUnderWidthPressure(t *testing.T) {
 func TestRender_EmptyInfoDoesNotPanic(t *testing.T) {
 	_ = Render(0, Info{})
 	_ = Render(80, Info{})
+}
+
+// TestRender_Golden_SandboxIndicator is exit criterion 4: a golden test in
+// this package asserting the sandbox indicator's exact rendering, at each
+// value the field can hold ("bubblewrap", "seatbelt", "none", and unset --
+// the last proving absence renders no field at all rather than a blank or
+// misleading one, the same contract Usage already has). "none" is
+// deliberately not hidden or softened -- see Info.Sandbox's doc comment.
+func TestRender_Golden_SandboxIndicator(t *testing.T) {
+	base := Info{Mode: "interactive", WorkspaceRoot: "/repo", Elapsed: 5 * time.Second}
+
+	for _, name := range []string{"unset", "bubblewrap", "seatbelt", "none"} {
+		t.Run(name, func(t *testing.T) {
+			info := base
+			if name != "unset" {
+				info.Sandbox = name
+			}
+			golden.RequireEqual(t, []byte(Render(120, info)))
+		})
+	}
+}
+
+// TestRender_SandboxDroppedUnderWidthPressure pins that the sandbox field
+// is one of the "middle fields" dropped under width pressure (same
+// treatment as Mode/WorkspaceRoot/Skill), not one of the two fields
+// (elapsed, tokens) the narrow fallback always keeps.
+func TestRender_SandboxDroppedUnderWidthPressure(t *testing.T) {
+	info := Info{
+		Mode:          "interactive",
+		WorkspaceRoot: "/home/user/a/very/long/path/that/eats/a/lot/of/room/in/this/repository",
+		Sandbox:       "bubblewrap",
+		Usage:         &session.Usage{PromptTokens: 1000, CompletionTokens: 500, TotalTokens: 1500},
+		Elapsed:       7 * time.Second,
+	}
+
+	wide := Render(300, info)
+	if !strings.Contains(wide, "sandbox:bubblewrap") {
+		t.Fatalf("wide Render = %q, want the sandbox field present", wide)
+	}
+
+	narrow := Render(20, info)
+	if strings.Contains(narrow, "sandbox:") {
+		t.Fatalf("narrow Render = %q, want sandbox dropped under width pressure", narrow)
+	}
 }
