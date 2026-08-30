@@ -40,12 +40,15 @@ always-ask gate that only exists once Phase 3 lands.
 | [0](phase-00-workspace-trust-and-rules.md) | Workspace trust + `AGENTS.md` — ⚠️ shipped 2026-08-23, 4/6 criteria | M | — | 4 |
 | [1](phase-01-checkpoints-and-rewind.md) | Checkpoints & rewind — ⚠️ shipped 2026-08-29, 2/6 criteria literally (behavior proven) | M | — | — |
 | [2](phase-02-sandboxed-execution.md) | Sandboxed shell execution — ⚠️ shipped 2026-08-29, 4/5 criteria | L | — | 4 |
-| [3](phase-03-git-remote-operations.md) | Git push + PR creation | M | — | 4 |
-| [4](phase-04-background-agent-runs.md) | Background agent runs | L | 0, 2, 3 | — |
+| [3](phase-03-git-remote-operations.md) | Git push + PR creation — ⚠️ shipped 2026-08-29, 3/5 criteria literally | M | — | 4 |
+| [4](phase-04-background-agent-runs.md) | Background agent runs — ⚠️ shipped 2026-08-29, 5/7 criteria | L | 0, 2, 3 | — |
 
 Phases 0, 1, 2 and 3 are each independently shippable and each leave the
 product strictly better on their own — none of them is scaffolding that
-only pays off once Phase 4 lands. Phase 4 is where the payoff compounds.
+only pays off once Phase 4 lands. Phase 4 is where the payoff compounds,
+and now that all five phases have shipped, the plan itself is complete —
+see each phase's own progress record for exactly what was proven where,
+and `docs/coding-agent-parity/README.md` for the rolled-up status.
 
 ## Rules that apply to every phase
 

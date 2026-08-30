@@ -818,3 +818,115 @@ func (c *HTTPClient) SandboxStatus(ctx context.Context) (string, bool, error) {
 	return resp.Backend, resp.Sandboxed, nil
 }
 
+// githubStatusWire mirrors githubapi's unexported statusResponse.
+type githubStatusWire struct {
+	Connected bool `json:"connected"`
+}
+
+// GitHubStatus implements Client.
+func (c *HTTPClient) GitHubStatus(ctx context.Context) (bool, error) {
+	var resp githubStatusWire
+	status, err := c.do(ctx, http.MethodGet, "/api/github/status", nil, &resp)
+	if err != nil {
+		return false, err
+	}
+	if status != http.StatusOK {
+		return false, fmt.Errorf("client: github status: server returned %d", status)
+	}
+	return resp.Connected, nil
+}
+
+// ConnectGitHub implements Client.
+func (c *HTTPClient) ConnectGitHub(ctx context.Context, token string) error {
+	status, err := c.do(ctx, http.MethodPost, "/api/github/connect", map[string]string{"token": token}, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK {
+		return fmt.Errorf("client: connect github: server returned %d", status)
+	}
+	return nil
+}
+
+// DisconnectGitHub implements Client.
+func (c *HTTPClient) DisconnectGitHub(ctx context.Context) error {
+	status, err := c.do(ctx, http.MethodPost, "/api/github/disconnect", nil, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK {
+		return fmt.Errorf("client: disconnect github: server returned %d", status)
+	}
+	return nil
+}
+
+// backgroundJobWire mirrors backgroundjobapi's unexported jobResponse.
+type backgroundJobWire struct {
+	ID            string `json:"id"`
+	ThreadID      string `json:"threadId"`
+	WorkspaceRoot string `json:"workspaceRoot"`
+	Prompt        string `json:"prompt"`
+	Mode          string `json:"mode"`
+	Status        string `json:"status"`
+	AutoPR        bool   `json:"autoPr"`
+	Error         string `json:"error,omitempty"`
+	StartedAt     string `json:"startedAt"`
+	FinishedAt    string `json:"finishedAt,omitempty"`
+}
+
+func (w backgroundJobWire) toJob() BackgroundJob {
+	return BackgroundJob{
+		ID: w.ID, ThreadID: w.ThreadID, WorkspaceRoot: w.WorkspaceRoot,
+		Prompt: w.Prompt, Mode: w.Mode, Status: w.Status, AutoPR: w.AutoPR,
+		Error: w.Error, StartedAt: w.StartedAt, FinishedAt: w.FinishedAt,
+	}
+}
+
+// CreateBackgroundJob implements Client.
+func (c *HTTPClient) CreateBackgroundJob(ctx context.Context, req CreateBackgroundJobRequest) (BackgroundJob, error) {
+	body := map[string]any{
+		"prompt": req.Prompt, "mode": req.Mode,
+		"workspaceRoot": req.WorkspaceRoot, "autoPr": req.AutoPR,
+	}
+	var resp backgroundJobWire
+	status, err := c.do(ctx, http.MethodPost, "/api/background-jobs", body, &resp)
+	if err != nil {
+		return BackgroundJob{}, err
+	}
+	if status != http.StatusCreated {
+		return BackgroundJob{}, fmt.Errorf("client: create background job: server returned %d", status)
+	}
+	return resp.toJob(), nil
+}
+
+// ListBackgroundJobs implements Client.
+func (c *HTTPClient) ListBackgroundJobs(ctx context.Context) ([]BackgroundJob, error) {
+	var resp struct {
+		Jobs []backgroundJobWire `json:"jobs"`
+	}
+	status, err := c.do(ctx, http.MethodGet, "/api/background-jobs", nil, &resp)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("client: list background jobs: server returned %d", status)
+	}
+	jobs := make([]BackgroundJob, 0, len(resp.Jobs))
+	for _, w := range resp.Jobs {
+		jobs = append(jobs, w.toJob())
+	}
+	return jobs, nil
+}
+
+// GetBackgroundJob implements Client.
+func (c *HTTPClient) GetBackgroundJob(ctx context.Context, id string) (BackgroundJob, error) {
+	var resp backgroundJobWire
+	status, err := c.do(ctx, http.MethodGet, fmt.Sprintf("/api/background-jobs/%s", id), nil, &resp)
+	if err != nil {
+		return BackgroundJob{}, err
+	}
+	if status != http.StatusOK {
+		return BackgroundJob{}, fmt.Errorf("client: get background job: server returned %d", status)
+	}
+	return resp.toJob(), nil
+}

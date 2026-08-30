@@ -1,4 +1,4 @@
-// Package models holds the GORM structs for all 19 tables ported from
+// Package models holds the GORM structs for all 18 tables ported from
 // src/lib/db/pg/schema.pg.ts. Every ID/UUID column is declared TEXT/VARCHAR
 // on both dialects (never Postgres' native UUID type) and generated
 // app-side via NewID() in a BeforeCreate hook, per plan section 3 -- this
@@ -26,7 +26,6 @@ func All() []any {
 		&Verification{},
 		&ChatThread{},
 		&ChatMessage{},
-		&Agent{},
 		&Bookmark{},
 		&McpServer{},
 		&McpToolCustomization{},

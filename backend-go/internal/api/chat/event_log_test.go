@@ -19,7 +19,7 @@ func loopWith(t *testing.T, engine Engine, defs []tools.Definition, perms *permi
 	sw := uimessage.NewWriter(httptest.NewRecorder())
 	_ = sw.Start("m1")
 	res, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "sys",
-		[]bifrostai.Message{{Role: bifrostai.RoleUser, Text: "go"}}, defs, perms)
+		[]bifrostai.Message{{Role: bifrostai.RoleUser, Text: "go"}}, defs, perms, nil)
 	if err != nil {
 		t.Fatalf("runToolLoop: %v", err)
 	}

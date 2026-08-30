@@ -82,10 +82,10 @@ func (a *EvalAgent) Solve(ctx context.Context, root, prompt, mode string) (*sess
 
 	system := a.System
 	if system == "" {
-		// The same prompt the app builds, with no user, preferences or
-		// agent persona -- those are per-account and would make one
-		// developer's benchmark numbers incomparable with another's.
-		system = prompts.BuildUserSystemPrompt(nil, nil, nil)
+		// The same prompt the app builds, with no user or preferences --
+		// those are per-account and would make one developer's benchmark
+		// numbers incomparable with another's.
+		system = prompts.BuildUserSystemPrompt(nil, nil)
 	}
 
 	// A discard writer: there is no client. The tool loop's stream frames
@@ -95,7 +95,7 @@ func (a *EvalAgent) Solve(ctx context.Context, root, prompt, mode string) (*sess
 	result, runErr := runToolLoop(
 		ctx, a.Engine, uimessage.NewDiscardWriter(), a.Model, system,
 		[]bifrostai.Message{{Role: bifrostai.RoleUser, Text: prompt}},
-		active, perms,
+		active, perms, nil, // eval runs capture no checkpoints -- there is no thread to rewind
 	)
 
 	usage := eval.Usage{}

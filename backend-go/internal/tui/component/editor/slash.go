@@ -47,9 +47,11 @@ type SlashMatch struct {
 var Commands = []SlashCommand{
 	{Name: "mode", Args: "plan|interactive|edit|auto", Help: "switch permission mode"},
 	{Name: "threads", Help: "list, search, resume or delete threads"},
+	{Name: "runs", Help: "list background agent runs, resume one by opening its thread"},
 	{Name: "models", Help: "pick a provider and model"},
 	{Name: "settings", Help: "manage AI provider keys"},
 	{Name: "compact", Help: "compact this thread's history now"},
+	{Name: "rewind", Help: "revert the most recent turn's file changes"},
 	{Name: "export", Help: "create a shareable export of this thread"},
 	{Name: "skills", Help: "list discovered skills with source and scope"},
 	{Name: "help", Help: "show this list"},

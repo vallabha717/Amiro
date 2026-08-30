@@ -14,7 +14,6 @@ import { format } from "date-fns";
 import { cn } from "lib/utils";
 import { ShareableActions, type Visibility } from "./shareable-actions";
 import { WorkflowSummary } from "app-types/workflow";
-import { AgentSummary } from "app-types/agent";
 import { MCPServerInfo } from "app-types/mcp";
 import { MCPIcon } from "ui/mcp-icon";
 import Link from "next/link";
@@ -26,8 +25,8 @@ export interface ShareableIcon {
   };
 }
 interface ShareableCardProps {
-  type: "agent" | "workflow" | "mcp";
-  item: AgentSummary | WorkflowSummary | MCPServerInfo;
+  type: "workflow" | "mcp";
+  item: WorkflowSummary | MCPServerInfo;
   isOwner?: boolean;
   href: string;
   onBookmarkToggle?: (itemId: string, isBookmarked: boolean) => void;
@@ -54,8 +53,12 @@ export function ShareableCard({
 }: ShareableCardProps) {
   const t = useTranslations();
   const isPublished = (item as WorkflowSummary).isPublished;
-  const isBookmarked =
-    type === "mcp" ? undefined : (item as AgentSummary).isBookmarked;
+  // Neither remaining item type (workflow, mcp) carries isBookmarked --
+  // agent was the only one that did, and it was removed in Phase 6
+  // (docs/skills/). onBookmarkToggle/isBookmarked below are kept as
+  // generic, currently-unused props rather than stripped, since a future
+  // bookmarkable item type could still wire them up.
+  const isBookmarked = undefined;
 
   return (
     <Link href={href} title={item.name}>

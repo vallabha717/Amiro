@@ -9,7 +9,8 @@ This is a from-scratch rewrite of the [better-chatbot](https://github.com/cgoing
 - Multi-provider chat: OpenAI, Anthropic, Google, xAI, Groq, OpenRouter, Ollama, plus custom/self-hosted OpenAI-compatible endpoints
 - Real network token streaming
 - [MCP](https://modelcontextprotocol.io) tool & server integration, including full OAuth support for remote MCP servers (RFC 9728/8414/7591/7636)
-- Workflows and Agents, both callable as tools from chat
+- Workflows, callable as tools from chat
+- Agent Skills: `SKILL.md` folders discovered from `.agents`/`.amiro`/`.claude`/`.codex`, invoked with `/` in any composer, authored (create/edit/delete/duplicate, Generate with AI) from the Skills page
 - Multimodal attachments (images/files) reach the model
 - Admin user-management panel (list/search/role/ban/delete)
 - Provider API keys stored in the OS-native credential store (Keychain on macOS, Credential Manager on Windows, Secret Service/KWallet on Linux) — set them from in-app Settings, not a `.env` file

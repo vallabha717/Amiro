@@ -29,18 +29,22 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"time"
 
 	"gorm.io/gorm"
 
+	"amiro/backend/internal/agent/background"
 	"amiro/backend/internal/agent/workspace"
 	bifrostai "amiro/backend/internal/ai/bifrost"
 	adminapi "amiro/backend/internal/api/admin"
 	aiapi "amiro/backend/internal/api/ai"
 	archiveapi "amiro/backend/internal/api/archive"
+	backgroundjobapi "amiro/backend/internal/api/backgroundjob"
 	bookmarkapi "amiro/backend/internal/api/bookmark"
 	chatapi "amiro/backend/internal/api/chat"
 	checkpointapi "amiro/backend/internal/api/checkpoint"
 	exportapi "amiro/backend/internal/api/export"
+	githubapi "amiro/backend/internal/api/github"
 	mcpapi "amiro/backend/internal/api/mcp"
 	sandboxapi "amiro/backend/internal/api/sandbox"
 	searchapi "amiro/backend/internal/api/search"
@@ -56,6 +60,7 @@ import (
 	"amiro/backend/internal/db/repository"
 	"amiro/backend/internal/httpserver"
 	"amiro/backend/internal/mcp"
+	"amiro/backend/internal/secrets"
 	"amiro/backend/internal/skills"
 	"amiro/backend/internal/storage"
 )
@@ -73,6 +78,12 @@ type App struct {
 	MCP    *mcp.Manager
 	Chat   *chatapi.Handler
 	Skills *skills.Service
+
+	// Background owns every job's worker goroutine
+	// (docs/coding-agent-parity/05-background-agent-runs.md). Never nil --
+	// constructed unconditionally in New, since a background job needs no
+	// workspace root, port or listener to exist, unlike Storage/MCP OAuth.
+	Background *background.Worker
 
 	// Handlers is what httpserver.New needs. Storage is filled in by
 	// AttachPort -- see its doc comment for why that one cannot be built
@@ -141,6 +152,9 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	bookmarkRepo := repository.NewBookmarkRepository(gdb)
 	userRepo := repository.NewUserRepository(gdb)
 	workspaceTrustRepo := repository.NewWorkspaceTrustRepository(gdb)
+	backgroundJobRepo := repository.NewBackgroundJobRepository(gdb)
+
+	secretsStore := secrets.New(cfg.DatabaseDriver == db.DialectSQLite, cfg.AppDataDir)
 
 	chatHandler := chatapi.NewHandler(
 		chatRepo,
@@ -153,7 +167,10 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		mcpToolCustomRepo,
 		providerRepo,
 		searchRepo,
-	).WithWorkspaceTrust(workspaceTrustRepo).WithSandboxNetworkAllow(cfg.SandboxNetworkAllow)
+	).WithWorkspaceTrust(workspaceTrustRepo).
+		WithSandboxNetworkAllow(cfg.SandboxNetworkAllow).
+		WithGitHub(githubapi.TokenLookup(secretsStore), cfg.GitHubAPIBase).
+		WithBackgroundJobs(backgroundJobRepo)
 
 	// The file toolkit only exists when a workspace root is configured, and
 	// a root that cannot be resolved is a hard startup error rather than a
@@ -175,6 +192,23 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	chatHandler = chatHandler.WithSkills(skillsService)
 	app.Chat = chatHandler
 
+	// Background (docs/coding-agent-parity/05-background-agent-runs.md) is
+	// the one goroutine-owning piece of this graph: wired last, once
+	// app.Chat is final, since it drives RunTurn exactly as any other
+	// caller does. Its Shutdown is appended to closers last, not first --
+	// closers run in reverse order, so appending last makes it run *first*,
+	// canceling every job's context and sweeping any still-"running" row to
+	// "interrupted" before the database connection those writes need is
+	// closed by the closer appended at the very top of this function.
+	app.Background = background.New(app.Chat, backgroundJobRepo, workspaceTrustRepo, userRepo)
+	app.closers = append(app.closers, func() { app.Background.Shutdown(5 * time.Second) })
+	// Resuming interrupted jobs is a background concern by construction --
+	// it must not block New() (and every entrypoint that calls it) on
+	// however long a prior run's continuation takes -- so it runs on its
+	// own goroutine, against a context detached from the one that bounds
+	// this constructor (see New's own doc comment on what ctx bounds).
+	go app.Background.ResumeInterrupted(context.WithoutCancel(ctx))
+
 	app.Handlers = httpserver.Handlers{
 		Auth:     app.Auth,
 		Admin:    adminapi.NewHandler(userRepo),
@@ -192,6 +226,8 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 
 		WorkspaceTrust: workspacetrustapi.NewHandler(workspaceTrustRepo, app.WorkspaceRoot),
 		Sandbox:        sandboxapi.NewHandler(),
+		GitHub:         githubapi.NewHandler(secretsStore),
+		BackgroundJob:  backgroundjobapi.NewHandler(backgroundJobRepo, workspaceTrustRepo, chatRepo, app.Background, app.WorkspaceRoot),
 	}
 
 	return app, nil

@@ -36,8 +36,11 @@ var attachmentHTTPClient = &http.Client{Timeout: 15 * time.Second}
 // produces one yet, but a future caller might) is left untouched. A fetch
 // that fails (unreachable, too large, non-2xx) drops that one attachment
 // rather than failing the whole chat turn -- graceful degradation matching
-// resolveAgent's own silent-ignore-on-error precedent elsewhere in this
-// package: the model still gets the user's text, just not that file.
+// this package's own silent-ignore-on-error precedent for other
+// unresolvable per-mention data (resolveSkills' unknown-skill case is the
+// one exception, since it's the one lookup a user's explicit turn-time
+// selection genuinely needs surfaced): the model still gets the user's
+// text, just not that file.
 func resolveAttachmentURLs(ctx context.Context, messages []bifrostai.Message) []bifrostai.Message {
 	for i := range messages {
 		if len(messages[i].Attachments) == 0 {

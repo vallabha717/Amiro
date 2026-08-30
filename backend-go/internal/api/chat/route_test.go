@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"context"
 	"encoding/json"
 	"path/filepath"
 	"strings"
@@ -52,12 +53,15 @@ func TestToolDepsCarriesEveryHandlerDependency(t *testing.T) {
 		t.Fatalf("db.Open: %v", err)
 	}
 	searchRepo := repository.NewSearchProviderRepository(gdb)
+	githubToken := func(ctx context.Context) (string, bool, error) { return "gh-test-token", true, nil }
 
 	h := &Handler{
-		todos:      todos,
-		notes:      notes,
-		lsp:        lspPool,
-		searchRepo: searchRepo,
+		todos:         todos,
+		notes:         notes,
+		lsp:           lspPool,
+		searchRepo:    searchRepo,
+		githubToken:   githubToken,
+		githubAPIBase: "https://github.example/api",
 	}
 
 	deps := h.toolDeps(ws, "session-123")
@@ -82,6 +86,14 @@ func TestToolDepsCarriesEveryHandlerDependency(t *testing.T) {
 		t.Error("toolDeps did not carry h.searchRepo -- this is the exact bug that shipped: " +
 			"web_search reported \"no provider configured\" on every live request " +
 			"regardless of what was active in the database")
+	}
+	if deps.GitHubToken == nil {
+		t.Error("toolDeps did not carry h.githubToken")
+	} else if tok, ok, _ := deps.GitHubToken(t.Context()); !ok || tok != "gh-test-token" {
+		t.Errorf("deps.GitHubToken() = (%q, %v), want (\"gh-test-token\", true)", tok, ok)
+	}
+	if deps.GitHubAPIBase != "https://github.example/api" {
+		t.Errorf("GitHubAPIBase = %q, want %q", deps.GitHubAPIBase, "https://github.example/api")
 	}
 }
 

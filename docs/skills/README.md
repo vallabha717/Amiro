@@ -3,7 +3,7 @@
 Amiro learns Agent Skills: `SKILL.md` directories discovered from the
 machine (including ones Claude Code and Codex installed), disclosed cheaply
 to the model, invoked by typing `/` in any composer, and authored from the
-dashboard. The Agents feature is removed and replaced by this.
+dashboard. The Agents feature has been removed and replaced by this.
 
 `phases/` is intent. [`progress/`](progress/README.md) is reality. They are
 separate folders so a confidently-written plan is never mistaken for a
@@ -30,11 +30,11 @@ status report.
 | [1](phases/phase-01-activation.md) | Disclosure, activation tool, skill mentions | backend | M | 0 | 2, 3, 6 | ✅ Shipped |
 | [2](phases/phase-02-web-palette.md) | `/` palette in the web composer | web · desktop | M | 1 | 6 | ✅ Shipped |
 | [3](phases/phase-03-tui-palette.md) | `/` palette in the TUI | terminal | S | 1 | 6 | ✅ Shipped |
-| [4](phases/phase-04-authoring-api.md) | Create / edit / delete API | backend | M | 0 | 5 | Unblocked |
-| [5](phases/phase-05-skills-ui.md) | Skills section + Generate with AI | web · desktop · backend | L | 4 | 6 | |
-| [6](phases/phase-06-decommission-agents.md) | Remove agents | all four | M | 1, 2, 3, 5 | — | |
+| [4](phases/phase-04-authoring-api.md) | Create / edit / delete API | backend | M | 0 | 5 | ✅ Shipped |
+| [5](phases/phase-05-skills-ui.md) | Skills section + Generate with AI | web · desktop · backend | L | 4 | 6 | ✅ Shipped |
+| [6](phases/phase-06-decommission-agents.md) | Remove agents | all four | M | 1, 2, 3, 5 | — | Unblocked |
 
-**Next up:** [Phase 4](phases/phase-04-authoring-api.md) — unblocked.
+**Next up:** [Phase 6](phases/phase-06-decommission-agents.md) — unblocked.
 
 ## Decisions already made
 

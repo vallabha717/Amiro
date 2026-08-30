@@ -320,7 +320,7 @@ func (m Chat) Update(msg tea.Msg) (Chat, tea.Cmd) {
 		}
 		m.skillsResult = msg.result
 		builtinNames := map[string]bool{
-			"mode": true, "threads": true, "models": true, "settings": true,
+			"mode": true, "threads": true, "runs": true, "models": true, "settings": true,
 			"compact": true, "rewind": true, "export": true, "help": true, "skills": true,
 		}
 		m.skillCommands = make([]editor.SkillCommand, 0, len(msg.result.Items))
@@ -588,6 +588,8 @@ func (m *Chat) executeSlashCommand(name, args string) (Chat, tea.Cmd) {
 		return *m, nil
 	case "threads":
 		return *m, func() tea.Msg { return OpenThreadsMsg{} }
+	case "runs":
+		return *m, func() tea.Msg { return OpenRunsMsg{} }
 	case "models":
 		return *m, func() tea.Msg { return OpenModelsMsg{} }
 	case "settings":
@@ -610,7 +612,7 @@ func (m *Chat) executeSlashCommand(name, args string) (Chat, tea.Cmd) {
 			m.state.Err = nil
 			return *m, nil
 		}
-		m.state.Err = fmt.Errorf("unknown command /%s -- try /mode, /threads, /models, /settings, /compact, /rewind, /export or /skills", name)
+		m.state.Err = fmt.Errorf("unknown command /%s -- try /mode, /threads, /runs, /models, /settings, /compact, /rewind, /export or /skills", name)
 		return *m, nil
 	}
 }

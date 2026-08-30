@@ -1,6 +1,5 @@
 export const RESOURCES = {
   WORKFLOW: "workflow",
-  AGENT: "agent",
   MCP: "mcp",
   CHAT: "chat",
   TEMPORARY_CHAT: "temporaryChat",

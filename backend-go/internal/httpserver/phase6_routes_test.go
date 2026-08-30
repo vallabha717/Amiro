@@ -14,8 +14,6 @@ import (
 
 	"gorm.io/gorm"
 
-	bifrostai "amiro/backend/internal/ai/bifrost"
-	agentapi "amiro/backend/internal/api/agent"
 	archiveapi "amiro/backend/internal/api/archive"
 	bookmarkapi "amiro/backend/internal/api/bookmark"
 	exportapi "amiro/backend/internal/api/export"
@@ -26,55 +24,13 @@ import (
 	"amiro/backend/internal/db"
 	"amiro/backend/internal/db/models"
 	"amiro/backend/internal/db/repository"
-	"amiro/backend/internal/mcp"
 	"amiro/backend/internal/middleware"
 	"amiro/backend/internal/storage"
 )
 
-// fakeObjectEngine is a canned agentapi.Engine -- same rationale as
-// chat_routes_test.go's fakeEngine: real routing/auth/persistence coverage
-// with no Bifrost client and no provider keys.
-type fakeObjectEngine struct {
-	gotSystem string
-	gotSchema json.RawMessage
-	object    string
-}
-
-func (f *fakeObjectEngine) GenerateObject(_ context.Context, _ bifrostai.ResolvedModel, system string, _ []bifrostai.Message, schema json.RawMessage) (json.RawMessage, *bifrostai.Usage, error) {
-	f.gotSystem = system
-	f.gotSchema = schema
-	if f.object == "" {
-		f.object = `{"name":"Researcher","description":"d","instructions":"i","role":"r","tools":[]}`
-	}
-	return json.RawMessage(f.object), nil, nil
-}
-
-// fakeMCPTools / fakeWorkflowTools stand in for the two tool sources the
-// agent-generation route enumerates.
-type fakeMCPTools struct{ names []string }
-
-func (f *fakeMCPTools) List(_ context.Context, _ string) ([]mcp.ServerInfo, error) {
-	tools := make([]bifrostai.MCPToolInfo, 0, len(f.names))
-	for _, name := range f.names {
-		tools = append(tools, bifrostai.MCPToolInfo{Name: name})
-	}
-	return []mcp.ServerInfo{{ID: "s1", Name: "everything", ToolInfo: tools}}, nil
-}
-
-type fakeWorkflowTools struct{ names []string }
-
-func (f *fakeWorkflowTools) SelectExecuteAbility(_ context.Context, _ string) ([]repository.WorkflowWithOwner, error) {
-	out := make([]repository.WorkflowWithOwner, 0, len(f.names))
-	for _, name := range f.names {
-		out = append(out, repository.WorkflowWithOwner{Workflow: models.Workflow{Name: name}})
-	}
-	return out, nil
-}
-
 type phase6Env struct {
 	handler     http.Handler
 	db          *gorm.DB
-	engine      *fakeObjectEngine
 	store       storage.Storage
 	authService *auth.Service
 	token       string
@@ -95,18 +51,12 @@ func newPhase6Env(t *testing.T) phase6Env {
 	authService := auth.NewService(gdb)
 	chatRepo := repository.NewChatRepository(gdb)
 	exportRepo := repository.NewChatExportRepository(gdb, chatRepo)
-	engine := &fakeObjectEngine{}
 	store, err := storage.NewLocalStorage(dir, []byte("signing-secret"), "http://127.0.0.1:9999")
 	if err != nil {
 		t.Fatalf("NewLocalStorage: %v", err)
 	}
 	handler := New(testConfig(), Handlers{
-		Auth: authService,
-		Agent: agentapi.NewHandler(
-			repository.NewAgentRepository(gdb), engine,
-			&fakeMCPTools{names: []string{"echo", "get-sum"}},
-			&fakeWorkflowTools{names: []string{"Summarize"}},
-		),
+		Auth:     authService,
 		Archive:  archiveapi.NewHandler(repository.NewArchiveRepository(gdb)),
 		Bookmark: bookmarkapi.NewHandler(repository.NewBookmarkRepository(gdb)),
 		Export:   exportapi.NewHandler(exportRepo),
@@ -115,7 +65,7 @@ func newPhase6Env(t *testing.T) phase6Env {
 		Storage:  storageapi.NewHandler(store),
 	})
 
-	env := phase6Env{handler: handler, db: gdb, engine: engine, store: store, authService: authService}
+	env := phase6Env{handler: handler, db: gdb, store: store, authService: authService}
 	env.userID, env.token = env.registerAndLogin(t, "Ada", "ada@example.com")
 	env.otherUserID, env.otherToken = env.registerAndLogin(t, "Grace", "grace@example.com")
 	return env
@@ -170,206 +120,6 @@ func decodeBody(t *testing.T, rec *httptest.ResponseRecorder, dst any) {
 	t.Helper()
 	if err := json.Unmarshal(rec.Body.Bytes(), dst); err != nil {
 		t.Fatalf("decode %s: %v", rec.Body.String(), err)
-	}
-}
-
-// ---------------------------------------------------------------- agent
-
-func (e phase6Env) createAgent(t *testing.T, bearer, name, visibility string) string {
-	t.Helper()
-	rec := e.do(t, http.MethodPost, "/api/agent", map[string]any{
-		"name":         name,
-		"visibility":   visibility,
-		"instructions": map[string]any{"role": "tester"},
-	}, bearer)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("create agent: status %d, body %s", rec.Code, rec.Body.String())
-	}
-	var resp struct {
-		ID string `json:"id"`
-	}
-	decodeBody(t, rec, &resp)
-	return resp.ID
-}
-
-func TestPhase6Routes_AgentCreateReadUpdateDelete(t *testing.T) {
-	env := newPhase6Env(t)
-	id := env.createAgent(t, env.token, "Researcher", "private")
-
-	getRec := env.do(t, http.MethodGet, "/api/agent/"+id, nil, env.token)
-	if getRec.Code != http.StatusOK {
-		t.Fatalf("get: status %d, body %s", getRec.Code, getRec.Body.String())
-	}
-	var got struct {
-		Name         string          `json:"name"`
-		Instructions json.RawMessage `json:"instructions"`
-	}
-	decodeBody(t, getRec, &got)
-	if got.Name != "Researcher" {
-		t.Fatalf("name = %q", got.Name)
-	}
-	if !strings.Contains(string(got.Instructions), "tester") {
-		t.Fatalf("instructions = %s", got.Instructions)
-	}
-
-	putRec := env.do(t, http.MethodPut, "/api/agent/"+id, map[string]any{"name": "Renamed"}, env.token)
-	if putRec.Code != http.StatusOK {
-		t.Fatalf("put: status %d, body %s", putRec.Code, putRec.Body.String())
-	}
-
-	afterRec := env.do(t, http.MethodGet, "/api/agent/"+id, nil, env.token)
-	decodeBody(t, afterRec, &got)
-	if got.Name != "Renamed" {
-		t.Fatalf("name after update = %q", got.Name)
-	}
-	// The update omitted instructions, so they must survive untouched.
-	if !strings.Contains(string(got.Instructions), "tester") {
-		t.Fatalf("instructions were blanked by a partial update: %s", got.Instructions)
-	}
-
-	delRec := env.do(t, http.MethodDelete, "/api/agent/"+id, nil, env.token)
-	if delRec.Code != http.StatusOK {
-		t.Fatalf("delete: status %d", delRec.Code)
-	}
-	if gone := env.do(t, http.MethodGet, "/api/agent/"+id, nil, env.token); gone.Code == http.StatusOK {
-		t.Fatal("agent still readable after delete")
-	}
-}
-
-func TestPhase6Routes_AgentListOmitsInstructionsAndForeignPrivateAgents(t *testing.T) {
-	env := newPhase6Env(t)
-	env.createAgent(t, env.token, "Mine", "private")
-	env.createAgent(t, env.otherToken, "Theirs Private", "private")
-	env.createAgent(t, env.otherToken, "Theirs Public", "public")
-
-	rec := env.do(t, http.MethodGet, "/api/agent", nil, env.token)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
-	}
-	var list []struct {
-		Name         string          `json:"name"`
-		Instructions json.RawMessage `json:"instructions"`
-		UserName     string          `json:"userName"`
-	}
-	decodeBody(t, rec, &list)
-
-	names := map[string]bool{}
-	for _, item := range list {
-		names[item.Name] = true
-		if len(item.Instructions) != 0 {
-			t.Fatalf("%q carried instructions into the list response", item.Name)
-		}
-		if item.UserName == "" {
-			t.Fatalf("%q has no userName -- the owner join did not run", item.Name)
-		}
-	}
-	if !names["Mine"] || !names["Theirs Public"] {
-		t.Fatalf("got %v", names)
-	}
-	if names["Theirs Private"] {
-		t.Fatal("another user's private agent leaked into the list")
-	}
-}
-
-func TestPhase6Routes_AgentListRejectsAnInvalidLimit(t *testing.T) {
-	env := newPhase6Env(t)
-
-	for _, query := range []string{"?limit=0", "?limit=101", "?limit=abc", "?type=bogus"} {
-		rec := env.do(t, http.MethodGet, "/api/agent"+query, nil, env.token)
-		if rec.Code != http.StatusBadRequest {
-			t.Fatalf("%s: status %d, want 400", query, rec.Code)
-		}
-	}
-}
-
-func TestPhase6Routes_AgentCreateRejectsAnOverlongName(t *testing.T) {
-	env := newPhase6Env(t)
-
-	rec := env.do(t, http.MethodPost, "/api/agent", map[string]any{
-		"name": strings.Repeat("x", 101),
-	}, env.token)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status %d, want 400", rec.Code)
-	}
-}
-
-// A non-owner editing a public agent may change its content but not its
-// visibility -- otherwise anyone could take a shared agent private.
-func TestPhase6Routes_AgentUpdatePreservesVisibilityForNonOwners(t *testing.T) {
-	env := newPhase6Env(t)
-	id := env.createAgent(t, env.token, "Shared", "public")
-
-	rec := env.do(t, http.MethodPut, "/api/agent/"+id,
-		map[string]any{"name": "Hijacked", "visibility": "private"}, env.otherToken)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
-	}
-
-	getRec := env.do(t, http.MethodGet, "/api/agent/"+id, nil, env.token)
-	var got struct {
-		Name       string `json:"name"`
-		Visibility string `json:"visibility"`
-	}
-	decodeBody(t, getRec, &got)
-	if got.Name != "Hijacked" {
-		t.Fatalf("name = %q -- a non-owner edit of a public agent should apply", got.Name)
-	}
-	if got.Visibility != "public" {
-		t.Fatalf("visibility = %q, want public", got.Visibility)
-	}
-}
-
-func TestPhase6Routes_AgentDeleteRejectsANonOwnerEvenOnAPublicAgent(t *testing.T) {
-	env := newPhase6Env(t)
-	id := env.createAgent(t, env.token, "Shared", "public")
-
-	rec := env.do(t, http.MethodDelete, "/api/agent/"+id, nil, env.otherToken)
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("status %d, want 401", rec.Code)
-	}
-	if still := env.do(t, http.MethodGet, "/api/agent/"+id, nil, env.token); still.Code != http.StatusOK {
-		t.Fatal("the agent was deleted by a non-owner")
-	}
-}
-
-// POST /api/agent/ai and GET /api/agent/{id} share a path shape that
-// net/http.ServeMux would reject if both were registered for one method;
-// this pins that the split by method actually routes correctly.
-func TestPhase6Routes_AgentGenerateRoutesAheadOfTheIDWildcard(t *testing.T) {
-	env := newPhase6Env(t)
-
-	rec := env.do(t, http.MethodPost, "/api/agent/ai", map[string]any{"message": "build me a researcher"}, env.token)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
-	}
-	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
-		t.Fatalf("content type = %q, want text/plain (toTextStreamResponse's)", ct)
-	}
-
-	var object struct {
-		Name string `json:"name"`
-	}
-	decodeBody(t, rec, &object)
-	if object.Name != "Researcher" {
-		t.Fatalf("object = %s", rec.Body.String())
-	}
-}
-
-func TestPhase6Routes_AgentGenerateOffersEveryAvailableToolToTheModel(t *testing.T) {
-	env := newPhase6Env(t)
-
-	rec := env.do(t, http.MethodPost, "/api/agent/ai", map[string]any{"message": "hi"}, env.token)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
-	}
-
-	for _, tool := range []string{"echo", "get-sum", "Summarize"} {
-		if !strings.Contains(env.engine.gotSystem, "- "+tool) {
-			t.Fatalf("system prompt is missing tool %q:\n%s", tool, env.engine.gotSystem)
-		}
-		if !strings.Contains(string(env.engine.gotSchema), `"`+tool+`"`) {
-			t.Fatalf("schema enum is missing tool %q: %s", tool, env.engine.gotSchema)
-		}
 	}
 }
 
@@ -496,45 +246,29 @@ func TestPhase6Routes_ArchiveMissingIDIsNotFound(t *testing.T) {
 
 // ------------------------------------------------------------- bookmark
 
-func TestPhase6Routes_BookmarkCreateThenDeleteFlowsThroughAgentList(t *testing.T) {
+// TestPhase6Routes_BookmarkRejectsAgentItemType proves the schema-level
+// half of Phase 6's (docs/skills/) agent decommission: "agent" is no
+// longer a recognized itemType at all, not merely one that always denies.
+func TestPhase6Routes_BookmarkRejectsAgentItemType(t *testing.T) {
 	env := newPhase6Env(t)
-	id := env.createAgent(t, env.otherToken, "Shared", "public")
 
-	createRec := env.do(t, http.MethodPost, "/api/bookmark",
-		map[string]any{"itemId": id, "itemType": "agent"}, env.token)
-	if createRec.Code != http.StatusOK {
-		t.Fatalf("create: status %d, body %s", createRec.Code, createRec.Body.String())
-	}
-
-	listRec := env.do(t, http.MethodGet, "/api/agent?type=bookmarked", nil, env.token)
-	var list []struct {
-		Name         string `json:"name"`
-		IsBookmarked bool   `json:"isBookmarked"`
-	}
-	decodeBody(t, listRec, &list)
-	if len(list) != 1 || !list[0].IsBookmarked {
-		t.Fatalf("bookmarked list = %+v", list)
-	}
-
-	delRec := env.do(t, http.MethodDelete, "/api/bookmark",
-		map[string]any{"itemId": id, "itemType": "agent"}, env.token)
-	if delRec.Code != http.StatusOK {
-		t.Fatalf("delete: status %d", delRec.Code)
-	}
-
-	afterRec := env.do(t, http.MethodGet, "/api/agent?type=bookmarked", nil, env.token)
-	decodeBody(t, afterRec, &list)
-	if len(list) != 0 {
-		t.Fatalf("bookmarked list after removal = %+v", list)
+	rec := env.do(t, http.MethodPost, "/api/bookmark",
+		map[string]any{"itemId": "x", "itemType": "agent"}, env.token)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400 -- agent bookmarking was removed in Phase 6", rec.Code)
 	}
 }
 
-func TestPhase6Routes_BookmarkRejectsAnInaccessibleItem(t *testing.T) {
+// TestPhase6Routes_BookmarkCreateAlwaysDeniesNowThatAgentIsGone proves the
+// access-level half: agent was the only itemType CheckItemAccess ever
+// granted, and with it gone every request is a 404, even a well-formed one
+// naming the one surviving itemType (workflow, whose own access check was
+// never implemented -- see bookmark.go's CheckItemAccess doc comment).
+func TestPhase6Routes_BookmarkCreateAlwaysDeniesNowThatAgentIsGone(t *testing.T) {
 	env := newPhase6Env(t)
-	id := env.createAgent(t, env.otherToken, "Private", "private")
 
 	rec := env.do(t, http.MethodPost, "/api/bookmark",
-		map[string]any{"itemId": id, "itemType": "agent"}, env.token)
+		map[string]any{"itemId": "x", "itemType": "workflow"}, env.token)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status %d, want 404", rec.Code)
 	}

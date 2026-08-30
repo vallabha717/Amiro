@@ -20,36 +20,7 @@ func TestMatrix_OwnershipCrossCutting(t *testing.T) {
 
 	ctx := t.Context()
 
-	// 1. Agent
-	t.Run("Agent", func(t *testing.T) {
-		agent, err := user.CreateAgent(ctx, apiclient.AgentInput{
-			Name:       "Matrix Agent",
-			Visibility: "private",
-		})
-		if err != nil {
-			t.Fatalf("CreateAgent: %v", err)
-		}
-
-		if _, err := other.GetAgent(ctx, agent.ID); err == nil {
-			t.Error("expected other user GetAgent to fail")
-		} else if status := apiclient.StatusOf(err); status != 401 && status != 403 && status != 404 {
-			t.Errorf("other GetAgent status = %d, want 401, 403 or 404", status)
-		}
-
-		if _, err := other.UpdateAgent(ctx, agent.ID, apiclient.AgentInput{Name: "Hacked"}); err == nil {
-			t.Error("expected other user UpdateAgent to fail")
-		} else if status := apiclient.StatusOf(err); status != 401 && status != 403 && status != 404 {
-			t.Errorf("other UpdateAgent status = %d, want 401, 403 or 404", status)
-		}
-
-		if err := other.DeleteAgent(ctx, agent.ID); err == nil {
-			t.Error("expected other user DeleteAgent to fail")
-		} else if status := apiclient.StatusOf(err); status != 401 && status != 403 && status != 404 {
-			t.Errorf("other DeleteAgent status = %d, want 401, 403 or 404", status)
-		}
-	})
-
-	// 2. Workflow
+	// 1. Workflow
 	t.Run("Workflow", func(t *testing.T) {
 		vis := "private"
 		wf, err := user.SaveWorkflow(ctx, apiclient.WorkflowInput{
@@ -73,7 +44,7 @@ func TestMatrix_OwnershipCrossCutting(t *testing.T) {
 		}
 	})
 
-	// 3. Archive
+	// 2. Archive
 	t.Run("Archive", func(t *testing.T) {
 		desc := "Matrix archive"
 		arch, err := user.CreateArchive(ctx, "Matrix Archive", &desc)
@@ -100,7 +71,7 @@ func TestMatrix_OwnershipCrossCutting(t *testing.T) {
 		}
 	})
 
-	// 4. User details
+	// 3. User details
 	t.Run("User Details", func(t *testing.T) {
 		userDetails, err := user.UserDetails(ctx)
 		if err != nil {
@@ -134,7 +105,6 @@ func TestMatrix_AuthCrossCutting(t *testing.T) {
 	routes := []routeCase{
 		{name: "AuthSession", method: "GET", path: "/api/auth/session"},
 		{name: "ThreadList", method: "GET", path: "/api/thread"},
-		{name: "AgentList", method: "GET", path: "/api/agent"},
 		{name: "WorkflowList", method: "GET", path: "/api/workflow"},
 		{name: "ArchiveList", method: "GET", path: "/api/archive"},
 		{name: "ExportList", method: "GET", path: "/api/export"},
@@ -210,10 +180,10 @@ func TestMatrix_InputRobustnessCrossCutting(t *testing.T) {
 		path    string
 		payload string
 	}{
-		{name: "MalformedJSON", method: "POST", path: "/api/agent", payload: `{"name": "broken", `},
-		{name: "NullBytes", method: "POST", path: "/api/agent", payload: `{"name": "test\u0000null"}`},
-		{name: "SQLInjection", method: "POST", path: "/api/agent", payload: `{"name": "'; DROP TABLE users; --"}`},
-		{name: "VeryLongString", method: "POST", path: "/api/agent", payload: fmt.Sprintf(`{"name": "%s"}`, strings.Repeat("A", 10000))},
+		{name: "MalformedJSON", method: "POST", path: "/api/workflow", payload: `{"name": "broken", `},
+		{name: "NullBytes", method: "POST", path: "/api/workflow", payload: `{"name": "test\u0000null"}`},
+		{name: "SQLInjection", method: "POST", path: "/api/workflow", payload: `{"name": "'; DROP TABLE users; --"}`},
+		{name: "VeryLongString", method: "POST", path: "/api/workflow", payload: fmt.Sprintf(`{"name": "%s"}`, strings.Repeat("A", 10000))},
 		{name: "EmptyBookmark", method: "POST", path: "/api/bookmark", payload: `{}`},
 		{name: "MalformedWorkflow", method: "POST", path: "/api/workflow", payload: `{invalid json`},
 		{name: "WrongTypeField", method: "POST", path: "/api/storage/upload-url", payload: `{"filename": 12345}`},

@@ -11,8 +11,8 @@ Skills UI, and what parity between surfaces means concretely.
 | Catalog in system prompt | owns it | — | — | — |
 | `skill()` activation tool | owns it | sees the event | sees the event | sees the event |
 | `/` palette | — | ✅ Shipped (Phase 2) | ✅ Shipped (Phase 2, same bundle) | ✅ Shipped (Phase 3) |
-| Create / edit / delete | owns it | Phase 5 | Phase 5 (same bundle) | **no** |
-| Generate with AI | owns it | Phase 5 | Phase 5 | **no** |
+| Create / edit / delete | owns it (Phase 4) | ✅ Shipped (Phase 5) | ✅ Shipped (Phase 5, same bundle) | **no** |
+| Generate with AI | owns it (Phase 5) | ✅ Shipped (Phase 5) | ✅ Shipped (Phase 5) | **no** |
 
 **Answering the open question directly: yes, the TUI gets `/` skills — and
 it is the cheap half.** `internal/tui/component/editor/slash.go` already
@@ -62,7 +62,7 @@ one-to-one and the visual language does not change:
 | `components/agent/agents-list.tsx` | `components/skill/skills-list.tsx` — same card grid, same create card, plus a source badge and a read-only lock |
 | `components/agent/edit-agent.tsx` | `components/skill/edit-skill.tsx` — name, description, body editor; drops tools/icon/visibility |
 | `components/agent/generate-agent-dialog.tsx` | `components/skill/generate-skill-dialog.tsx` — same `experimental_useObject` flow |
-| `agent-icon-picker`, `agent-tool-selector`, `agent-dropdown` | deleted; skills have no icon, no tool bindings, no per-agent dropdown |
+| `agent-icon-picker`, `agent-tool-selector`, `agent-dropdown` | not used by skills, which have no icon, no tool bindings, no per-card dropdown |
 | `ShareableCard` visibility/bookmark actions | dropped in v1 — a skill is a local file, not a shared record. Non-goal |
 | sidebar `app-sidebar-agents.tsx` | `app-sidebar-skills.tsx` |
 
@@ -71,6 +71,40 @@ colours, `cn()`/`cva`, lucide icons, `data-testid` on everything a test
 touches, `next-intl` with `messages/en.json` as source of truth and **all
 seven locales** updated, no route handlers or server actions anywhere near
 this (static export), SWR for reads and `handleErrorWithToast` for failures.
+
+> **Shipped in Phase 5 (2026-08-22):** `src/app/(chat)/skills/` and
+> `src/app/(chat)/skill/` replace `agents/`/`agent/`; `components/skill/`
+> (`skills-list.tsx`, `edit-skill.tsx`, `generate-skill-dialog.tsx`) and
+> `components/layouts/app-sidebar-skills.tsx` replace their agent
+> equivalents. `POST /api/skills/generate` (`internal/api/skills/generate.go`)
+> streams `{name, description, body}` from a `bifrostai.Engine`, prompted by
+> `prompts.BuildSkillGenerationPrompt`. **One divergence from this table's
+> original plan:** `agent-icon-picker.tsx` and `agent-tool-selector.tsx` were
+> **not** deleted — `edit-agent.tsx` (the agent detail view) is still live
+> until Phase 6 and still imports both; only `agent-dropdown.tsx` (used
+> solely by the now-deleted `app-sidebar-agents.tsx`) had zero remaining
+> callers and was removed. The three "Create Agent" entry points named in
+> the phase doc (`create-agent-button`, `create-agent-card`, the sidebar's
+> Agents item) are gone; `agents/page.tsx` itself was deleted along with
+> them since nothing linked to it any longer. `agent/page.tsx` (`?id=`) was
+> unchanged and still reachable directly **at the time this phase shipped**
+> — Phase 6 (below) removed it. See
+> [`progress/phase-05-skills-ui.md`](progress/phase-05-skills-ui.md).
+>
+> **Shipped in Phase 6 (2026-08-22):** the agent feature is fully
+> decommissioned, not migrated. `agent-icon-picker.tsx`, `agent-tool-selector.tsx`,
+> `agent-dropdown.tsx`, `edit-agent.tsx`, `generate-agent-dialog.tsx`, and
+> `src/app/(chat)/agent/` (`page.tsx`/`loading.tsx`) are all deleted.
+> `ShareableCard`/`ShareableActions`' `type` union drops `"agent"`;
+> `tool-select-dropdown.tsx`'s `AgentSelector` sub-component and
+> `chat-mention-input.tsx`'s agent mention group are gone; `agentId` is gone
+> from `ChatMetadata`, `voiceChat` state, and `mentionDTO`/`Mention` on both
+> the Go and TUI sides. The backend drops `internal/api/agent/`,
+> `internal/db/{models,repository}/agent.go`, and the `agent` table
+> (migration `0024_drop_agent`); `internal/agent/` (the agentic execution
+> loop — session, permission, workspace, memory, lsp, repomap — a
+> completely different "agent" than the one this phase removes) is
+> untouched. See [`progress/phase-06-decommission-agents.md`](progress/phase-06-decommission-agents.md).
 
 ## Desktop
 

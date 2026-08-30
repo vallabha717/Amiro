@@ -108,7 +108,7 @@ Defaults for --mode and --model can also be set in .amiro/config.yaml
 -- see docs/tui-implementation-plan.md §2.8 for the full precedence order.
 
 In the TUI, "/" opens the command palette: /mode, /threads, /models,
-/settings, /compact, /export. "@" completes agents, MCP tools, workflows
+/settings, /compact, /export, /skills. "@" completes MCP tools, workflows
 and Amiro's own tools. ctrl+t and ctrl+o open the thread switcher and model
 picker directly.
 `)

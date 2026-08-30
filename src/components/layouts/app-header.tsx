@@ -181,7 +181,6 @@ export function AppHeader() {
                     voiceChat: {
                       ...state.voiceChat,
                       isOpen: true,
-                      agentId: undefined,
                     },
                   }));
                 }}

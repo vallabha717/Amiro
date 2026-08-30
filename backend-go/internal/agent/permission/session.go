@@ -15,6 +15,18 @@ type Session struct {
 	mu       sync.RWMutex
 	tools    map[string]bool
 	commands map[string]bool
+
+	// writeMu serializes a thread's live tool writes against an explicit
+	// checkpoint restore
+	// (docs/coding-agent-parity/02-checkpoints-and-rewind.md): a turn holds
+	// RLock for as long as it is running -- other turns against the same
+	// thread may still overlap under RLock, nothing here changes that --
+	// and a restore takes the exclusive Lock, so a rewind can never land
+	// mid-write and a turn can never start writing into files a restore is
+	// still touching. Lives on Session rather than a second per-thread
+	// registry because Store already hands out exactly one of these per
+	// thread id, which is the same key this lock needs.
+	writeMu sync.RWMutex
 }
 
 func newSession() *Session {
@@ -43,6 +55,41 @@ func (s *Session) AllowCommand(command string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.commands[command] = true
+}
+
+// RLock/RUnlock are held by a running turn for its whole duration -- see
+// writeMu's doc comment. A nil Session (no grants store wired, the same
+// "optional dependency degrades rather than panics" contract every other
+// nil dependency in this package has) is a safe no-op: nothing to
+// serialize against without a store to restore from anyway.
+func (s *Session) RLock() {
+	if s == nil {
+		return
+	}
+	s.writeMu.RLock()
+}
+
+func (s *Session) RUnlock() {
+	if s == nil {
+		return
+	}
+	s.writeMu.RUnlock()
+}
+
+// Lock/Unlock are held by a checkpoint restore for its whole duration --
+// see writeMu's doc comment.
+func (s *Session) Lock() {
+	if s == nil {
+		return
+	}
+	s.writeMu.Lock()
+}
+
+func (s *Session) Unlock() {
+	if s == nil {
+		return
+	}
+	s.writeMu.Unlock()
 }
 
 func (s *Session) allowsTool(tool string) bool {

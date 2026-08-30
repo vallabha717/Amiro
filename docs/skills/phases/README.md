@@ -44,8 +44,8 @@ Skills UI replaces, and doing it earlier leaves the dashboard with a hole.
 | [2](phase-02-web-palette.md) | `/` palette in the web composer | web · desktop | M | 1 | 6 | ✅ Shipped |
 | [3](phase-03-tui-palette.md) | `/` palette in the TUI | terminal | S | 1 | 6 | ✅ Shipped |
 | [4](phase-04-authoring-api.md) | Create / edit / delete API | backend | M | 0 | 5 | ✅ Shipped |
-| [5](phase-05-skills-ui.md) | Skills section + Generate with AI | web · desktop · backend | L | 4 (2 for the palette chip) | 6 |
-| [6](phase-06-decommission-agents.md) | Remove agents | backend · web · desktop · terminal | M | 1, 2, 3, 5 | — |
+| [5](phase-05-skills-ui.md) | Skills section + Generate with AI | web · desktop · backend | L | 4 (2 for the palette chip) | 6 | ✅ Shipped |
+| [6](phase-06-decommission-agents.md) | Remove agents | backend · web · desktop · terminal | M | 1, 2, 3, 5 | — | ✅ Shipped |
 
 Sizes: S ≈ a focused sitting · M ≈ a few · L ≈ sustained with review points.
 

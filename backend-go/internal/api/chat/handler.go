@@ -115,12 +115,47 @@ type Handler struct {
 	// working unchanged. Nil (the default) denies network to every
 	// sandboxed shell command -- see internal/agent/sandbox.NetworkAllowed.
 	sandboxNetworkAllow []string
+
+	// githubToken and githubAPIBase back create_pr
+	// (docs/coding-agent-parity/04-git-remote-operations.md). githubToken
+	// nil (the default) means create_pr refuses before any HTTP call --
+	// the same "optional dependency degrades rather than panics" contract
+	// every other nil field on this handler already has.
+	githubToken   func(ctx context.Context) (string, bool, error)
+	githubAPIBase string
+
+	// backgroundJobs is nil unless WithBackgroundJobs was called
+	// (appwiring.App.New, once the repository exists). Nil is the same
+	// "optional dependency degrades rather than panics" contract every
+	// other field on this struct has: RunTurn simply never looks up or
+	// updates a job for the thread, which is exactly right for every
+	// caller that isn't running a background job's thread.
+	backgroundJobs *repository.BackgroundJobRepository
+}
+
+// WithBackgroundJobs binds the durable job repository to this handler, so
+// RunTurn can recognize -- for any caller, worker goroutine or ordinary
+// approval resubmission alike -- that a thread it just ran belongs to a
+// background job, and keep that job's row in sync
+// (docs/coding-agent-parity/05-background-agent-runs.md).
+func (h *Handler) WithBackgroundJobs(repo *repository.BackgroundJobRepository) *Handler {
+	h.backgroundJobs = repo
+	return h
 }
 
 // WithSandboxNetworkAllow binds the project's shell-network allow-list
 // (docs/coding-agent-parity/03-sandboxed-execution.md) to this handler.
 func (h *Handler) WithSandboxNetworkAllow(allow []string) *Handler {
 	h.sandboxNetworkAllow = allow
+	return h
+}
+
+// WithGitHub binds create_pr's token lookup and API base to this handler.
+// tokenFn is nil-safe to omit entirely -- see the githubToken field's doc
+// comment.
+func (h *Handler) WithGitHub(tokenFn func(ctx context.Context) (string, bool, error), apiBase string) *Handler {
+	h.githubToken = tokenFn
+	h.githubAPIBase = apiBase
 	return h
 }
 

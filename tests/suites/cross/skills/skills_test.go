@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"amiro/tests/harness"
+	"amiro/tests/harness/apiclient"
 	"amiro/tests/harness/pty"
 )
 
@@ -98,6 +99,82 @@ func TestCrossSurface_SkillsDiscoveredByDashboardAreOfferedByTUISlashPalette(t *
 	}, 10*time.Second); err != nil {
 		t.Fatalf("TUI slash palette skills set did not equal dashboard API skills set (expected %+v): %v\nframe:\n%s",
 			expectedSkills, err, sess.Frame())
+	}
+}
+
+// TestCrossSurface_SkillCreatedInDashboardReachesTUISlashPalette is Phase
+// 5's end-to-end parity claim: a skill created through the *authoring* API
+// (what the Skills page's Save button calls, not a planted fixture file)
+// is offered by the TUI's '/' palette in the same run. Phase 4's Create
+// always writes into $HOME/.agents/skills -- see internal/skills/write.go
+// -- so this is a user-scope skill, discovered the same way
+// TestCrossSurface_SkillsDiscoveredByDashboardAreOfferedByTUISlashPalette's
+// planted user-scope skill is.
+//
+// LOAD-BEARING ASSUMPTION -- STARTUP LOADING (see this file's package
+// comment): the skill must exist on disk before the PTY session launches.
+func TestCrossSurface_SkillCreatedInDashboardReachesTUISlashPalette(t *testing.T) {
+	const skillName = "cross-created-skill"
+
+	h := harness.New(t, harness.Tags("smoke"))
+	be := h.Backend()
+	browser := h.As("admin")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	created, err := browser.CreateSkill(ctx, apiclient.SkillWriteRequest{
+		Name:        skillName,
+		Description: "Created through the dashboard authoring API for the cross-surface parity test",
+		Body:        "# Cross Created Skill\n\nInstructions body.",
+	})
+	if err != nil {
+		t.Fatalf("CreateSkill via dashboard authoring API: %v", err)
+	}
+	if created.Skill.Name != skillName {
+		t.Fatalf("CreateSkill returned name %q, want %q", created.Skill.Name, skillName)
+	}
+
+	// Confirm the dashboard's own read path (GET /api/skills) sees it too,
+	// the same list the Skills page's SWR cache and the composer's '/'
+	// palette both key off.
+	listResp, err := browser.ListSkills(ctx)
+	if err != nil {
+		t.Fatalf("dashboard ListSkills API failed: %v", err)
+	}
+	foundInDashboard := false
+	for _, it := range listResp.Items {
+		if it.Name == skillName {
+			foundInDashboard = true
+			if !it.Writable {
+				t.Errorf("dashboard-created skill Writable = false, want true")
+			}
+		}
+	}
+	if !foundInDashboard {
+		t.Fatalf("dashboard-created skill not present in GET /api/skills: %+v", listResp.Items)
+	}
+
+	sess := h.PTY(
+		harness.PTYAppDataDir(be.AppDataDir),
+		harness.PTYDir(be.WorkspaceRoot),
+		harness.PTYHome(be.Home),
+		harness.PTYDims(180, 60),
+	)
+	defer sess.Close()
+
+	if err := sess.WaitForText("Ask Amiro", 15*time.Second); err != nil {
+		t.Fatalf("TUI did not render prompt: %v\nframe:\n%s", err, sess.Frame())
+	}
+
+	if err := sess.Send("/cross-created-"); err != nil {
+		t.Fatalf("sending '/cross-created-': %v", err)
+	}
+
+	if err := sess.WaitForFrame(func(b *pty.Buffer) bool {
+		return strings.Contains(unwrapped(b.Plain()), "/"+skillName)
+	}, 10*time.Second); err != nil {
+		t.Fatalf("dashboard-created skill %q not offered by TUI slash palette: %v\nframe:\n%s", skillName, err, sess.Frame())
 	}
 }
 

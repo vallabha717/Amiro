@@ -9,14 +9,14 @@ import (
 )
 
 func TestBuildUserSystemPrompt_DefaultsToAmiroAssistantName(t *testing.T) {
-	got := BuildUserSystemPrompt(nil, nil, nil)
+	got := BuildUserSystemPrompt(nil, nil)
 	if !strings.HasPrefix(got, "You are Amiro.") {
 		t.Fatalf("got %q, want it to start with the default assistant name Amiro", got)
 	}
 }
 
 func TestBuildUserSystemPrompt_UsesBotNamePreferenceWhenSet(t *testing.T) {
-	got := BuildUserSystemPrompt(nil, &user.Preferences{BotName: "Vega"}, nil)
+	got := BuildUserSystemPrompt(nil, &user.Preferences{BotName: "Vega"})
 	if !strings.HasPrefix(got, "You are Vega.") {
 		t.Fatalf("got %q, want it to start with the preferred bot name", got)
 	}
@@ -24,21 +24,21 @@ func TestBuildUserSystemPrompt_UsesBotNamePreferenceWhenSet(t *testing.T) {
 
 func TestBuildUserSystemPrompt_IncludesUserNameAndEmailWhenPresent(t *testing.T) {
 	u := &models.User{Name: "Ada", Email: "ada@example.com"}
-	got := BuildUserSystemPrompt(u, nil, nil)
+	got := BuildUserSystemPrompt(u, nil)
 	if !strings.Contains(got, "Name: Ada") || !strings.Contains(got, "Email: ada@example.com") {
 		t.Fatalf("got %q, want it to include the user's name and email", got)
 	}
 }
 
 func TestBuildUserSystemPrompt_OmitsUserInformationBlockWhenNothingKnown(t *testing.T) {
-	got := BuildUserSystemPrompt(nil, nil, nil)
+	got := BuildUserSystemPrompt(nil, nil)
 	if strings.Contains(got, "<user_information>") {
 		t.Fatalf("got %q, want no <user_information> block with no user/preferences", got)
 	}
 }
 
 func TestBuildUserSystemPrompt_IncludesResponseStyleExampleWhenSet(t *testing.T) {
-	got := BuildUserSystemPrompt(nil, &user.Preferences{ResponseStyleExample: "always rhyme"}, nil)
+	got := BuildUserSystemPrompt(nil, &user.Preferences{ResponseStyleExample: "always rhyme"})
 	if !strings.Contains(got, "always rhyme") {
 		t.Fatalf("got %q, want it to include the response style example", got)
 	}

@@ -138,6 +138,7 @@ func subagentTool(
 				[]bifrostai.Message{{Role: bifrostai.RoleUser, Text: in.Prompt}},
 				childTools,
 				perms,
+				nil, // the child's tool subset is read-only (subagentToolNames); nothing to checkpoint
 				subagentBudget,
 			)
 			if err != nil {

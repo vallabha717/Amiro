@@ -92,7 +92,7 @@ func TestToolScheduler_ParallelToolsActuallyOverlap(t *testing.T) {
 	sw := uimessage.NewWriter(httptest.NewRecorder())
 
 	start := time.Now()
-	_, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, activeTools, testPerms())
+	_, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, activeTools, testPerms(), nil)
 	elapsed := time.Since(start)
 	if err != nil {
 		t.Fatalf("runToolLoop: %v", err)
@@ -140,7 +140,7 @@ func TestToolScheduler_SequentialToolsNeverOverlap(t *testing.T) {
 	}}
 	sw := uimessage.NewWriter(httptest.NewRecorder())
 
-	if _, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, activeTools, testPerms()); err != nil {
+	if _, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, activeTools, testPerms(), nil); err != nil {
 		t.Fatalf("runToolLoop: %v", err)
 	}
 
@@ -190,7 +190,7 @@ func TestToolScheduler_ResultsMergeInCallOrderNotCompletionOrder(t *testing.T) {
 	}}
 	sw := uimessage.NewWriter(httptest.NewRecorder())
 
-	result, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, activeTools, testPerms())
+	result, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, activeTools, testPerms(), nil)
 	if err != nil {
 		t.Fatalf("runToolLoop: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestToolScheduler_RespectsParallelismCeiling(t *testing.T) {
 	engine := &fakeStreamEngine{steps: []bifrostai.StepResult{{ToolCalls: calls}, {Text: "done"}}}
 	sw := uimessage.NewWriter(httptest.NewRecorder())
 
-	if _, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, activeTools, testPerms()); err != nil {
+	if _, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, activeTools, testPerms(), nil); err != nil {
 		t.Fatalf("runToolLoop: %v", err)
 	}
 	if got := probe.peakConcurrency(); got > 2 {
@@ -277,7 +277,7 @@ func TestToolScheduler_ParallelToolErrorsStillReachHistory(t *testing.T) {
 	}}
 	sw := uimessage.NewWriter(httptest.NewRecorder())
 
-	result, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, activeTools, testPerms())
+	result, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, activeTools, testPerms(), nil)
 	if err != nil {
 		t.Fatalf("runToolLoop: %v", err)
 	}
@@ -315,7 +315,7 @@ func TestToolScheduler_ClientToolDropsLaterCallsInSameStep(t *testing.T) {
 	}}
 	sw := uimessage.NewWriter(httptest.NewRecorder())
 
-	if _, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, activeTools, testPerms()); err != nil {
+	if _, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, activeTools, testPerms(), nil); err != nil {
 		t.Fatalf("runToolLoop: %v", err)
 	}
 	if ran.Load() {

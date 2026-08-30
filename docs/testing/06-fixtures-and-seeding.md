@@ -31,15 +31,14 @@ the default run.
 
 Fixtures are applied through the **real API**, not by writing rows. That is
 slower, and it is the right trade: seeding through `POST /api/auth/register`
-and `POST /api/agent` means the seed itself exercises the endpoints, and a
-seed that breaks is a genuine signal.
+means the seed itself exercises the endpoints, and a seed that breaks is a
+genuine signal.
 
 ```go
 h := harness.New(t)
 be := h.Backend()
 
 be.Seed(seed.Default)      // admin + user + other, one thread each
-be.Seed(seed.Agents(3))
 be.Seed(seed.MCPFixtureServer)
 be.Seed(seed.Workflow("linear-3-node"))
 ```
@@ -72,7 +71,6 @@ tests/fixtures/
 │   └── server/           ← a real stdio MCP server (Go), deterministic tools
 ├── seeds/
 │   ├── threads/*.json    ← canned conversations, including long ones for compaction
-│   ├── agents/*.json
 │   └── workflows/*.json
 ├── media/
 │   ├── image.png · document.pdf · audio.wav   ← for upload/attachment tests

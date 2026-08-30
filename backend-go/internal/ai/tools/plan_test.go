@@ -157,7 +157,7 @@ func TestWalkthrough_RejectsAListThatIsJustADirectoryDump(t *testing.T) {
 // Contrast the write tools, where an unresolvable path means refusing to act.
 func TestWalkthrough_KeepsAPathItCannotResolve(t *testing.T) {
 	ws, _ := testWorkspace(t)
-	d := walkthroughTool(ws)
+	d := walkthroughTool(ws, NewWalkthroughRecord())
 	out, err := d.Execute(context.Background(), json.RawMessage(
 		`{"summary":"s","changes":[{"path":"/etc/hosts","why":"noted, not edited"}]}`))
 	if err != nil {
@@ -171,7 +171,7 @@ func TestWalkthrough_KeepsAPathItCannotResolve(t *testing.T) {
 
 func TestWalkthrough_RendersPathsRelativeToTheWorkspace(t *testing.T) {
 	ws, root := testWorkspace(t)
-	d := walkthroughTool(ws)
+	d := walkthroughTool(ws, NewWalkthroughRecord())
 	out, err := d.Execute(context.Background(), json.RawMessage(
 		mustJSON(t, Walkthrough{
 			Summary: "s",

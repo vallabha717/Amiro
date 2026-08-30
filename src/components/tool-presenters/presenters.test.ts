@@ -28,6 +28,7 @@ const TOOLS_REQUIRING_A_PRESENTER = [
   DefaultToolName.RunShell,
   DefaultToolName.TerminalExecution,
   DefaultToolName.Git,
+  DefaultToolName.CreatePR,
   DefaultToolName.TodoWrite,
   DefaultToolName.TodoRead,
   DefaultToolName.Task,
@@ -167,6 +168,86 @@ describe("glance lines say what happened", () => {
         status: "success",
       }),
     ).toBe("git commit · close the permission gap");
+  });
+
+  // Phase 3 (docs/coding-agent-parity/): push and create_pr are the two
+  // AlwaysAsk operations, and a force push in particular must never read
+  // like an ordinary push at a glance.
+  it("git push flags force distinctly from an ordinary push", () => {
+    expect(
+      toolGlance(DefaultToolName.Git, {
+        input: { subcommand: "push" },
+        output: { subcommand: "push", command: "git push origin feature-x", exit_code: 0 },
+        status: "success",
+      }),
+    ).toBe("git push");
+
+    expect(
+      toolGlance(DefaultToolName.Git, {
+        input: { subcommand: "push", force: true },
+        output: { subcommand: "push", command: "git push origin feature-x --force", exit_code: 0 },
+        status: "success",
+      }),
+    ).toBe("git push --force");
+  });
+
+  it("git push Compact renders a force badge only when force is set", () => {
+    const compact = getToolPresenter(DefaultToolName.Git)!.Compact!;
+    const forced: any = compact({
+      input: { subcommand: "push", force: true },
+      output: { subcommand: "push", command: "git push origin feature-x --force", exit_code: 0 },
+      status: "success",
+    });
+    expect(JSON.stringify(forced)).toContain("force");
+
+    const plain: any = compact({
+      input: { subcommand: "push" },
+      output: { subcommand: "push", command: "git push origin feature-x", exit_code: 0 },
+      status: "success",
+    });
+    // The badge text itself must not appear for an ordinary push.
+    const plainChildren = JSON.stringify(plain);
+    expect(plainChildren.includes('"force"') && plainChildren.includes("bg-destructive")).toBe(
+      false,
+    );
+  });
+
+  it("create_pr names the target branch, and the PR number once opened", () => {
+    expect(
+      toolGlance(DefaultToolName.CreatePR, {
+        input: { base: "main" },
+        output: undefined,
+        status: "pending",
+      }),
+    ).toBe("opening a pull request…");
+
+    expect(
+      toolGlance(DefaultToolName.CreatePR, {
+        input: { base: "main" },
+        output: { base: "main", head: "feature-x", number: 42, url: "https://github.com/acme/widgets/pull/42" },
+        status: "success",
+      }),
+    ).toBe("PR #42 → main");
+  });
+
+  it("create_pr Compact shows head → base and the walkthrough-derived title", () => {
+    const compact = getToolPresenter(DefaultToolName.CreatePR)!.Compact!;
+    const el: any = compact({
+      input: { base: "main" },
+      output: {
+        owner: "acme",
+        repo: "widgets",
+        head: "feature-x",
+        base: "main",
+        title: "Add the widget exporter",
+        body: "Add the widget exporter\n\n## Changes\n- `exporter.go` -- the new exporter",
+      },
+      status: "success",
+    });
+    const rendered = JSON.stringify(el);
+    expect(rendered).toContain("feature-x");
+    expect(rendered).toContain("main");
+    expect(rendered).toContain("Add the widget exporter");
   });
 });
 

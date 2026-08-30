@@ -19,7 +19,7 @@ import (
 )
 
 // Engine is the subset of *bifrostai.Client this package calls, narrowed
-// the same way internal/api/chat.Engine and internal/api/agent.Engine are.
+// the same way internal/api/chat.Engine and internal/api/skills.Engine are.
 //
 // TestStep is here for the provider model test (providers.go): the same
 // streamed, tool-attached call shape a real chat turn makes, but output-

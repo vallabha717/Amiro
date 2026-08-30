@@ -1,9 +1,12 @@
 // Package prompts ports the subset of src/lib/ai/prompts.ts needed by
 // Phase 3's chat routes: the thread-title prompt and the two user/voice
-// system-prompt builders (now including their `agent` parameter, Phase 8),
-// the agent-generation prompt behind POST /api/agent/ai (Phase 6), plus
-// mergeSystemPrompt and the MCP-server-customizations prompt section
-// (Phase 8's mention-driven tool loading).
+// system-prompt builders, plus mergeSystemPrompt and the
+// MCP-server-customizations prompt section (Phase 8's mention-driven tool
+// loading). The user system-prompt builder carried a bound agent's persona
+// (a Phase 8 addition) and this package also carried the agent-generation
+// prompt behind the agent-authoring route; both were removed with the rest
+// of the agent feature in Phase 6 (docs/skills/, a later and unrelated
+// "Phase 6" from a different plan).
 package prompts
 
 import (
@@ -48,38 +51,19 @@ You are given a tool with the following details:
 `, toolName, toolDescription, step)
 }
 
-// AgentPromptInfo carries the subset of a bound Agent (types/agent.ts:71)
-// BuildUserSystemPrompt needs: its display name plus instructions.role/
-// systemPrompt (prompts.ts:51's `agent` parameter).
-type AgentPromptInfo struct {
-	Name         string
-	Role         string
-	SystemPrompt string
-}
-
-// BuildUserSystemPrompt ports buildUserSystemPrompt (prompts.ts:51),
-// including the agent parameter (Phase 8's mention-driven agent wiring) --
-// agent may be nil for a plain, agent-free chat turn (also used by
-// temporary.go, which never binds an agent).
-func BuildUserSystemPrompt(u *models.User, prefs *user.Preferences, agent *AgentPromptInfo) string {
+// BuildUserSystemPrompt ports buildUserSystemPrompt (prompts.ts:51), minus
+// its `agent` parameter -- the bound-agent system prompt and
+// <core_capabilities> block it fed were removed with the rest of the agent
+// feature in Phase 6 (docs/skills/).
+func BuildUserSystemPrompt(u *models.User, prefs *user.Preferences) string {
 	assistantName := "Amiro"
 	if prefs != nil && prefs.BotName != "" {
 		assistantName = prefs.BotName
 	}
-	if agent != nil && agent.Name != "" {
-		assistantName = agent.Name
-	}
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "You are %s", assistantName)
-	if agent != nil && agent.Role != "" {
-		fmt.Fprintf(&b, ". You are an expert in %s", agent.Role)
-	}
 	fmt.Fprintf(&b, ". The current date and time is %s.", time.Now().Format(currentTimeLayout))
-
-	if agent != nil && agent.SystemPrompt != "" {
-		fmt.Fprintf(&b, "\n  # Core Instructions\n  <core_capabilities>\n  %s\n  </core_capabilities>", agent.SystemPrompt)
-	}
 
 	var userInfo []string
 	if u != nil && u.Name != "" {
@@ -191,45 +175,29 @@ func BuildSpeechSystemPrompt(u *models.User, prefs *user.Preferences) string {
 	return strings.TrimSpace(b.String())
 }
 
-// BuildAgentGenerationPrompt ports buildAgentGenerationPrompt
-// (prompts.ts:19): the system prompt behind POST /api/agent/ai, with the
-// caller's available tool names spliced into step 4.
-func BuildAgentGenerationPrompt(toolNames []string) string {
-	var toolsList strings.Builder
-	for i, name := range toolNames {
-		if i > 0 {
-			toolsList.WriteString("\n")
-		}
-		toolsList.WriteString("- ")
-		toolsList.WriteString(name)
-	}
+// BuildSkillGenerationPrompt is the system prompt behind POST
+// /api/skills/generate (docs/skills/phases/phase-05-skills-ui.md). It bakes
+// in the same authoring rules internal/skills/validate.go enforces at save
+// time, so a generated draft is very likely to save clean on the first try
+// rather than bouncing off field errors -- but the model's output is never
+// trusted directly; ValidateName/ValidateDescription/ValidateBody run again
+// client-side before the draft is even allowed to populate the form, and
+// the server-side validator in internal/skills runs again on save.
+func BuildSkillGenerationPrompt() string {
+	return `You are an expert at writing Agent Skills for Amiro -- reusable, model-invoked packets of instructions that teach the assistant how to do one specific task well. Given a short description of what the user wants, draft a complete SKILL.md.
 
-	return `You are an elite AI agent architect. Your mission is to translate user requirements into robust, high-performance agent configurations. Follow these steps for every request:
+1. Choose a name: lowercase letters, digits and single hyphens only, matching /^[a-z0-9]+(-[a-z0-9]+)*$/, at most 64 characters, and descriptive of the skill's purpose (e.g. "pdf-form-fill", "changelog-writer"). Never include "claude" or "anthropic" in the name.
 
-1. Extract Core Intent: Carefully analyze the user's input to identify the fundamental purpose, key responsibilities, and success criteria for the agent. Consider both explicit and implicit needs.
+2. Write a description that states both WHAT the skill does and WHEN the assistant should reach for it, in third person ("Fills out PDF forms from structured data. Use when the user needs to populate an existing PDF template."). This is the only text the assistant sees before deciding to load the skill, so make the trigger condition concrete. At most 1024 characters.
 
-2. Design Expert Persona: Define a compelling expert identity for the agent, ensuring deep domain knowledge and a confident, authoritative approach to decision-making.
+3. Write the body as the SKILL.md markdown content: clear step-by-step instructions an assistant with no other context could follow, covering the common case first and edge cases after. Keep it under roughly 500 lines -- push any long reference material, example files or scripts into a "See references/" note rather than inlining it, since this generator only produces the SKILL.md itself.
 
-3. Architect Comprehensive Instructions: Write a system prompt that:
-- Clearly defines the agent's behavioral boundaries and operational parameters
-- Specifies methodologies, best practices, and quality control steps for the task
-- Anticipates edge cases and provides guidance for handling them
-- Incorporates any user-specified requirements or preferences
-- Defines output format expectations when relevant
+Output a structured object with exactly these fields:
+- name: the skill's directory name, per rule 1
+- description: the what-and-when description, per rule 2
+- body: the SKILL.md markdown body, per rule 3 (do not include YAML frontmatter -- name and description are supplied separately)
 
-4. Strategic Tool Selection: Select only tools crucially necessary for achieving the agent's mission effectively from available tools:
-` + toolsList.String() + `
-
-5. Optimize for Performance: Include decision-making frameworks, self-verification steps, efficient workflow patterns, and clear escalation or fallback strategies.
-
-6. Output Generation: Return a structured object with these fields:
-- name: Concise, descriptive name reflecting the agent's primary function
-- description: 1-2 sentences capturing the unique value and primary benefit to users  
-- role: Precise domain-specific expertise area
-- instructions: The comprehensive system prompt from steps 2-5
-- tools: Array of selected tool names from step 4
-
-CRITICAL: Generate all output content in the same language as the user's request. Be specific and comprehensive. Proactively seek clarification if requirements are ambiguous. Your output should enable the new agent to operate autonomously and reliably within its domain.`
+CRITICAL: Generate all output content in the same language as the user's request. Be specific and actionable -- a vague skill is worse than no skill.`
 }
 
 // BuildPlanContractPrompt is the propose-plan-then-approve contract

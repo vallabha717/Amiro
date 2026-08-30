@@ -13,6 +13,14 @@ import "amiro/backend/internal/tui/client"
 // Ctrl+T or "/threads".
 type OpenThreadsMsg struct{}
 
+// OpenRunsMsg asks app.Model to switch to the background-run picker --
+// "/runs" (docs/coding-agent-parity/05-background-agent-runs.md). It has no
+// dedicated ChosenMsg of its own: picking a run resolves to the exact same
+// ThreadChosenMsg Threads emits, since "resume a run" and "resume a
+// thread" are the same operation -- a suspended run's pending approval is
+// an ordinary part on its thread, not a second kind of state.
+type OpenRunsMsg struct{}
+
 // OpenModelsMsg asks app.Model to switch to the model picker -- Ctrl+O or
 // "/models".
 type OpenModelsMsg struct{}

@@ -3,7 +3,14 @@
 import { useCopy } from "@/hooks/use-copy";
 import { rewriteStorageUrl } from "@/lib/backend/config";
 import type { UseChatHelpers } from "@ai-sdk/react";
-import { FileUIPart, ToolUIPart, UIMessage, getToolName } from "ai";
+import {
+  FileUIPart,
+  ToolUIPart,
+  UIMessage,
+  getToolName,
+  isToolUIPart,
+} from "ai";
+import { stepKindOf } from "lib/ai/tools/step-kind";
 import { cn, safeJSONParse, truncateString } from "lib/utils";
 import {
   Check,
@@ -15,6 +22,7 @@ import {
   EllipsisIcon,
   FileIcon,
   HammerIcon,
+  History,
   Loader,
   Pencil,
   RefreshCw,
@@ -27,6 +35,7 @@ import { Badge } from "ui/badge";
 import { Button } from "ui/button";
 import JsonView from "ui/json-view";
 import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
+import { RewindConfirmDialog } from "./checkpoint/rewind-confirm-dialog";
 import { Markdown } from "./markdown";
 import { MessageEditor } from "./message-editor";
 
@@ -59,8 +68,6 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "ui/avatar";
 import { TextShimmer } from "ui/text-shimmer";
 
-import { appStore } from "@/app/store";
-import { BACKGROUND_COLORS, EMOJI_DATA } from "lib/const";
 import { notify } from "lib/notify";
 import dynamic from "next/dynamic";
 import { ModelProviderIcon } from "ui/model-provider-icon";
@@ -307,14 +314,26 @@ export const AssistMessagePart = memo(function AssistMessagePart({
 }: AssistMessagePartProps) {
   const { copied, copy } = useCopy();
   const [isLoading, setIsLoading] = useState(false);
-  const agentList = appStore((state) => state.agentList);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [rewindOpen, setRewindOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const metadata = message.metadata as ChatMetadata | undefined;
+  const t = useTranslations("Checkpoint");
 
-  const agent = useMemo(() => {
-    return agentList.find((a) => a.id === metadata?.agentId);
-  }, [metadata, agentList]);
+  // "Rewind to here" only makes sense on a message that actually wrote a
+  // file -- docs/coding-agent-parity/phases/phase-01-checkpoints-and-rewind.md's
+  // deliverable 3: "the action appears only on messages with file writes".
+  // stepKindOf's "edit" category (write_file/edit_file/multi_edit) is the
+  // same categorization the work-log rows already use, so this reads the
+  // message the same way a human scanning the transcript does, rather than
+  // re-deriving a second notion of "which tools count as writes".
+  const hasFileWrites = useMemo(
+    () =>
+      message.parts.some(
+        (p) => isToolUIPart(p) && stepKindOf(getToolName(p)) === "edit",
+      ),
+    [message.parts],
+  );
 
   const deleteMessage = useCallback(async () => {
     if (!setMessages) return;
@@ -405,6 +424,22 @@ export const AssistMessagePart = memo(function AssistMessagePart({
             </TooltipTrigger>
             <TooltipContent>Copy</TooltipContent>
           </Tooltip>
+          {!readonly && hasFileWrites && threadId && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  data-testid="rewind-to-here-button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-3! p-4!"
+                  onClick={() => setRewindOpen(true)}
+                >
+                  <History />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{t("rewindAction")}</TooltipContent>
+            </Tooltip>
+          )}
           {!readonly && (
             <>
               <Tooltip>
@@ -460,39 +495,6 @@ export const AssistMessagePart = memo(function AssistMessagePart({
               </TooltipTrigger>
               <TooltipContent className="p-4 w-72 bg-card border shadow-lg">
                 <div className="space-y-4">
-                  {agent && (
-                    <>
-                      <div className="space-y-2">
-                        <h4 className="text-sm font-semibold text-foreground">
-                          Agent
-                        </h4>
-                        <div className="flex gap-3 items-center">
-                          <div
-                            className="p-1.5 rounded-full ring-2 ring-border/50 bg-background shadow-sm"
-                            style={{
-                              backgroundColor:
-                                agent.icon?.style?.backgroundColor ||
-                                BACKGROUND_COLORS[0],
-                            }}
-                          >
-                            <Avatar className="size-3">
-                              <AvatarImage
-                                src={agent.icon?.value || EMOJI_DATA[0]}
-                              />
-                              <AvatarFallback className="bg-transparent text-xs">
-                                {agent.name[0]}
-                              </AvatarFallback>
-                            </Avatar>
-                          </div>
-                          <span className="font-medium text-sm">
-                            {agent.name}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="border-t border-border/50" />
-                    </>
-                  )}
-
                   {metadata.chatModel && (
                     <>
                       <div className="space-y-2">
@@ -582,6 +584,15 @@ export const AssistMessagePart = memo(function AssistMessagePart({
             </Tooltip>
           )}
         </div>
+      )}
+      {threadId && hasFileWrites && (
+        <RewindConfirmDialog
+          threadId={threadId}
+          turnId={message.id}
+          open={rewindOpen}
+          onOpenChange={setRewindOpen}
+          onRestored={() => setRewindOpen(false)}
+        />
       )}
       <div ref={ref} className="min-w-0" />
     </div>

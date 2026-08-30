@@ -88,7 +88,7 @@ func (h *Handler) DetailsByID(w http.ResponseWriter, r *http.Request) {
 
 // canManageUser ports canManageUser (lib/auth/permissions.ts): self, or an
 // admin. Unlike the create/edit tiers this backend drops (see
-// internal/api/agent's package doc), this one ports cleanly -- it only
+// internal/api/workflow's package doc), this one ports cleanly -- it only
 // distinguishes "admin" from everyone else, which is exactly the two-value
 // role model Phase 2's auth service assigns.
 func canManageUser(authedUser *models.User, targetID string) bool {

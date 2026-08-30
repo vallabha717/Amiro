@@ -21,9 +21,11 @@ type realtimeRequest struct {
 var realtimeHTTPClient = &http.Client{Timeout: 30 * time.Second}
 
 // OpenAIRealtime ports openai-realtime/route.ts's POST handler: mints a
-// short-lived OpenAI realtime session token. MCP tool/agent-mention
-// binding (loadMcpTools, rememberAgentAction) is Phase 4/6 work -- only
-// the default client-side voice tools are bound here.
+// short-lived OpenAI realtime session token. MCP tool binding (loadMcpTools)
+// is still not wired in here -- only the default client-side voice tools
+// are bound here. (The agent-mention binding this comment used to also
+// name, rememberAgentAction, no longer exists: the agent feature it would
+// have bound was decommissioned in Phase 6, docs/skills/.)
 func (h *Handler) OpenAIRealtime(w http.ResponseWriter, r *http.Request) {
 	_, baseURL, apiKey, err := h.providerRepo.GetProviderBaseURLAndKey(r.Context(), "openai")
 	if err != nil || apiKey == "" {

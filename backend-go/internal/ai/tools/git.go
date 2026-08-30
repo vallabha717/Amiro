@@ -92,6 +92,84 @@ type gitInput struct {
 	Ref        string   `json:"ref,omitempty"`
 	Staged     bool     `json:"staged,omitempty"`
 	MaxCount   int      `json:"max_count,omitempty"`
+	// Force is push-only: it is what lets --force reach the underlying
+	// git invocation at all, and it changes nothing about gating -- push
+	// always asks (see gitAlwaysAsk), force or not. See
+	// docs/coding-agent-parity/04-git-remote-operations.md.
+	Force bool `json:"force,omitempty"`
+}
+
+// gitPushRemote is the only remote push ever targets. The tool does not
+// add remotes and does not let the model name one -- see
+// docs/coding-agent-parity/04-git-remote-operations.md's "remote must
+// already be configured" and create_pr's identical assumption when it
+// infers owner/repo from this same remote.
+const gitPushRemote = "origin"
+
+// currentBranch resolves the workspace's checked-out branch itself, so
+// push targets exactly that branch and nothing the model named --
+// docs/coding-agent-parity/04-git-remote-operations.md's "current branch
+// only" constraint, enforced structurally rather than by asking nicely.
+func currentBranch(ctx context.Context, ws *workspace.Workspace) (string, error) {
+	execCtx, cancel := context.WithTimeout(ctx, gitTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(execCtx, "git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Dir = ws.Root()
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("git: could not resolve the current branch: %w", err)
+	}
+	branch := strings.TrimSpace(string(out))
+	if branch == "" || branch == "HEAD" {
+		return "", fmt.Errorf("git: not currently on a branch (detached HEAD) -- check out a branch first")
+	}
+	return branch, nil
+}
+
+// gitRemoteURL reads a configured remote's URL, or an error if remote does
+// not exist -- push and create_pr both refuse rather than guess or add one.
+func gitRemoteURL(ctx context.Context, ws *workspace.Workspace, remote string) (string, error) {
+	execCtx, cancel := context.WithTimeout(ctx, gitTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(execCtx, "git", "remote", "get-url", remote)
+	cmd.Dir = ws.Root()
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("git: no %q remote is configured in this workspace -- add one in a terminal first", remote)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// gitAlwaysAsk is git.go's Definition.AlwaysAsk: true only for push (force
+// or not), leaving every other subcommand on the ordinary
+// command-allowlist path unchanged. See tools.go's Definition.AlwaysAsk
+// doc comment for why this is a function rather than a plain bool.
+func gitAlwaysAsk(raw json.RawMessage) bool {
+	var in gitInput
+	if err := json.Unmarshal(raw, &in); err != nil {
+		return false
+	}
+	return in.Subcommand == "push"
+}
+
+// buildPushArgv resolves the current branch and the configured remote,
+// then builds `push <remote> <branch>` (+ `--force` iff in.Force) -- the
+// only argv this tool's push subcommand ever produces. Returns the branch
+// too, since gitCommandLine needs it for the approval card without a
+// second resolution.
+func buildPushArgv(ctx context.Context, ws *workspace.Workspace, in gitInput) (argv []string, branch string, err error) {
+	if _, err := gitRemoteURL(ctx, ws, gitPushRemote); err != nil {
+		return nil, "", err
+	}
+	branch, err = currentBranch(ctx, ws)
+	if err != nil {
+		return nil, "", err
+	}
+	argv = []string{"push", gitPushRemote, branch}
+	if in.Force {
+		argv = append(argv, "--force")
+	}
+	return argv, branch, nil
 }
 
 // GitOutput is what the presenter renders. Subcommand and Paths are echoed
@@ -135,23 +213,53 @@ func isSafeGitRef(ref string) bool {
 	return !strings.Contains(ref, "..")
 }
 
-// gitCommandLine renders a call the way a user would have typed it. This is
-// what the approval card shows and what the command allowlist matches, so
-// "git status" on the allowlist auto-runs the tool's status subcommand
+// gitCommandLineFor renders a call the way a user would have typed it. This
+// is what the approval card shows and what the command allowlist matches,
+// so "git status" on the allowlist auto-runs the tool's status subcommand
 // exactly as it auto-runs a shell `git status`. One allowlist, one matching
 // rule, whichever tool the model reached for.
-func gitCommandLine(raw json.RawMessage) string {
-	var in gitInput
-	if err := json.Unmarshal(raw, &in); err != nil || in.Subcommand == "" {
-		return "git"
+//
+// A closure over ws, not a free function, because push (unlike every other
+// subcommand) needs to resolve live repo state -- the current branch, the
+// configured remote -- to render anything more useful than "git push".
+func gitCommandLineFor(ws *workspace.Workspace) func(json.RawMessage) string {
+	return func(raw json.RawMessage) string {
+		var in gitInput
+		if err := json.Unmarshal(raw, &in); err != nil || in.Subcommand == "" {
+			return "git"
+		}
+		if in.Subcommand == "push" {
+			return gitPushCommandLine(ws, in)
+		}
+		spec, ok := gitSubcommands[in.Subcommand]
+		if !ok {
+			return "git " + in.Subcommand
+		}
+		argv, err := spec.args(in)
+		if err != nil {
+			return "git " + in.Subcommand
+		}
+		quoted := make([]string, len(argv))
+		for i, a := range argv {
+			quoted[i] = quoteArg(a)
+		}
+		return "git " + strings.Join(quoted, " ")
 	}
-	spec, ok := gitSubcommands[in.Subcommand]
-	if !ok {
-		return "git " + in.Subcommand
-	}
-	argv, err := spec.args(in)
+}
+
+// gitPushCommandLine renders push's approval-card line: "git push origin
+// <branch>" (+ " --force"), or a bare fallback if the branch/remote cannot
+// be resolved yet (e.g. no origin configured) -- this must never fail the
+// approval flow itself, only degrade what it shows.
+func gitPushCommandLine(ws *workspace.Workspace, in gitInput) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	argv, _, err := buildPushArgv(ctx, ws, in)
 	if err != nil {
-		return "git " + in.Subcommand
+		if in.Force {
+			return "git push --force"
+		}
+		return "git push"
 	}
 	quoted := make([]string, len(argv))
 	for i, a := range argv {
@@ -188,16 +296,20 @@ func gitTool(ws *workspace.Workspace) Definition {
 		// prompt forever: they are on the default command allowlist, which
 		// CommandLine below is what makes possible.
 		Risk:        RiskWrite,
-		CommandLine: gitCommandLine,
-		Description: "Run git in the workspace: status, diff, log, show, add, commit. " +
-			"Network and history-rewriting subcommands (push/pull/reset/rebase/checkout) are " +
+		CommandLine: gitCommandLineFor(ws),
+		AlwaysAsk:   gitAlwaysAsk,
+		Description: "Run git in the workspace: status, diff, log, show, add, commit, push. " +
+			"push always resolves and targets the current branch -- you cannot name a different " +
+			"one -- and always asks for approval, even in auto mode; force requires the force " +
+			"input explicitly and asks every time regardless. " +
+			"History-rewriting subcommands (pull/reset/rebase/checkout) are " +
 			"not available here -- use the shell for those so the exact command is visible.",
 		ParametersSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {
 				"subcommand": {
 					"type": "string",
-					"enum": ["status", "diff", "log", "show", "add", "commit"],
+					"enum": ["status", "diff", "log", "show", "add", "commit", "push"],
 					"description": "Which git subcommand to run."
 				},
 				"paths": {
@@ -208,7 +320,11 @@ func gitTool(ws *workspace.Workspace) Definition {
 				"message": {"type": "string", "description": "Commit message. Required for commit."},
 				"ref": {"type": "string", "description": "Revision for show. Defaults to HEAD."},
 				"staged": {"type": "boolean", "description": "diff: show staged changes instead of unstaged."},
-				"max_count": {"type": "integer", "description": "log: how many commits (default 20, max 100)."}
+				"max_count": {"type": "integer", "description": "log: how many commits (default 20, max 100)."},
+				"force": {
+					"type": "boolean",
+					"description": "push only: force-push. Always asks for approval regardless of mode; use only when you mean it."
+				}
 			},
 			"required": ["subcommand"],
 			"additionalProperties": false
@@ -218,30 +334,49 @@ func gitTool(ws *workspace.Workspace) Definition {
 			if err := json.Unmarshal(raw, &in); err != nil {
 				return nil, fmt.Errorf("git: %w", err)
 			}
-			spec, ok := gitSubcommands[in.Subcommand]
-			if !ok {
-				return nil, fmt.Errorf("git: unsupported subcommand %q -- available: add, commit, diff, log, show, status", in.Subcommand)
-			}
 
-			// Every path the model named is resolved through the workspace
-			// before git ever sees it. Without this, `git add ../../..`
-			// stages files outside the root, and the containment the file
-			// tools enforce would have a git-shaped hole next to it.
-			for i, p := range in.Paths {
-				abs, err := ws.Resolve(p)
+			var argv []string
+			if in.Subcommand == "push" {
+				// Special-cased rather than going through gitSubcommands:
+				// push is the one subcommand whose argv depends on
+				// resolving live repo state (the current branch, the
+				// configured remote) via its own git subprocess calls,
+				// which the args-building table's pure func(gitInput)
+				// signature has no way to do. Every other subcommand keeps
+				// using that table unchanged.
+				resolved, _, buildErr := buildPushArgv(ctx, ws, in)
+				if buildErr != nil {
+					return nil, buildErr
+				}
+				argv = resolved
+			} else {
+				spec, ok := gitSubcommands[in.Subcommand]
+				if !ok {
+					return nil, fmt.Errorf("git: unsupported subcommand %q -- available: add, commit, diff, log, show, status, push", in.Subcommand)
+				}
+
+				// Every path the model named is resolved through the
+				// workspace before git ever sees it. Without this,
+				// `git add ../../..` stages files outside the root, and the
+				// containment the file tools enforce would have a
+				// git-shaped hole next to it.
+				for i, p := range in.Paths {
+					abs, err := ws.Resolve(p)
+					if err != nil {
+						return nil, err
+					}
+					rel, err := ws.Rel(abs)
+					if err != nil {
+						return nil, err
+					}
+					in.Paths[i] = rel
+				}
+
+				built, err := spec.args(in)
 				if err != nil {
 					return nil, err
 				}
-				rel, err := ws.Rel(abs)
-				if err != nil {
-					return nil, err
-				}
-				in.Paths[i] = rel
-			}
-
-			argv, err := spec.args(in)
-			if err != nil {
-				return nil, err
+				argv = built
 			}
 
 			execCtx, cancel := context.WithTimeout(ctx, gitTimeout)

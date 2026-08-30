@@ -27,7 +27,6 @@ import { DefaultToolName } from "lib/ai/tools";
 import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
 import { DefaultToolIcon } from "./default-tool-icon";
 import equal from "lib/equal";
-import { EMOJI_DATA } from "lib/const";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 type MentionItemType = {
@@ -162,15 +161,11 @@ export function ChatMentionInputSuggestion({
   onOpenChange?: (open: boolean) => void;
   children?: React.ReactNode;
   style?: React.CSSProperties;
-  disabledType?: ("mcp" | "workflow" | "defaultTool" | "agent")[];
+  disabledType?: ("mcp" | "workflow" | "defaultTool")[];
 }) {
   const t = useTranslations("Common");
-  const [mcpList, workflowList, agentList] = appStore(
-    useShallow((state) => [
-      state.mcpList,
-      state.workflowToolList,
-      state.agentList,
-    ]),
+  const [mcpList, workflowList] = appStore(
+    useShallow((state) => [state.mcpList, state.workflowToolList]),
   );
   const [searchValue, setSearchValue] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -263,51 +258,6 @@ export function ChatMentionInputSuggestion({
       }) || []
     );
   }, [mcpList, selectedIds, disabledType, searchValue]);
-
-  const agentMentions = useMemo(() => {
-    if (disabledType?.includes("agent")) return [];
-    if (!agentList.length) return [];
-
-    return agentList
-      .filter(
-        (agent) =>
-          !searchValue ||
-          agent.name.toLowerCase().includes(searchValue.toLowerCase()),
-      )
-      .map((agent, i) => {
-        const id = JSON.stringify({
-          type: "agent",
-          name: agent.name,
-          agentId: agent.id,
-          description: agent.description,
-          icon: agent.icon,
-        });
-        return {
-          id: agent.id,
-          type: "agent",
-          label: agent.name,
-          onSelect: () =>
-            onSelectMention({
-              label: `agent("${agent.name}")`,
-              id,
-            }),
-          icon: (
-            <Avatar
-              style={agent.icon?.style}
-              className="size-3.5 ring-[1px] ring-input rounded-full"
-            >
-              <AvatarImage
-                src={agent.icon?.value || EMOJI_DATA[i % EMOJI_DATA.length]}
-              />
-              <AvatarFallback>{agent.name.slice(0, 1)}</AvatarFallback>
-            </Avatar>
-          ),
-          suffix: selectedIds?.includes(id) && (
-            <CheckIcon className="size-3 ml-auto" />
-          ),
-        };
-      });
-  }, [agentList, selectedIds, disabledType, searchValue]);
 
   const workflowMentions = useMemo(() => {
     if (disabledType?.includes("workflow")) return [];
@@ -446,13 +396,8 @@ export function ChatMentionInputSuggestion({
 
   // Combine all mentions
   const allMentions = useMemo(() => {
-    return [
-      ...agentMentions,
-      ...workflowMentions,
-      ...defaultToolMentions,
-      ...mcpMentions,
-    ];
-  }, [agentMentions, workflowMentions, defaultToolMentions, mcpMentions]);
+    return [...workflowMentions, ...defaultToolMentions, ...mcpMentions];
+  }, [workflowMentions, defaultToolMentions, mcpMentions]);
 
   // Reset selected index when mentions change
   useEffect(() => {
@@ -473,7 +418,6 @@ export function ChatMentionInputSuggestion({
   // Group mentions by type
   const groupedMentions = useMemo(() => {
     const groups = {
-      agent: { title: "Agents", items: [] as MentionItemType[] },
       workflow: { title: "Workflows", items: [] as MentionItemType[] },
       defaultTool: { title: "App Tools", items: [] as MentionItemType[] },
       mcp: { title: "MCP Tools", items: [] as MentionItemType[] },
@@ -549,7 +493,7 @@ export function ChatMentionInputSuggestion({
                   const currentItem = allMentions[selectedIndex];
                   const currentType =
                     currentItem.type === "mcpTool" ? "mcp" : currentItem.type;
-                  const typeOrder = ["agent", "workflow", "mcp", "defaultTool"];
+                  const typeOrder = ["workflow", "mcp", "defaultTool"];
                   const currentTypeIndex = typeOrder.indexOf(currentType);
 
                   if (e.key === "ArrowLeft" && currentTypeIndex > 0) {
@@ -606,27 +550,6 @@ export function ChatMentionInputSuggestion({
             ) : isMobile ? (
               // Mobile vertical layout
               <div className="overflow-y-auto max-h-[50vh]">
-                {groupedMentions.agent.items.length > 0 && (
-                  <div className="p-2">
-                    <div className="text-xs font-medium text-muted-foreground px-2 py-1.5">
-                      {groupedMentions.agent.title}
-                    </div>
-                    <div className="space-y-1">
-                      {groupedMentions.agent.items.map((item) => (
-                        <MentionItem
-                          key={item.id}
-                          item={item}
-                          isSelected={
-                            allMentions[selectedIndex]?.id === item.id
-                          }
-                          ref={(el) => {
-                            itemRefs.current[item.id] = el;
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
                 {groupedMentions.workflow.items.length > 0 && (
                   <div className="p-2 border-t">
                     <div className="text-xs font-medium text-muted-foreground px-2 py-1.5">
@@ -694,34 +617,9 @@ export function ChatMentionInputSuggestion({
             ) : (
               // Desktop horizontal layout
               <div className="flex flex-1 h-[300px]">
-                {/* Agents & Workflows Column */}
+                {/* Workflows Column */}
                 <div className="flex-1 border-r overflow-y-auto">
                   <div className="p-2">
-                    <div className="text-xs font-medium text-muted-foreground px-2 py-1.5">
-                      {groupedMentions.agent.title}
-                    </div>
-                    <div className="space-y-1">
-                      {groupedMentions.agent.items.length > 0 ? (
-                        groupedMentions.agent.items.map((item) => (
-                          <MentionItem
-                            key={item.id}
-                            item={item}
-                            isSelected={
-                              allMentions[selectedIndex]?.id === item.id
-                            }
-                            ref={(el) => {
-                              itemRefs.current[item.id] = el;
-                            }}
-                          />
-                        ))
-                      ) : (
-                        <div className="px-2 py-3 text-xs text-muted-foreground text-center">
-                          No agents found
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="p-2 border-t">
                     <div className="text-xs font-medium text-muted-foreground px-2 py-1.5">
                       {groupedMentions.workflow.title}
                     </div>

@@ -29,6 +29,14 @@ var knownProviders = []knownProvider{
 	{Slug: "azure", Label: "Azure OpenAI"},
 }
 
+// githubRow is the picker's one row beyond knownProviders -- see
+// docs/coding-agent-parity/04-git-remote-operations.md. It is a distinct
+// row rather than one more knownProvider because it does not go through
+// SetProviderKey/ListProviders at all: a GitHub token is its own
+// internal/secrets entry, connected/disconnected through /api/github/*,
+// not the DB-backed provider config every row above it edits.
+var githubRow = len(knownProviders)
+
 // settingsStep is which half of the page is focused.
 type settingsStep int
 
@@ -47,6 +55,14 @@ type providerSavedMsg struct {
 	err      error
 }
 
+type githubStatusLoadedMsg struct {
+	connected bool
+	err       error
+}
+
+type githubConnectedMsg struct{ err error }
+type githubDisconnectedMsg struct{ err error }
+
 // Settings is the settings page (plan's page/settings.go): "provider keys,
 // defaults". Phase 4's scope is provider keys -- the same DB-backed
 // ProviderRepository the desktop app's own settings screen reads and
@@ -54,6 +70,9 @@ type providerSavedMsg struct {
 // desktop app sees on its next fetch, and vice versa. Permission-mode and
 // model defaults already have their own live-switching surfaces (Phase 3's
 // /mode and the model picker); this page does not duplicate them.
+//
+// Phase 3 of docs/coding-agent-parity/ added the one row below the
+// provider list: GitHub connect/disconnect, gating git push and create_pr.
 type Settings struct {
 	c client.Client
 
@@ -61,6 +80,9 @@ type Settings struct {
 	cursor  int
 	loading bool
 	err     error
+
+	githubConnected bool
+	githubLoading   bool
 
 	step  settingsStep
 	input textinput.Model
@@ -75,11 +97,11 @@ func NewSettings(c client.Client) Settings {
 	input.Placeholder = "paste API key"
 	input.EchoMode = textinput.EchoPassword
 	input.EchoCharacter = '•'
-	return Settings{c: c, loading: true, input: input}
+	return Settings{c: c, loading: true, githubLoading: true, input: input}
 }
 
 func (m Settings) Init() tea.Cmd {
-	return m.load
+	return tea.Batch(m.load, m.loadGitHub)
 }
 
 func (m Settings) load() tea.Msg {
@@ -87,10 +109,29 @@ func (m Settings) load() tea.Msg {
 	return providersLoadedMsg{rows: rows, err: err}
 }
 
+func (m Settings) loadGitHub() tea.Msg {
+	connected, err := m.c.GitHubStatus(context.Background())
+	return githubStatusLoadedMsg{connected: connected, err: err}
+}
+
 func (m Settings) save(provider knownProvider, apiKey string) tea.Cmd {
 	return func() tea.Msg {
 		err := m.c.SetProviderKey(context.Background(), provider.Slug, provider.Label, apiKey)
 		return providerSavedMsg{provider: provider.Label, err: err}
+	}
+}
+
+func (m Settings) connectGitHub(token string) tea.Cmd {
+	return func() tea.Msg {
+		err := m.c.ConnectGitHub(context.Background(), token)
+		return githubConnectedMsg{err: err}
+	}
+}
+
+func (m Settings) disconnectGitHub() tea.Cmd {
+	return func() tea.Msg {
+		err := m.c.DisconnectGitHub(context.Background())
+		return githubDisconnectedMsg{err: err}
 	}
 }
 
@@ -105,6 +146,15 @@ func (m Settings) Update(msg tea.Msg) (Settings, tea.Cmd) {
 		m.rows = msg.rows
 		return m, nil
 
+	case githubStatusLoadedMsg:
+		m.githubLoading = false
+		if msg.err != nil {
+			m.err = msg.err
+		} else {
+			m.githubConnected = msg.connected
+		}
+		return m, nil
+
 	case providerSavedMsg:
 		m.saving = false
 		if msg.err != nil {
@@ -115,6 +165,26 @@ func (m Settings) Update(msg tea.Msg) (Settings, tea.Cmd) {
 			m.input.Reset()
 		}
 		return m, m.load
+
+	case githubConnectedMsg:
+		m.saving = false
+		if msg.err != nil {
+			m.err = msg.err
+		} else {
+			m.notice = "connected GitHub"
+			m.step = settingsStepPick
+			m.input.Reset()
+		}
+		return m, m.loadGitHub
+
+	case githubDisconnectedMsg:
+		m.saving = false
+		if msg.err != nil {
+			m.err = msg.err
+		} else {
+			m.notice = "disconnected GitHub"
+		}
+		return m, m.loadGitHub
 
 	case tea.KeyMsg:
 		if m.saving {
@@ -140,14 +210,39 @@ func (m Settings) updatePicker(msg tea.KeyMsg) (Settings, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, keys.DefaultPickerKeyMap.Down):
-		if m.cursor < len(knownProviders)-1 {
+		if m.cursor < githubRow {
 			m.cursor++
 		}
 		return m, nil
 
+	case msg.String() == "d" && m.cursor == githubRow && m.githubConnected:
+		// Disconnect is a direct action, not routed through the key-entry
+		// step -- there is no token to type to remove one.
+		m.saving = true
+		m.notice = ""
+		return m, m.disconnectGitHub()
+
 	case key.Matches(msg, keys.DefaultPickerKeyMap.Select):
+		if m.cursor == githubRow {
+			if m.githubConnected {
+				// Already connected: enter re-enters key entry to replace
+				// the token, since Connect overwrites rather than requiring
+				// a disconnect first.
+				m.step = settingsStepKey
+				m.notice = ""
+				m.input.Placeholder = "paste a new GitHub token to replace it"
+				m.input.Focus()
+				return m, textinput.Blink
+			}
+			m.step = settingsStepKey
+			m.notice = ""
+			m.input.Placeholder = "paste a GitHub personal access token"
+			m.input.Focus()
+			return m, textinput.Blink
+		}
 		m.step = settingsStepKey
 		m.notice = ""
+		m.input.Placeholder = "paste API key"
 		m.input.Focus()
 		return m, textinput.Blink
 	}
@@ -163,12 +258,15 @@ func (m Settings) updateKeyEntry(msg tea.KeyMsg) (Settings, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyEnter:
-		apiKey := strings.TrimSpace(m.input.Value())
-		if apiKey == "" {
+		value := strings.TrimSpace(m.input.Value())
+		if value == "" {
 			return m, nil
 		}
 		m.saving = true
-		return m, m.save(knownProviders[m.cursor], apiKey)
+		if m.cursor == githubRow {
+			return m, m.connectGitHub(value)
+		}
+		return m, m.save(knownProviders[m.cursor], value)
 	}
 
 	var cmd tea.Cmd
@@ -205,7 +303,11 @@ func (m Settings) View() string {
 	if m.saving {
 		b.WriteString(theme.Default.Muted.Render("saving…"))
 	} else if m.step == settingsStepKey {
-		b.WriteString(fmt.Sprintf("API key for %s:\n", knownProviders[m.cursor].Label))
+		label := "API key for " + knownProviders[m.cursor].Label
+		if m.cursor == githubRow {
+			label = "GitHub personal access token"
+		}
+		b.WriteString(label + ":\n")
 		b.WriteString(m.input.View())
 	} else {
 		b.WriteString(theme.Default.Muted.Render("add or update a key  ·  enter to select  ·  ↑/↓ to move"))
@@ -219,6 +321,7 @@ func (m Settings) View() string {
 			}
 			b.WriteString("\n")
 		}
+		b.WriteString(m.githubRowView())
 	}
 
 	if m.notice != "" {
@@ -226,4 +329,26 @@ func (m Settings) View() string {
 		b.WriteString(theme.Default.System.Render(m.notice))
 	}
 	return b.String()
+}
+
+// githubRowView renders the picker's GitHub row, distinct from the
+// provider rows above it: it names its connection state directly ("Github
+// (connected)"/"(not connected)") since there is no separate "configured:"
+// section it belongs to the way DB-backed providers do.
+func (m Settings) githubRowView() string {
+	status := "not connected"
+	if m.githubLoading {
+		status = "…"
+	} else if m.githubConnected {
+		status = "connected"
+	}
+	line := fmt.Sprintf("GitHub (%s)", status)
+	if m.cursor == githubRow {
+		out := theme.Default.System.Bold(true).Render("> "+line) + "\n"
+		if m.githubConnected {
+			out += theme.Default.Muted.Render("  enter to replace the token  ·  d to disconnect") + "\n"
+		}
+		return out
+	}
+	return "  " + line + "\n"
 }

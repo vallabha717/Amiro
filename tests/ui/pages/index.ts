@@ -1,4 +1,4 @@
-import type { Page, Locator } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 
 export class SignInPage {
@@ -71,10 +71,14 @@ export class OnboardingPage {
   constructor(page: Page) {
     this.page = page;
     this.apiKeyInput = page.locator('[data-testid="onboarding-api-key-input"]');
-    this.baseUrlInput = page.locator('[data-testid="onboarding-base-url-input"]');
+    this.baseUrlInput = page.locator(
+      '[data-testid="onboarding-base-url-input"]',
+    );
     this.saveButton = page.locator('[data-testid="onboarding-save-button"]');
     this.skipButton = page.locator('[data-testid="onboarding-skip-button"]');
-    this.finishButton = page.locator('[data-testid="onboarding-finish-button"]');
+    this.finishButton = page.locator(
+      '[data-testid="onboarding-finish-button"]',
+    );
   }
 
   async goto() {
@@ -83,7 +87,9 @@ export class OnboardingPage {
   }
 
   async selectProvider(id: string) {
-    await this.page.locator(`[data-testid="onboarding-provider-${id}"]`).click();
+    await this.page
+      .locator(`[data-testid="onboarding-provider-${id}"]`)
+      .click();
   }
 
   async configure(apiKey: string, baseUrl?: string) {
@@ -113,9 +119,13 @@ export class ChatPage {
 
   constructor(page: Page) {
     this.page = page;
-    this.input = page.locator('[data-testid="chat-input"] .ProseMirror, [data-testid="chat-input"]');
+    this.input = page.locator(
+      '[data-testid="chat-input"] .ProseMirror, [data-testid="chat-input"]',
+    );
     this.sendButton = page.locator('[data-testid="chat-send-button"]');
-    this.messagesContainer = page.locator('[data-testid="chat-messages-container"]');
+    this.messagesContainer = page.locator(
+      '[data-testid="chat-messages-container"]',
+    );
     this.greeting = page.locator('[data-testid="chat-greeting"]');
     this.modelSelector = page.locator('[data-testid="model-selector-button"]');
   }
@@ -138,7 +148,11 @@ export class ChatPage {
 
   async waitForStreamingComplete() {
     await expect(this.messagesContainer).toBeVisible({ timeout: 20000 });
-    await expect(this.messagesContainer).toHaveAttribute("data-state", "ready", { timeout: 30000 });
+    await expect(this.messagesContainer).toHaveAttribute(
+      "data-state",
+      "ready",
+      { timeout: 30000 },
+    );
   }
 
   messageBubbles() {
@@ -150,7 +164,9 @@ export class ChatPage {
   // this filter, a test asserting on "a bubble appeared" is satisfied by
   // the user's own message alone, even when the assistant turn errored.
   assistantMessageBubbles() {
-    return this.page.locator('[data-testid="message-content"][data-role="assistant"]');
+    return this.page.locator(
+      '[data-testid="message-content"][data-role="assistant"]',
+    );
   }
 }
 
@@ -160,7 +176,9 @@ export class ThreadsPage {
 
   constructor(page: Page) {
     this.page = page;
-    this.newChatButton = page.locator('[data-testid="sidebar-new-chat-button"]');
+    this.newChatButton = page.locator(
+      '[data-testid="sidebar-new-chat-button"]',
+    );
   }
 
   threadLinks() {
@@ -174,55 +192,134 @@ export class ThreadsPage {
   }
 }
 
-export class AgentsPage {
+export class SkillsPage {
   readonly page: Page;
-  readonly createAgentButton: Locator;
-  readonly createAgentCard: Locator;
+  readonly createSkillButton: Locator;
+  readonly createSkillCard: Locator;
 
   constructor(page: Page) {
     this.page = page;
-    this.createAgentButton = page.locator('[data-testid="create-agent-button"]');
-    this.createAgentCard = page.locator('[data-testid="create-agent-card"]');
+    this.createSkillButton = page.locator(
+      '[data-testid="create-skill-button"]',
+    );
+    this.createSkillCard = page.locator('[data-testid="create-skill-card"]');
   }
 
   async goto() {
-    await this.page.goto("/agents");
+    await this.page.goto("/skills");
     await this.page.waitForLoadState("domcontentloaded");
   }
 
-  agentCards() {
-    return this.page.locator('[data-testid="agent-card"]');
+  skillCards() {
+    return this.page.locator('[data-testid="skill-card"]');
+  }
+
+  skillCardByName(name: string) {
+    return this.page.locator(
+      `[data-testid="skill-card"][data-item-name="${name}"]`,
+    );
   }
 }
 
-export class AgentDetailPage {
+export class RunsPage {
   readonly page: Page;
-  readonly nameInput: Locator;
-  readonly descriptionInput: Locator;
-  readonly roleInput: Locator;
-  readonly promptTextarea: Locator;
-  readonly saveButton: Locator;
+  readonly panel: Locator;
+  readonly promptInput: Locator;
+  readonly startButton: Locator;
+  readonly emptyState: Locator;
+  readonly rows: Locator;
 
   constructor(page: Page) {
     this.page = page;
-    this.nameInput = page.locator('[data-testid="agent-name-input"]');
-    this.descriptionInput = page.locator('[data-testid="agent-description-input"]');
-    this.roleInput = page.locator('[data-testid="agent-role-input"]');
-    this.promptTextarea = page.locator('[data-testid="agent-prompt-textarea"]');
-    this.saveButton = page.locator('[data-testid="agent-save-button"]');
+    this.panel = page.locator('[data-testid="background-jobs-panel"]');
+    this.promptInput = page.locator(
+      '[data-testid="background-job-prompt-input"]',
+    );
+    this.startButton = page.locator(
+      '[data-testid="background-job-start-button"]',
+    );
+    this.emptyState = page.locator('[data-testid="background-jobs-empty"]');
+    this.rows = page.locator('[data-testid="background-job-row"]');
   }
 
-  async goto(id?: string) {
-    await this.page.goto(id ? `/agent?id=${id}` : "/agent");
+  async goto() {
+    await this.page.goto("/runs");
     await this.page.waitForLoadState("domcontentloaded");
   }
 
-  async fillAndSave(name: string, description: string, role: string, prompt: string) {
+  statusBadgeFor(row: Locator) {
+    return row.locator('[data-testid="background-job-status-badge"]');
+  }
+}
+
+export class SkillDetailPage {
+  readonly page: Page;
+  readonly nameInput: Locator;
+  readonly descriptionInput: Locator;
+  readonly bodyTextarea: Locator;
+  readonly saveButton: Locator;
+  readonly deleteButton: Locator;
+  readonly duplicateButton: Locator;
+  readonly nameError: Locator;
+  readonly descriptionError: Locator;
+  readonly readOnlyNotice: Locator;
+  readonly generateButton: Locator;
+
+  constructor(page: Page) {
+    this.page = page;
+    this.nameInput = page.locator('[data-testid="skill-name-input"]');
+    this.descriptionInput = page.locator(
+      '[data-testid="skill-description-input"]',
+    );
+    this.bodyTextarea = page.locator('[data-testid="skill-body-textarea"]');
+    this.saveButton = page.locator('[data-testid="skill-save-button"]');
+    this.deleteButton = page.locator('[data-testid="skill-delete-button"]');
+    this.duplicateButton = page.locator(
+      '[data-testid="skill-duplicate-button"]',
+    );
+    this.nameError = page.locator('[data-testid="skill-name-error"]');
+    this.descriptionError = page.locator(
+      '[data-testid="skill-description-error"]',
+    );
+    this.readOnlyNotice = page.locator('[data-testid="skill-readonly-notice"]');
+    this.generateButton = page.locator(
+      '[data-testid="skill-generate-with-ai-button"]',
+    );
+  }
+
+  async goto(name?: string) {
+    await this.page.goto(
+      name ? `/skill?name=${encodeURIComponent(name)}` : "/skill?name=new",
+    );
+    await this.page.waitForLoadState("domcontentloaded");
+  }
+
+  async fillAndSave(name: string, description: string, body: string) {
     await this.nameInput.fill(name);
     await this.descriptionInput.fill(description);
-    await this.roleInput.fill(role);
-    await this.promptTextarea.fill(prompt);
+    await this.bodyTextarea.fill(body);
     await this.saveButton.click();
+  }
+}
+
+export class GenerateSkillDialog {
+  readonly page: Page;
+  readonly promptTextarea: Locator;
+  readonly submitButton: Locator;
+
+  constructor(page: Page) {
+    this.page = page;
+    this.promptTextarea = page.locator(
+      '[data-testid="skill-generate-prompt-textarea"]',
+    );
+    this.submitButton = page.locator(
+      '[data-testid="skill-generate-submit-button"]',
+    );
+  }
+
+  async generate(prompt: string) {
+    await this.promptTextarea.fill(prompt);
+    await this.submitButton.click();
   }
 }
 
@@ -232,7 +329,9 @@ export class McpPage {
 
   constructor(page: Page) {
     this.page = page;
-    this.addServerButton = page.locator('[data-testid="add-mcp-server-button"]');
+    this.addServerButton = page.locator(
+      '[data-testid="add-mcp-server-button"]',
+    );
   }
 
   async goto() {
@@ -252,8 +351,12 @@ export class WorkflowPage {
 
   constructor(page: Page) {
     this.page = page;
-    this.createWithExampleButton = page.locator('[data-testid="create-workflow-with-example-button"]');
-    this.createWorkflowCard = page.locator('[data-testid="create-workflow-card"]');
+    this.createWithExampleButton = page.locator(
+      '[data-testid="create-workflow-with-example-button"]',
+    );
+    this.createWorkflowCard = page.locator(
+      '[data-testid="create-workflow-card"]',
+    );
   }
 
   async goto() {
@@ -333,11 +436,17 @@ export class SettingsPage {
 
   constructor(page: Page) {
     this.page = page;
-    this.userButton = page.locator('[data-testid="sidebar-user-button"]').first();
-    this.settingsMenuItem = page.locator('[data-testid="user-settings-menu-item"]');
+    this.userButton = page
+      .locator('[data-testid="sidebar-user-button"]')
+      .first();
+    this.settingsMenuItem = page.locator(
+      '[data-testid="user-settings-menu-item"]',
+    );
     this.content = page.locator('[data-testid="user-settings-drawer"]');
     this.nameInput = page.locator('[data-testid="user-name-input"]');
-    this.saveChangesButton = page.locator('[data-testid="save-changes-button"]');
+    this.saveChangesButton = page.locator(
+      '[data-testid="save-changes-button"]',
+    );
   }
 
   async open() {
@@ -364,7 +473,9 @@ export class SkillPalette {
     this.emptyState = page.locator('[data-testid="skill-palette-empty"]');
     this.errorState = page.locator('[data-testid="skill-palette-error"]');
     this.loadingState = page.locator('[data-testid="skill-palette-loading"]');
-    this.groupProject = page.locator('[data-testid="skill-palette-group-project"]');
+    this.groupProject = page.locator(
+      '[data-testid="skill-palette-group-project"]',
+    );
     this.groupUser = page.locator('[data-testid="skill-palette-group-user"]');
   }
 
@@ -394,5 +505,66 @@ export class SkillPalette {
     const removeBtn = this.chipRemoveButton(name);
     await expect(removeBtn).toBeVisible({ timeout: 15000 });
     await removeBtn.click();
+  }
+}
+
+export class UserSettingsPage {
+  readonly page: Page;
+  readonly sidebarUserButton: Locator;
+  readonly menuItem: Locator;
+  readonly drawer: Locator;
+  readonly closeButton: Locator;
+  readonly trustCard: Locator;
+  readonly githubCard: Locator;
+  readonly githubStatusBadge: Locator;
+  readonly githubTokenInput: Locator;
+  readonly githubConnectButton: Locator;
+  readonly githubDisconnectButton: Locator;
+
+  constructor(page: Page) {
+    this.page = page;
+    this.sidebarUserButton = page.locator(
+      '[data-testid="sidebar-user-button"]',
+    );
+    this.menuItem = page.locator('[data-testid="user-settings-menu-item"]');
+    this.drawer = page.locator('[data-testid="user-settings-drawer"]');
+    this.closeButton = page.locator(
+      '[data-testid="close-user-settings-button"]',
+    );
+    this.trustCard = page.locator(
+      '[data-testid="workspace-trust-settings-card"]',
+    );
+    this.githubCard = page.locator('[data-testid="github-connect-card"]');
+    this.githubStatusBadge = this.githubCard.locator(
+      '[data-testid="github-status-badge"]',
+    );
+    this.githubTokenInput = this.githubCard.locator(
+      '[data-testid="github-token-input"]',
+    );
+    this.githubConnectButton = this.githubCard.locator(
+      '[data-testid="github-connect-button"]',
+    );
+    this.githubDisconnectButton = this.githubCard.locator(
+      '[data-testid="github-disconnect-button"]',
+    );
+  }
+
+  async open() {
+    await this.page.goto("/");
+    await this.sidebarUserButton.click();
+    await this.menuItem.click();
+    await expect(this.drawer).toBeVisible({ timeout: 15000 });
+  }
+
+  grantRow(root: string): Locator {
+    return this.trustCard
+      .locator('[data-testid="workspace-trust-grant-row"]')
+      .filter({ hasText: root });
+  }
+
+  revokeButtonFor(root: string): Locator {
+    return this.grantRow(root).locator(
+      '[data-testid="workspace-trust-revoke-button"]',
+    );
   }
 }

@@ -106,6 +106,8 @@ func (h *Handler) toolDeps(ws *workspace.Workspace, sessionID string) tools.Deps
 		LSP:                 h.lsp,
 		SearchRepo:          h.searchRepo,
 		SandboxNetworkAllow: h.sandboxNetworkAllow,
+		GitHubToken:         h.githubToken,
+		GitHubAPIBase:       h.githubAPIBase,
 	}
 }
 

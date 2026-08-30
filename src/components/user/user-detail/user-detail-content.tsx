@@ -1,13 +1,22 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
-import useSWR, { mutate } from "swr";
-import { fetcher } from "lib/utils";
-import { apiJson, ApiError } from "@/lib/backend/client";
+import { GitHubConnectCard } from "@/components/github/github-connect-card";
+import { WorkspaceTrustSettingsCard } from "@/components/workspace-trust/trust-settings-card";
 import { useFileUpload } from "@/hooks/use-presigned-upload";
+import { ApiError, apiJson } from "@/lib/backend/client";
+import { rewriteStorageUrl } from "@/lib/backend/config";
+import { BasicUser } from "app-types/user";
+import { getUserAvatar } from "lib/user/utils";
+import { fetcher } from "lib/utils";
 import { passwordSchema } from "lib/validations/password";
+import { Camera, Loader2 } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import useSWR, { mutate } from "swr";
 import { Avatar, AvatarFallback, AvatarImage } from "ui/avatar";
 import { Badge } from "ui/badge";
+import { Button } from "ui/button";
 import {
   Card,
   CardContent,
@@ -15,17 +24,10 @@ import {
   CardHeader,
   CardTitle,
 } from "ui/card";
-import { Label } from "ui/label";
 import { Input } from "ui/input";
-import { Button } from "ui/button";
+import { Label } from "ui/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
-import { Camera, Loader2 } from "lucide-react";
-import { toast } from "sonner";
-import { useTranslations } from "next-intl";
 import { UserDetailContentSkeleton } from "./user-detail-content-skeleton";
-import { BasicUser } from "app-types/user";
-import { getUserAvatar } from "lib/user/utils";
-import { rewriteStorageUrl } from "@/lib/backend/config";
 
 // The single local account desktop builds auto-provision and auto-login
 // as (internal/auth/service.go's DesktopDefaultUserEmail) -- kept in sync
@@ -57,9 +59,14 @@ export function UserDetailContent({
   }
 
   return (
-    <div className="flex flex-col gap-4 p-2 max-w-lg" data-testid="user-detail-content">
+    <div
+      className="flex flex-col gap-4 p-2 max-w-lg"
+      data-testid="user-detail-content"
+    >
       <ProfileCard user={user} view={view} />
       {view === "user" && <PasswordCard />}
+      {view === "user" && <WorkspaceTrustSettingsCard />}
+      {view === "user" && <GitHubConnectCard />}
     </div>
   );
 }
@@ -101,7 +108,9 @@ function ProfileCard({
     };
   }, [previewImage]);
 
-  const saveDetails = async (patch: Partial<Pick<BasicUser, "name" | "image">>) => {
+  const saveDetails = async (
+    patch: Partial<Pick<BasicUser, "name" | "image">>,
+  ) => {
     try {
       const updated = await apiJson<BasicUser>(USER_DETAILS_KEY, {
         method: "PUT",
@@ -111,7 +120,9 @@ function ProfileCard({
       mutate(USER_DETAILS_KEY, updated, { revalidate: false });
       return updated;
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : tc("failedToUpdateUserDetails"));
+      toast.error(
+        e instanceof ApiError ? e.message : tc("failedToUpdateUserDetails"),
+      );
       return undefined;
     }
   };
@@ -192,7 +203,13 @@ function ProfileCard({
         <div className="flex items-center justify-center">
           <div className="relative inline-block">
             <Avatar className="size-20 rounded-full ring ring-border">
-              <AvatarImage src={previewImage ?? (user.image ? rewriteStorageUrl(user.image) : undefined) ?? getUserAvatar(user)} />
+              <AvatarImage
+                src={
+                  previewImage ??
+                  (user.image ? rewriteStorageUrl(user.image) : undefined) ??
+                  getUserAvatar(user)
+                }
+              />
               <AvatarFallback className="text-lg font-semibold">
                 {user.name?.slice(0, 2).toUpperCase()}
               </AvatarFallback>
@@ -241,7 +258,9 @@ function ProfileCard({
           <Label htmlFor="user-email">{tc("email")}</Label>
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className={isDesktopDefaultAccount ? "cursor-not-allowed" : ""}>
+              <span
+                className={isDesktopDefaultAccount ? "cursor-not-allowed" : ""}
+              >
                 <Input
                   id="user-email"
                   type="email"
@@ -252,7 +271,9 @@ function ProfileCard({
               </span>
             </TooltipTrigger>
             {isDesktopDefaultAccount && (
-              <TooltipContent>{t("emailFixedForDesktopAccount")}</TooltipContent>
+              <TooltipContent>
+                {t("emailFixedForDesktopAccount")}
+              </TooltipContent>
             )}
           </Tooltip>
         </div>
@@ -316,7 +337,9 @@ function PasswordCard() {
       reset();
       mutate(AUTH_METHODS_KEY);
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : tc("failedToUpdatePassword"));
+      toast.error(
+        e instanceof ApiError ? e.message : tc("failedToUpdatePassword"),
+      );
     } finally {
       setIsSaving(false);
     }

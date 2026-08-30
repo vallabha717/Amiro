@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"amiro/backend/internal/agent/checkpoint"
 	"amiro/backend/internal/agent/permission"
 	"amiro/backend/internal/agent/session"
 	bifrostai "amiro/backend/internal/ai/bifrost"
@@ -110,8 +111,9 @@ func runToolLoop(
 	messages []bifrostai.Message,
 	activeTools []tools.Definition,
 	perms *permission.Engine,
+	checkpoints *checkpoint.Capturer,
 ) (toolLoopResult, error) {
-	return runToolLoopWithBudget(ctx, engine, sw, resolved, system, messages, activeTools, perms, defaultLoopBudget())
+	return runToolLoopWithBudget(ctx, engine, sw, resolved, system, messages, activeTools, perms, checkpoints, defaultLoopBudget())
 }
 
 // runToolLoopWithBudget is runToolLoop with the budget as a parameter, for
@@ -125,6 +127,7 @@ func runToolLoopWithBudget(
 	messages []bifrostai.Message,
 	activeTools []tools.Definition,
 	perms *permission.Engine,
+	checkpoints *checkpoint.Capturer,
 	budget loopBudget,
 ) (toolLoopResult, error) {
 	specs := make([]bifrostai.ToolSpec, len(activeTools))
@@ -201,7 +204,7 @@ func runToolLoopWithBudget(
 		// The scheduler owns dedupe (the hook covers every call a provider
 		// streams incrementally, the post-step sweep covers anything it
 		// didn't) and decides which calls may overlap.
-		sched := newToolScheduler(sw, activeTools, perms).withLog(log, step)
+		sched := newToolScheduler(sw, activeTools, perms).withLog(log, step).withCheckpoints(checkpoints)
 
 		offerToolCall := func(tc bifrostai.ToolCall) {
 			// Close the open reasoning/text parts first so the client renders

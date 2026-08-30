@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Badge } from "ui/badge";
@@ -23,7 +24,6 @@ export interface SkillPaletteProps {
 }
 
 const MAX_DISPLAY_COUNT = 50;
-const ENABLE_CREATE_SKILL_LINK = false; // Flag off until Phase 5 (Skills UI) ships
 
 export function SkillPalette({
   top,
@@ -192,11 +192,13 @@ export function SkillPalette({
           >
             <Sparkles className="size-5 opacity-40 mb-1" />
             <div className="font-medium text-foreground">{t("noSkillsFound")}</div>
-            {ENABLE_CREATE_SKILL_LINK && (
-              <span className="text-xs text-primary underline mt-1 cursor-pointer">
-                {t("createOne")}
-              </span>
-            )}
+            <Link
+              href="/skill?name=new"
+              className="text-xs text-primary underline mt-1 cursor-pointer"
+              data-testid="skill-palette-create-link"
+            >
+              {t("createOne")}
+            </Link>
           </div>
         ) : (
           <>

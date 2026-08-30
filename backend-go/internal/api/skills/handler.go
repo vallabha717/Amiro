@@ -3,6 +3,7 @@ package skills
 
 import (
 	"context"
+	"errors"
 
 	"amiro/backend/internal/skills"
 )
@@ -17,14 +18,23 @@ type Service interface {
 	Duplicate(ctx context.Context, home, name, project string) (*skills.Skill, error)
 }
 
-// Handler serves Agent Skills read endpoints.
+// errNoEngine is returned by Generate when the handler was wired without an
+// Engine -- the untagged sidecar build still registers this route (nothing
+// in router.go guards it behind h.Engine != nil the way some routes guard
+// behind an optional dependency), so a nil engine must fail cleanly rather
+// than nil-pointer panic.
+var errNoEngine = errors.New("skills: generation engine not configured")
+
+// Handler serves Agent Skills read and authoring endpoints.
 type Handler struct {
 	service Service
+	engine  Engine
 }
 
-// NewHandler constructs a skills HTTP handler.
-func NewHandler(service Service) *Handler {
-	return &Handler{service: service}
+// NewHandler constructs a skills HTTP handler. engine may be nil in tests
+// that never call Generate.
+func NewHandler(service Service, engine Engine) *Handler {
+	return &Handler{service: service, engine: engine}
 }
 
 type ShadowedSkillDTO struct {
@@ -190,11 +200,18 @@ func toListResponse(res *skills.ListResult) ListResponse {
 			Truncated:   false,
 		}
 	}
-	var items []SkillSummaryDTO
+	// Both start as non-nil empty slices, never `var ... []T` -- a nil
+	// slice serializes as JSON `null`, and every consumer of this
+	// response (the web dashboard's Skills page and its `useMutateSkills`
+	// cache updater, the TUI's palette, this suite's own assertions)
+	// treats `items`/`diagnostics` as always-iterable arrays. A `null`
+	// list.items sent a `Cannot read properties of null` crash straight
+	// through the web UI on the very first empty-state render.
+	items := []SkillSummaryDTO{}
 	for i := range res.Items {
 		items = append(items, toSkillSummaryDTO(&res.Items[i]))
 	}
-	var diags []DiagnosticDTO
+	diags := []DiagnosticDTO{}
 	for _, d := range res.Diagnostics {
 		diags = append(diags, DiagnosticDTO{
 			Path:     d.Path,

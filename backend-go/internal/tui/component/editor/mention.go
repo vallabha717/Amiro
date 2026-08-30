@@ -1,5 +1,5 @@
 // mention.go is Phase 4's `@`-mention completion: MCP tools, MCP servers,
-// agents, workflows and Amiro's own default tools, all as one flat,
+// workflows and Amiro's own default tools, all as one flat,
 // prefix-filterable list -- the composer's mirror of slash.go's palette,
 // for the other trigger character.
 //
@@ -29,7 +29,6 @@ import (
 type MentionKind string
 
 const (
-	MentionAgent       MentionKind = "agent"
 	MentionMCPTool     MentionKind = "mcpTool"
 	MentionMCPServer   MentionKind = "mcpServer"
 	MentionWorkflow    MentionKind = "workflow"
@@ -50,15 +49,14 @@ type Mentionable struct {
 	// where the wire wants the tool's own bare name ("create_issue"), not
 	// the server-qualified display label ("github/create_issue"). Empty
 	// for every other Kind, where mentionDTO.Name plays no role in
-	// resolution (agent/workflow/mcpServer key off their id fields only,
-	// per mentions.go) except defaultTool, which wants its Name as-is.
+	// resolution (workflow/mcpServer key off their id fields only, per
+	// mentions.go) except defaultTool, which wants its Name as-is.
 	WireName string
 
-	// ServerID, WorkflowID, AgentID carry whichever id client.Mention needs
-	// for this Kind -- empty for the kinds that don't use them.
+	// ServerID, WorkflowID carry whichever id client.Mention needs for
+	// this Kind -- empty for the kinds that don't use them.
 	ServerID   string
 	WorkflowID string
-	AgentID    string
 
 	Help string
 }
@@ -118,11 +116,6 @@ func MCPToolMentions(serverID, serverName string, tools []string) []Mentionable 
 // it).
 func MCPServerMention(serverID, serverName string) Mentionable {
 	return Mentionable{Kind: MentionMCPServer, Name: serverName, ServerID: serverID, Help: "every tool on this MCP server"}
-}
-
-// AgentMention applies an agent's system prompt and pre-bound mentions.
-func AgentMention(agentID, agentName string) Mentionable {
-	return Mentionable{Kind: MentionAgent, Name: agentName, AgentID: agentID, Help: "agent"}
 }
 
 // WorkflowMention runs a saved workflow as a tool.

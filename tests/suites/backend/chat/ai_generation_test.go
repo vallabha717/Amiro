@@ -1,7 +1,6 @@
 package chat_test
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -62,24 +61,6 @@ func TestAIGeneration_GenerateObjectAndSchemas(t *testing.T) {
 	}
 	if len(toolSchemaResp) == 0 {
 		t.Fatal("expected non-empty tool schema response")
-	}
-
-	// 3. Generate Agent (POST /api/agent/ai)
-	agentGenReq := map[string]any{
-		"message": "Create a senior Go code reviewer agent",
-	}
-	agentResp, err := user.GenerateAgent(t.Context(), agentGenReq)
-	if err != nil {
-		t.Fatalf("GenerateAgent: %v", err)
-	}
-	if len(agentResp) == 0 {
-		t.Fatal("expected non-empty agent generation response")
-	}
-	var agentData map[string]any
-	if err := json.Unmarshal(agentResp, &agentData); err == nil {
-		if name, ok := agentData["name"].(string); ok && name != "" {
-			t.Logf("generated agent name: %s", name)
-		}
 	}
 }
 

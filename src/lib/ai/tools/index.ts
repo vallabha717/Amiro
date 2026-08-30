@@ -32,6 +32,9 @@ export enum DefaultToolName {
   EditFile = "edit_file",
   MultiEdit = "multi_edit",
   Git = "git",
+  // Git remote operations (docs/coding-agent-parity/, Phase 3). Only
+  // offered alongside Git -- see internal/ai/tools.Defaults.
+  CreatePR = "create_pr",
   // Context & scale (Phase 4).
   TodoWrite = "todo_write",
   TodoRead = "todo_read",

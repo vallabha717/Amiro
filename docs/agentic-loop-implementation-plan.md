@@ -360,6 +360,18 @@ There is also a narrower point. Amiro already has a JS/Python code-execution san
 
 Worth revisiting if two things change: an audit trail (Tier 3 of the parity doc) so authored tools leave a record, and a way to bound what generated code may reach that is stronger than "the user said yes once".
 
+> **Note (2026-08-29):** `docs/coding-agent-parity/`'s Phase 1
+> (checkpoints & rewind) considered making a restore append a
+> `session.Event` here — "the event log doing exactly what it was
+> inverted to do", per that phase's own design doc — and did not end up
+> doing so: a restore runs outside a turn entirely (a plain HTTP route,
+> not part of `RunTurn`), so there is no `session.Log` in scope at the
+> point it happens, and plumbing one in felt like more new surface than
+> that phase's own authority covered. See
+> [progress/phase-01-checkpoints-and-rewind.md](coding-agent-parity/progress/phase-01-checkpoints-and-rewind.md)'s
+> divergence 4. The statement below — nothing outside replay/compaction/
+> eval reads the log yet — therefore still holds.
+
 ### Phase 6 — Plan review, the task panel, and the walkthrough — **landed 2026-08-17; in-place plan editing added 2026-08-17**
 
 The last open item of §4 was Tier 2 #7's remainder: a **propose-plan-then-approve** contract. Plan mode refused writes and nothing more, so its output was prose in the chat and no decision point. Two adjacent gaps closed with it — the todo list existed but lived inside a work log that auto-collapses, and nothing summarized a finished turn at all.

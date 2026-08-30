@@ -36,7 +36,7 @@ type backendRecord struct {
 // startFakeProvider spawns a detached fakeprovider process (see
 // cmdInternalFakeProvider) and waits for its URL= handoff line, mirroring
 // the PORT= handoff cmd/server itself uses.
-func startFakeProvider(ctx context.Context, log *logging.Logger, testID, surface, reply string) (*process.Process, string, error) {
+func startFakeProvider(ctx context.Context, log *logging.Logger, testID, surface, reply, toolCallName, toolCallArgs string) (*process.Process, string, error) {
 	self, err := os.Executable()
 	if err != nil {
 		return nil, "", fmt.Errorf("locating amirotest's own executable to spawn the fake provider: %w", err)
@@ -45,6 +45,12 @@ func startFakeProvider(ctx context.Context, log *logging.Logger, testID, surface
 	fpArgs := []string{"internal-fakeprovider"}
 	if reply != "" {
 		fpArgs = append(fpArgs, "--reply", reply)
+	}
+	if toolCallName != "" {
+		fpArgs = append(fpArgs, "--tool-call-name", toolCallName)
+		if toolCallArgs != "" {
+			fpArgs = append(fpArgs, "--tool-call-args", toolCallArgs)
+		}
 	}
 
 	p, err := process.Start(log, process.Spec{
@@ -102,6 +108,8 @@ func cmdBackendStart(args []string) int {
 	fake := fs.Bool("fake", true, "seed a detached fake LLM provider so chat turns get a real "+
 		"assistant reply instead of erroring with no keys configured (matches harness.Fake() for Go suites)")
 	fakeReply := fs.String("fake-reply", "", "canned assistant reply text; empty uses the fake provider's own default")
+	fakeToolCallName := fs.String("fake-tool-call-name", "", "if set, the fake provider emits this tool call before streaming fake-reply, for every prompt")
+	fakeToolCallArgs := fs.String("fake-tool-call-args", "{}", "JSON arguments for --fake-tool-call-name")
 
 	if err := fs.Parse(args); err != nil {
 		return exitConfig
@@ -176,7 +184,7 @@ func cmdBackendStart(args []string) int {
 	var fakeProviderPID int
 	var proxyURL string
 	if *fake && !*noSeed {
-		fpProc, url, err := startFakeProvider(ctx, r.Log, id, *surface, *fakeReply)
+		fpProc, url, err := startFakeProvider(ctx, r.Log, id, *surface, *fakeReply, *fakeToolCallName, *fakeToolCallArgs)
 		if err != nil {
 			_ = b.Stop(ctx)
 			fmt.Fprintf(os.Stderr, "amirotest backend start: starting fake provider: %v\n", err)

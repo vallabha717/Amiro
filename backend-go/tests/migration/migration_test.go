@@ -1,6 +1,6 @@
 // Package migration is a cross-cutting suite (plan section 6's "expect
 // tests/migration/ in Phase 1"): it drives the real internal/db.Open
-// against a real database file/instance and checks the full 19-table
+// against a real database file/instance and checks the full 18-table
 // schema round-trips, not just that individual .sql files parse.
 package migration
 
@@ -109,7 +109,7 @@ func TestMigrate_SQLite_CreatesAllTablesAndRoundTrips(t *testing.T) {
 	roundTrip(t, db.DialectSQLite, dsn)
 }
 
-func TestMigrate_SQLite_AllNineteenTablesExist(t *testing.T) {
+func TestMigrate_SQLite_AllTwentyTablesExist(t *testing.T) {
 	dsn := filepath.Join(t.TempDir(), "test.db")
 	gdb, err := db.Open(db.DialectSQLite, dsn)
 	if err != nil {
@@ -123,10 +123,11 @@ func TestMigrate_SQLite_AllNineteenTablesExist(t *testing.T) {
 
 	want := []string{
 		"user", "session", "account", "verification", "chat_thread",
-		"chat_message", "agent", "bookmark", "mcp_server",
+		"chat_message", "bookmark", "mcp_server",
 		"mcp_server_tool_custom_instructions", "mcp_server_custom_instructions",
 		"mcp_oauth_session", "workflow", "workflow_node", "workflow_edge",
 		"archive", "archive_item", "chat_export", "chat_export_comment",
+		"workspace_trust", "checkpoint_files",
 	}
 	for _, table := range want {
 		var name string
@@ -134,6 +135,16 @@ func TestMigrate_SQLite_AllNineteenTablesExist(t *testing.T) {
 		if err != nil {
 			t.Errorf("table %q: %v", table, err)
 		}
+	}
+
+	// agent was decommissioned in Phase 6 (docs/skills/) -- 0024_drop_agent
+	// must have actually dropped it, not merely stopped a new install from
+	// creating it, or a desktop install upgrading from an older version
+	// would carry a dead table forever.
+	var name string
+	err = sqlDB.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name = 'agent'`).Scan(&name)
+	if err == nil {
+		t.Fatal("agent table still exists after migration -- 0024_drop_agent did not run")
 	}
 }
 

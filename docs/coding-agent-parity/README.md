@@ -31,8 +31,8 @@ never mistaken for a status report.
 | 0 | ⚠️ Complete with gaps (4/6 criteria MET) — [record](progress/phase-00-workspace-trust-and-rules.md) |
 | 1 | ⚠️ Complete with gaps (2/6 criteria MET literally; underlying behavior proven) — [record](progress/phase-01-checkpoints-and-rewind.md) |
 | 2 | ⚠️ Complete with gaps (4/5 criteria MET; verified against a real bubblewrap backend, macOS unverified) — [record](progress/phase-02-sandboxed-execution.md) |
-| 3 | Not started (unblocked) |
-| 4 | Not started (blocked on 2, 3 — 0's and 1's backend enforcement are both done; 2's mechanism is real and proven) |
+| 3 | ⚠️ Complete with gaps (3/5 criteria literally MET; the other 2 proven at the unit/HTTP layer, blocked from a literal pass by pnpm/PTY environment gaps) — [record](progress/phase-03-git-remote-operations.md) |
+| 4 | ⚠️ Complete with gaps (5/7 criteria literally MET; 1 more via the same environment-honest pattern Phase 2 established; 1 not met for lack of a Tauri runtime in this sandbox) — [record](progress/phase-04-background-agent-runs.md) |
 
 ## Phases
 

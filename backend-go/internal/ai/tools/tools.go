@@ -57,6 +57,13 @@ const (
 	NameMultiEdit = "multi_edit"
 	NameGit       = "git"
 
+	// NameCreatePR opens a GitHub pull request (Phase 3 of
+	// docs/coding-agent-parity/). It is its own tool, not a git.go
+	// subcommand, because it never reaches a subprocess at all -- it is a
+	// direct GitHub REST call -- and it is gated by the same AlwaysAsk
+	// predicate as git's own push subcommand.
+	NameCreatePR = "create_pr"
+
 	// Orientation and symbol intelligence (Phase 4 item 4 / Phase 5).
 	// repo_map always exists with a workspace; lsp only when a language
 	// server for a language this workspace actually uses is installed.
@@ -129,6 +136,25 @@ type Definition struct {
 	// invocation -- one allowlist, one matching rule, whatever tool the
 	// model reached for.
 	CommandLine func(input json.RawMessage) string
+
+	// AlwaysAsk names a call that requires the user's approval every time
+	// it runs, in every mode including Auto -- checked by
+	// internal/agent/permission ahead of both Auto mode's unconditional
+	// allow and RiskExternal's Interactive/Edit allow-without-asking
+	// carve-out. See docs/coding-agent-parity/04-git-remote-operations.md:
+	// git push and create_pr are the only two calls this codebase asks
+	// about unconditionally, because both write to a system outside the
+	// user's own machine and a push in particular can destroy another
+	// party's work.
+	//
+	// nil means never (every existing tool). It is a function of the call's
+	// input, not a plain per-Definition bool, because git.go's `git` tool
+	// covers status/diff/log/show/add/commit too -- subcommands that must
+	// keep running through the ordinary command-allowlist path unchanged
+	// (rule 5: a phase must not regress existing behavior). A single bool
+	// on the Definition could not tell "push" apart from "status" within
+	// one tool; this is the smallest change that lets it.
+	AlwaysAsk func(input json.RawMessage) bool
 }
 
 // Concurrency reports whether this tool's calls may overlap with others in
@@ -225,6 +251,39 @@ type Deps struct {
 	// otherwise denies it by default. Nil is the safe default: no command
 	// gets network under sandboxing until a project opts one in.
 	SandboxNetworkAllow []string
+
+	// Walkthrough is where create_pr reads the PR description it did not
+	// write itself. Constructed fresh per turn (the same lifetime as
+	// ActivatedSkills), written by walkthroughTool's Execute, read by
+	// createPRTool's -- see docs/coding-agent-parity/
+	// 04-git-remote-operations.md's "title/body sourced from the turn's
+	// own walkthrough output". Nil disables nothing by itself; create_pr
+	// is simply never registered without a workspace anyway, and with one
+	// but no record set yet, it refuses rather than opening a PR with no
+	// real description.
+	Walkthrough *WalkthroughRecord
+
+	// GitHubToken looks up the stored GitHub personal access token, or
+	// ok=false if none is configured. A func rather than a direct
+	// secrets.KeyStore so this leaf package does not gain a dependency on
+	// internal/secrets for one lookup -- the same reasoning OnActivateSkill
+	// keeps this package free of a direct dependency on how skills persist.
+	GitHubToken func(ctx context.Context) (token string, ok bool, err error)
+
+	// GitHubAPIBase overrides create_pr's GitHub REST API root, from
+	// internal/config.Config.GitHubAPIBase. Empty means the real
+	// "https://api.github.com" -- see that field's doc comment for why
+	// this exists (tests only, not a user-facing setting).
+	GitHubAPIBase string
+
+	// RequireSandbox refuses run_shell/terminal-execution outright when no
+	// real sandbox backend is available, instead of falling back to running
+	// the command unsandboxed. Set only for background job turns
+	// (docs/coding-agent-parity/05-background-agent-runs.md's "an
+	// unattended job never falls back to unsandboxed execution") --
+	// interactive turns leave this false and keep today's honest-degrade
+	// behavior (run it, report Sandboxed: false).
+	RequireSandbox bool
 }
 
 // Defaults returns every APP_DEFAULT_TOOL_KIT tool, freshly constructed per call.
@@ -234,7 +293,7 @@ func Defaults(d Deps) []Definition {
 		ws.AddReadOnlyRoots(d.ReadOnlyRoots...)
 	}
 	defs := append(append(visualizationTools(), httpFetchTool()), webSearchTools(d.SearchRepo)...)
-	defs = append(defs, terminalTools(ws, d.SandboxNetworkAllow)...)
+	defs = append(defs, terminalTools(ws, d.SandboxNetworkAllow, d.RequireSandbox)...)
 	defs = append(defs, fileTools(ws)...)
 	defs = append(defs, searchTools(ws)...)
 	defs = append(defs, editTools(ws)...)
@@ -244,12 +303,13 @@ func Defaults(d Deps) []Definition {
 		if tool, ok := lspTool(d.LSP, ws); ok {
 			defs = append(defs, tool)
 		}
+		defs = append(defs, createPRTool(ws, d.Walkthrough, d.GitHubToken, d.GitHubAPIBase))
 	}
 	defs = append(defs, todoTools(d.Todos, d.SessionID)...)
 	// Unlike the todo tools, these need no session store: propose_plan's
 	// answer arrives as its own tool result and the walkthrough is a
 	// one-shot summary, so both are stateless and always available.
-	defs = append(defs, planTools(ws)...)
+	defs = append(defs, planTools(ws, d.Walkthrough)...)
 	defs = append(defs, memoryTools(d.Memory, d.SessionID)...)
 	if skTool, ok := skillTool(d.DiscoveredSkills, d.OnActivateSkill, d.ActivatedSkills); ok {
 		defs = append(defs, skTool)

@@ -50,7 +50,7 @@ func TestToolLoop_WriteSuspendsInsteadOfRunning(t *testing.T) {
 	sw := uimessage.NewWriter(httptest.NewRecorder())
 
 	perms := permission.New(permission.ModeInteractive, nil, nil, nil)
-	result, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, activeTools, perms)
+	result, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, activeTools, perms, nil)
 	if err != nil {
 		t.Fatalf("runToolLoop: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestToolLoop_PlanModeRefusesAndTellsTheModelWhy(t *testing.T) {
 	sw := uimessage.NewWriter(httptest.NewRecorder())
 
 	perms := permission.New(permission.ModePlan, nil, nil, nil)
-	result, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, activeTools, perms)
+	result, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, activeTools, perms, nil)
 	if err != nil {
 		t.Fatalf("runToolLoop: %v", err)
 	}
@@ -125,6 +125,81 @@ func TestToolLoop_PlanModeRefusesAndTellsTheModelWhy(t *testing.T) {
 	}
 }
 
+// TestToolLoop_UntrustedWorkspaceRefusesAndTellsTheModelWhy is
+// docs/coding-agent-parity/phases/phase-00-workspace-trust-and-rules.md's
+// exit criterion 2 exercised through the tool loop rather than the
+// permission engine directly: a write must not run against an untrusted
+// workspace even in Auto mode, which is exactly the mode a model (or a
+// user routing around the prompt) would reach for to skip an ask.
+func TestToolLoop_UntrustedWorkspaceRefusesAndTellsTheModelWhy(t *testing.T) {
+	var runs atomic.Int32
+	activeTools := []tools.Definition{countingTool("write_file", &runs)}
+
+	engine := &fakeStreamEngine{steps: []bifrostai.StepResult{
+		{ToolCalls: []bifrostai.ToolCall{{ID: "call-1", Name: "write_file", Arguments: `{"path":"a.txt"}`}}},
+		{Text: "this workspace needs to be trusted first"},
+	}}
+	sw := uimessage.NewWriter(httptest.NewRecorder())
+
+	perms := permission.New(permission.ModeAuto, nil, nil, nil).WithTrust(false)
+	result, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, activeTools, perms, nil)
+	if err != nil {
+		t.Fatalf("runToolLoop: %v", err)
+	}
+	if got := runs.Load(); got != 0 {
+		t.Fatalf("tool ran %d times against an untrusted workspace, want 0", got)
+	}
+
+	var found bool
+	for _, p := range partsOf(t, result.Parts) {
+		if p["type"] == "tool-write_file" {
+			found = true
+			if p["state"] != "output-error" {
+				t.Fatalf("state = %v, want output-error", p["state"])
+			}
+			if txt, _ := p["errorText"].(string); !strings.Contains(txt, "has not been granted trust") {
+				t.Fatalf("errorText = %q, want it to name the missing trust grant", txt)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("no tool part recorded for the refused call")
+	}
+	// A refusal is a tool result, not a stream error: the turn continues so
+	// the model can tell the user what it would have done.
+	if !strings.Contains(result.Text, "this workspace needs to be trusted first") {
+		t.Fatalf("turn did not continue after the refusal: %q", result.Text)
+	}
+}
+
+// TestToolLoop_TrustedWorkspaceInAutoModeRunsTheWrite is the converse of
+// the untrusted case above: WithTrust(true) (New's own default) must not
+// itself have become a second gate now that Evaluate checks trust ahead of
+// the mode branches -- Auto mode still runs a write immediately once
+// trusted.
+func TestToolLoop_TrustedWorkspaceInAutoModeRunsTheWrite(t *testing.T) {
+	var runs atomic.Int32
+	activeTools := []tools.Definition{countingTool("write_file", &runs)}
+
+	engine := &fakeStreamEngine{steps: []bifrostai.StepResult{
+		{ToolCalls: []bifrostai.ToolCall{{ID: "call-1", Name: "write_file", Arguments: `{"path":"a.txt"}`}}},
+		{Text: "done"},
+	}}
+	sw := uimessage.NewWriter(httptest.NewRecorder())
+
+	perms := permission.New(permission.ModeAuto, nil, nil, nil).WithTrust(true)
+	result, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, activeTools, perms, nil)
+	if err != nil {
+		t.Fatalf("runToolLoop: %v", err)
+	}
+	if got := runs.Load(); got != 1 {
+		t.Fatalf("tool ran %d times against a trusted workspace in auto mode, want 1", got)
+	}
+	if !strings.Contains(result.Text, "done") {
+		t.Fatalf("turn did not continue after the write: %q", result.Text)
+	}
+}
+
 // The resume half. The browser answers by writing a confirmation where the
 // tool's output goes; without this pass the model would be handed the
 // confirmation itself as if it were the tool's result.
@@ -143,7 +218,7 @@ func TestResolveApprovals_RunsTheApprovedCallAndReplacesTheAnswer(t *testing.T) 
 	}
 
 	perms := permission.New(permission.ModeInteractive, nil, nil, permission.NewStore().For("thread-1"))
-	resolveApprovals(context.Background(), msg, activeTools, perms)
+	resolveApprovals(context.Background(), msg, activeTools, perms, nil)
 
 	if got := runs.Load(); got != 1 {
 		t.Fatalf("tool ran %d times after approval, want 1", got)
@@ -175,7 +250,7 @@ func TestResolveApprovals_RejectionBecomesAReadableResultAndRunsNothing(t *testi
 	}
 
 	perms := permission.New(permission.ModeInteractive, nil, nil, permission.NewStore().For("thread-1"))
-	resolveApprovals(context.Background(), msg, activeTools, perms)
+	resolveApprovals(context.Background(), msg, activeTools, perms, nil)
 
 	if got := runs.Load(); got != 0 {
 		t.Fatalf("tool ran %d times after rejection, want 0", got)
@@ -209,7 +284,7 @@ func TestResolveApprovals_AlwaysGrantsSurviveIntoTheNextTurn(t *testing.T) {
 				`"input":{"path":"a.txt"},"output":{"__tag":"manual-tool-confirm","confirm":true,"scope":"always"}}`),
 		},
 	}
-	resolveApprovals(context.Background(), msg, activeTools, perms)
+	resolveApprovals(context.Background(), msg, activeTools, perms, nil)
 
 	// A fresh engine for the next request, sharing only the store -- exactly
 	// how route.go rebuilds it per request.
@@ -250,7 +325,7 @@ func TestResolveApprovals_AlwaysOnACommandDoesNotGrantTheTool(t *testing.T) {
 				`"input":{"command":"go test ./..."},"output":{"__tag":"manual-tool-confirm","confirm":true,"scope":"always"}}`),
 		},
 	}
-	resolveApprovals(context.Background(), msg, []tools.Definition{shell}, perms)
+	resolveApprovals(context.Background(), msg, []tools.Definition{shell}, perms, nil)
 
 	next := permission.New(permission.ModeInteractive, nil, nil, store.For("thread-1"))
 	if d := next.Evaluate(permission.CallFor(shell, json.RawMessage(`{"command":"go test ./..."}`))); !d.Allowed {

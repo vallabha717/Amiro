@@ -28,8 +28,8 @@ func (req request) validate() (string, bool) {
 	if req.ItemID == "" {
 		return "itemId is required", false
 	}
-	if req.ItemType != repository.BookmarkItemTypeAgent && req.ItemType != repository.BookmarkItemTypeWorkflow {
-		return `itemType must be "agent" or "workflow"`, false
+	if req.ItemType != repository.BookmarkItemTypeWorkflow {
+		return `itemType must be "workflow"`, false
 	}
 	return "", true
 }

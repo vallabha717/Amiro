@@ -134,9 +134,18 @@ func randomMarker() string {
 	return "__AMIRO_DONE_" + hex.EncodeToString(b) + "__"
 }
 
-func (e *TerminalExecutor) Run(ctx context.Context, in terminalInput, networkAllow []string) terminalOutput {
+// errUnsandboxedRefused is returned in-band (as terminalOutput.Error), not
+// as a Go error, for the same reason every other tool refusal here is: the
+// model needs to read it and adapt, not have the turn end on a stream
+// error. "no sandbox backend is available" is not this command's fault.
+const errUnsandboxedRefused = "refused: no sandbox backend is available on this machine, and an unattended background run may never fall back to running a shell command unsandboxed -- see docs/coding-agent-parity/05-background-agent-runs.md"
+
+func (e *TerminalExecutor) Run(ctx context.Context, in terminalInput, networkAllow []string, requireSandbox bool) terminalOutput {
+	if requireSandbox && !sandbox.Detect().Sandboxed() {
+		return terminalOutput{Command: in.Command, CWD: e.cwd, ExitCode: 1, Error: errUnsandboxedRefused}
+	}
 	if in.RunInBackground {
-		res := e.runBackground(in.Command, networkAllow)
+		res := e.runBackground(in.Command, networkAllow, requireSandbox)
 		b, _ := json.Marshal(res)
 		return terminalOutput{
 			Command:  in.Command,
@@ -247,7 +256,10 @@ func (e *TerminalExecutor) Run(ctx context.Context, in terminalInput, networkAll
 	}
 }
 
-func (e *TerminalExecutor) runBackground(command string, networkAllow []string) map[string]any {
+func (e *TerminalExecutor) runBackground(command string, networkAllow []string, requireSandbox bool) map[string]any {
+	if requireSandbox && !sandbox.Detect().Sandboxed() {
+		return map[string]any{"error": errUnsandboxedRefused}
+	}
 	e.mu.Lock()
 	e.bgCounter++
 	taskID := fmt.Sprintf("bg-%d", e.bgCounter)
@@ -422,7 +434,7 @@ func (e *TerminalExecutor) backgroundKill(taskID string) map[string]any {
 // bounds shell is the permission gate (RiskExec below), not this. Files are
 // different -- workspace.Resolve genuinely confines them -- and conflating
 // the two would be the mistake.
-func terminalTools(ws *workspace.Workspace, networkAllow []string) []Definition {
+func terminalTools(ws *workspace.Workspace, networkAllow []string, requireSandbox bool) []Definition {
 	root := ""
 	if ws != nil {
 		root = ws.Root()
@@ -434,7 +446,7 @@ func terminalTools(ws *workspace.Workspace, networkAllow []string) []Definition 
 		if err := json.Unmarshal(rawInput, &in); err != nil {
 			return nil, err
 		}
-		out := executor.Run(ctx, in, networkAllow)
+		out := executor.Run(ctx, in, networkAllow, requireSandbox)
 		return out, nil
 	}
 

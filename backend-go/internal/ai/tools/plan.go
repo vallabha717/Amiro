@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	"amiro/backend/internal/agent/workspace"
 )
@@ -149,6 +150,48 @@ type WalkthroughChange struct {
 	Why  string `json:"why"`
 }
 
+// WalkthroughRecord holds the most recent Walkthrough this turn produced,
+// shared between walkthroughTool's Execute (the writer) and createPRTool's
+// (the reader) -- the same "small mutable struct threaded through Deps"
+// shape ActivationSet already established for the skill tool, not a new
+// mechanism.
+//
+// It is deliberately not a verification ledger: it does not check the
+// walkthrough against what the turn actually edited (see walkthroughTool's
+// own doc comment for why that check, while real, does not belong here).
+// It only answers "did this turn call walkthrough, and what did it say" --
+// the fact create_pr needs to refuse opening a PR with no real description
+// rather than inventing one.
+type WalkthroughRecord struct {
+	mu  sync.Mutex
+	val *Walkthrough
+}
+
+// NewWalkthroughRecord returns an empty record -- one per turn, the same
+// lifetime as ActivationSet.
+func NewWalkthroughRecord() *WalkthroughRecord { return &WalkthroughRecord{} }
+
+// Set stores w as the turn's latest walkthrough.
+func (r *WalkthroughRecord) Set(w Walkthrough) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	cp := w
+	r.val = &cp
+}
+
+// Get returns the turn's walkthrough, if one has been recorded yet.
+func (r *WalkthroughRecord) Get() (Walkthrough, bool) {
+	if r == nil || r.val == nil {
+		return Walkthrough{}, false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return *r.val, true
+}
+
 // Walkthrough is the end-of-turn summary: what changed, in reading order.
 type Walkthrough struct {
 	Summary   string              `json:"summary"`
@@ -177,7 +220,7 @@ Do not call this for a turn that only read or searched; there is nothing to walk
 // would mean a per-session ledger of edited paths maintained by the write
 // tools -- new mutable state, kept in sync by hand, for a check that can be
 // done from data that already exists. The presenter does it instead.
-func walkthroughTool(ws *workspace.Workspace) Definition {
+func walkthroughTool(ws *workspace.Workspace, rec *WalkthroughRecord) Definition {
 	return Definition{
 		Name:    NameWalkthrough,
 		Toolkit: ToolkitTodo,
@@ -263,6 +306,7 @@ func walkthroughTool(ws *workspace.Workspace) Definition {
 			if len(in.Changes) == 0 {
 				in.Notice = "no files listed -- if this turn changed something, say which file"
 			}
+			rec.Set(in)
 			return in, nil
 		},
 	}
@@ -302,6 +346,6 @@ func displayPath(ws *workspace.Workspace, p string) string {
 // think to switch on. A propose_plan the frontend forgot to allowlist would
 // be a Plan mode that silently never proposes anything -- exactly the bug
 // that hid the todo tools for a whole phase.
-func planTools(ws *workspace.Workspace) []Definition {
-	return []Definition{proposePlanTool(), walkthroughTool(ws)}
+func planTools(ws *workspace.Workspace, rec *WalkthroughRecord) []Definition {
+	return []Definition{proposePlanTool(), walkthroughTool(ws, rec)}
 }

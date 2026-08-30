@@ -81,9 +81,11 @@ All four, and the plan says per phase which one it touches:
 - **Nested and ancestor project directories.** v1 scans the selected
   project directory only, not every ancestor up to the git root and not
   `packages/*/.agents/skills/`. Monorepo support is a follow-up.
-- **Migrating existing agents into skills.** Agents are being removed
-  (Phase 6), not converted. Anything currently saved as an agent is lost
-  when that phase lands; that was decided deliberately.
-- **A trust dialog.** Amiro has no workspace-trust concept and this plan
-  does not add one. Project scope is limited to the directory the user
-  explicitly selected in the project picker, which is the trust gesture.
+- **Migrating existing agents into skills.** Agents were removed (Phase 6,
+  shipped 2026-08-22), not converted. Anything saved as an agent was lost
+  when that phase landed; that was decided deliberately.
+- **A trust dialog.** Was true when this plan shipped; no longer is.
+  `docs/coding-agent-parity/` Phase 0 (shipped 2026-08-23) added the
+  workspace-trust model this line said didn't exist -- see
+  `docs/coding-agent-parity/01-workspace-trust-and-rules.md` for the
+  design and its explicit distinction from a Skill.

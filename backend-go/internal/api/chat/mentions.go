@@ -1,10 +1,11 @@
 // mentions.go ports shared.chat.ts's loadMcpTools/loadWorkFlowTools/
 // loadAppDefaultTools mention resolution (route.go's activeAppDefaultTools
-// already ports the last of the three) plus actions.ts's
-// rememberAgentAction and shared.chat.ts's filterMcpServerCustomizations --
-// the mention-driven tool loading route.go's Chat handler was missing
-// entirely until now (this package's former doc comment: "MCP tool calling
-// and agent mentions are still not wired in here").
+// already ports the last of the three) plus shared.chat.ts's
+// filterMcpServerCustomizations and skills.go's resolveSkills. It used to
+// also resolve an "agent" mention's own pre-bound instructions and
+// mentions (actions.ts's rememberAgentAction); that whole function was
+// removed along with the rest of the agent feature in Phase 6
+// (docs/skills/).
 package chat
 
 import (
@@ -21,62 +22,6 @@ import (
 	"amiro/backend/internal/mcp"
 	"amiro/backend/internal/skills"
 )
-
-// agentInstructionsDTO reads Agent.Instructions (AgentInstructionsSchema,
-// types/agent.ts:11).
-type agentInstructionsDTO struct {
-	Role         string       `json:"role"`
-	SystemPrompt string       `json:"systemPrompt"`
-	Mentions     []mentionDTO `json:"mentions"`
-}
-
-// resolvedAgent is what resolveAgent found: the agent's own prompt
-// contribution plus its pre-bound mentions, merged into the request's own
-// before tool loading -- mirrors route.ts:176-187's
-// `mentions.push(...agent.instructions.mentions)`.
-type resolvedAgent struct {
-	ID   string
-	Name string
-	Info *prompts.AgentPromptInfo
-}
-
-// resolveAgent ports rememberAgentAction (chat/actions.ts:215): an "agent"
-// mention's agentId, looked up with the same ownership/visibility rule
-// agent CRUD already enforces (AgentTools.SelectByID). A mention naming an
-// agent the user can't see, or an unknown id, is silently ignored --
-// matches selectAgentById returning null and rememberAgentAction returning
-// undefined for it (no error surfaced to the chat request either way).
-func (h *Handler) resolveAgent(ctx context.Context, userID string, mentions []mentionDTO) (*resolvedAgent, []mentionDTO) {
-	var agentID string
-	for _, m := range mentions {
-		if m.Type == "agent" && m.AgentID != "" {
-			agentID = m.AgentID
-			break
-		}
-	}
-	if agentID == "" || h.agents == nil {
-		return nil, mentions
-	}
-
-	found, err := h.agents.SelectByID(ctx, agentID, userID)
-	if err != nil || found == nil {
-		return nil, mentions
-	}
-
-	var instr agentInstructionsDTO
-	_ = json.Unmarshal(found.Agent.Instructions, &instr)
-
-	out := mentions
-	if len(instr.Mentions) > 0 {
-		out = append(append([]mentionDTO{}, mentions...), instr.Mentions...)
-	}
-
-	return &resolvedAgent{
-		ID:   found.Agent.ID,
-		Name: found.Agent.Name,
-		Info: &prompts.AgentPromptInfo{Name: found.Agent.Name, Role: instr.Role, SystemPrompt: instr.SystemPrompt},
-	}, out
-}
 
 // resolveSkills resolves every `{type: "skill", name}` mention.
 // An unresolvable skill name returns an error, surfacing as a visible turn error.

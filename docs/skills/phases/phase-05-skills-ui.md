@@ -1,5 +1,9 @@
 # Phase 5 — The Skills section, and Generate with AI
 
+> **Shipped 2026-08-22.** See
+> [`progress/phase-05-skills-ui.md`](../progress/phase-05-skills-ui.md) and
+> [`progress/verification-log-phase-05.md`](../progress/verification-log-phase-05.md).
+
 **Depends on:** 4 · **Blocks:** 6 · **Size:** L
 
 **Surfaces touched:** web · desktop · backend

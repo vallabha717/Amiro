@@ -393,7 +393,7 @@ func TestGitCommandLine_RendersMatchableCommands(t *testing.T) {
 		{map[string]any{"subcommand": "commit", "message": "fix the thing"}, "git commit -m 'fix the thing'"},
 	} {
 		raw, _ := json.Marshal(tc.in)
-		if got := gitCommandLine(raw); got != tc.want {
+		if got := gitCommandLineFor(nil)(raw); got != tc.want {
 			t.Fatalf("gitCommandLine(%v) = %q, want %q", tc.in, got, tc.want)
 		}
 	}

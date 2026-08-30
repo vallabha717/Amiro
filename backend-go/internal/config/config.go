@@ -55,6 +55,14 @@ type Config struct {
 	// every sandboxed command -- the safe direction; a user who needs an
 	// exception adds it deliberately rather than the feature guessing one.
 	SandboxNetworkAllow []string
+	// GitHubAPIBase overrides create_pr's GitHub REST API root. Empty (the
+	// default) means the real "https://api.github.com". This exists for
+	// tests -- docs/coding-agent-parity/phases/phase-03-git-remote-operations.md's
+	// suite points it at a fake local server rather than reaching the real
+	// GitHub API -- not as a user-facing setting; GitHub Enterprise Server
+	// support is a real gap this does not attempt to close. Set via
+	// AMIRO_GITHUB_API_BASE (or legacy BETTERCHATBOT_GITHUB_API_BASE).
+	GitHubAPIBase string
 }
 
 func getEnv(amiroKey, legacyKey string) string {
@@ -136,6 +144,7 @@ func Load() (Config, error) {
 		S3Bucket:            s3Bucket,
 		WorkspaceRoot:       getEnv("AMIRO_WORKSPACE_ROOT", "BETTERCHATBOT_WORKSPACE_ROOT"),
 		SandboxNetworkAllow: parseSandboxNetworkAllow(getEnv("AMIRO_SANDBOX_NETWORK_ALLOW", "BETTERCHATBOT_SANDBOX_NETWORK_ALLOW")),
+		GitHubAPIBase:       getEnv("AMIRO_GITHUB_API_BASE", "BETTERCHATBOT_GITHUB_API_BASE"),
 	}, nil
 }
 

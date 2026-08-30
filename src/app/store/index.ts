@@ -5,7 +5,6 @@ import { AllowedMCPServer, MCPServerInfo } from "app-types/mcp";
 import { OPENAI_VOICE } from "lib/ai/speech/open-ai/use-voice-chat.openai";
 import { WorkflowSummary } from "app-types/workflow";
 import { AppDefaultToolkit } from "lib/ai/tools";
-import { AgentSummary } from "app-types/agent";
 import { ArchiveWithItemCount } from "app-types/archive";
 
 export interface UploadedFile {
@@ -24,7 +23,6 @@ export interface UploadedFile {
 export interface AppState {
   threadList: ChatThread[];
   mcpList: (MCPServerInfo & { id: string })[];
-  agentList: AgentSummary[];
   workflowToolList: WorkflowSummary[];
   currentThreadId: ChatThread["id"] | null;
   toolChoice: "auto" | "none" | "manual";
@@ -71,7 +69,6 @@ export interface AppState {
   };
   voiceChat: {
     isOpen: boolean;
-    agentId?: string;
     options: {
       provider: string;
       providerOptions?: Record<string, any>;
@@ -118,7 +115,6 @@ const initialState: AppState = {
   threadFiles: {},
   threadImageToolModel: {},
   mcpList: [],
-  agentList: [],
   workflowToolList: [],
   currentThreadId: null,
   toolChoice: "auto",

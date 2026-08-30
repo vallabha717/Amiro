@@ -69,6 +69,20 @@ type fakeClient struct {
 	sandboxBackend   string
 	sandboxSandboxed bool
 	sandboxStatusErr error
+
+	// githubConnected is GitHubStatus's canned answer. lastGitHubToken
+	// records what ConnectGitHub was called with, so a test can assert on
+	// it without a real internal/secrets store underneath.
+	githubConnected      bool
+	githubStatusErr      error
+	lastGitHubToken      *string
+	githubConnectErr     error
+	githubDisconnectErr  error
+	githubDisconnectedAt bool
+
+	backgroundJobs         []client.BackgroundJob
+	createBackgroundJobErr error
+	listBackgroundJobsErr  error
 }
 
 // restoreCheckpointCall records RestoreCheckpoint's arguments.
@@ -169,6 +183,56 @@ func (c *fakeClient) SandboxStatus(context.Context) (string, bool, error) {
 		return "", false, c.sandboxStatusErr
 	}
 	return c.sandboxBackend, c.sandboxSandboxed, nil
+}
+
+func (c *fakeClient) GitHubStatus(context.Context) (bool, error) {
+	if c.githubStatusErr != nil {
+		return false, c.githubStatusErr
+	}
+	return c.githubConnected, nil
+}
+
+func (c *fakeClient) ConnectGitHub(_ context.Context, token string) error {
+	c.lastGitHubToken = &token
+	if c.githubConnectErr != nil {
+		return c.githubConnectErr
+	}
+	c.githubConnected = true
+	return nil
+}
+
+func (c *fakeClient) DisconnectGitHub(context.Context) error {
+	c.githubDisconnectedAt = true
+	if c.githubDisconnectErr != nil {
+		return c.githubDisconnectErr
+	}
+	c.githubConnected = false
+	return nil
+}
+
+func (c *fakeClient) CreateBackgroundJob(_ context.Context, req client.CreateBackgroundJobRequest) (client.BackgroundJob, error) {
+	if c.createBackgroundJobErr != nil {
+		return client.BackgroundJob{}, c.createBackgroundJobErr
+	}
+	job := client.BackgroundJob{ID: "job-1", Prompt: req.Prompt, Mode: req.Mode, WorkspaceRoot: req.WorkspaceRoot, AutoPR: req.AutoPR, Status: "running"}
+	c.backgroundJobs = append(c.backgroundJobs, job)
+	return job, nil
+}
+
+func (c *fakeClient) ListBackgroundJobs(context.Context) ([]client.BackgroundJob, error) {
+	if c.listBackgroundJobsErr != nil {
+		return nil, c.listBackgroundJobsErr
+	}
+	return c.backgroundJobs, nil
+}
+
+func (c *fakeClient) GetBackgroundJob(_ context.Context, id string) (client.BackgroundJob, error) {
+	for _, j := range c.backgroundJobs {
+		if j.ID == id {
+			return j, nil
+		}
+	}
+	return client.BackgroundJob{}, fmt.Errorf("job %s not found", id)
 }
 
 var _ client.Client = (*fakeClient)(nil)

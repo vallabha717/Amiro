@@ -8,7 +8,6 @@ export type ChatMetadata = {
   chatModel?: ChatModel;
   toolChoice?: "auto" | "none" | "manual";
   toolCount?: number;
-  agentId?: string;
   /**
    * Milliseconds the turn spent working, summed across every round an
    * approval split it into and excluding the waits in between. Sent by the
@@ -73,19 +72,6 @@ export const ChatMentionSchema = z.discriminatedUnion("type", [
     name: z.string(),
     description: z.string().nullish(),
     workflowId: z.string(),
-    icon: z
-      .object({
-        type: z.literal("emoji"),
-        value: z.string(),
-        style: z.record(z.string(), z.string()).optional(),
-      })
-      .nullish(),
-  }),
-  z.object({
-    type: z.literal("agent"),
-    name: z.string(),
-    description: z.string().nullish(),
-    agentId: z.string(),
     icon: z
       .object({
         type: z.literal("emoji"),

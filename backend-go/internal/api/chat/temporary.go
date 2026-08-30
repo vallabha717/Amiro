@@ -40,7 +40,7 @@ func (h *Handler) Temporary(w http.ResponseWriter, r *http.Request) {
 	}
 	resolved := bifrostai.Resolve(chatModel.Provider, chatModel.Model)
 
-	system := prompts.BuildUserSystemPrompt(authedUser, user.ParsePreferences(authedUser.Preferences), nil)
+	system := prompts.BuildUserSystemPrompt(authedUser, user.ParsePreferences(authedUser.Preferences))
 	if req.Instructions != "" {
 		system = strings.TrimSpace(system + "\n\n" + req.Instructions)
 	}

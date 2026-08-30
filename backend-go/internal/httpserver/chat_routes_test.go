@@ -92,7 +92,7 @@ func newChatTestEnv(t *testing.T, engine chatapi.Engine) chatTestEnv {
 	chatRepo := repository.NewChatRepository(gdb)
 	exportRepo := repository.NewChatExportRepository(gdb, chatRepo)
 	providerRepo := repository.NewProviderRepository(gdb)
-	chatHandler := chatapi.NewHandler(chatRepo, exportRepo, engine, nil, nil, nil, nil, nil, nil, providerRepo, nil)
+	chatHandler := chatapi.NewHandler(chatRepo, exportRepo, engine, nil, nil, nil, nil, nil, providerRepo, nil)
 	handler := New(testConfig(), Handlers{Auth: authService, Chat: chatHandler, Export: exportapi.NewHandler(exportRepo)})
 
 	do := func(method, path string, body any) *httptest.ResponseRecorder {

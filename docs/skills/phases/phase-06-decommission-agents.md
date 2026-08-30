@@ -1,5 +1,9 @@
 # Phase 6 — Decommission agents
 
+> **Shipped 2026-08-22.** See
+> [`progress/phase-06-decommission-agents.md`](../progress/phase-06-decommission-agents.md) and
+> [`progress/verification-log-phase-06.md`](../progress/verification-log-phase-06.md).
+
 **Depends on:** 1, 2, 3, 5 · **Blocks:** — · **Size:** M
 
 **Surfaces touched:** backend · web · desktop · terminal

@@ -22,6 +22,7 @@ const (
 	activeThreads
 	activeModels
 	activeSettings
+	activeRuns
 )
 
 // Model is the whole program. cmd/amiro constructs one and hands it to
@@ -33,6 +34,7 @@ type Model struct {
 	threads  page.Threads
 	models   page.Models
 	settings page.Settings
+	runs     page.Runs
 	active   active
 
 	width, height int
@@ -90,17 +92,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Every page gets sized, not just the active one: switching to a
 		// picker that has never seen a WindowSizeMsg would render at its
 		// zero value.
-		var chatCmd, threadsCmd, modelsCmd, settingsCmd tea.Cmd
+		var chatCmd, threadsCmd, modelsCmd, settingsCmd, runsCmd tea.Cmd
 		m.chat, chatCmd = m.chat.Update(msg)
 		m.threads, threadsCmd = m.threads.Update(msg)
 		m.models, modelsCmd = m.models.Update(msg)
 		m.settings, settingsCmd = m.settings.Update(msg)
-		return m, tea.Batch(chatCmd, threadsCmd, modelsCmd, settingsCmd)
+		m.runs, runsCmd = m.runs.Update(msg)
+		return m, tea.Batch(chatCmd, threadsCmd, modelsCmd, settingsCmd, runsCmd)
 
 	case page.OpenThreadsMsg:
 		m.threads = page.NewThreads(m.c)
 		m.active = activeThreads
 		return m, tea.Batch(m.threads.Init(), sizeCmd(m.width, m.height))
+
+	case page.OpenRunsMsg:
+		m.runs = page.NewRuns(m.c)
+		m.active = activeRuns
+		return m, tea.Batch(m.runs.Init(), sizeCmd(m.width, m.height))
 
 	case page.OpenModelsMsg:
 		m.models = page.NewModels(m.c)
@@ -135,6 +143,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.models, cmd = m.models.Update(msg)
 	case activeSettings:
 		m.settings, cmd = m.settings.Update(msg)
+	case activeRuns:
+		m.runs, cmd = m.runs.Update(msg)
 	default:
 		m.chat, cmd = m.chat.Update(msg)
 	}
@@ -149,6 +159,8 @@ func (m Model) View() string {
 		return m.models.View()
 	case activeSettings:
 		return m.settings.View()
+	case activeRuns:
+		return m.runs.View()
 	default:
 		return m.chat.View()
 	}

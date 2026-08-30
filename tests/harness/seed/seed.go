@@ -1,9 +1,9 @@
 // Package seed applies declarative fixtures through the REAL API.
 //
 // Not by writing rows. That is slower, and it is the right trade: seeding
-// through POST /api/auth/register and POST /api/agent means the seed itself
-// exercises the endpoints, so a seed that breaks is a genuine signal rather
-// than a fixture that quietly drifted out of the shape the app expects.
+// through POST /api/auth/register means the seed itself exercises the
+// endpoints, so a seed that breaks is a genuine signal rather than a
+// fixture that quietly drifted out of the shape the app expects.
 package seed
 
 import (
@@ -30,8 +30,7 @@ type Identity struct {
 // Client returns an API client acting as this identity.
 func (i *Identity) Client() *apiclient.Client { return i.client }
 
-// State is what seeds read and write. It accumulates, so seeds compose:
-// seed.Default then seed.Agents(3) leaves both in State.
+// State is what seeds read and write. It accumulates, so seeds compose.
 type State struct {
 	Ctx      context.Context
 	Base     *apiclient.Client
@@ -159,28 +158,6 @@ func register(s *State, key string, acc config.Account) (*Identity, error) {
 	}, nil
 }
 
-// Agents creates n agents owned by the `user` account.
-func Agents(n int) Seed {
-	return Seed{Name: fmt.Sprintf("agents(%d)", n), Apply: func(s *State) error {
-		owner := s.Identity("user")
-		if owner == nil {
-			return fmt.Errorf("requires seed.Default to have run first (no `user` account)")
-		}
-		for i := 0; i < n; i++ {
-			desc := fmt.Sprintf("Seeded agent %d", i+1)
-			agent, err := owner.Client().CreateAgent(s.Ctx, apiclient.AgentInput{
-				Name:        fmt.Sprintf("seed-agent-%d", i+1),
-				Description: &desc,
-				Visibility:  "private",
-			})
-			if err != nil {
-				return err
-			}
-			s.Record("agent", agent.ID)
-		}
-		return nil
-	}}
-}
 
 // Archives creates n archives owned by the `user` account.
 func Archives(n int) Seed {

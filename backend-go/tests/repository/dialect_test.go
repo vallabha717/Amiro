@@ -6,12 +6,13 @@
 // which is fine for logic. These queries are different: they use aliased
 // tables, a quoted "user" identifier (a reserved word on Postgres),
 // GROUP BY with a full non-aggregated column list (Postgres rejects a
-// partial one, SQLite silently accepts it), boolean-producing predicates in
-// a SELECT list (`b.id IS NOT NULL AS is_bookmarked` -- a real boolean on
-// Postgres, an integer on SQLite), and correlated subqueries whose result
-// column type the driver has to infer. Any of those can pass on SQLite and
-// fail on Postgres, which is exactly the class of bug Phase 1 already hit
-// once with JSONB canonicalization.
+// partial one, SQLite silently accepts it), and correlated subqueries whose
+// result column type the driver has to infer. Any of those can pass on
+// SQLite and fail on Postgres, which is exactly the class of bug Phase 1
+// already hit once with JSONB canonicalization. (The agent query that used
+// to exercise a boolean-producing SELECT predicate -- `b.id IS NOT NULL AS
+// is_bookmarked`, a real boolean on Postgres and an integer on SQLite -- was
+// removed along with the rest of the agent feature in Phase 6, docs/skills/.)
 //
 // The Postgres half is gated on BACKENDGO_TEST_POSTGRES_URL and skips when
 // unset -- the same pattern tests/migration uses.
@@ -65,68 +66,10 @@ func runPhase6Queries(t *testing.T, driver, dsn string) {
 	ctx := context.Background()
 	owner, other := seedUsers(t, gdb)
 
-	agents := repository.NewAgentRepository(gdb)
-	bookmarks := repository.NewBookmarkRepository(gdb)
 	archives := repository.NewArchiveRepository(gdb)
 	chats := repository.NewChatRepository(gdb)
 	users := repository.NewUserRepository(gdb)
 	exports := repository.NewChatExportRepository(gdb, chats)
-
-	// --- agent: aliased joins + a boolean-producing SELECT expression +
-	// a parameterized CASE in the ORDER BY.
-	mine := &models.Agent{Name: "Mine", UserID: owner.ID, Visibility: "private",
-		Instructions: datatypes.JSON(`{"role":"tester"}`)}
-	theirs := &models.Agent{Name: "Theirs", UserID: other.ID, Visibility: "public"}
-	for _, agent := range []*models.Agent{theirs, mine} {
-		if err := agents.Insert(ctx, agent); err != nil {
-			t.Fatalf("insert agent: %v", err)
-		}
-	}
-	if err := bookmarks.Create(ctx, owner.ID, theirs.ID, repository.BookmarkItemTypeAgent); err != nil {
-		t.Fatalf("create bookmark: %v", err)
-	}
-
-	list, err := agents.SelectAgents(ctx, owner.ID, []string{"all"}, 50)
-	if err != nil {
-		t.Fatalf("SelectAgents: %v", err)
-	}
-	if len(list) != 2 {
-		t.Fatalf("SelectAgents returned %d rows, want 2", len(list))
-	}
-	if list[0].Name != "Mine" {
-		t.Fatalf("ORDER BY put %q first; the caller's own agent should lead", list[0].Name)
-	}
-	if list[0].UserName != "Ada" {
-		t.Fatalf("userName = %q -- the quoted \"user\" join did not resolve", list[0].UserName)
-	}
-	// is_bookmarked is a real boolean on Postgres and an integer on SQLite;
-	// both must land in the Go bool correctly.
-	byName := map[string]repository.AgentWithMeta{}
-	for _, row := range list {
-		byName[row.Name] = row
-	}
-	if !byName["Theirs"].IsBookmarked {
-		t.Fatal("isBookmarked = false for a bookmarked agent")
-	}
-	if byName["Mine"].IsBookmarked {
-		t.Fatal("isBookmarked = true for an agent that was never bookmarked")
-	}
-
-	bookmarked, err := agents.SelectAgents(ctx, owner.ID, []string{"bookmarked"}, 50)
-	if err != nil {
-		t.Fatalf("SelectAgents(bookmarked): %v", err)
-	}
-	if len(bookmarked) != 1 || bookmarked[0].Name != "Theirs" {
-		t.Fatalf("bookmarked filter returned %d rows: %+v", len(bookmarked), bookmarked)
-	}
-
-	single, err := agents.SelectByID(ctx, theirs.ID, owner.ID)
-	if err != nil {
-		t.Fatalf("SelectByID: %v", err)
-	}
-	if single == nil || !single.IsBookmarked {
-		t.Fatalf("SelectByID = %+v", single)
-	}
 
 	// --- archive: GROUP BY with a full column list + a LEFT JOIN COUNT.
 	full := &models.Archive{Name: "Full", UserID: owner.ID}

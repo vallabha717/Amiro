@@ -4,7 +4,6 @@ import { appStore } from "@/app/store";
 import { AllowedMCPServer, MCPServerInfo } from "app-types/mcp";
 import { cn, objectFlow } from "lib/utils";
 import {
-  ArrowUpRightIcon,
   AtSign,
   BrainIcon,
   ChartColumn,
@@ -15,7 +14,6 @@ import {
   ImagesIcon,
   InfoIcon,
   Loader,
-  MessageCircle,
   MousePointer2,
   Package,
   Plus,
@@ -69,12 +67,10 @@ import { Switch } from "ui/switch";
 import { useShallow } from "zustand/shallow";
 import { WorkflowGreeting } from "./workflow/workflow-greeting";
 
-import { AgentSummary } from "app-types/agent";
 import { authClient } from "auth/client";
 import { Separator } from "ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
 
-import { useAgents } from "@/hooks/queries/use-agents";
 import { useChatModels } from "@/hooks/queries/use-chat-models";
 import {
   SEARCH_ACTIVE_KEY,
@@ -94,7 +90,6 @@ interface ToolSelectDropdownProps {
   disabled?: boolean;
   mentions?: ChatMention[];
   onSelectWorkflow?: (workflow: WorkflowSummary) => void;
-  onSelectAgent?: (agent: AgentSummary) => void;
   onGenerateImage?: (provider?: "google" | "openai") => void;
   className?: string;
 }
@@ -113,7 +108,6 @@ export function ToolSelectDropdown({
   align,
   side,
   onSelectWorkflow,
-  onSelectAgent,
   onGenerateImage,
   mentions,
   className,
@@ -147,10 +141,6 @@ export function ToolSelectDropdown({
   useWorkflowToolList({
     refreshInterval: 1000 * 60 * 5,
   });
-
-  const agentMention = useMemo(() => {
-    return mentions?.find((m) => m.type === "agent");
-  }, [mentions]);
 
   const bindingTools = useMemo<string[]>(() => {
     if (mentions?.length) {
@@ -195,14 +185,10 @@ export function ToolSelectDropdown({
         )}
       >
         <span className={!bindingTools ? "text-muted-foreground" : ""}>
-          {agentMention
-            ? t("agent")
-            : (mentions?.length ?? 0 > 0)
-              ? t("mention")
-              : t("tools")}
+          {(mentions?.length ?? 0 > 0) ? t("mention") : t("tools")}
         </span>
 
-        {((!agentMention && bindingTools.length > 0) || isLoading) && (
+        {(bindingTools.length > 0 || isLoading) && (
           <>
             <div className="h-4 hidden sm:block mx-1">
               <Separator orientation="vertical" />
@@ -253,10 +239,6 @@ export function ToolSelectDropdown({
       </DropdownMenuTrigger>
       <DropdownMenuContent className="md:w-72" align={align} side={side}>
         <WorkflowToolSelector onSelectWorkflow={onSelectWorkflow} />
-        <div className="py-1">
-          <DropdownMenuSeparator />
-        </div>
-        <AgentSelector onSelectAgent={onSelectAgent} />
         <div className="py-1">
           <DropdownMenuSeparator />
         </div>
@@ -976,123 +958,6 @@ function AppDefaultToolKitSelector() {
           </DropdownMenuItem>
         );
       })}
-    </DropdownMenuGroup>
-  );
-}
-
-function AgentSelector({
-  onSelectAgent,
-}: {
-  onSelectAgent?: (agent: AgentSummary) => void;
-}) {
-  const t = useTranslations();
-  const { myAgents, bookmarkedAgents } = useAgents({
-    filters: ["mine", "bookmarked"],
-  });
-
-  const emptyAgent = useMemo(() => {
-    if (myAgents.length + bookmarkedAgents.length > 0) return null;
-    return (
-      <Link
-        href={"/agent?id=new"}
-        className="py-8 px-4 hover:bg-input/100 rounded-lg cursor-pointer flex justify-between items-center text-xs overflow-hidden"
-      >
-        <div className="gap-1 z-10">
-          <div className="flex items-center mb-4 gap-1">
-            <p className="font-semibold">{t("Layout.createAgent")}</p>
-            <ArrowUpRightIcon className="size-3" />
-          </div>
-          <p className="text-muted-foreground">
-            {bookmarkedAgents.length > 0
-              ? t("Layout.createYourOwnAgentOrSelectShared")
-              : t("Layout.createYourOwnAgent")}
-          </p>
-        </div>
-      </Link>
-    );
-  }, [myAgents.length, bookmarkedAgents.length, t]);
-
-  return (
-    <DropdownMenuGroup>
-      <DropdownMenuSub>
-        <DropdownMenuSubTrigger className="text-xs flex items-center gap-2 font-semibold cursor-pointer">
-          <MessageCircle className="size-3.5" />
-          {t("Agent.title")}
-        </DropdownMenuSubTrigger>
-        <DropdownMenuPortal>
-          <DropdownMenuSubContent className="w-80 relative">
-            {emptyAgent}
-
-            {/* My Agents */}
-            {myAgents.map((agent) => (
-              <DropdownMenuItem
-                key={agent.id}
-                className="cursor-pointer"
-                onClick={() => onSelectAgent?.(agent)}
-              >
-                {agent.icon && agent.icon.type === "emoji" ? (
-                  <div
-                    style={{
-                      backgroundColor: agent.icon?.style?.backgroundColor,
-                    }}
-                    className="p-1 rounded flex items-center justify-center ring ring-background border"
-                  >
-                    <Avatar className="size-3">
-                      <AvatarImage src={agent.icon?.value} />
-                      <AvatarFallback>{agent.name.slice(0, 1)}</AvatarFallback>
-                    </Avatar>
-                  </div>
-                ) : null}
-                <span className="truncate min-w-0">{agent.name}</span>
-              </DropdownMenuItem>
-            ))}
-
-            {myAgents.length > 0 && bookmarkedAgents.length > 0 && (
-              <DropdownMenuSeparator />
-            )}
-
-            {bookmarkedAgents.map((agent) => (
-              <DropdownMenuItem
-                key={agent.id}
-                className="cursor-pointer"
-                onClick={() => onSelectAgent?.(agent)}
-              >
-                {agent.icon && agent.icon.type === "emoji" ? (
-                  <div
-                    style={{
-                      backgroundColor: agent.icon?.style?.backgroundColor,
-                    }}
-                    className="p-1 rounded flex items-center justify-center ring ring-background border"
-                  >
-                    <Avatar className="size-3">
-                      <AvatarImage src={agent.icon?.value} />
-                      <AvatarFallback>{agent.name.slice(0, 1)}</AvatarFallback>
-                    </Avatar>
-                  </div>
-                ) : null}
-                <div className="flex items-center justify-between flex-1 min-w-0">
-                  <span className="truncate min-w-0">{agent.name}</span>
-                  {agent.userName && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Avatar className="size-4 ml-2 shrink-0">
-                          <AvatarImage src={agent.userAvatar} />
-                          <AvatarFallback className="text-xs text-muted-foreground font-medium">
-                            {agent.userName[0]?.toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        {t("Common.sharedBy", { userName: agent.userName })}
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                </div>
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuSubContent>
-        </DropdownMenuPortal>
-      </DropdownMenuSub>
     </DropdownMenuGroup>
   );
 }

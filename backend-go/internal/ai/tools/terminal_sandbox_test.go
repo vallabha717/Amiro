@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"amiro/backend/internal/agent/sandbox"
 )
 
 // TestTerminalExecutor_ReportsSandboxStatus is this phase's own unit
@@ -13,7 +15,7 @@ import (
 // two fields are populated consistently (Sandboxed=false iff Backend=="none").
 func TestTerminalExecutor_ReportsSandboxStatus(t *testing.T) {
 	e := newTerminalExecutor(t.TempDir())
-	out := e.Run(context.Background(), terminalInput{Command: "echo hello-from-sandbox-test"}, nil)
+	out := e.Run(context.Background(), terminalInput{Command: "echo hello-from-sandbox-test"}, nil, false)
 
 	if out.ExitCode != 0 {
 		t.Fatalf("ExitCode = %d, want 0 (output: %q)", out.ExitCode, out.Output)
@@ -41,8 +43,58 @@ func TestTerminalExecutor_RunInBackgroundStillWorks(t *testing.T) {
 	out := e.Run(context.Background(), terminalInput{
 		Command:         "echo background-output-marker",
 		RunInBackground: true,
-	}, nil)
+	}, nil, false)
 	if !strings.Contains(out.Output, "task_id") {
 		t.Fatalf("Output = %q, want a task_id in the background-start response", out.Output)
+	}
+}
+
+// TestTerminalExecutor_RequireSandboxRefusesRatherThanFallingBack is Phase
+// 4's own coverage of the honest-degrade contract Phase 2 established:
+// requireSandbox=true must refuse outright when no real backend is
+// available, never silently run the command unsandboxed --
+// docs/coding-agent-parity/05-background-agent-runs.md's "an unattended job
+// never falls back to unsandboxed execution". This runs against whatever
+// backend this machine actually has, in both directions, rather than
+// assuming either outcome.
+func TestTerminalExecutor_RequireSandboxRefusesRatherThanFallingBack(t *testing.T) {
+	e := newTerminalExecutor(t.TempDir())
+	out := e.Run(context.Background(), terminalInput{Command: "echo hi"}, nil, true)
+
+	if sandbox.Detect().Sandboxed() {
+		if out.Error != "" {
+			t.Fatalf("Error = %q, want no refusal when a real sandbox backend is available", out.Error)
+		}
+		if !strings.Contains(out.Output, "hi") {
+			t.Fatalf("Output = %q, want the command to have actually run", out.Output)
+		}
+		return
+	}
+
+	if out.Error != errUnsandboxedRefused {
+		t.Fatalf("Error = %q, want the unsandboxed-refused message", out.Error)
+	}
+	if out.ExitCode == 0 {
+		t.Fatal("ExitCode = 0 for a refused command, want nonzero")
+	}
+	if strings.Contains(out.Output, "hi") {
+		t.Fatal("Output contains the echoed text -- the command ran despite the refusal")
+	}
+}
+
+// TestTerminalExecutor_RequireSandboxAlsoGatesTheBackgroundPath covers
+// run_in_background's separate code path (runBackground), which builds its
+// own *exec.Cmd via sandbox.Command rather than sandbox.Run.
+func TestTerminalExecutor_RequireSandboxAlsoGatesTheBackgroundPath(t *testing.T) {
+	if sandbox.Detect().Sandboxed() {
+		t.Skip("this machine has a real sandbox backend -- nothing to refuse")
+	}
+	e := newTerminalExecutor(t.TempDir())
+	out := e.Run(context.Background(), terminalInput{
+		Command:         "echo hi",
+		RunInBackground: true,
+	}, nil, true)
+	if !strings.Contains(out.Output, errUnsandboxedRefused) {
+		t.Fatalf("Output = %q, want it to carry the unsandboxed-refused error", out.Output)
 	}
 }

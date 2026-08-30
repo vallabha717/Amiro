@@ -10,10 +10,12 @@ import (
 	aiapi "amiro/backend/internal/api/ai"
 	archiveapi "amiro/backend/internal/api/archive"
 	authapi "amiro/backend/internal/api/auth"
+	backgroundjobapi "amiro/backend/internal/api/backgroundjob"
 	bookmarkapi "amiro/backend/internal/api/bookmark"
 	chatapi "amiro/backend/internal/api/chat"
 	checkpointapi "amiro/backend/internal/api/checkpoint"
 	exportapi "amiro/backend/internal/api/export"
+	githubapi "amiro/backend/internal/api/github"
 	mcpapi "amiro/backend/internal/api/mcp"
 	sandboxapi "amiro/backend/internal/api/sandbox"
 	searchapi "amiro/backend/internal/api/search"
@@ -64,6 +66,8 @@ type Handlers struct {
 	WorkspaceTrust *workspacetrustapi.Handler
 	Checkpoint     *checkpointapi.Handler
 	Sandbox        *sandboxapi.Handler
+	GitHub         *githubapi.Handler
+	BackgroundJob  *backgroundjobapi.Handler
 }
 
 // Options configures the route families and guards that only some
@@ -312,11 +316,25 @@ func NewWithOptions(cfg config.Config, h Handlers, opts Options) http.Handler {
 		mux.Handle("GET /api/sandbox/status", session(http.HandlerFunc(h.Sandbox.Status)))
 	}
 
+	if h.GitHub != nil && h.Auth != nil {
+		session := auth.RequireSession(h.Auth)
+		mux.Handle("GET /api/github/status", session(http.HandlerFunc(h.GitHub.Status)))
+		mux.Handle("POST /api/github/connect", session(http.HandlerFunc(h.GitHub.Connect)))
+		mux.Handle("POST /api/github/disconnect", session(http.HandlerFunc(h.GitHub.Disconnect)))
+	}
+
 	if h.Checkpoint != nil && h.Auth != nil {
 		session := auth.RequireSession(h.Auth)
 		mux.Handle("GET /api/checkpoint/files", session(http.HandlerFunc(h.Checkpoint.Files)))
 		mux.Handle("GET /api/checkpoint/latest", session(http.HandlerFunc(h.Checkpoint.Latest)))
 		mux.Handle("POST /api/checkpoint/restore", session(http.HandlerFunc(h.Checkpoint.Restore)))
+	}
+
+	if h.BackgroundJob != nil && h.Auth != nil {
+		session := auth.RequireSession(h.Auth)
+		mux.Handle("GET /api/background-jobs", session(http.HandlerFunc(h.BackgroundJob.List)))
+		mux.Handle("POST /api/background-jobs", session(http.HandlerFunc(h.BackgroundJob.Create)))
+		mux.Handle("GET /api/background-jobs/{id}", session(http.HandlerFunc(h.BackgroundJob.Get)))
 	}
 
 	if h.Storage != nil {

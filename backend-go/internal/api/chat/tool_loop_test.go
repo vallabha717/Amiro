@@ -63,7 +63,7 @@ func TestRunToolLoop_ModelCallTimesOutInsteadOfHangingForever(t *testing.T) {
 	sw := uimessage.NewWriter(rec)
 
 	start := time.Now()
-	_, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, nil, testPerms())
+	_, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, nil, testPerms(), nil)
 	elapsed := time.Since(start)
 
 	if err == nil {
@@ -98,7 +98,7 @@ func TestRunToolLoop_UnknownToolNameSurfacesErrorAndContinuesInsteadOfHangingFor
 	rec := httptest.NewRecorder()
 	sw := uimessage.NewWriter(rec)
 
-	result, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, nil, testPerms())
+	result, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, nil, testPerms(), nil)
 	if err != nil {
 		t.Fatalf("runToolLoop: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestRunToolLoop_ClientOnlyToolStillPausesGenerationForFrontendResubmit(t *t
 	sw := uimessage.NewWriter(rec)
 	activeTools := []tools.Definition{{Name: "client-tool", Execute: nil}}
 
-	result, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, activeTools, testPerms())
+	result, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, activeTools, testPerms(), nil)
 	if err != nil {
 		t.Fatalf("runToolLoop: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestRunToolLoop_AccumulatesUsageAcrossMultipleSteps(t *testing.T) {
 		},
 	}}
 
-	result, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, activeTools, testPerms())
+	result, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "", nil, activeTools, testPerms(), nil)
 	if err != nil {
 		t.Fatalf("runToolLoop: %v", err)
 	}

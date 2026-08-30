@@ -245,3 +245,166 @@ func TestPathArg_MatchesEveryFileToolSchema(t *testing.T) {
 		}
 	}
 }
+
+// TestPermission_UngrantedRootRefusesEveryConsequentialRisk is
+// docs/coding-agent-parity/phases/phase-00-workspace-trust-and-rules.md's
+// exit criterion 2. An untrusted engine must flat-refuse every
+// consequential risk class -- including RiskExternal and Auto mode, which
+// are exactly the two places a model could otherwise route around an
+// ungranted root (RiskExternal's own carve-out, Auto's unconditional
+// allow) -- while a pure read stays unaffected, since that's what lets the
+// trust prompt itself show the user what they're being asked to grant.
+func TestPermission_UngrantedRootRefusesEveryConsequentialRisk(t *testing.T) {
+	for _, mode := range []Mode{ModeInteractive, ModeEdit, ModeAuto} {
+		e := New(mode, testWorkspace(t), DefaultAllowedCommands, newSession()).WithTrust(false)
+
+		for _, c := range []Call{
+			writeCall(t, "a.txt"),
+			shellCall(t, "ls"), // on the allowlist, and still refused
+			{Tool: "some_mcp_tool", Risk: tools.RiskExternal, Input: args(t, map[string]any{})},
+		} {
+			d := e.Evaluate(c)
+			if d.Allowed || d.NeedsUser {
+				t.Fatalf("mode %s, %s (%s): got allowed=%v needsUser=%v, want a flat refusal",
+					mode, c.Tool, c.Risk, d.Allowed, d.NeedsUser)
+			}
+		}
+	}
+}
+
+func TestPermission_UngrantedRootStillAllowsReadAndSession(t *testing.T) {
+	e := New(ModeInteractive, testWorkspace(t), nil, newSession()).WithTrust(false)
+
+	if d := e.Evaluate(Call{Tool: "read_file", Risk: tools.RiskRead, Input: args(t, map[string]any{"path": "a.txt"})}); !d.Allowed {
+		t.Fatalf("read on an untrusted root: got %+v, want allowed", d)
+	}
+	if d := e.Evaluate(Call{Tool: "todo_write", Risk: tools.RiskSession, Input: args(t, map[string]any{})}); !d.Allowed {
+		t.Fatalf("session call on an untrusted root: got %+v, want allowed", d)
+	}
+}
+
+func TestPermission_NewDefaultsToTrusted(t *testing.T) {
+	e := New(ModeAuto, testWorkspace(t), DefaultAllowedCommands, newSession())
+	if !e.Trusted() {
+		t.Fatal("New must default Trusted() to true -- every existing call site relies on this")
+	}
+	if d := e.Evaluate(writeCall(t, "a.txt")); !d.Allowed {
+		t.Fatalf("Auto mode write with no WithTrust call: got %+v, want allowed", d)
+	}
+}
+
+func TestPermission_WithTrustReturnsSameEngineForChaining(t *testing.T) {
+	e := New(ModeAuto, testWorkspace(t), nil, newSession())
+	if got := e.WithTrust(false); got != e {
+		t.Fatal("WithTrust must return the same *Engine, not a copy")
+	}
+}
+
+// pushCall and createPRCall build AlwaysAsk calls the way CallFor would --
+// docs/coding-agent-parity/04-git-remote-operations.md's push and
+// create_pr, the only two calls in this codebase that ever set it.
+func pushCall(t *testing.T, force bool) Call {
+	return Call{Tool: "git", Risk: tools.RiskWrite, AlwaysAsk: true,
+		Input: args(t, map[string]any{"subcommand": "push", "force": force})}
+}
+
+func createPRCall(t *testing.T) Call {
+	return Call{Tool: "create_pr", Risk: tools.RiskExternal, AlwaysAsk: true,
+		Input: args(t, map[string]any{"base": "main"})}
+}
+
+// TestAlwaysAsk_OverridesAutoModesUnconditionalAllow is this phase's
+// central claim: Auto mode's "runs everything without asking" rule has
+// exactly one exception, and this is it.
+func TestAlwaysAsk_OverridesAutoModesUnconditionalAllow(t *testing.T) {
+	e := New(ModeAuto, testWorkspace(t), DefaultAllowedCommands, newSession())
+
+	if d := e.Evaluate(pushCall(t, false)); !d.NeedsUser {
+		t.Fatalf("push in auto mode: got %+v, want needsUser", d)
+	}
+	if d := e.Evaluate(pushCall(t, true)); !d.NeedsUser {
+		t.Fatalf("push --force in auto mode: got %+v, want needsUser", d)
+	}
+	if d := e.Evaluate(createPRCall(t)); !d.NeedsUser {
+		t.Fatalf("create_pr in auto mode: got %+v, want needsUser", d)
+	}
+
+	// The control: an ordinary write in the same Auto-mode engine is still
+	// allowed without asking -- AlwaysAsk affects only calls that set it.
+	if d := e.Evaluate(writeCall(t, "a.txt")); !d.Allowed {
+		t.Fatalf("ordinary write in auto mode: got %+v, want allowed", d)
+	}
+}
+
+// TestAlwaysAsk_OverridesRiskExternalsInteractiveEditCarveOut: create_pr is
+// RiskExternal, which Interactive/Edit mode otherwise allow without asking
+// (every MCP tool relies on that carve-out). AlwaysAsk must still win.
+func TestAlwaysAsk_OverridesRiskExternalsInteractiveEditCarveOut(t *testing.T) {
+	for _, mode := range []Mode{ModeInteractive, ModeEdit} {
+		e := New(mode, testWorkspace(t), DefaultAllowedCommands, newSession())
+
+		// The control, in the same mode: an ordinary RiskExternal call (an
+		// MCP-tool stand-in) is allowed without asking.
+		mcp := Call{Tool: "some_mcp_tool", Risk: tools.RiskExternal, Input: args(t, map[string]any{})}
+		if d := e.Evaluate(mcp); !d.Allowed {
+			t.Fatalf("%s: ordinary RiskExternal call: got %+v, want allowed (the carve-out this test's other half overrides)", mode, d)
+		}
+
+		if d := e.Evaluate(createPRCall(t)); !d.NeedsUser {
+			t.Fatalf("%s: create_pr: got %+v, want needsUser despite the RiskExternal carve-out", mode, d)
+		}
+	}
+}
+
+// TestAlwaysAsk_IgnoresSessionGrants: "no way to reach --force any other
+// way" -- a prior "always allow" for this tool or command must not let a
+// later AlwaysAsk call through silently.
+func TestAlwaysAsk_IgnoresSessionGrants(t *testing.T) {
+	sess := newSession()
+	sess.AllowTool("git")
+	sess.AllowCommand("git push origin main --force")
+	e := New(ModeInteractive, testWorkspace(t), DefaultAllowedCommands, sess)
+
+	if d := e.Evaluate(pushCall(t, true)); !d.NeedsUser {
+		t.Fatalf("push --force with git already \"always allowed\" and the exact command granted: got %+v, want needsUser regardless", d)
+	}
+}
+
+// TestAlwaysAsk_RefusedOutrightInPlanModeAndWhenUntrusted: AlwaysAsk is a
+// stricter gate layered on top of the existing ones, not a replacement for
+// them -- Plan mode's flat refusal and the trust gate both still apply.
+func TestAlwaysAsk_RefusedOutrightInPlanModeAndWhenUntrusted(t *testing.T) {
+	planEngine := New(ModePlan, testWorkspace(t), DefaultAllowedCommands, newSession())
+	if d := planEngine.Evaluate(pushCall(t, false)); d.Allowed || d.NeedsUser {
+		t.Fatalf("push in plan mode: got %+v, want a flat refusal, not a prompt", d)
+	}
+
+	untrusted := New(ModeAuto, testWorkspace(t), DefaultAllowedCommands, newSession()).WithTrust(false)
+	if d := untrusted.Evaluate(createPRCall(t)); d.Allowed || d.NeedsUser {
+		t.Fatalf("create_pr on an untrusted root: got %+v, want a flat refusal", d)
+	}
+}
+
+// TestCallFor_DerivesAlwaysAskFromDefinition covers the seam CallFor adds:
+// a nil Definition.AlwaysAsk never sets it, and a non-nil one is evaluated
+// against the actual input rather than always returning true.
+func TestCallFor_DerivesAlwaysAskFromDefinition(t *testing.T) {
+	plain := tools.Definition{Name: "read_file", Risk: tools.RiskRead}
+	if c := CallFor(plain, args(t, map[string]any{})); c.AlwaysAsk {
+		t.Fatal("a Definition with nil AlwaysAsk produced a Call with AlwaysAsk=true")
+	}
+
+	git := tools.Definition{Name: "git", Risk: tools.RiskWrite, AlwaysAsk: func(raw json.RawMessage) bool {
+		var in struct {
+			Subcommand string `json:"subcommand"`
+		}
+		_ = json.Unmarshal(raw, &in)
+		return in.Subcommand == "push"
+	}}
+	if c := CallFor(git, args(t, map[string]any{"subcommand": "status"})); c.AlwaysAsk {
+		t.Fatal("CallFor(git, status) has AlwaysAsk=true, want false")
+	}
+	if c := CallFor(git, args(t, map[string]any{"subcommand": "push"})); !c.AlwaysAsk {
+		t.Fatal("CallFor(git, push) has AlwaysAsk=false, want true")
+	}
+}

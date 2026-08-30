@@ -57,7 +57,7 @@ func authedContext() context.Context {
 }
 
 func TestHandler_List_Unauthorized(t *testing.T) {
-	h := skillsapi.NewHandler(&fakeService{})
+	h := skillsapi.NewHandler(&fakeService{}, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/skills", nil)
 	rec := httptest.NewRecorder()
 
@@ -68,7 +68,7 @@ func TestHandler_List_Unauthorized(t *testing.T) {
 }
 
 func TestHandler_List_BadRequestNonAbsProject(t *testing.T) {
-	h := skillsapi.NewHandler(&fakeService{})
+	h := skillsapi.NewHandler(&fakeService{}, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/skills?project=relative/path", nil).WithContext(authedContext())
 	rec := httptest.NewRecorder()
 
@@ -79,7 +79,7 @@ func TestHandler_List_BadRequestNonAbsProject(t *testing.T) {
 }
 
 func TestHandler_List_BadRequestNonExistentProject(t *testing.T) {
-	h := skillsapi.NewHandler(&fakeService{})
+	h := skillsapi.NewHandler(&fakeService{}, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/skills?project=/nonexistent/path/for/sure", nil).WithContext(authedContext())
 	rec := httptest.NewRecorder()
 
@@ -96,7 +96,7 @@ func TestHandler_List_BadRequestProjectIsFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	h := skillsapi.NewHandler(&fakeService{})
+	h := skillsapi.NewHandler(&fakeService{}, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/skills?project="+filePath, nil).WithContext(authedContext())
 	rec := httptest.NewRecorder()
 
@@ -118,7 +118,7 @@ func TestHandler_List_ResolvesSymlinkProject(t *testing.T) {
 	}
 
 	svc := &fakeService{listRes: &skills.ListResult{}}
-	h := skillsapi.NewHandler(svc)
+	h := skillsapi.NewHandler(svc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/skills?project="+symlinkPath, nil).WithContext(authedContext())
 	rec := httptest.NewRecorder()
 
@@ -158,7 +158,7 @@ func TestHandler_List_Success_OmitsBodyAndResources(t *testing.T) {
 			Truncated: false,
 		},
 	}
-	h := skillsapi.NewHandler(svc)
+	h := skillsapi.NewHandler(svc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/skills", nil).WithContext(authedContext())
 	rec := httptest.NewRecorder()
 
@@ -198,7 +198,7 @@ func TestHandler_Get_NotFound(t *testing.T) {
 	svc := &fakeService{
 		getErr: skills.ErrSkillNotFound,
 	}
-	h := skillsapi.NewHandler(svc)
+	h := skillsapi.NewHandler(svc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/skills/items/nonexistent", nil).WithContext(authedContext())
 	req.SetPathValue("name", "nonexistent")
 	rec := httptest.NewRecorder()
@@ -221,7 +221,7 @@ func TestHandler_Get_Success_IncludesBodyAndResources(t *testing.T) {
 			Resources:   []string{"scripts/run.sh"},
 		},
 	}
-	h := skillsapi.NewHandler(svc)
+	h := skillsapi.NewHandler(svc, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/skills/items/found-skill", nil).WithContext(authedContext())
 	req.SetPathValue("name", "found-skill")
 	rec := httptest.NewRecorder()

@@ -44,10 +44,6 @@ func TestSecurity_OwnershipHoldsWhileTheAgentLoopIsActive(t *testing.T) {
 
 	// Resources owned by `user`, created before the loop starts, so the
 	// probes below have something of every shape to reach for.
-	agent, err := user.CreateAgent(ctx, apiclient.AgentInput{Name: "Loop Agent", Visibility: "private"})
-	if err != nil {
-		t.Fatalf("CreateAgent: %v", err)
-	}
 	vis := "private"
 	wf, err := user.SaveWorkflow(ctx, apiclient.WorkflowInput{Name: "Loop Workflow", Visibility: &vis})
 	if err != nil {
@@ -145,12 +141,6 @@ func TestSecurity_OwnershipHoldsWhileTheAgentLoopIsActive(t *testing.T) {
 
 	// The rest of the Phase 2 matrix's resource shapes, same assertion
 	// style as TestMatrix_OwnershipCrossCutting, now under load.
-	probe("GET /api/agent/{id}", func() error { _, err := other.GetAgent(ctx, agent.ID); return err })
-	probe("PUT /api/agent/{id}", func() error {
-		_, err := other.UpdateAgent(ctx, agent.ID, apiclient.AgentInput{Name: "Hijacked"})
-		return err
-	})
-	probe("DELETE /api/agent/{id}", func() error { return other.DeleteAgent(ctx, agent.ID) })
 	probe("GET /api/workflow/{id}", func() error { _, err := other.GetWorkflow(ctx, wf.ID); return err })
 	probe("DELETE /api/workflow/{id}", func() error { return other.DeleteWorkflow(ctx, wf.ID) })
 	probe("GET /api/archive/{id}", func() error { _, err := other.GetArchive(ctx, arch.ID); return err })

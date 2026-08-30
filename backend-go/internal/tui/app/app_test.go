@@ -77,6 +77,27 @@ func (c fakeClient) SandboxStatus(context.Context) (string, bool, error) {
 	return "none", false, nil
 }
 
+// GitHubStatus/ConnectGitHub/DisconnectGitHub default to "not connected,
+// no-op" for the same reason SandboxStatus does: app.Model's own tests
+// route between pages and never exercise the settings page's GitHub row,
+// which belongs to page's own tests (settings_test.go's fakeClient).
+func (c fakeClient) GitHubStatus(context.Context) (bool, error)  { return false, nil }
+func (c fakeClient) ConnectGitHub(context.Context, string) error { return nil }
+func (c fakeClient) DisconnectGitHub(context.Context) error      { return nil }
+
+// CreateBackgroundJob/ListBackgroundJobs/GetBackgroundJob default to
+// no-op/empty for the same reason GitHub's do: app.Model's own tests never
+// exercise the /runs picker, which belongs to page's own tests.
+func (c fakeClient) CreateBackgroundJob(context.Context, client.CreateBackgroundJobRequest) (client.BackgroundJob, error) {
+	return client.BackgroundJob{}, nil
+}
+func (c fakeClient) ListBackgroundJobs(context.Context) ([]client.BackgroundJob, error) {
+	return nil, nil
+}
+func (c fakeClient) GetBackgroundJob(context.Context, string) (client.BackgroundJob, error) {
+	return client.BackgroundJob{}, nil
+}
+
 var _ client.Client = fakeClient{}
 
 // TestApp_OpenThreads_RoutesToThePickerAndBack is the round trip Ctrl+T (or
@@ -103,6 +124,39 @@ func TestApp_OpenThreads_RoutesToThePickerAndBack(t *testing.T) {
 	}
 	if got := m.chat.State().ThreadID; got != "t1" {
 		t.Fatalf("chat's thread id = %q after resume, want t1", got)
+	}
+}
+
+// TestApp_OpenRuns_RoutesToThePickerAndBack mirrors the threads round trip
+// for "/runs" -- selecting a run resolves to the same ThreadChosenMsg
+// Threads emits, so the return trip to Chat needs no dedicated handling
+// beyond what OpenThreadsMsg's test already covers being reused correctly.
+func TestApp_OpenRuns_RoutesToThePickerAndBack(t *testing.T) {
+	m := New(fakeClient{thread: client.ThreadDetail{ID: "t1"}}, "thread-0", "/workspace", "")
+	tm, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = tm.(Model)
+
+	tm, cmd := m.Update(page.OpenRunsMsg{})
+	m = tm.(Model)
+	if m.active != activeRuns {
+		t.Fatalf("active = %v after OpenRunsMsg, want activeRuns", m.active)
+	}
+	if cmd == nil {
+		t.Fatalf("OpenRunsMsg returned a nil cmd, want Runs.Init at least")
+	}
+
+	tm, _ = m.Update(page.ThreadChosenMsg{Detail: client.ThreadDetail{ID: "t1", Title: "resumed"}})
+	m = tm.(Model)
+	if m.active != activeChat {
+		t.Fatalf("active = %v after ThreadChosenMsg, want activeChat", m.active)
+	}
+
+	tm, _ = m.Update(page.OpenRunsMsg{})
+	m = tm.(Model)
+	tm, _ = m.Update(page.PickerCancelledMsg{})
+	m = tm.(Model)
+	if m.active != activeChat {
+		t.Fatalf("active = %v after PickerCancelledMsg from runs, want activeChat", m.active)
 	}
 }
 

@@ -7,12 +7,36 @@ import (
 	"strings"
 	"sync"
 
+	"amiro/backend/internal/agent/checkpoint"
 	"amiro/backend/internal/agent/permission"
 	"amiro/backend/internal/agent/session"
 	bifrostai "amiro/backend/internal/ai/bifrost"
 	"amiro/backend/internal/ai/tools"
 	"amiro/backend/internal/ai/uimessage"
 )
+
+// checkpointTools are the write-shaped tools a pre-image is worth capturing
+// for (docs/coding-agent-parity/02-checkpoints-and-rewind.md). Read, exec
+// and external tools never change a file's bytes, so they have nothing to
+// checkpoint.
+var checkpointTools = map[string]bool{
+	tools.NameWriteFile: true,
+	tools.NameEditFile:  true,
+	tools.NameMultiEdit: true,
+}
+
+// checkpointPath extracts the "path" field every checkpointable tool's
+// input carries. write_file, edit_file and multi_edit each touch exactly
+// one file per call, so there is only ever one path to capture.
+func checkpointPath(input json.RawMessage) (string, bool) {
+	var in struct {
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal(input, &in); err != nil || in.Path == "" {
+		return "", false
+	}
+	return in.Path, true
+}
 
 // maxParallelToolCalls bounds how many side-effect-free tool calls may be
 // in flight at once within a single model step. The ceiling exists so a
@@ -101,6 +125,14 @@ type toolScheduler struct {
 	// do not care carry no burden.
 	log  *session.Log
 	step int
+
+	// checkpoints captures a write/edit/multi_edit call's pre-image before
+	// it runs, for /rewind. Nil (no capturer wired -- e.g. no thread/turn
+	// id, or the workspace-trust gate refused the workspace before a
+	// capturer was ever built) degrades to "no checkpoints for this turn",
+	// the same optional-dependency contract every other nil field on this
+	// scheduler already has.
+	checkpoints *checkpoint.Capturer
 }
 
 func newToolScheduler(sw uimessage.Emitter, activeTools []tools.Definition, perms *permission.Engine) *toolScheduler {
@@ -118,6 +150,14 @@ func newToolScheduler(sw uimessage.Emitter, activeTools []tools.Definition, perm
 // constructor already takes three required arguments.
 func (s *toolScheduler) withLog(l *session.Log, step int) *toolScheduler {
 	s.log, s.step = l, step
+	return s
+}
+
+// withCheckpoints attaches this turn's checkpoint capturer, chained from
+// the loop for the same reason withLog is: optional, and the constructor
+// already takes three required arguments.
+func (s *toolScheduler) withCheckpoints(c *checkpoint.Capturer) *toolScheduler {
+	s.checkpoints = c
 	return s
 }
 
@@ -384,6 +424,16 @@ func (s *toolScheduler) askApprover(ctx context.Context, sl *toolSlot, d permiss
 // goroutine: every stream write it makes goes through emit*, and the only
 // slot it touches is its own.
 func (s *toolScheduler) execute(ctx context.Context, sl *toolSlot) {
+	// Captured before the tool runs, never after -- a pre-image taken once
+	// the write has already landed is not a pre-image. Best-effort: see
+	// checkpoint.Capturer.Capture's doc comment for why a capture failure
+	// never blocks the write it precedes.
+	if s.checkpoints != nil && checkpointTools[sl.def.Name] {
+		if path, ok := checkpointPath(sl.input); ok {
+			s.checkpoints.Capture(ctx, path)
+		}
+	}
+
 	output, execErr := sl.def.Execute(ctx, sl.input)
 	if execErr != nil {
 		s.emitError(sl.tc.ID, execErr.Error())

@@ -185,7 +185,7 @@ func TestCrossSurface_ProviderKeyAddedInTheDashboardIsImmediatelyUsableFromTheTU
 
 // unwrapped joins a rendered frame's lines back together, undoing the
 // terminal's own hard wrap at the right margin. See the same helper in
-// suites/cross/agentmention for the full reasoning: the picker's rows are
+// suites/cross/skills for the full reasoning: the picker's rows are
 // drawn near the right margin and wrap, a wrap continuation always resumes
 // at column 0, and pty.Buffer.Plain only trims trailing spaces (which a
 // wrapped line has none of), so concatenation is exactly the wrap's

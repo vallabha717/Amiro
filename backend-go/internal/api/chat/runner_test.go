@@ -13,6 +13,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"amiro/backend/internal/agent/workspace"
 	bifrostai "amiro/backend/internal/ai/bifrost"
 	"amiro/backend/internal/ai/uimessage"
 	"amiro/backend/internal/auth"
@@ -54,7 +55,7 @@ func newRunnerEnv(t *testing.T, engine Engine) runnerEnv {
 	}
 
 	chatRepo := repository.NewChatRepository(gdb)
-	h := NewHandler(chatRepo, nil, engine, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewHandler(chatRepo, nil, engine, nil, nil, nil, nil, nil, nil, nil)
 	return runnerEnv{h: h, user: user, db: gdb}
 }
 
@@ -373,6 +374,166 @@ func TestRunner_SkillsMention_InjectsSkillContent(t *testing.T) {
 	}
 	if !strings.Contains(engine.capturedSystem, "# My Skill Body") {
 		t.Fatalf("expected skill body in captured system prompt, got:\n%s", engine.capturedSystem)
+	}
+}
+
+// TestRunner_AGENTSMd_InjectsAheadOfSkillCatalog covers phase-00's
+// deliverable 2 (docs/coding-agent-parity/phases/phase-00-workspace-trust-and-rules.md):
+// AGENTS.md is read every turn, unconditionally, and lands ahead of the
+// skill catalog in the system prompt -- the ordering that makes it a
+// standing fact rather than one more thing competing with on-demand
+// disclosure.
+func TestRunner_AGENTSMd_InjectsAheadOfSkillCatalog(t *testing.T) {
+	tempDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tempDir, "AGENTS.md"), []byte("use pnpm for everything in this repo"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	engine := &captureSystemEngine{}
+	env := newRunnerEnv(t, engine)
+
+	w := httptest.NewRecorder()
+	_, err := env.h.RunTurn(context.Background(), TurnRequest{
+		User:     env.user,
+		ThreadID: "test-thread-agents-md",
+		Message: uiMessage{
+			ID:    "msg-1",
+			Role:  "user",
+			Parts: []json.RawMessage{json.RawMessage(`{"type":"text","text":"hello"}`)},
+		},
+		WorkspaceRoot: tempDir,
+	}, uimessage.NewWriter(w))
+	if err != nil {
+		t.Fatalf("RunTurn: %v", err)
+	}
+
+	if !strings.Contains(engine.capturedSystem, "use pnpm for everything in this repo") {
+		t.Fatalf("expected AGENTS.md content in captured system prompt, got:\n%s", engine.capturedSystem)
+	}
+	if !strings.Contains(engine.capturedSystem, "<project_rules>") {
+		t.Fatalf("expected a <project_rules> block, got:\n%s", engine.capturedSystem)
+	}
+}
+
+// TestRunner_WorkspaceTrust_EnvSourcedRootAutoGrants is
+// docs/coding-agent-parity/phases/phase-00-workspace-trust-and-rules.md's
+// exit criterion 3: a root sourced from the handler's own configured
+// default (the process's AMIRO_WORKSPACE_ROOT / CLI-flag root, reached here
+// via WithWorkspace exactly as appwiring wires it) is granted at first use
+// with no prompt, recorded with granted_via "env" -- never left as an
+// invisible bypass.
+func TestRunner_WorkspaceTrust_EnvSourcedRootAutoGrants(t *testing.T) {
+	env := newRunnerEnv(t, textEngine{reply: "hi"})
+	trustRepo := repository.NewWorkspaceTrustRepository(env.db)
+	env.h = env.h.WithWorkspaceTrust(trustRepo)
+
+	ws, err := workspace.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("workspace.New: %v", err)
+	}
+	env.h = env.h.WithWorkspace(ws, t.TempDir())
+
+	w := httptest.NewRecorder()
+	if _, err := env.h.RunTurn(context.Background(), NewTextTurn(env.user, "test-thread-env-grant", "hi"), uimessage.NewWriter(w)); err != nil {
+		t.Fatalf("RunTurn: %v", err)
+	}
+
+	trusted, err := trustRepo.IsTrusted(context.Background(), env.user.ID, ws.Root())
+	if err != nil {
+		t.Fatalf("IsTrusted: %v", err)
+	}
+	if !trusted {
+		t.Fatal("a turn against the handler's own configured default workspace must auto-grant, not require a prompt")
+	}
+
+	grants, err := trustRepo.List(context.Background(), env.user.ID)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(grants) != 1 || grants[0].GrantedVia != repository.GrantedViaEnv {
+		t.Fatalf("grants = %+v, want exactly one grant with granted_via=%q", grants, repository.GrantedViaEnv)
+	}
+}
+
+// TestRunner_WorkspaceTrust_RequestEchoingProcessDefaultStillAutoGrants
+// covers the case that broke the naive "was WorkspaceRoot supplied at all"
+// signal: the TUI (and this suite's own request builders) always echo
+// WorkspaceRoot back explicitly, every turn, including when its value is
+// simply the server's own default. That must still auto-grant -- comparing
+// by resolved root, not by whether the field was left empty, is what makes
+// this so.
+func TestRunner_WorkspaceTrust_RequestEchoingProcessDefaultStillAutoGrants(t *testing.T) {
+	env := newRunnerEnv(t, textEngine{reply: "hi"})
+	trustRepo := repository.NewWorkspaceTrustRepository(env.db)
+	env.h = env.h.WithWorkspaceTrust(trustRepo)
+
+	dir := t.TempDir()
+	ws, err := workspace.New(dir)
+	if err != nil {
+		t.Fatalf("workspace.New: %v", err)
+	}
+	env.h = env.h.WithWorkspace(ws, t.TempDir())
+
+	w := httptest.NewRecorder()
+	_, err = env.h.RunTurn(context.Background(), TurnRequest{
+		User:     env.user,
+		ThreadID: "test-thread-echoed-default",
+		Message: uiMessage{
+			ID:    "msg-1",
+			Role:  "user",
+			Parts: []json.RawMessage{json.RawMessage(`{"type":"text","text":"hi"}`)},
+		},
+		WorkspaceRoot: dir, // explicitly echoed, not left empty
+	}, uimessage.NewWriter(w))
+	if err != nil {
+		t.Fatalf("RunTurn: %v", err)
+	}
+
+	trusted, err := trustRepo.IsTrusted(context.Background(), env.user.ID, ws.Root())
+	if err != nil {
+		t.Fatalf("IsTrusted: %v", err)
+	}
+	if !trusted {
+		t.Fatal("a request that explicitly echoes the server's own default workspace root must still auto-grant")
+	}
+}
+
+// TestRunner_WorkspaceTrust_RequestSuppliedRootIsNotAutoGranted is the
+// converse: a root the request itself named (an interactively-opened
+// project, e.g. the web dashboard's project picker) must not be silently
+// trusted just because a turn ran against it -- only a prior grant (a
+// human answering the trust prompt) may set it.
+func TestRunner_WorkspaceTrust_RequestSuppliedRootIsNotAutoGranted(t *testing.T) {
+	env := newRunnerEnv(t, textEngine{reply: "hi"})
+	trustRepo := repository.NewWorkspaceTrustRepository(env.db)
+	env.h = env.h.WithWorkspaceTrust(trustRepo)
+
+	projectDir := t.TempDir()
+	w := httptest.NewRecorder()
+	_, err := env.h.RunTurn(context.Background(), TurnRequest{
+		User:     env.user,
+		ThreadID: "test-thread-no-auto-grant",
+		Message: uiMessage{
+			ID:    "msg-1",
+			Role:  "user",
+			Parts: []json.RawMessage{json.RawMessage(`{"type":"text","text":"hi"}`)},
+		},
+		WorkspaceRoot: projectDir,
+	}, uimessage.NewWriter(w))
+	if err != nil {
+		t.Fatalf("RunTurn: %v", err)
+	}
+
+	resolved, err := workspace.New(projectDir)
+	if err != nil {
+		t.Fatalf("workspace.New: %v", err)
+	}
+	trusted, err := trustRepo.IsTrusted(context.Background(), env.user.ID, resolved.Root())
+	if err != nil {
+		t.Fatalf("IsTrusted: %v", err)
+	}
+	if trusted {
+		t.Fatal("a request-supplied workspace root must not be auto-granted -- only an explicit prompt/grant may trust it")
 	}
 }
 

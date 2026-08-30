@@ -18,19 +18,14 @@ type mentionablesLoadedMsg struct {
 }
 
 // loadMentionables fetches every mentionable thing beyond Amiro's own
-// static tool list: agents, MCP servers and their tools, workflows. Each
-// fetch failing independently degrades to "that category has no
-// candidates" rather than failing the whole list -- a user with no MCP
-// servers configured should still get default-tool and agent completion.
+// static tool list: MCP servers and their tools, workflows. Each fetch
+// failing independently degrades to "that category has no candidates"
+// rather than failing the whole list -- a user with no MCP servers
+// configured should still get default-tool completion.
 func (m Chat) loadMentionables() tea.Msg {
 	ctx := context.Background()
 	candidates := append([]editor.Mentionable{}, editor.DefaultToolMentions...)
 
-	if agents, err := m.c.ListAgents(ctx); err == nil {
-		for _, a := range agents {
-			candidates = append(candidates, editor.AgentMention(a.ID, a.Name))
-		}
-	}
 	if servers, err := m.c.ListMCPServers(ctx); err == nil {
 		for _, s := range servers {
 			candidates = append(candidates, editor.MCPServerMention(s.ID, s.Name))
@@ -63,6 +58,6 @@ func (m Chat) loadSkills() tea.Msg {
 func toClientMention(m editor.Mentionable) client.Mention {
 	return client.Mention{
 		Type: string(m.Kind), Name: m.MentionName(),
-		ServerID: m.ServerID, WorkflowID: m.WorkflowID, AgentID: m.AgentID,
+		ServerID: m.ServerID, WorkflowID: m.WorkflowID,
 	}
 }

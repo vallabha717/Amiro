@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"amiro/backend/internal/agent/checkpoint"
 	"amiro/backend/internal/agent/permission"
 	"amiro/backend/internal/ai/tools"
 )
@@ -57,6 +58,7 @@ func resolveApprovals(
 	msg *uiMessage,
 	activeTools []tools.Definition,
 	perms *permission.Engine,
+	checkpoints *checkpoint.Capturer,
 ) {
 	if msg == nil || msg.Role != "assistant" {
 		return
@@ -118,6 +120,19 @@ func resolveApprovals(
 				}
 			default:
 				rememberApproval(perms, def, input, answer)
+				// Captured here too, not only in tool_scheduler.go's execute:
+				// an approved write_file/edit_file/multi_edit call runs right
+				// here, directly, never through the scheduler at all -- a
+				// checkpoint gated only on the scheduler's own capture call
+				// would never exist for anything a human had to approve
+				// first, which is the *default* permission mode. See
+				// runner.go's comment on why checkpoints is built ahead of
+				// resolveApprovals rather than ahead of runToolLoop.
+				if checkpoints != nil && checkpointTools[def.Name] {
+					if path, ok := checkpointPath(input); ok {
+						checkpoints.Capture(ctx, path)
+					}
+				}
 				output, execErr := def.Execute(ctx, input)
 				if execErr != nil {
 					replacement = map[string]any{

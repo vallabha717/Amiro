@@ -2,6 +2,7 @@ package apiclient
 
 import (
 	"context"
+	"encoding/json"
 	"net/url"
 )
 
@@ -146,6 +147,25 @@ func (c *Client) DuplicateSkill(ctx context.Context, name string, project ...str
 		reqPath += "?project=" + url.QueryEscape(project[0])
 	}
 	err := c.Post(ctx, reqPath, nil, &out)
+	return out, err
+}
+
+// SkillGenerateRequest is the POST /api/skills/generate body.
+type SkillGenerateRequest struct {
+	ChatModel *struct {
+		Provider string `json:"provider"`
+		Model    string `json:"model"`
+	} `json:"chatModel,omitempty"`
+	Message string `json:"message"`
+}
+
+// GenerateSkill calls POST /api/skills/generate, returning the raw
+// generated object bytes ({name, description, body}) -- the route writes
+// a plain JSON-text body, not a JSON envelope, so callers unmarshal it
+// themselves the way GenerateObject's callers do.
+func (c *Client) GenerateSkill(ctx context.Context, req SkillGenerateRequest) (json.RawMessage, error) {
+	var out json.RawMessage
+	err := c.Post(ctx, "/api/skills/generate", req, &out)
 	return out, err
 }
 

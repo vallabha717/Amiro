@@ -1,6 +1,11 @@
 "use client";
 
-import type { Skill, SkillsListResponse } from "@/types/skill";
+import type {
+  Skill,
+  SkillsListResponse,
+  SkillWriteRequest,
+  SkillWriteResponse,
+} from "@/types/skill";
 import { apiJson } from "./client";
 
 /**
@@ -28,5 +33,55 @@ export async function getSkill(name: string, project?: string): Promise<Skill> {
   const encodedName = encodeURIComponent(name);
   return apiJson<Skill>(
     qs ? `/api/skills/items/${encodedName}?${qs}` : `/api/skills/items/${encodedName}`,
+  );
+}
+
+/** Creates a new writable skill. Throws ApiError with `.info.errors` (SkillFieldError[]) on 400. */
+export async function createSkill(
+  req: SkillWriteRequest,
+): Promise<SkillWriteResponse> {
+  return apiJson<SkillWriteResponse>("/api/skills", {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+}
+
+/** Updates a writable skill. Throws ApiError (409) if the skill is read-only. */
+export async function updateSkill(
+  name: string,
+  req: SkillWriteRequest,
+): Promise<SkillWriteResponse> {
+  const encodedName = encodeURIComponent(name);
+  return apiJson<SkillWriteResponse>(`/api/skills/items/${encodedName}`, {
+    method: "PUT",
+    body: JSON.stringify(req),
+  });
+}
+
+/**
+ * Deletes a writable skill. Throws ApiError (422) naming unexpected files
+ * unless `force` is set, per internal/skills/write.go's UnexpectedFiles check.
+ */
+export async function deleteSkill(
+  name: string,
+  force = false,
+): Promise<void> {
+  const encodedName = encodeURIComponent(name);
+  const qs = force ? "?force=true" : "";
+  await apiJson<void>(`/api/skills/items/${encodedName}${qs}`, {
+    method: "DELETE",
+  });
+}
+
+/** Duplicates any discovered skill (writable or read-only) into the user's writable skills. */
+export async function duplicateSkill(
+  name: string,
+  project?: string,
+): Promise<SkillWriteResponse> {
+  const encodedName = encodeURIComponent(name);
+  const qs = project ? `?project=${encodeURIComponent(project)}` : "";
+  return apiJson<SkillWriteResponse>(
+    `/api/skills/items/${encodedName}/duplicate${qs}`,
+    { method: "POST" },
   );
 }

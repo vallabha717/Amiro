@@ -53,7 +53,6 @@ import { ProjectSelector } from "./chat/project-selector";
 import { PermissionSelector } from "./chat/permission-selector";
 
 import { EMOJI_DATA } from "lib/const";
-import { AgentSummary } from "app-types/agent";
 import { FileUIPart, TextUIPart } from "ai";
 import { toast } from "sonner";
 import { isFilePartSupported, isIngestSupported } from "@/lib/ai/file-support";
@@ -255,15 +254,10 @@ export default function PromptInput({
       appStoreMutate((prev) => {
         if (mentions.some((m) => equal(m, mention))) return prev;
 
-        const newMentions =
-          mention.type == "agent"
-            ? [...mentions.filter((m) => m.type !== "agent"), mention]
-            : [...mentions, mention];
-
         return {
           threadMentions: {
             ...prev.threadMentions,
-            [threadId!]: newMentions,
+            [threadId!]: [...mentions, mention],
           },
         };
       });
@@ -295,43 +289,9 @@ export default function PromptInput({
     [addMention],
   );
 
-  const onSelectAgent = useCallback(
-    (agent: AgentSummary) => {
-      appStoreMutate((prev) => {
-        return {
-          threadMentions: {
-            ...prev.threadMentions,
-            [threadId!]: [
-              {
-                type: "agent",
-                name: agent.name,
-                icon: agent.icon,
-                description: agent.description,
-                agentId: agent.id,
-              },
-            ],
-          },
-        };
-      });
-    },
-    [mentions, threadId],
-  );
-
   const onChangeMention = useCallback(
     (mentions: ChatMention[]) => {
-      let hasAgent = false;
-      [...mentions]
-        .reverse()
-        .filter((m) => {
-          if (m.type == "agent") {
-            if (hasAgent) return false;
-            hasAgent = true;
-          }
-
-          return true;
-        })
-        .reverse()
-        .forEach(addMention);
+      mentions.forEach(addMention);
     },
     [addMention],
   );
@@ -413,7 +373,6 @@ export default function PromptInput({
         e.stopPropagation();
         appStoreMutate(() => ({
           threadMentions: {},
-          agentId: undefined,
           threadImageToolModel: {},
         }));
         editorRef.current?.commands.focus();
@@ -470,8 +429,7 @@ export default function PromptInput({
                   }
                   return (
                     <div key={i} className="flex items-center gap-2">
-                      {mention.type === "workflow" ||
-                      mention.type === "agent" ? (
+                      {mention.type === "workflow" ? (
                         <Avatar
                           className="size-6 p-1 ring ring-border rounded-full flex-shrink-0"
                           style={mention.icon?.style}
@@ -624,7 +582,6 @@ export default function PromptInput({
                       align="start"
                       side="top"
                       onSelectWorkflow={onSelectWorkflow}
-                      onSelectAgent={onSelectAgent}
                       onGenerateImage={handleGenerateImage}
                       mentions={mentions}
                     />
@@ -674,7 +631,6 @@ export default function PromptInput({
                             voiceChat: {
                               ...state.voiceChat,
                               isOpen: true,
-                              agentId: undefined,
                             },
                           }));
                         }}

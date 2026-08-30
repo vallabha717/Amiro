@@ -22,6 +22,16 @@ type ChatKeyMap struct {
 	Threads key.Binding
 	Models  key.Binding
 	Palette key.Binding
+
+	// Rewind is Esc, pressed twice within a short window, as a shortcut for
+	// "/rewind the most recent turn"
+	// (docs/coding-agent-parity/02-checkpoints-and-rewind.md). The double-
+	// press timing itself is page.Chat's job (a single key.Binding cannot
+	// express "twice") -- this binding exists so there is one canonical
+	// place Esc's rewind meaning is declared, matching every other key in
+	// this file, rather than a literal tea.KeyEsc check living only in
+	// chat.go.
+	Rewind key.Binding
 }
 
 // DefaultChatKeyMap is Appendix B's keymap: Enter to send, Shift+Enter
@@ -60,6 +70,10 @@ var DefaultChatKeyMap = ChatKeyMap{
 	Palette: key.NewBinding(
 		key.WithKeys("ctrl+p"),
 		key.WithHelp("ctrl+p", "command palette"),
+	),
+	Rewind: key.NewBinding(
+		key.WithKeys("esc"),
+		key.WithHelp("esc esc", "rewind most recent turn"),
 	),
 }
 

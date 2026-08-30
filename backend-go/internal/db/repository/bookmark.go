@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"errors"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -12,9 +11,11 @@ import (
 
 // Bookmark item types, matching the CHECK constraint the bookmark
 // migration declares and the z.enum(["agent", "workflow"]) the TS
-// bookmark route validates against (bookmark/route.ts:7).
+// bookmark route validates against (bookmark/route.ts:7). Agent was
+// dropped in Phase 6 (docs/skills/); the CHECK constraint itself still
+// permits it -- see migrations/sqlite/0024_drop_agent.up.sql's comment for
+// why that's left alone rather than rebuilding the table.
 const (
-	BookmarkItemTypeAgent    = "agent"
 	BookmarkItemTypeWorkflow = "workflow"
 )
 
@@ -45,28 +46,15 @@ func (r *BookmarkRepository) Remove(ctx context.Context, userID, itemID, itemTyp
 		Delete(&models.Bookmark{}).Error
 }
 
-// CheckItemAccess ports checkItemAccess (bookmark-repository.pg.ts:66): an
-// agent can be bookmarked when it's public/readonly or the caller's own.
-// Workflows return false, matching the TS "TODO: Add workflow access check
+// CheckItemAccess ports checkItemAccess (bookmark-repository.pg.ts:66).
+// Agent was the only item type this ever granted (public/readonly or the
+// caller's own); it was decommissioned in Phase 6. Workflow already always
+// returned false here, matching the TS "TODO: Add workflow access check
 // when workflows support bookmarking" -- deliberately preserved rather than
 // "fixed", since changing it would let the UI bookmark something no list
-// query ever reports back.
+// query ever reports back. With agent gone, every itemType now denies,
+// which makes POST /api/bookmark permanently a 404 -- a real, inert
+// endpoint, recorded rather than silently removed (progress/phase-06).
 func (r *BookmarkRepository) CheckItemAccess(ctx context.Context, itemID, itemType, userID string) (bool, error) {
-	if itemType != BookmarkItemTypeAgent {
-		return false, nil
-	}
-
-	var row struct {
-		Visibility string
-		UserID     string
-	}
-	err := r.db.WithContext(ctx).Model(&models.Agent{}).
-		Select("visibility", "user_id").Where("id = ?", itemID).Take(&row).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	return row.Visibility == "public" || row.Visibility == "readonly" || row.UserID == userID, nil
+	return false, nil
 }

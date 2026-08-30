@@ -35,6 +35,19 @@ const maxInputLines = 8
 // available to it (border included) -- the same convention toolcard.Render
 // uses.
 func Render(width int, req session.ApprovalRequest, input json.RawMessage) string {
+	return RenderWithHint(width, req, input, hint())
+}
+
+// RenderWithHint is Render with the bottom key hint overridden. Every
+// existing tool-approval call site keeps calling Render (whose hint is
+// y/a/n, Appendix B's own vocabulary): this exists for a caller whose
+// decision genuinely has no "once vs. always" axis -- the workspace-trust
+// prompt (docs/coding-agent-parity/phases/phase-00-workspace-trust-and-rules.md)
+// is a single yes/no grant, and reusing y/a/n's wording there would show an
+// "always allow" option with no "once" for it to be an alternative to. The
+// dialog's chrome, preview and reason rendering stay identical either way
+// -- only the hint line's text changes, not a new component.
+func RenderWithHint(width int, req session.ApprovalRequest, input json.RawMessage, hintText string) string {
 	inner := width - 4 // 2 border cols + 2 padding cols
 	if inner < 1 {
 		inner = 1
@@ -72,7 +85,7 @@ func Render(width int, req session.ApprovalRequest, input json.RawMessage) strin
 	}
 
 	b.WriteString("\n\n")
-	b.WriteString(hint())
+	b.WriteString(theme.Default.Muted.Render(hintText))
 
 	return box.Render(b.String())
 }
@@ -90,7 +103,7 @@ func preview(input json.RawMessage, req session.ApprovalRequest, width int) stri
 }
 
 func hint() string {
-	return theme.Default.Muted.Render("[y] approve once   [a] always allow   [n] deny")
+	return "[y] approve once   [a] always allow   [n] deny"
 }
 
 func firstLine(s string, max int) string {

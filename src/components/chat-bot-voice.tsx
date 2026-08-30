@@ -7,7 +7,7 @@ import {
   OPENAI_VOICE,
   useOpenAIVoiceChat as OpenAIVoiceChat,
 } from "lib/ai/speech/open-ai/use-voice-chat.openai";
-import { cn, groupBy, isNull } from "lib/utils";
+import { cn, groupBy } from "lib/utils";
 import {
   CheckIcon,
   Loader,
@@ -53,9 +53,7 @@ import { useTranslations } from "next-intl";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "ui/dialog";
 import JsonView from "ui/json-view";
 import { isShortcutEvent, Shortcuts } from "lib/keyboard-shortcuts";
-import { useAgent } from "@/hooks/queries/use-agent";
 import { ChatMention } from "app-types/chat";
-import { Avatar, AvatarFallback, AvatarImage } from "ui/avatar";
 
 const prependTools: EnabledTools[] = [
   {
@@ -69,58 +67,44 @@ const prependTools: EnabledTools[] = [
 
 export function ChatBotVoice() {
   const t = useTranslations("Chat");
-  const [
-    agentId,
-    appStoreMutate,
-    voiceChat,
-    model,
-    allowedMcpServers,
-    mcpList,
-  ] = appStore(
-    useShallow((state) => [
-      state.voiceChat.agentId,
-      state.mutate,
-      state.voiceChat,
-      state.chatModel,
-      state.allowedMcpServers,
-      state.mcpList,
-    ]),
-  );
-
-  const { agent } = useAgent(agentId);
+  const [appStoreMutate, voiceChat, model, allowedMcpServers, mcpList] =
+    appStore(
+      useShallow((state) => [
+        state.mutate,
+        state.voiceChat,
+        state.chatModel,
+        state.allowedMcpServers,
+        state.mcpList,
+      ]),
+    );
 
   const [isClosing, setIsClosing] = useState(false);
   const startAudio = useRef<HTMLAudioElement>(null);
   const [useCompactView, setUseCompactView] = useState(true);
 
   const toolMentions = useMemo<ChatMention[]>(() => {
-    if (!agentId) {
-      if (!allowedMcpServers) return [];
-      return mcpList
-        .filter((v) => {
-          return (
-            v.id in allowedMcpServers && allowedMcpServers[v.id]?.tools?.length
-          );
-        })
-        .flatMap((v) => {
-          const tools = allowedMcpServers[v.id].tools;
-          return tools.map((tool) => {
-            const toolInfo = v.toolInfo.find((t) => t.name === tool);
-            const mention: ChatMention = {
-              type: "mcpTool",
-              serverName: v.name,
-              serverId: v.id,
-              name: tool,
-              description: toolInfo?.description ?? "",
-            };
-            return mention;
-          });
+    if (!allowedMcpServers) return [];
+    return mcpList
+      .filter((v) => {
+        return (
+          v.id in allowedMcpServers && allowedMcpServers[v.id]?.tools?.length
+        );
+      })
+      .flatMap((v) => {
+        const tools = allowedMcpServers[v.id].tools;
+        return tools.map((tool) => {
+          const toolInfo = v.toolInfo.find((t) => t.name === tool);
+          const mention: ChatMention = {
+            type: "mcpTool",
+            serverName: v.name,
+            serverId: v.id,
+            name: tool,
+            description: toolInfo?.description ?? "",
+          };
+          return mention;
         });
-    }
-    return (
-      agent?.instructions.mentions?.filter((v) => v.type === "mcpTool") ?? []
-    );
-  }, [agentId, agent, mcpList, allowedMcpServers]);
+      });
+  }, [mcpList, allowedMcpServers]);
 
   const {
     isListening,
@@ -136,7 +120,6 @@ export function ChatBotVoice() {
     stopListening,
   } = OpenAIVoiceChat({
     toolMentions,
-    agentId,
     ...voiceChat.options.providerOptions,
   });
 
@@ -246,17 +229,6 @@ export function ChatBotVoice() {
   }, [voiceChat.isOpen]);
 
   useEffect(() => {
-    if (!voiceChat.isOpen && !isNull(voiceChat.agentId)) {
-      appStoreMutate((prev) => ({
-        voiceChat: {
-          ...prev.voiceChat,
-          agentId: undefined,
-        },
-      }));
-    }
-  }, [voiceChat.isOpen]);
-
-  useEffect(() => {
     if (error && isActive) {
       toast.error(error.message);
       stop();
@@ -275,7 +247,6 @@ export function ChatBotVoice() {
           voiceChat: {
             ...prev.voiceChat,
             isOpen: true,
-            agentId: undefined,
           },
         }));
       }
@@ -295,33 +266,6 @@ export function ChatBotVoice() {
                 userSelect: "text",
               }}
             >
-              {agent && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div
-                      style={agent.icon?.style}
-                      className="size-9 items-center justify-center flex rounded-lg ring ring-secondary"
-                    >
-                      <Avatar className="size-6">
-                        <AvatarImage src={agent.icon?.value} />
-                        <AvatarFallback>
-                          {agent.name.slice(0, 1)}
-                        </AvatarFallback>
-                      </Avatar>
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="p-3 max-w-xs">
-                    <div className="space-y-2">
-                      <div className="font-semibold text-sm">{agent.name}</div>
-                      {agent.description && (
-                        <div className="text-xs text-muted-foreground leading-relaxed">
-                          {agent.description}
-                        </div>
-                      )}
-                    </div>
-                  </TooltipContent>
-                </Tooltip>
-              )}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button

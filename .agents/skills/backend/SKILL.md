@@ -112,7 +112,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
   `omitempty` only where the client actually treats absent and empty
   differently.
 - Depend on **narrow interfaces declared in the consumer package**
-  (`Engine`, `MCPTools`, `WorkflowTools` in `api/agent/handler.go`), not on
+  (`Engine`, `MCPTools`, `WorkflowTools` in `api/chat/handler.go`), not on
   concrete provider clients — that is what makes handler tests possible
   without a live provider.
 - A `nil` field in `Handlers` must mean "those routes are not registered",

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http/httptest"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -18,7 +17,6 @@ import (
 	"amiro/backend/internal/auth"
 	"amiro/backend/internal/config"
 	"amiro/backend/internal/db"
-	"amiro/backend/internal/db/models"
 	"amiro/backend/internal/db/repository"
 	"amiro/backend/internal/httpserver"
 )
@@ -70,7 +68,7 @@ func testServer(t *testing.T, engine chatapi.Engine) (baseURL, authToken string)
 	chatRepo := repository.NewChatRepository(gdb)
 	exportRepo := repository.NewChatExportRepository(gdb, chatRepo)
 	providerRepo := repository.NewProviderRepository(gdb)
-	chatHandler := chatapi.NewHandler(chatRepo, exportRepo, engine, nil, nil, nil, nil, nil, nil, providerRepo, nil)
+	chatHandler := chatapi.NewHandler(chatRepo, exportRepo, engine, nil, nil, nil, nil, nil, providerRepo, nil)
 
 	cfg := config.Config{AuthToken: "test-shared-secret", AllowedOrigin: "tauri://localhost", AppDataDir: t.TempDir()}
 	handler := httpserver.New(cfg, httpserver.Handlers{
@@ -498,107 +496,6 @@ func TestHTTPClient_ApprovalRail_AlwaysAllowStopsAskingInTheSameThread(t *testin
 	}
 }
 
-// systemCapturingEngine records the system prompt every StreamStep call
-// receives, so a test can assert an agent mention's instructions actually
-// reached the model rather than just that the request round-tripped
-// without error.
-type systemCapturingEngine struct{ systems []string }
-
-func (e *systemCapturingEngine) Stream(context.Context, bifrostai.ResolvedModel, string, []bifrostai.Message) (<-chan bifrostai.Chunk, error) {
-	ch := make(chan bifrostai.Chunk)
-	close(ch)
-	return ch, nil
-}
-
-func (e *systemCapturingEngine) StreamStep(_ context.Context, _ bifrostai.ResolvedModel, system string, _ []bifrostai.Message, _ []bifrostai.ToolSpec, hooks bifrostai.StepHooks) (*bifrostai.StepResult, error) {
-	e.systems = append(e.systems, system)
-	if hooks.OnTextDelta != nil {
-		hooks.OnTextDelta("ok")
-	}
-	return &bifrostai.StepResult{Text: "ok"}, nil
-}
-
-// testServerWithAgent is testServer plus a real AgentRepository wired into
-// the chat handler's `agents` dependency (nil in every other test here).
-// It registers one account directly against the auth service (skipping the
-// HTTP round trip, same as newRunnerEnv in internal/api/chat does) and
-// seeds one private agent it owns, returning a session token already
-// logged in as that account and the agent's id.
-func testServerWithAgent(t *testing.T, engine chatapi.Engine, systemPrompt string) (baseURL, authToken, sessionToken, agentID string) {
-	t.Helper()
-	dsn := filepath.Join(t.TempDir(), "test.db")
-	gdb, err := db.Open(db.DialectSQLite, dsn)
-	if err != nil {
-		t.Fatalf("db.Open: %v", err)
-	}
-	authService := auth.NewService(gdb)
-	chatRepo := repository.NewChatRepository(gdb)
-	exportRepo := repository.NewChatExportRepository(gdb, chatRepo)
-	providerRepo := repository.NewProviderRepository(gdb)
-	agentRepo := repository.NewAgentRepository(gdb)
-	chatHandler := chatapi.NewHandler(chatRepo, exportRepo, engine, nil, nil, nil, agentRepo, nil, nil, providerRepo, nil)
-
-	cfg := config.Config{AuthToken: "test-shared-secret", AllowedOrigin: "tauri://localhost", AppDataDir: t.TempDir()}
-	handler := httpserver.New(cfg, httpserver.Handlers{
-		Auth:   authService,
-		Chat:   chatHandler,
-		Thread: threadapi.NewHandler(chatRepo),
-	})
-
-	srv := httptest.NewServer(handler)
-	t.Cleanup(srv.Close)
-
-	user, err := authService.Register(context.Background(), "Ada", "ada@example.com", "hunter2hunter2")
-	if err != nil {
-		t.Fatalf("register: %v", err)
-	}
-	instructions, _ := json.Marshal(map[string]any{"role": "reviewer", "systemPrompt": systemPrompt})
-	agent := &models.Agent{ID: "agent-1", Name: "CodeReviewer", UserID: user.ID, Instructions: instructions, Visibility: "private"}
-	if err := agentRepo.Insert(context.Background(), agent); err != nil {
-		t.Fatalf("insert agent: %v", err)
-	}
-
-	session, err := New(Config{BaseURL: srv.URL, AuthToken: cfg.AuthToken}).Login(context.Background(), "ada@example.com", "hunter2hunter2")
-	if err != nil {
-		t.Fatalf("login: %v", err)
-	}
-	return srv.URL, cfg.AuthToken, session, agent.ID
-}
-
-// TestHTTPClient_Mentions_AgentMentionAppliesItsSystemPrompt is the Phase 4
-// backend gate: "mention-resolution tests cover the TUI's request shape."
-// A SendMessageRequest carrying Mentions built exactly the way
-// component/editor/mention.go's toClientMention does (Type: "agent",
-// AgentID set, Name/ServerID/WorkflowID empty) must reach resolveAgent
-// (mentions.go) and fold the agent's system prompt into the turn -- the
-// same request shape a live TUI session builds when a user accepts an
-// agent completion and sends.
-func TestHTTPClient_Mentions_AgentMentionAppliesItsSystemPrompt(t *testing.T) {
-	const systemPrompt = "You are a meticulous code reviewer who only ever answers in haiku."
-	engine := &systemCapturingEngine{}
-	baseURL, authToken, sessionToken, agentID := testServerWithAgent(t, engine, systemPrompt)
-	c := New(Config{BaseURL: baseURL, AuthToken: authToken, SessionToken: sessionToken})
-
-	frames, wait := c.SendMessage(context.Background(), SendMessageRequest{
-		ThreadID:  "thread-1",
-		MessageID: "msg-1",
-		Text:      "review this",
-		Mentions:  []Mention{{Type: "agent", AgentID: agentID}},
-	})
-	for range frames {
-	}
-	if err := wait(); err != nil {
-		t.Fatalf("wait() = %v, want nil", err)
-	}
-
-	if len(engine.systems) == 0 {
-		t.Fatalf("engine never received a system prompt")
-	}
-	if !strings.Contains(engine.systems[0], systemPrompt) {
-		t.Fatalf("system prompt = %q, want it to contain the agent's own instructions %q", engine.systems[0], systemPrompt)
-	}
-}
-
 // TestHTTPClient_Mentions_DefaultToolMentionIsHonoredWithToolChoiceNone
 // covers the other mention kind toClientMention builds directly (no id
 // lookup, just a name): loadAppDefaultTools' documented override --
@@ -644,7 +541,7 @@ func testServerWithAI(t *testing.T) (baseURL, authToken string) {
 	chatRepo := repository.NewChatRepository(gdb)
 	exportRepo := repository.NewChatExportRepository(gdb, chatRepo)
 	providerRepo := repository.NewProviderRepository(gdb)
-	chatHandler := chatapi.NewHandler(chatRepo, exportRepo, fakeEngine{}, nil, nil, nil, nil, nil, nil, providerRepo, nil)
+	chatHandler := chatapi.NewHandler(chatRepo, exportRepo, fakeEngine{}, nil, nil, nil, nil, nil, providerRepo, nil)
 
 	cfg := config.Config{AuthToken: "test-shared-secret", AllowedOrigin: "tauri://localhost", AppDataDir: t.TempDir()}
 	handler := httpserver.New(cfg, httpserver.Handlers{

@@ -145,7 +145,6 @@ export function useOpenAIVoiceChat(props?: VoiceChatOptions): VoiceChatSession {
           body: JSON.stringify({
             model,
             voice,
-            agentId: props?.agentId,
             mentions: props?.toolMentions,
           }),
         },
@@ -159,7 +158,7 @@ export function useOpenAIVoiceChat(props?: VoiceChatOptions): VoiceChatSession {
       }
 
       return session;
-    }, [model, voice, props?.toolMentions, props?.agentId]);
+    }, [model, voice, props?.toolMentions]);
 
   const updateUIMessage = useCallback(
     (
@@ -207,7 +206,6 @@ export function useOpenAIVoiceChat(props?: VoiceChatOptions): VoiceChatSession {
             appStore.setState((prev) => ({
               voiceChat: {
                 ...prev.voiceChat,
-                agentId: undefined,
                 isOpen: false,
               },
             }));

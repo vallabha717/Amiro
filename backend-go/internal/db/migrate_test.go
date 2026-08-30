@@ -134,3 +134,43 @@ func TestMigrate_UnknownDialectReturnsError(t *testing.T) {
 		t.Fatal("expected an error for an unknown dialect")
 	}
 }
+
+// TestMigrate_0024DropAgent_AppliesThenRollsBack is Phase 6's (docs/skills/)
+// migration proof. This hand-rolled runner has no automatic down-migration
+// command (Migrate only ever walks forward, see this file's package doc
+// comment) -- DownSQL is loaded but never executed by production code, so
+// "rolls back" here means what it can honestly mean given that: running
+// 0024's own down.sql directly is valid, executable SQL that restores the
+// table shape, the same way a developer debugging by hand would use it.
+func TestMigrate_0024DropAgent_AppliesThenRollsBack(t *testing.T) {
+	sqlDB := openRawSQLite(t)
+
+	if err := Migrate(sqlDB, DialectSQLite); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+
+	if _, err := sqlDB.Exec(`SELECT * FROM agent`); err == nil {
+		t.Fatal("SELECT on the agent table succeeded after migration -- 0024_drop_agent did not run")
+	}
+
+	migrations, err := loadMigrations(DialectSQLite)
+	if err != nil {
+		t.Fatalf("loadMigrations: %v", err)
+	}
+	var down string
+	for _, m := range migrations {
+		if m.Version == 24 {
+			down = m.DownSQL
+		}
+	}
+	if down == "" {
+		t.Fatal("migration 0024 has no DownSQL loaded")
+	}
+	if _, err := sqlDB.Exec(down); err != nil {
+		t.Fatalf("executing 0024's down.sql: %v", err)
+	}
+
+	if _, err := sqlDB.Exec(`SELECT * FROM agent`); err != nil {
+		t.Fatalf("SELECT on the agent table failed after rollback: %v", err)
+	}
+}

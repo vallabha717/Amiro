@@ -296,4 +296,47 @@ type Client interface {
 	// (docs/coding-agent-parity/03-sandboxed-execution.md) is populated
 	// before the first command ever runs, not only after one does.
 	SandboxStatus(ctx context.Context) (backend string, sandboxed bool, err error)
+
+	// GitHubStatus, ConnectGitHub and DisconnectGitHub back the settings
+	// page's GitHub row (docs/coding-agent-parity/
+	// 04-git-remote-operations.md) -- the same presence/status-only
+	// contract as the provider-key methods above, over a separate
+	// internal/secrets entry with a different blast radius.
+	GitHubStatus(ctx context.Context) (connected bool, err error)
+	ConnectGitHub(ctx context.Context, token string) error
+	DisconnectGitHub(ctx context.Context) error
+
+	// CreateBackgroundJob, ListBackgroundJobs and GetBackgroundJob back
+	// `amiro run --background` and the TUI's `/runs` picker
+	// (docs/coding-agent-parity/05-background-agent-runs.md). There is
+	// deliberately no resume/approve method here -- a suspended job's
+	// pending approval is an ordinary data-tool-approval part on its
+	// thread, resolved the same way any interactive approval is (open the
+	// thread, answer it) rather than through a second resolution path.
+	CreateBackgroundJob(ctx context.Context, req CreateBackgroundJobRequest) (BackgroundJob, error)
+	ListBackgroundJobs(ctx context.Context) ([]BackgroundJob, error)
+	GetBackgroundJob(ctx context.Context, id string) (BackgroundJob, error)
+}
+
+// BackgroundJob mirrors backend-go/internal/api/backgroundjob's unexported
+// jobResponse.
+type BackgroundJob struct {
+	ID            string
+	ThreadID      string
+	WorkspaceRoot string
+	Prompt        string
+	Mode          string
+	Status        string
+	AutoPR        bool
+	Error         string
+	StartedAt     string
+	FinishedAt    string
+}
+
+// CreateBackgroundJobRequest mirrors the handler's unexported createRequest.
+type CreateBackgroundJobRequest struct {
+	Prompt        string
+	Mode          string
+	WorkspaceRoot string
+	AutoPR        bool
 }

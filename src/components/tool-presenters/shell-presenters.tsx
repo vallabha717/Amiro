@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "lib/utils";
-import { GitBranchIcon, TerminalIcon } from "lucide-react";
+import { GitBranchIcon, GitPullRequestIcon, TerminalIcon } from "lucide-react";
 import { TerminalWindow } from "ui/terminal-window";
 import type { PresenterProps, ToolPresenter } from "./types";
 
@@ -129,6 +129,13 @@ const git: ToolPresenter = {
       const msg = firstLine(input?.message ?? "", 40);
       return msg ? `${label} · ${msg}` : label;
     }
+    if (sub === "push") {
+      // The command line already names the branch and remote (see
+      // gitLabel/Compact below); the glance line's job is just to flag
+      // force, since that is the one push a user scanning the transcript
+      // should not skim past.
+      return input?.force ? `${label} --force` : label;
+    }
     if (paths.length > 0) {
       return `${label} · ${paths.length} ${paths.length === 1 ? "file" : "files"}`;
     }
@@ -137,11 +144,13 @@ const git: ToolPresenter = {
   },
   Compact: ({ input, output, status }: PresenterProps) => {
     const paths: string[] = output?.paths ?? input?.paths ?? [];
+    const sub = output?.subcommand ?? input?.subcommand;
+    const isForcePush = sub === "push" && Boolean(input?.force);
     return (
       <div
         className={cn(
           "w-full rounded-lg border bg-card overflow-hidden",
-          status === "error" && "border-destructive/50",
+          (status === "error" || isForcePush) && "border-destructive/50",
         )}
       >
         <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/40">
@@ -149,6 +158,11 @@ const git: ToolPresenter = {
           <span className="text-xs font-medium truncate font-mono">
             {output?.command ?? gitLabel(input, output)}
           </span>
+          {isForcePush ? (
+            <span className="ml-auto rounded bg-destructive/15 text-destructive px-1.5 py-0.5 text-[11px] font-medium shrink-0">
+              force
+            </span>
+          ) : null}
         </div>
         {paths.length > 0 ? (
           <div className="px-3 py-2 flex flex-wrap gap-1">
@@ -216,8 +230,99 @@ const git: ToolPresenter = {
   ),
 };
 
+/* ------------------------------------------------------------------ */
+/* create_pr                                                           */
+/* ------------------------------------------------------------------ */
+
+const createPR: ToolPresenter = {
+  glance: ({ input, output, status }) => {
+    if (status === "pending") return "opening a pull request…";
+    if (status === "error") return "⚠ create_pr failed";
+    const base = output?.base ?? input?.base;
+    return output?.number
+      ? `PR #${output.number} → ${base}`
+      : `create_pr → ${base ?? "?"}`;
+  },
+  Compact: ({ input, output, status }: PresenterProps) => (
+    <div
+      className={cn(
+        "w-full rounded-lg border bg-card overflow-hidden",
+        status === "error" && "border-destructive/50",
+      )}
+    >
+      <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/40">
+        <GitPullRequestIcon className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="text-xs font-medium truncate">
+          {output?.head ?? "current branch"} → {output?.base ?? input?.base}
+        </span>
+        {output?.draft ? (
+          <span className="ml-auto rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground shrink-0">
+            draft
+          </span>
+        ) : null}
+      </div>
+      {output?.title ? (
+        <div className="px-3 py-2 text-xs font-medium">{output.title}</div>
+      ) : null}
+      {output?.body ? (
+        <pre className="px-3 py-2 text-[11px] text-muted-foreground whitespace-pre-wrap break-words max-h-40 overflow-auto border-t">
+          {firstLine(output.body, 300)}
+        </pre>
+      ) : null}
+    </div>
+  ),
+  Expanded: ({ input, output, status, errorText }: PresenterProps) => (
+    <div
+      className={cn(
+        "w-full rounded-lg border bg-card overflow-hidden",
+        (status === "error" || output?.error) && "border-destructive/50",
+      )}
+    >
+      <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/40">
+        <GitPullRequestIcon className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="text-xs font-medium truncate">
+          {output?.owner && output?.repo
+            ? `${output.owner}/${output.repo}`
+            : "create_pr"}
+          {" · "}
+          {output?.head ?? "current branch"} → {output?.base ?? input?.base}
+        </span>
+        {output?.url ? (
+          <a
+            href={output.url}
+            target="_blank"
+            rel="noreferrer"
+            className="ml-auto text-[11px] text-primary underline shrink-0"
+          >
+            #{output.number}
+          </a>
+        ) : null}
+      </div>
+      <div className="px-3 py-2 text-xs">
+        {status === "error" || output?.error ? (
+          <pre className="whitespace-pre-wrap break-words text-destructive font-mono">
+            {output?.error || errorText || "failed"}
+          </pre>
+        ) : status === "pending" ? (
+          <span className="text-muted-foreground">opening…</span>
+        ) : (
+          <>
+            {output?.title ? (
+              <div className="font-medium mb-2">{output.title}</div>
+            ) : null}
+            <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words leading-relaxed">
+              {output?.body || "(no description)"}
+            </pre>
+          </>
+        )}
+      </div>
+    </div>
+  ),
+};
+
 export const shellPresenters = {
   run_shell: runShell,
   "terminal-execution": runShell,
   git,
+  create_pr: createPR,
 };

@@ -27,12 +27,25 @@ import (
 func cmdInternalFakeProvider(args []string) int {
 	fs := flag.NewFlagSet("internal-fakeprovider", flag.ContinueOnError)
 	reply := fs.String("reply", "This is Amiro's fake test provider, replying automatically for automated tests.", "canned assistant reply text for every prompt")
+	// toolCallName/toolCallArgs let a UI spec exercise a real tool-call-
+	// bearing turn (docs/coding-agent-parity/phases/phase-01-checkpoints-and-rewind.md's
+	// "Rewind to here" needs an actual write_file call to have happened)
+	// the same way a Go suite's harness.WithFake(...).ToolCall(...) already
+	// can -- Playwright specs have no in-process fake server to script
+	// directly, since this process outlives the CLI invocation that
+	// started it (see this file's own doc comment).
+	toolCallName := fs.String("tool-call-name", "", "if set, emit this tool call before streaming reply, for every prompt")
+	toolCallArgs := fs.String("tool-call-args", "{}", "JSON arguments for --tool-call-name")
 	if err := fs.Parse(args); err != nil {
 		return exitConfig
 	}
 
 	fp := fakeprovider.New()
-	fp.OnAny().StreamText(*reply)
+	if *toolCallName != "" {
+		fp.OnAny().ToolCall(*toolCallName, *toolCallArgs).ThenStreamText(*reply)
+	} else {
+		fp.OnAny().StreamText(*reply)
+	}
 	defer fp.Close()
 
 	fmt.Printf("URL=%s\n", fp.URL)

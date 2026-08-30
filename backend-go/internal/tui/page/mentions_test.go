@@ -17,12 +17,11 @@ func chatWithMentionables(fc *fakeClient) Chat {
 }
 
 // TestChat_Init_LoadsMentionables is the Phase 4 TUI gate's mention-
-// completion coverage, part 1: Init fetches agents/MCP servers/workflows
-// and merges them with the static default-tool list, so the very first "@"
-// a user types already completes against real candidates.
+// completion coverage, part 1: Init fetches MCP servers/workflows and
+// merges them with the static default-tool list, so the very first "@" a
+// user types already completes against real candidates.
 func TestChat_Init_LoadsMentionables(t *testing.T) {
 	fc := &fakeClient{
-		agents:    []client.Agent{{ID: "agent-1", Name: "CodeReviewer"}},
 		mcp:       []client.MCPServer{{ID: "server-1", Name: "github", Tools: []string{"create_issue"}}},
 		workflows: []client.Workflow{{ID: "wf-1", Name: "DeployPipeline"}},
 	}
@@ -35,11 +34,9 @@ func TestChat_Init_LoadsMentionables(t *testing.T) {
 	msg := findMentionablesLoadedMsg(t, cmd())
 	m, _ = m.Update(msg)
 
-	var sawAgent, sawMCPTool, sawMCPServer, sawWorkflow, sawDefaultTool bool
+	var sawMCPTool, sawMCPServer, sawWorkflow, sawDefaultTool bool
 	for _, c := range m.mentionCandidates {
 		switch {
-		case c.Kind == editor.MentionAgent && c.AgentID == "agent-1":
-			sawAgent = true
 		case c.Kind == editor.MentionMCPTool && c.Name == "github/create_issue":
 			sawMCPTool = true
 		case c.Kind == editor.MentionMCPServer && c.ServerID == "server-1":
@@ -50,9 +47,9 @@ func TestChat_Init_LoadsMentionables(t *testing.T) {
 			sawDefaultTool = true
 		}
 	}
-	if !sawAgent || !sawMCPTool || !sawMCPServer || !sawWorkflow || !sawDefaultTool {
-		t.Fatalf("mentionCandidates missing a category: agent=%v mcpTool=%v mcpServer=%v workflow=%v defaultTool=%v",
-			sawAgent, sawMCPTool, sawMCPServer, sawWorkflow, sawDefaultTool)
+	if !sawMCPTool || !sawMCPServer || !sawWorkflow || !sawDefaultTool {
+		t.Fatalf("mentionCandidates missing a category: mcpTool=%v mcpServer=%v workflow=%v defaultTool=%v",
+			sawMCPTool, sawMCPServer, sawWorkflow, sawDefaultTool)
 	}
 }
 
@@ -84,7 +81,7 @@ func findMentionablesLoadedMsg(t *testing.T, msg tea.Msg) mentionablesLoadedMsg 
 // completion coverage, part 2: typing "@" and pressing Tab fills in the
 // top match and records it for the next SendMessage.
 func TestChat_TabAcceptsMentionSuggestion(t *testing.T) {
-	fc := &fakeClient{agents: []client.Agent{{ID: "agent-1", Name: "CodeReviewer"}}}
+	fc := &fakeClient{workflows: []client.Workflow{{ID: "wf-1", Name: "CodeReviewer"}}}
 	m := chatWithMentionables(fc)
 
 	m.input.SetValue("ask @Code")
@@ -93,8 +90,8 @@ func TestChat_TabAcceptsMentionSuggestion(t *testing.T) {
 	if got := m.input.Value(); got != "ask @CodeReviewer " {
 		t.Fatalf("composer value = %q, want %q", got, "ask @CodeReviewer ")
 	}
-	if len(m.pendingMentions) != 1 || m.pendingMentions[0].AgentID != "agent-1" {
-		t.Fatalf("pendingMentions = %+v, want one entry for agent-1", m.pendingMentions)
+	if len(m.pendingMentions) != 1 || m.pendingMentions[0].WorkflowID != "wf-1" {
+		t.Fatalf("pendingMentions = %+v, want one entry for wf-1", m.pendingMentions)
 	}
 }
 
@@ -103,7 +100,7 @@ func TestChat_TabAcceptsMentionSuggestion(t *testing.T) {
 // resets the pending list so it isn't accidentally re-attached to the next,
 // unrelated message.
 func TestChat_Send_AttachesAndClearsPendingMentions(t *testing.T) {
-	fc := &fakeClient{agents: []client.Agent{{ID: "agent-1", Name: "CodeReviewer"}}}
+	fc := &fakeClient{workflows: []client.Workflow{{ID: "wf-1", Name: "CodeReviewer"}}}
 	m := chatWithMentionables(fc)
 
 	m.input.SetValue("ask @Code")
@@ -113,8 +110,8 @@ func TestChat_Send_AttachesAndClearsPendingMentions(t *testing.T) {
 	if fc.lastSend == nil {
 		t.Fatalf("SendMessage was not called")
 	}
-	if len(fc.lastSend.Mentions) != 1 || fc.lastSend.Mentions[0].Type != "agent" || fc.lastSend.Mentions[0].AgentID != "agent-1" {
-		t.Fatalf("lastSend.Mentions = %+v, want one agent mention for agent-1", fc.lastSend.Mentions)
+	if len(fc.lastSend.Mentions) != 1 || fc.lastSend.Mentions[0].Type != "workflow" || fc.lastSend.Mentions[0].WorkflowID != "wf-1" {
+		t.Fatalf("lastSend.Mentions = %+v, want one workflow mention for wf-1", fc.lastSend.Mentions)
 	}
 	if len(m.pendingMentions) != 0 {
 		t.Fatalf("pendingMentions = %+v after send, want cleared", m.pendingMentions)

@@ -11,7 +11,9 @@ import (
 
 	"gorm.io/datatypes"
 
+	"amiro/backend/internal/agent/checkpoint"
 	"amiro/backend/internal/agent/permission"
+	"amiro/backend/internal/agent/rules"
 	"amiro/backend/internal/agent/session"
 	"amiro/backend/internal/agent/workspace"
 	bifrostai "amiro/backend/internal/ai/bifrost"
@@ -65,6 +67,14 @@ type TurnRequest struct {
 	// value) changes nothing: compaction still only triggers automatically,
 	// as it always has (compactIfNeeded, WithForceCompact).
 	CompactNow bool
+
+	// IsBackgroundJob marks a turn as unattended
+	// (docs/coding-agent-parity/05-background-agent-runs.md). "Unattended is
+	// a stricter mode, not a bigger one": this never grants a capability an
+	// interactive turn lacks, it only removes two -- client-executed tools
+	// (nothing is attached to run them) and the unsandboxed-shell fallback
+	// (see tools.Deps.RequireSandbox). False for every existing caller.
+	IsBackgroundJob bool
 }
 
 // TurnResult reports what a turn did, for a caller that is not a stream.
@@ -154,6 +164,13 @@ func (t TurnRequest) WithWorkspace(root string) TurnRequest {
 	return t
 }
 
+// AsBackgroundJob marks this turn unattended -- see IsBackgroundJob's doc
+// comment.
+func (t TurnRequest) AsBackgroundJob() TurnRequest {
+	t.IsBackgroundJob = true
+	return t
+}
+
 // RunTurn runs one agent turn: resolve the thread, resolve the model and
 // agent, load every mentioned/allowed tool, run the (possibly multi-step,
 // tool-calling) reply onto em, and persist both sides.
@@ -218,16 +235,7 @@ func (h *Handler) RunTurn(ctx context.Context, req TurnRequest, em uimessage.Emi
 	}
 	resolved := bifrostai.Resolve(chatModel.Provider, chatModel.Model)
 
-	// rememberAgentAction (route.ts:176-187): an agent mention's own
-	// pre-bound mentions get merged into the request's before any tool
-	// loading below, and its instructions feed into the system prompt.
-	agent, mentions := h.resolveAgent(ctx, req.User.ID, req.Mentions)
-	var agentInfo *prompts.AgentPromptInfo
-	agentID := ""
-	if agent != nil {
-		agentInfo = agent.Info
-		agentID = agent.ID
-	}
+	mentions := req.Mentions
 
 	var activeTools []tools.Definition
 	systemExtra := ""
@@ -322,29 +330,72 @@ func (h *Handler) RunTurn(ctx context.Context, req TurnRequest, em uimessage.Emi
 		_ = em.Data("skill-activation", s.Name, map[string]any{"name": s.Name, "path": s.Path, "source": "tool"})
 	}
 
-	// Run activeAppDefaultTools against the agent-merged mentions, not just
-	// req.Mentions -- an agent's own defaultTool mentions (resolveAgent
-	// already appended them into `mentions` above) should apply exactly
-	// like a manually-typed one, matching how the TS route pushes
-	// agent.instructions.mentions into the same `mentions` array
-	// loadAppDefaultTools later reads (route.ts:176-187, shared.chat.ts:427).
-	reqForDefaults := req
-	reqForDefaults.Mentions = mentions
 	deps := h.toolDeps(activeWS, details.Thread.ID)
 	deps.ReadOnlyRoots = activeReadRoots
 	deps.DiscoveredSkills = discoveredSkills
 	deps.OnActivateSkill = onActivateSkill
 	deps.ActivatedSkills = activatedSkills
+	// One record per turn, the same lifetime as ActivatedSkills -- see
+	// tools.Deps.Walkthrough and docs/coding-agent-parity/
+	// 04-git-remote-operations.md's "title/body sourced from the turn's
+	// own walkthrough output".
+	deps.Walkthrough = tools.NewWalkthroughRecord()
+	// Unattended is a stricter mode, not a bigger one
+	// (docs/coding-agent-parity/00-overview.md principle 4): a background
+	// job never falls back to running a shell command unsandboxed (Phase
+	// 2), and it never offers a client-executed tool, since nothing is
+	// attached to run one -- a model call to it would suspend the job
+	// forever waiting on a browser that will never arrive.
+	deps.RequireSandbox = req.IsBackgroundJob
 	activeTools = mergeToolDefinitions(activeTools, activeAppDefaultTools(
-		reqForDefaults, deps,
+		req, deps,
 	))
+	if req.IsBackgroundJob {
+		activeTools = withoutClientExecutedTools(activeTools)
+	}
 
+	// Workspace trust (docs/coding-agent-parity/01-workspace-trust-and-rules.md):
+	// a root matching the *server's own* configured default is auto-granted
+	// -- setting AMIRO_WORKSPACE_ROOT, passing a CLI flag, or (the TUI's
+	// case) simply launching in that directory *is* the user's trust
+	// gesture, the exception the design doc names. This compares by
+	// resolved root rather than "did the request name a root explicitly":
+	// both the TUI and a browser client echo WorkspaceRoot back on every
+	// turn, and that value legitimately matching the server's own default
+	// must not be treated as a fresh, interactively-opened project just
+	// because it was spelled out instead of left empty. A root that does
+	// NOT match the server's default is trusted only if a prior prompt (or
+	// a grant made from another surface, e.g. the desktop app) already
+	// covers it. h.trust nil (no repository wired -- most handler tests)
+	// degrades to permission.Engine's own New default of trusted, the same
+	// "optional dependency degrades rather than panics" contract every
+	// other nil field on this handler already has.
+	trusted := true
+	if h.trust != nil && activeWS != nil {
+		processDefault := ""
+		if h.workspace != nil {
+			processDefault = h.workspace.Root()
+		}
+		if isTrusted, err := h.trust.IsTrustedForTurn(ctx, req.User.ID, activeWS.Root(), processDefault); err == nil {
+			trusted = isTrusted
+		} else {
+			trusted = false
+		}
+	}
+
+	// sess is this thread's grant/lock session -- shared by the permission
+	// engine's "always allow" answers and, below, the write-lock that keeps
+	// this turn's writes from interleaving with a checkpoint restore
+	// (docs/coding-agent-parity/02-checkpoints-and-rewind.md). One Session
+	// per thread id (permission.Store.For), so both uses key off the same
+	// object rather than risking two locks that could disagree.
+	sess := h.grants.For(details.Thread.ID)
 	perms := permission.New(
 		permission.ParseMode(req.PermissionMode),
 		activeWS,
 		permission.DefaultAllowedCommands,
-		h.grants.For(details.Thread.ID),
-	)
+		sess,
+	).WithTrust(trusted)
 
 	// The subagent tool is added last, over the tools already loaded: its
 	// child gets a read-only subset of whatever this turn actually has, so
@@ -373,12 +424,49 @@ func (h *Handler) RunTurn(ctx context.Context, req TurnRequest, em uimessage.Emi
 	// and the reader is asking about the agent.
 	roundStart := time.Now()
 
+	// A turn that stopped to ask for approval resumes as a *continuation* of
+	// the assistant message it paused in, not as a new one.
+	//
+	// The browser re-submits with the assistant message last (the AI SDK's
+	// submit-tool-result trigger), so `req.Message` here is the turn so far,
+	// not a new instruction. Minting a fresh id for the reply then wrote one
+	// assistant row per approval, each a superset of the one before: a turn
+	// that asked ten times read back as ten assistant messages and ten work
+	// logs ("Worked · 9 steps", "· 10 steps", "· 11 steps" ...), all
+	// describing the same piece of work. Continuing the same id makes a turn
+	// one message however many times it had to stop.
+	//
+	// Computed here, ahead of resolveApprovals rather than just ahead of
+	// runToolLoop, because a checkpoint's pre-image has to be captured
+	// before *any* write actually lands -- including one resolveApprovals is
+	// about to run directly (an approved write_file/edit_file/multi_edit
+	// call executes there, not through the tool scheduler; see its own
+	// comment). Skipping this for a continuation was a real gap found in
+	// testing: a checkpoint never existed for any write a human had to
+	// approve first, which is the *default* permission mode.
+	continuing := req.Message.Role == "assistant"
+	responseID := req.Message.ID
+	if !continuing {
+		responseID = models.NewID()
+	}
+
+	// checkpoints is nil unless both a repository and a blob store were
+	// wired (WithCheckpoints -- appwiring.App.AttachPort, since the blob
+	// store isn't buildable until a port is bound) and this turn actually
+	// has a workspace to capture pre-images in. NewCapturer degrades to nil
+	// on any missing piece, so this turn simply captures nothing rather
+	// than failing.
+	var checkpoints *checkpoint.Capturer
+	if activeWS != nil {
+		checkpoints = checkpoint.NewCapturer(h.checkpoints, h.checkpointBlobs, activeWS, details.Thread.ID, responseID)
+	}
+
 	// Resolve anything the user just approved or rejected before the history
 	// is built, so the model sees the tool's real result where the browser
 	// left a confirmation. This has to run after tool loading (it needs the
 	// definitions to execute) and before toEngineMessages, which is why the
 	// history is assembled here rather than up with the thread lookup.
-	resolveApprovals(ctx, &req.Message, activeTools, perms)
+	resolveApprovals(ctx, &req.Message, activeTools, perms, checkpoints)
 
 	engineMessages := make([]bifrostai.Message, 0, len(history)+1)
 	for _, m := range history {
@@ -412,6 +500,19 @@ func (h *Handler) RunTurn(ctx context.Context, req TurnRequest, em uimessage.Emi
 		planContract = prompts.BuildPlanContractPrompt(req.PermissionMode)
 	}
 
+	// AGENTS.md -- read every turn, unconditionally, ahead of the Skills
+	// catalog below (which activates only on demand). See
+	// docs/coding-agent-parity/01-workspace-trust-and-rules.md for why the
+	// two stay separate rather than one reusing the other's plumbing.
+	agentsPrompt := ""
+	if projectDir != "" {
+		var report rules.Report
+		agentsPrompt, report = rules.Build(projectDir)
+		if report.Truncated {
+			_ = em.Data("agents-md-truncation", "", map[string]any{"path": report.Path})
+		}
+	}
+
 	// Build the skill catalog prompt only when the skill tool is actually offered
 	// in this turn (matching notes and planContract above).
 	catalogPrompt := ""
@@ -435,38 +536,40 @@ func (h *Handler) RunTurn(ctx context.Context, req TurnRequest, em uimessage.Emi
 	}
 
 	system := prompts.MergeSystemPrompt(
-		prompts.BuildUserSystemPrompt(req.User, user.ParsePreferences(details.Preferences), agentInfo),
+		prompts.BuildUserSystemPrompt(req.User, user.ParsePreferences(details.Preferences)),
 		systemExtra,
 		mentionPrompt,
 		notes,
 		planContract,
+		agentsPrompt,
 		catalogPrompt,
 	)
-
-	// A turn that stopped to ask for approval resumes as a *continuation* of
-	// the assistant message it paused in, not as a new one.
-	//
-	// The browser re-submits with the assistant message last (the AI SDK's
-	// submit-tool-result trigger), so `req.Message` here is the turn so far,
-	// not a new instruction. Minting a fresh id for the reply then wrote one
-	// assistant row per approval, each a superset of the one before: a turn
-	// that asked ten times read back as ten assistant messages and ten work
-	// logs ("Worked · 9 steps", "· 10 steps", "· 11 steps" ...), all
-	// describing the same piece of work. Continuing the same id makes a turn
-	// one message however many times it had to stop.
-	continuing := req.Message.Role == "assistant"
-	responseID := req.Message.ID
-	if !continuing {
-		responseID = models.NewID()
-	}
 
 	_ = em.Start(responseID)
 
 	loopCtx := WithForceCompact(ctx, req.CompactNow)
-	loopResult, loopErr := runToolLoop(loopCtx, h.engine, em, resolved, system, engineMessages, activeTools, perms)
+	// RLock held for the turn's whole duration: a checkpoint restore takes
+	// the exclusive Lock (internal/api/checkpoint), so this keeps a rewind
+	// from landing mid-write and a turn from starting into files a restore
+	// is still touching. Other turns against the same thread may still
+	// overlap under RLock -- see permission.Session.writeMu's doc comment.
+	sess.RLock()
+	loopResult, loopErr := runToolLoop(loopCtx, h.engine, em, resolved, system, engineMessages, activeTools, perms, checkpoints)
+	sess.RUnlock()
 	if loopErr != nil {
 		_ = em.Error(loopErr.Error())
 	}
+	// Captured here, before persistCtx below detaches from ctx entirely,
+	// and checked directly on ctx rather than by inspecting loopErr: a real
+	// provider client's own error wrapping does not reliably preserve
+	// context.Canceled through errors.Is (found the hard way -- a
+	// background job's shutdown-interrupted turn was landing as "failed"
+	// with the real bifrost client's own wording, never "interrupted",
+	// because that client's error chain does not unwrap to
+	// context.Canceled). Whether ctx itself was canceled is a fact
+	// syncBackgroundJob can rely on unconditionally, independent of
+	// whatever any given engine's error happens to say.
+	ctxCanceled := ctx.Err() != nil
 
 	// Totals for the whole turn, not for this round. Both are carried on the
 	// message the browser sent back, which is where the previous round left
@@ -479,7 +582,6 @@ func (h *Handler) RunTurn(ctx context.Context, req TurnRequest, em uimessage.Emi
 		ChatModel:  &chatModel,
 		ToolChoice: req.ToolChoice,
 		ToolCount:  len(activeTools),
-		AgentID:    agentID,
 		DurationMS: prior.DurationMS + time.Since(roundStart).Milliseconds(),
 	}
 
@@ -558,7 +660,26 @@ func (h *Handler) RunTurn(ctx context.Context, req TurnRequest, em uimessage.Emi
 	_ = em.Finish(metadata)
 	_ = em.Done()
 
+	if h.backgroundJobs != nil {
+		h.syncBackgroundJob(persistCtx, details.Thread.ID, req, result, loopErr, ctxCanceled)
+	}
+
 	return result, nil
+}
+
+// withoutClientExecutedTools drops every tool with no server-side Execute --
+// code.go's JS/Python tools, run entirely in the browser. A background job
+// has no browser attached, so offering one is offering a way to suspend the
+// job forever: nothing will ever answer the resubmission it waits for. See
+// TurnRequest.IsBackgroundJob.
+func withoutClientExecutedTools(defs []tools.Definition) []tools.Definition {
+	out := make([]tools.Definition, 0, len(defs))
+	for _, d := range defs {
+		if d.Execute != nil {
+			out = append(out, d)
+		}
+	}
+	return out
 }
 
 // isToolCallAllowed ports route.ts:170's gate (minus the tool-call-

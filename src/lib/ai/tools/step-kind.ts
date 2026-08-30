@@ -52,6 +52,9 @@ const KIND_BY_TOOL: Record<string, StepKind> = {
   // and expects `git commit` to be one of them. Filing it under "Edited 2
   // files" would count a commit as a file change, which it is not.
   [DefaultToolName.Git]: "command",
+  // Same reasoning as git push itself -- a remote operation, not a file
+  // edit or a plan update.
+  [DefaultToolName.CreatePR]: "command",
 
   [DefaultToolName.TodoWrite]: "plan",
   [DefaultToolName.TodoRead]: "plan",

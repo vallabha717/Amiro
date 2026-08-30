@@ -37,10 +37,44 @@ export interface AmiroFixtures {
   amiro: AmiroBackendInfo;
   signedIn: Page;
   admin: Page;
+  /**
+   * Canned assistant reply for this test's backend's fake provider --
+   * `amirotest backend start --fake-reply` (see fakeprovider_cmd.go). The
+   * default (empty) is the fake provider's own generic canned sentence,
+   * which is plain text, not JSON -- fine for ordinary chat specs, but
+   * useless for a spec exercising an experimental_useObject flow (e.g.
+   * Generate Skill), which needs the "model" to reply
+   * with an actual JSON object matching the requested schema. Set via
+   * `test.use({ fakeReply: '{"name":"...", ...}' })` in a describe block.
+   */
+  fakeReply: string;
+
+  /**
+   * Tool call the fake provider emits before streaming fakeReply --
+   * `amirotest backend start --fake-tool-call-name/--fake-tool-call-args`
+   * (see fakeprovider_cmd.go). A UI spec has no in-process fake server to
+   * script the way a Go suite's harness.WithFake(...).ToolCall(...) can, so
+   * this is the Playwright equivalent: set via
+   * `test.use({ fakeToolCallName: "write_file", fakeToolCallArgs: '{"path":"a.txt","content":"x"}' })`.
+   */
+  fakeToolCallName: string;
+  fakeToolCallArgs: string;
+}
+
+// Wraps a value in single quotes for a POSIX shell command string, escaping
+// any single quotes it contains -- needed because fakeReply is often a JSON
+// object literal (double quotes, braces) passed straight through to
+// `amirotest backend start`'s execSync call below.
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
 export const test = base.extend<AmiroFixtures>({
-  amiro: async ({}, use, testInfo) => {
+  fakeReply: ["", { option: true }],
+  fakeToolCallName: ["", { option: true }],
+  fakeToolCallArgs: ["", { option: true }],
+
+  amiro: async ({ fakeReply, fakeToolCallName, fakeToolCallArgs }, use, testInfo) => {
     const testsDir = path.resolve(__dirname, "../..");
     const testSlug = testInfo.titlePath.join("-").replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase();
     const testId = `ui-${testSlug.slice(0, 40)}-${Date.now().toString(36)}`;
@@ -48,8 +82,13 @@ export const test = base.extend<AmiroFixtures>({
     // Shell out to amirotest backend start --json
     let info: AmiroBackendInfo;
     try {
+      const fakeReplyFlag = fakeReply ? ` --fake-reply ${shellQuote(fakeReply)}` : "";
+      const toolCallFlags = fakeToolCallName
+        ? ` --fake-tool-call-name ${shellQuote(fakeToolCallName)}` +
+          (fakeToolCallArgs ? ` --fake-tool-call-args ${shellQuote(fakeToolCallArgs)}` : "")
+        : "";
       const output = execSync(
-        `go run ./cmd/amirotest backend start --json --test-id ${testId} --surface ui`,
+        `go run ./cmd/amirotest backend start --json --test-id ${testId} --surface ui${fakeReplyFlag}${toolCallFlags}`,
         {
           cwd: testsDir,
           encoding: "utf-8",

@@ -19,7 +19,6 @@ export interface VoiceChatSession {
 
 export type VoiceChatOptions = {
   toolMentions?: ChatMention[];
-  agentId?: string;
   model?: string;
   voice?: string;
 };

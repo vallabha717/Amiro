@@ -66,7 +66,7 @@ src/
 ├── components/
 │   ├── ui/                   # shadcn/ui primitives + icons. Generic, no domain logic
 │   ├── layouts/              # sidebar, header, providers, theme
-│   └── <domain>/             # agent/ artifacts/ chat/ workflow/ user/ export/ ...
+│   └── <domain>/             # skill/ artifacts/ chat/ workflow/ user/ export/ ...
 ├── hooks/
 │   ├── queries/              # use-<thing>.ts — one SWR hook per endpoint
 │   └── use-*.ts              # generic behaviour hooks
@@ -82,7 +82,7 @@ Placement rules:
 - A `page.tsx` renders a component; it does not hold logic, fetching, or JSX
   of any size. Put the real thing in `components/<domain>/`.
 - Reusable and domain-free → `components/ui/`. Anything that knows about
-  agents, threads, MCP or workflows → `components/<domain>/`.
+  skills, threads, MCP or workflows → `components/<domain>/`.
 - Any component reused by two or more pages moves out of the page's folder.
 - One SWR hook per endpoint in `hooks/queries/`, named `use-<noun>.ts`.
   Never call `useSWR` with a raw URL inline in a component.

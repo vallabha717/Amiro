@@ -45,7 +45,7 @@ tests/
 │   ├── process/                       # spawn, readiness, groups, teardown asserts   P1
 │   ├── backend/                       # build, env, spawn, PORT=, /health, db, ws    P1
 │   ├── apiclient/                     # typed /api/* client; logs every exchange     P1
-│   │   ├── client.go · auth.go · thread.go · chat.go · agent.go · mcp.go
+│   │   ├── client.go · auth.go · thread.go · chat.go · mcp.go
 │   │   ├── workflow.go · archive.go · export.go · search.go · provider.go
 │   │   ├── user.go · admin.go · storage.go
 │   │   └── stream.go                  # SSE → uimessage.Frame decoding
@@ -63,7 +63,7 @@ tests/
 │
 ├── suites/                            # Go suites — path IS the test address
 │   ├── backend/                                                                    P2/P3
-│   │   ├── smoke/ auth/ thread/ agent/ mcp/ workflow/ archive/ bookmark/
+│   │   ├── smoke/ auth/ thread/ mcp/ workflow/ archive/ bookmark/
 │   │   ├── export/ user/ admin/ providers/ search/ storage/ models/
 │   │   ├── config/ migration/ lifecycle/
 │   │   ├── chat/                      # the agent loop — largest suite               P3
@@ -94,10 +94,10 @@ tests/
 │   │   └── console.ts                 # console + pageerror capture, fail-on-error
 │   ├── pages/                         # page objects, data-testid selectors
 │   │   ├── sign-in.page.ts · sign-up.page.ts · onboarding.page.ts
-│   │   ├── chat.page.ts · agents.page.ts · mcp.page.ts · workflow.page.ts
+│   │   ├── chat.page.ts · mcp.page.ts · workflow.page.ts
 │   │   ├── archive.page.ts · admin.page.ts · export.page.ts · settings.page.ts
 │   ├── specs/                         # feature dir == --feature name
-│   │   ├── auth/ onboarding/ chat/ threads/ agents/ mcp/ workflow/
+│   │   ├── auth/ onboarding/ chat/ threads/ mcp/ workflow/
 │   │   ├── archive/ export/ admin/ settings/ dashboard/ a11y/ responsive/
 │   │   └── visual/                    # deliberately small scope
 │   └── support/
@@ -109,7 +109,7 @@ tests/
 │   ├── workspaces/{basic,go-project,ts-project,large,unicode}/
 │   ├── mcp/server/                    # a real stdio MCP server, deterministic tools
 │   ├── mcp/oauth/                     # minimal OAuth authorization server
-│   ├── seeds/{threads,agents,workflows}/*.json
+│   ├── seeds/{threads,workflows}/*.json
 │   ├── media/{image.png,document.pdf,audio.wav,oversized.bin}
 │   └── configs/{amiro,mcp}/           # incl. deliberately malformed variants
 │

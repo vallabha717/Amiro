@@ -6,7 +6,7 @@ func TestSuggestMentions_TriggersOnAtPrefixedLastToken(t *testing.T) {
 	candidates := []Mentionable{
 		{Kind: MentionDefaultTool, Name: "read_file"},
 		{Kind: MentionDefaultTool, Name: "run_shell"},
-		{Kind: MentionAgent, Name: "CodeReviewer", AgentID: "agent-1"},
+		{Kind: MentionWorkflow, Name: "CodeReviewer", WorkflowID: "wf-1"},
 	}
 
 	if got := SuggestMentions("hello there", candidates); got != nil {
@@ -21,8 +21,8 @@ func TestSuggestMentions_TriggersOnAtPrefixedLastToken(t *testing.T) {
 	if got := SuggestMentions("@", candidates); len(got) != 3 {
 		t.Fatalf("SuggestMentions(\"@\") = %d matches, want all 3", len(got))
 	}
-	if got := SuggestMentions("ask @Code", candidates); len(got) != 1 || got[0].Kind != MentionAgent {
-		t.Fatalf("SuggestMentions(\"...@Code\") = %+v, want the case-insensitive agent match", got)
+	if got := SuggestMentions("ask @Code", candidates); len(got) != 1 || got[0].Kind != MentionWorkflow {
+		t.Fatalf("SuggestMentions(\"...@Code\") = %+v, want the case-insensitive workflow match", got)
 	}
 }
 

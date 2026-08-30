@@ -259,7 +259,7 @@ func (m *mismatch) Error() string {
 
 // unwrapped joins a rendered frame's lines back together, undoing the
 // terminal's own hard wrap at the right margin. See the same helper in
-// suites/cross/agentmention for the full reasoning.
+// suites/cross/skills for the full reasoning.
 func unwrapped(frame string) string {
 	return strings.ReplaceAll(frame, "\n", "")
 }

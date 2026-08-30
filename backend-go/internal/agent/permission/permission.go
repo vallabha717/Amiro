@@ -96,11 +96,23 @@ type Call struct {
 	// matching, for tools whose consequential argument is a command. See
 	// tools.Definition.CommandLine.
 	CommandLine func(json.RawMessage) string
+
+	// AlwaysAsk means this exact call requires the user's approval every
+	// time, in every mode including Auto, bypassing both the mode
+	// shortcuts below and any "always allow" the session already
+	// remembers for this tool or command -- see tools.Definition.AlwaysAsk
+	// and docs/coding-agent-parity/04-git-remote-operations.md. Only git's
+	// push subcommand and create_pr ever set this.
+	AlwaysAsk bool
 }
 
 // CallFor builds a Call from a tool definition and its arguments.
 func CallFor(def tools.Definition, input json.RawMessage) Call {
-	return Call{Tool: def.Name, Risk: def.Risk, Input: input, CommandLine: def.CommandLine}
+	var alwaysAsk bool
+	if def.AlwaysAsk != nil {
+		alwaysAsk = def.AlwaysAsk(input)
+	}
+	return Call{Tool: def.Name, Risk: def.Risk, Input: input, CommandLine: def.CommandLine, AlwaysAsk: alwaysAsk}
 }
 
 // Engine evaluates calls against a mode, a workspace, and a growing set of
@@ -122,14 +134,37 @@ type Engine struct {
 	// check, so a grant minted mid-turn applies to the next call in the same
 	// turn rather than only to the next request.
 	session *Session
+
+	// trusted mirrors a workspace_trust row for (user, ws.Root()) --
+	// docs/coding-agent-parity/01-workspace-trust-and-rules.md. Defaults to
+	// true in New so every existing call site (tests, subagents, and any
+	// caller that predates the trust-grant model) keeps refusing exactly
+	// what it refused before; a caller that actually has a grant to check
+	// sets it explicitly via WithTrust.
+	trusted bool
 }
 
 // New builds an engine. ws may be nil, in which case no file tools exist to
 // scope and only the command rules do any work. session may be nil, which
-// degrades to an engine that never remembers an answer.
+// degrades to an engine that never remembers an answer. The engine starts
+// trusted; a caller resolving a real trust grant calls WithTrust to narrow
+// it.
 func New(mode Mode, ws *workspace.Workspace, allowedCommands []string, session *Session) *Engine {
-	return &Engine{mode: mode, ws: ws, allowedCommands: allowedCommands, session: session}
+	return &Engine{mode: mode, ws: ws, allowedCommands: allowedCommands, session: session, trusted: true}
 }
+
+// WithTrust sets whether this engine's workspace has a trust grant, and
+// returns the same engine for chaining at the construction site. An
+// untrusted engine refuses every consequential risk class outright -- see
+// Evaluate -- regardless of mode, including Auto: mode controls how much
+// the agent may do once trusted, it is not itself the trust gesture.
+func (e *Engine) WithTrust(trusted bool) *Engine {
+	e.trusted = trusted
+	return e
+}
+
+// Trusted reports the engine's current trust state.
+func (e *Engine) Trusted() bool { return e.trusted }
 
 // Mode reports the engine's mode.
 func (e *Engine) Mode() Mode { return e.mode }
@@ -166,10 +201,36 @@ func (e *Engine) Evaluate(c Call) Decision {
 		return allow("read-only")
 	}
 
+	// Workspace trust gates every consequential risk, in every mode
+	// including Auto -- see docs/coding-agent-parity/
+	// 01-workspace-trust-and-rules.md. This has to sit ahead of the mode
+	// branches below, not inside them: Auto's unconditional allow and the
+	// RiskExternal carve-out further down would otherwise let a model
+	// route around an ungranted root just by trying a different mode or
+	// risk class. Mode controls how much the agent may do once trusted; it
+	// is not itself the trust gesture.
+	if !e.trusted {
+		return refuse(fmt.Sprintf(
+			"this workspace has not been granted trust, so %s (%s) was not run. The user must grant trust to this project (see workspace-trust settings) before the agent can write, run commands, or reach external systems here.",
+			c.Tool, c.Risk))
+	}
+
 	if e.mode == ModePlan {
 		return refuse(fmt.Sprintf(
 			"plan mode is read-only, so %s (%s) was not run. Finish exploring and describe what you would change; the user can switch modes to let you make it.",
 			c.Tool, c.Risk))
+	}
+
+	// AlwaysAsk sits ahead of every mode shortcut below it, including
+	// Auto's unconditional allow and RiskExternal's Interactive/Edit
+	// allow-without-asking carve-out -- the one place this plan overrides
+	// Auto mode's "runs everything without asking" rule. It also does not
+	// consult the session's remembered "always allow" grants further down:
+	// an AlwaysAsk call is, definitionally, the one thing a prior "always
+	// allow" must not silence. See
+	// docs/coding-agent-parity/04-git-remote-operations.md.
+	if c.AlwaysAsk {
+		return ask(fmt.Sprintf("%s writes outside this machine and always asks for approval, in every mode", c.Tool))
 	}
 
 	if e.mode == ModeAuto {

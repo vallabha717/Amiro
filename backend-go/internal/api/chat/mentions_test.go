@@ -203,64 +203,6 @@ func TestLoadWorkflowTools_MentionedPublishedWorkflowBecomesATool(t *testing.T) 
 	}
 }
 
-// fakeAgents is a canned AgentTools for resolveAgent tests.
-type fakeAgents struct {
-	byID map[string]*repository.AgentWithMeta
-}
-
-func (f *fakeAgents) SelectByID(_ context.Context, id, _ string) (*repository.AgentWithMeta, error) {
-	return f.byID[id], nil
-}
-
-func TestResolveAgent_NoAgentMentionReturnsNil(t *testing.T) {
-	h := &Handler{agents: &fakeAgents{byID: map[string]*repository.AgentWithMeta{}}}
-	agent, mentions := h.resolveAgent(context.Background(), "user-1", []mentionDTO{{Type: "defaultTool", Name: "webSearch"}})
-	if agent != nil {
-		t.Fatalf("expected nil agent, got %#v", agent)
-	}
-	if len(mentions) != 1 {
-		t.Fatalf("mentions should pass through unchanged")
-	}
-}
-
-func TestResolveAgent_MergesInstructionsAndMentions(t *testing.T) {
-	instr, _ := json.Marshal(map[string]any{
-		"role":         "pirate captain",
-		"systemPrompt": "always say arr",
-		"mentions":     []mentionDTO{{Type: "defaultTool", Name: "webSearch"}},
-	})
-	agentRow := &repository.AgentWithMeta{}
-	agentRow.ID = "agent-1"
-	agentRow.Name = "Captain Bot"
-	agentRow.Instructions = instr
-
-	h := &Handler{agents: &fakeAgents{byID: map[string]*repository.AgentWithMeta{"agent-1": agentRow}}}
-	mentions := []mentionDTO{{Type: "agent", AgentID: "agent-1", Name: "Captain Bot"}}
-	agent, merged := h.resolveAgent(context.Background(), "user-1", mentions)
-
-	if agent == nil {
-		t.Fatalf("expected a resolved agent")
-	}
-	if agent.Info.Role != "pirate captain" || agent.Info.SystemPrompt != "always say arr" {
-		t.Fatalf("unexpected agent info: %#v", agent.Info)
-	}
-	if len(merged) != 2 {
-		t.Fatalf("expected the agent's own mention merged in, got %d mentions: %#v", len(merged), merged)
-	}
-}
-
-func TestResolveAgent_UnknownAgentIgnoredSilently(t *testing.T) {
-	h := &Handler{agents: &fakeAgents{byID: map[string]*repository.AgentWithMeta{}}}
-	mentions := []mentionDTO{{Type: "agent", AgentID: "does-not-exist"}}
-	agent, merged := h.resolveAgent(context.Background(), "user-1", mentions)
-	if agent != nil {
-		t.Fatalf("expected nil agent for an unknown/inaccessible id")
-	}
-	if len(merged) != 1 {
-		t.Fatalf("mentions should pass through unchanged")
-	}
-}
-
 func TestMergeToolDefinitions_DedupesByNameKeepingFirst(t *testing.T) {
 	first := tools.Definition{Name: "dup", Description: "first"}
 	second := tools.Definition{Name: "dup", Description: "second"}

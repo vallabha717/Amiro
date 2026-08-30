@@ -132,6 +132,10 @@ var runFlagTakesValue = map[string]bool{
 	"-mode": true, "--mode": true,
 	"-model": true, "--model": true,
 	"-thread": true, "--thread": true,
+	// -connect/-token are --background-only (run_background.go), listed
+	// here too since partitionRunArgs is shared by both paths.
+	"-connect": true, "--connect": true,
+	"-token": true, "--token": true,
 }
 
 // partitionRunArgs splits amiro run's argv into flags (and their values)
@@ -419,6 +423,10 @@ func withStdoutSuppressed(suppress bool, fn func()) {
 // exactly why runHeadlessTurn and runOutput.exitCode() exist as separate,
 // pure pieces a test can drive instead.
 func runHeadless(args []string) error {
+	if argsRequestBackground(args) {
+		return runHeadlessBackground(args)
+	}
+
 	var out runOutput
 	var jsonOut bool
 	var err error

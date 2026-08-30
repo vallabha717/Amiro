@@ -50,7 +50,7 @@ func loopWithApprover(
 
 	ctx := WithApprover(context.Background(), ap)
 	res, err := runToolLoop(ctx, engine, sw, bifrostai.ResolvedModel{}, "sys",
-		[]bifrostai.Message{{Role: bifrostai.RoleUser, Text: "go"}}, defs, perms)
+		[]bifrostai.Message{{Role: bifrostai.RoleUser, Text: "go"}}, defs, perms, nil)
 	if err != nil {
 		t.Fatalf("runToolLoop: %v", err)
 	}
@@ -214,7 +214,7 @@ func TestNoApprover_StillSuspends(t *testing.T) {
 	res, err := runToolLoop(context.Background(), engine, sw, bifrostai.ResolvedModel{}, "sys",
 		[]bifrostai.Message{{Role: bifrostai.RoleUser, Text: "go"}},
 		[]tools.Definition{shellTool(tools.NameRunShell, &runs)},
-		permission.New(permission.ModeInteractive, nil, nil, nil))
+		permission.New(permission.ModeInteractive, nil, nil, nil), nil)
 	if err != nil {
 		t.Fatalf("runToolLoop: %v", err)
 	}

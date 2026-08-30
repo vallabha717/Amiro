@@ -74,7 +74,7 @@ func TestSkillsRoutes(t *testing.T) {
 	}
 
 	authService := auth.NewService(gdb)
-	skillsHandler := skillsapi.NewHandler(&cannedSkillsService{})
+	skillsHandler := skillsapi.NewHandler(&cannedSkillsService{}, nil)
 	handler := New(testConfig(), Handlers{
 		Auth:   authService,
 		Skills: skillsHandler,

@@ -69,7 +69,7 @@ func (c *Client) RemoveArchiveItem(ctx context.Context, archiveID, itemID string
 	return c.Delete(ctx, join("/api/archive", archiveID, "items", itemID), nil)
 }
 
-// Bookmark marks an item (a thread, an agent, a workflow) as favourited.
+// Bookmark marks an item (a workflow) as favourited.
 func (c *Client) Bookmark(ctx context.Context, itemID, itemType string) error {
 	return c.Post(ctx, "/api/bookmark", map[string]string{"itemId": itemID, "itemType": itemType}, nil)
 }

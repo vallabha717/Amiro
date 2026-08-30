@@ -9,6 +9,14 @@ package secrets
 
 import "context"
 
+// GitHubTokenKey is the KeyStore key a GitHub personal access token is
+// stored under -- docs/coding-agent-parity/04-git-remote-operations.md's
+// "own storage key, not folded into the provider-key store". A provider
+// key controls model spend; this controls write access to a user's
+// repositories, so it gets its own entry in the same store rather than
+// reusing a provider slug.
+const GitHubTokenKey = "github_token"
+
 // KeyStore is implemented by both deploy targets' backend.
 type KeyStore interface {
 	// Get returns the stored key for provider, or ok=false if none is set.

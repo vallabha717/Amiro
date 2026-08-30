@@ -17,17 +17,23 @@ const (
 	toolNameRunShell  = "run_shell"
 	toolNameTodoWrite = "todo_write"
 	toolNameTodoRead  = "todo_read"
+	toolNameGit       = "git"
+	toolNameCreatePR  = "create_pr"
 )
 
 // registry maps a tool name to its renderer. Anything not listed here --
-// git, task, repo_map, lsp, memory_*, propose_plan, walkthrough, and every
-// MCP tool -- renders through renderGeneric (Render's fallback). Phase 2's
+// task, repo_map, lsp, memory_*, propose_plan, walkthrough, and every MCP
+// tool -- renders through renderGeneric (Render's fallback). Phase 2's
 // scope is "diff / shell / files / generic" (the plan's own Phase 2 exit
 // criteria); todo_write/todo_read got a dedicated renderer anyway because
 // the generic fallback's raw-JSON dump was actively illegible for a tool
 // this common (see plan.go) -- the rest get a card in whichever later
 // phase actually needs one, the same way src/components/tool-presenters'
-// registry grew one tool at a time.
+// registry grew one tool at a time. git and create_pr got theirs in
+// docs/coding-agent-parity/ Phase 3, because both are now AlwaysAsk gated
+// and a raw-JSON approval card is exactly what that phase's own rule
+// ("approving a push shows the branch and remote, never a raw JSON
+// argument blob") rules out.
 var registry = map[string]func(int, session.ToolCall) string{
 	toolNameReadFile:  renderReadFile,
 	toolNameListDir:   renderListDir,
@@ -39,4 +45,6 @@ var registry = map[string]func(int, session.ToolCall) string{
 	toolNameRunShell:  renderShell,
 	toolNameTodoWrite: renderPlan,
 	toolNameTodoRead:  renderPlan,
+	toolNameGit:       renderGit,
+	toolNameCreatePR:  renderCreatePR,
 }

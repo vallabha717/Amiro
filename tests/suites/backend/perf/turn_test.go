@@ -91,7 +91,7 @@ func TestPerf_FirstStreamedTokenAfterSubmit(t *testing.T) {
 // registers GET/DELETE /api/thread and GET/PUT/DELETE /api/thread/{id} --
 // and no POST. internal/api/chat's runner creates the thread on first use
 // of a thread id, so the ONLY way to have 500 threads is 500 chat turns.
-// harness/seed has Agents(n) and Archives(n) but nothing for threads.
+// harness/seed has Archives(n) but nothing for threads.
 //
 // So the setup here is 500 real turns through the real agent loop, run
 // concurrently over a bounded pool because they are independent and
