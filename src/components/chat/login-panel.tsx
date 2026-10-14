@@ -22,9 +22,10 @@
 // The response field names are read defensively because the adapter contract
 // may evolve; a missing route degrades to terminal instructions.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { toast } from "sonner";
+import { cn } from "lib/utils";
 import {
   AlertCircle,
   Check,
@@ -72,7 +73,7 @@ import {
  * One entry in the catalog listing. Mirrors the shape produced by
  * adapter/src/providers.mjs providerCatalog().
  */
-type CatalogProvider = {
+export type CatalogProvider = {
   id: string;
   displayName: string;
   display_name?: string;
@@ -92,7 +93,7 @@ type CatalogProvider = {
   canAcceptApiKey: boolean;
 };
 
-type LegacyLoginProvider = {
+export type LegacyLoginProvider = {
   id: string;
   display_name?: string;
   name?: string;
@@ -122,12 +123,12 @@ type OAuthPhase =
   | "success"
   | "error";
 
-const CATALOG_KEY = "/api/providers/catalog";
-const LOGIN_STATUS_KEY = "/api/providers/login-status";
+export const CATALOG_KEY = "/api/providers/catalog";
+export const LOGIN_STATUS_KEY = "/api/providers/login-status";
 const DEFAULT_POLL_MS = 2000;
 const DEFAULT_EXPIRES_SECONDS = 300;
 
-const MECHANISM_LABEL: Record<string, string> = {
+export const MECHANISM_LABEL: Record<string, string> = {
   oauth: "OAuth",
   "device-code": "Device code",
   "api-key": "API key",
@@ -136,7 +137,7 @@ const MECHANISM_LABEL: Record<string, string> = {
   unknown: "Other",
 };
 
-const MECHANISM_ORDER = [
+export const MECHANISM_ORDER = [
   "oauth",
   "device-code",
   "api-key",
@@ -145,7 +146,7 @@ const MECHANISM_ORDER = [
   "unknown",
 ];
 
-function mechanismOf(p: CatalogProvider): string {
+export function mechanismOf(p: CatalogProvider): string {
   if (p.mechanism) return p.mechanism;
   const ak = (p.authKind ?? p.auth_kind ?? "").toLowerCase();
   if (ak.includes("oauth")) return "oauth";
@@ -156,22 +157,22 @@ function mechanismOf(p: CatalogProvider): string {
   return "unknown";
 }
 
-function isOAuthLike(p: CatalogProvider): boolean {
+export function isOAuthLike(p: CatalogProvider): boolean {
   const m = mechanismOf(p);
   return m === "oauth" || m === "device-code";
 }
 
-function isApiKeyLike(p: CatalogProvider): boolean {
+export function isApiKeyLike(p: CatalogProvider): boolean {
   return mechanismOf(p) === "api-key";
 }
 
-function isConfigured(p: CatalogProvider): boolean {
+export function isConfigured(p: CatalogProvider): boolean {
   if (typeof p.connected === "boolean") return p.connected;
   const status = (p.status ?? "").toLowerCase();
   return status === "available" || status === "configured";
 }
 
-function providerLabel(p: CatalogProvider): string {
+export function providerLabel(p: CatalogProvider): string {
   return p.displayName || p.display_name || p.name || p.id;
 }
 
@@ -243,7 +244,7 @@ function normalizeLoginStatus(data: unknown): CatalogProvider[] | null {
   return null;
 }
 
-async function loadCatalogProviders(): Promise<CatalogProvider[]> {
+export async function loadCatalogProviders(): Promise<CatalogProvider[]> {
   try {
     const catalog = normalizeCatalog(await fetcher(CATALOG_KEY));
     if (catalog && catalog.length) return catalog;
@@ -384,8 +385,19 @@ function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-export function LoginPanel({ onClose }: { onClose: () => void }) {
+export interface LoginPanelProps {
+  onClose: () => void;
+  initialProviderId?: string;
+  onProviderChange?: (id: string) => void;
+}
+
+export function LoginPanel({
+  onClose,
+  initialProviderId,
+  onProviderChange,
+}: LoginPanelProps) {
   const { mutate } = useSWRConfig();
+  const cardRef = useRef<HTMLDivElement>(null);
   const {
     data: providers = [],
     isLoading,
@@ -396,7 +408,7 @@ export function LoginPanel({ onClose }: { onClose: () => void }) {
   });
 
   const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId] = useState("");
+  const [selectedId, setSelectedId] = useState(initialProviderId ?? "");
   const [apiKey, setApiKey] = useState("");
   const [apiBase, setApiBase] = useState("");
   const [reveal, setReveal] = useState(false);
@@ -416,6 +428,30 @@ export function LoginPanel({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEffect(() => {
+    if (initialProviderId) {
+      setSelectedId(initialProviderId);
+      setSaveError(null);
+      setSavedId(null);
+      resetOAuth();
+    }
+  }, [initialProviderId]);
+
+  useEffect(() => {
+    if (!initialProviderId || !providers.length) return;
+    const match = providers.find(
+      (p) =>
+        p.id.toLowerCase() === initialProviderId.toLowerCase() ||
+        (p.aliases &&
+          p.aliases.some(
+            (a) => a.toLowerCase() === initialProviderId.toLowerCase(),
+          )),
+    );
+    if (match && selectedId !== match.id) {
+      setSelectedId(match.id);
+    }
+  }, [initialProviderId, providers, selectedId]);
 
   const filteredProviders = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -466,13 +502,24 @@ export function LoginPanel({ onClose }: { onClose: () => void }) {
 
   const defaultProvider = useMemo(() => {
     const all = providers;
+    if (initialProviderId) {
+      const match = all.find(
+        (p) =>
+          p.id.toLowerCase() === initialProviderId.toLowerCase() ||
+          (p.aliases &&
+            p.aliases.some(
+              (a) => a.toLowerCase() === initialProviderId.toLowerCase(),
+            )),
+      );
+      if (match) return match;
+    }
     const unconfiguredKey = all.find((p) => isApiKeyLike(p) && !isConfigured(p));
     return (
       unconfiguredKey ??
       all.find((p) => !isConfigured(p)) ??
       all[0]
     );
-  }, [providers]);
+  }, [providers, initialProviderId]);
 
   const activeId = selectedId || defaultProvider?.id || "";
   const selected = providers.find((p) => p.id === activeId) ?? null;
@@ -504,7 +551,20 @@ export function LoginPanel({ onClose }: { onClose: () => void }) {
     setSaveError(null);
     setSavedId(null);
     resetOAuth();
+    onProviderChange?.(id);
   };
+
+  useEffect(() => {
+    if (activeId && onProviderChange) {
+      onProviderChange(activeId);
+    }
+  }, [activeId, onProviderChange]);
+
+  useEffect(() => {
+    if (initialProviderId && cardRef.current) {
+      cardRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [initialProviderId, providers.length]);
 
   const handleSave = async () => {
     const key = apiKey.trim();
@@ -704,6 +764,7 @@ export function LoginPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <Card
+      ref={cardRef}
       className="border shadow-lg bg-card/95 backdrop-blur-sm"
       data-testid="login-panel"
     >
@@ -777,7 +838,10 @@ export function LoginPanel({ onClose }: { onClose: () => void }) {
                         <SelectItem
                           key={provider.id}
                           value={provider.id}
-                          className="text-xs"
+                          className={cn(
+                            "text-xs",
+                            provider.id === activeId && "font-semibold bg-accent/40",
+                          )}
                         >
                           <span className="flex items-center gap-2">
                             {providerLabel(provider)}

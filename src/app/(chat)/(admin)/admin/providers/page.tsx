@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
@@ -8,16 +8,31 @@ import { Loader2, Plus, Box, Cpu } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "ui/button";
+import { Badge } from "ui/badge";
 import { ScrollArea } from "ui/scroll-area";
 import { Skeleton } from "ui/skeleton";
+import { Popover, PopoverContent, PopoverTrigger } from "ui/popover";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "ui/dropdown-menu";
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "ui/command";
 import { ModelProviderIcon } from "ui/model-provider-icon";
 import { ProviderCard } from "@/components/provider-card";
+import {
+  LoginPanel,
+  type CatalogProvider,
+  CATALOG_KEY,
+  loadCatalogProviders,
+  mechanismOf,
+  isConfigured,
+  providerLabel,
+  MECHANISM_LABEL,
+  MECHANISM_ORDER,
+} from "@/components/chat/login-panel";
 import {
   PROVIDERS_KEY,
   selectProviders,
@@ -28,24 +43,14 @@ const LightRays = dynamic(() => import("@/components/ui/light-rays"), {
   ssr: false,
 });
 
-/**
- * Provider types offered in the "add" menu. `custom` is not a distinct
- * backend type -- it saves as `openai` with a required base URL, which is
- * what every OpenAI-compatible gateway (LiteLLM, Nous, vLLM, ...) actually
- * needs. See provider-editor.tsx.
- */
-export const AVAILABLE_PROVIDERS = [
-  { id: "openai", name: "OpenAI" },
-  { id: "anthropic", name: "Anthropic" },
-  { id: "google", name: "Google Gemini" },
-  { id: "xai", name: "xAI (Grok)" },
-  { id: "groq", name: "Groq" },
-  { id: "openRouter", name: "OpenRouter" },
-] as const;
-
 export default function AdminProvidersPage() {
   const t = useTranslations("Providers");
   const router = useRouter();
+
+  const [loginProviderId, setLoginProviderId] = useState<string | null>(null);
+  const [isLoginPanelOpen, setIsLoginPanelOpen] = useState(false);
+  const [openHeaderMenu, setOpenHeaderMenu] = useState(false);
+  const [openEmptyMenu, setOpenEmptyMenu] = useState(false);
 
   const {
     data: providers,
@@ -56,33 +61,153 @@ export default function AdminProvidersPage() {
     revalidateOnFocus: false,
   });
 
-  const handleCreateNew = (templateId: string) =>
-    router.push(`/admin/providers/create?template=${templateId}`);
+  const {
+    data: catalogProviders = [],
+    isLoading: isCatalogLoading,
+  } = useSWR<CatalogProvider[]>(`catalog:${CATALOG_KEY}`, loadCatalogProviders, {
+    fallbackData: [],
+    revalidateOnFocus: false,
+  });
 
-  const addMenu = (align: "end" | "center") => (
-    <DropdownMenuContent align={align} className="w-56">
-      {AVAILABLE_PROVIDERS.map((p) => (
-        <DropdownMenuItem
-          key={p.id}
-          onClick={() => handleCreateNew(p.id)}
-          className="cursor-pointer font-medium"
-        >
-          <ModelProviderIcon
-            provider={p.id}
-            className="size-4 mr-2 text-muted-foreground"
-          />
-          <span>{p.name}</span>
-        </DropdownMenuItem>
-      ))}
-      <DropdownMenuItem
-        onClick={() => handleCreateNew("custom")}
-        className="cursor-pointer font-medium border-t"
-        data-testid="add-custom-provider"
+  const groupedProviders = useMemo(() => {
+    const groups = new Map<string, CatalogProvider[]>();
+    for (const p of catalogProviders) {
+      const m = mechanismOf(p);
+      if (!groups.has(m)) groups.set(m, []);
+      groups.get(m)!.push(p);
+    }
+    const ordered: Array<[string, CatalogProvider[]]> = [];
+    for (const m of MECHANISM_ORDER) {
+      const list = groups.get(m);
+      if (list && list.length) {
+        list.sort((a, b) => providerLabel(a).localeCompare(providerLabel(b)));
+        ordered.push([m, list]);
+      }
+    }
+    for (const [m, list] of groups) {
+      if (!MECHANISM_ORDER.includes(m)) {
+        list.sort((a, b) => providerLabel(a).localeCompare(providerLabel(b)));
+        ordered.push([m, list]);
+      }
+    }
+    return ordered;
+  }, [catalogProviders]);
+
+  const handleSelectProvider = (providerId: string) => {
+    setOpenHeaderMenu(false);
+    setOpenEmptyMenu(false);
+    if (providerId === "custom" || providerId === "openai-compatible") {
+      router.push(`/admin/providers/create?template=${providerId}`);
+      return;
+    }
+    setLoginProviderId(providerId);
+    setIsLoginPanelOpen(true);
+  };
+
+  const renderAddMenu = (
+    align: "end" | "center",
+    open: boolean,
+    onOpenChange: (open: boolean) => void,
+    trigger: React.ReactNode,
+  ) => (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+      <PopoverContent
+        align={align}
+        className="w-80 sm:w-96 p-0"
+        data-testid="admin-add-provider-menu"
       >
-        <Box className="size-4 mr-2 text-muted-foreground" />
-        <span>{t("customProvider")}</span>
-      </DropdownMenuItem>
-    </DropdownMenuContent>
+        <Command className="rounded-lg shadow-md max-h-[460px]">
+          <div className="flex items-center justify-between px-3 py-2 text-[11px] text-muted-foreground border-b bg-muted/20">
+            <span
+              data-testid="admin-provider-count"
+              className="font-semibold flex items-center gap-1.5"
+            >
+              {isCatalogLoading && catalogProviders.length === 0 ? (
+                <>
+                  <Loader2 className="size-3 animate-spin" />
+                  Loading providers...
+                </>
+              ) : (
+                `${catalogProviders.length} providers`
+              )}
+            </span>
+            <span>
+              {catalogProviders.filter(isConfigured).length} connected
+            </span>
+          </div>
+          <CommandInput
+            placeholder="Search providers..."
+            data-testid="admin-provider-search"
+          />
+          <CommandList className="max-h-72 overflow-y-auto p-1">
+            <CommandEmpty className="p-4 text-center text-xs text-muted-foreground">
+              No providers found.
+            </CommandEmpty>
+            <CommandGroup heading="Custom gateway">
+              <CommandItem
+                value="custom custom provider openai-compatible base url self-hosted gateway"
+                onSelect={() => handleSelectProvider("custom")}
+                className="cursor-pointer text-xs flex items-center gap-2"
+                data-testid="add-custom-provider"
+              >
+                <Box className="size-4 mr-1 text-muted-foreground shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">{t("customProvider")}</div>
+                  <div className="text-[10px] text-muted-foreground truncate">
+                    OpenAI-compatible base URL & models
+                  </div>
+                </div>
+                <Badge
+                  variant="outline"
+                  className="text-[9px] px-1 py-0 h-4 shrink-0 ml-auto"
+                >
+                  Custom URL
+                </Badge>
+              </CommandItem>
+            </CommandGroup>
+            {groupedProviders.map(([mechanism, list]) => (
+              <CommandGroup
+                key={mechanism}
+                heading={`${MECHANISM_LABEL[mechanism] ?? mechanism} · ${list.length}`}
+              >
+                {list.map((p) => {
+                  const label = providerLabel(p);
+                  const isConnected = isConfigured(p);
+                  const mech = mechanismOf(p);
+                  return (
+                    <CommandItem
+                      key={p.id}
+                      value={`${label} ${p.id} ${mech} ${(p.aliases || []).join(" ")}`.toLowerCase()}
+                      onSelect={() => handleSelectProvider(p.id)}
+                      className="cursor-pointer text-xs flex items-center gap-2"
+                      data-testid={`admin-provider-option-${p.id}`}
+                    >
+                      <ModelProviderIcon
+                        provider={p.id}
+                        className="size-4 mr-1 text-muted-foreground shrink-0"
+                      />
+                      <span className="font-medium truncate flex-1 min-w-0">
+                        {label}
+                      </span>
+                      <Badge
+                        variant={isConnected ? "secondary" : "outline"}
+                        className="text-[9px] px-1 py-0 h-4 shrink-0"
+                      >
+                        {isConnected ? "Connected" : "Not connected"}
+                      </Badge>
+                      <span className="text-[10px] text-muted-foreground shrink-0 ml-1">
+                        {MECHANISM_LABEL[mech] ?? mech}
+                      </span>
+                    </CommandItem>
+                  );
+                })}
+              </CommandGroup>
+            ))}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 
   const particle = useMemo(
@@ -118,20 +243,32 @@ export default function AdminProvidersPage() {
               )}
             </h1>
             <div className="flex-1" />
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  className="font-semibold bg-input/20"
-                  variant="outline"
-                  data-testid="add-provider-button"
-                >
-                  <Plus className="size-3.5" />
-                  {t("addProvider")}
-                </Button>
-              </DropdownMenuTrigger>
-              {addMenu("end")}
-            </DropdownMenu>
+            {renderAddMenu(
+              "end",
+              openHeaderMenu,
+              setOpenHeaderMenu,
+              <Button
+                className="font-semibold bg-input/20"
+                variant="outline"
+                data-testid="add-provider-button"
+              >
+                <Plus className="size-3.5" />
+                {t("addProvider")}
+              </Button>,
+            )}
           </div>
+
+          {isLoginPanelOpen && (
+            <div className="mb-4">
+              <LoginPanel
+                initialProviderId={loginProviderId ?? undefined}
+                onClose={() => {
+                  setIsLoginPanelOpen(false);
+                  setLoginProviderId(null);
+                }}
+              />
+            </div>
+          )}
 
           {isLoading ? (
             <div className="flex flex-col gap-4">
@@ -158,15 +295,15 @@ export default function AdminProvidersPage() {
               <p className="text-muted-foreground max-w-md text-lg">
                 {t("noProvidersDescription")}
               </p>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button size="lg" className="mt-4 font-bold">
-                    <Plus className="size-5 mr-2" />
-                    {t("connectProvider")}
-                  </Button>
-                </DropdownMenuTrigger>
-                {addMenu("center")}
-              </DropdownMenu>
+              {renderAddMenu(
+                "center",
+                openEmptyMenu,
+                setOpenEmptyMenu,
+                <Button size="lg" className="mt-4 font-bold" data-testid="connect-provider-button">
+                  <Plus className="size-5 mr-2" />
+                  {t("connectProvider")}
+                </Button>,
+              )}
             </div>
           )}
         </div>

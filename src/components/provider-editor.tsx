@@ -41,7 +41,15 @@ import {
   saveProvider,
   type ProviderConfig,
 } from "@/lib/backend/provider-api";
-import { AVAILABLE_PROVIDERS } from "@/app/(chat)/(admin)/admin/providers/page";
+
+export const DEFAULT_TEMPLATES = [
+  { id: "openai", name: "OpenAI" },
+  { id: "anthropic", name: "Anthropic" },
+  { id: "google", name: "Google Gemini" },
+  { id: "xai", name: "xAI (Grok)" },
+  { id: "groq", name: "Groq" },
+  { id: "openRouter", name: "OpenRouter" },
+] as const;
 
 /**
  * Provider types that get a base URL field.
@@ -52,7 +60,7 @@ import { AVAILABLE_PROVIDERS } from "@/app/(chat)/(admin)/admin/providers/page";
  * are hosted-only in this app, so offering a base URL there would just be a
  * field to get wrong.
  */
-const BASE_URL_PROVIDERS = new Set(["openai", "custom"]);
+const BASE_URL_PROVIDERS = new Set(["openai", "custom", "openai-compatible"]);
 
 export interface ProviderEditorProps {
   initialConfig?: ProviderConfig;
@@ -68,7 +76,9 @@ export default function ProviderEditor({
   const router = useRouter();
   const isNew = !initialConfig?.id;
 
-  const [isCustom, setIsCustom] = useState(templateProvider === "custom");
+  const [isCustom, setIsCustom] = useState(
+    templateProvider === "custom" || templateProvider === "openai-compatible",
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [revealKey, setRevealKey] = useState(false);
@@ -230,7 +240,7 @@ export default function ProviderEditor({
 
   const selectedProviderName = isCustom
     ? t("customProvider")
-    : (AVAILABLE_PROVIDERS.find((p) => p.id === providerType)?.name ??
+    : (DEFAULT_TEMPLATES.find((p) => p.id === providerType)?.name ??
       providerType);
 
   const exactInputMatch = allAvailableModels.some(
@@ -283,7 +293,7 @@ export default function ProviderEditor({
           </DropdownMenuTrigger>
           {isNew && (
             <DropdownMenuContent className="w-[300px]">
-              {AVAILABLE_PROVIDERS.map((p) => (
+              {DEFAULT_TEMPLATES.map((p) => (
                 <DropdownMenuItem
                   key={p.id}
                   onClick={() => {

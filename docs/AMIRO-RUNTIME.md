@@ -100,6 +100,10 @@ JCODE_API_SOCKET=/run/user/0/jcode-api.sock pnpm start
 
 The adapter defaults to loopback. Select the home, host, port, and bridge socket with `AMIRO_HOME`, `AMIRO_HOST`, `AMIRO_PORT`, and `JCODE_API_SOCKET`. Model selection is described above (`AMIRO_DEFAULT_MODEL`, `AMIRO_PINNED_MODELS`), and the folder picker's roots come from `AMIRO_BROWSE_ROOTS`. Bridge CLI startup flags alone do not select the model for newly created SDK sessions, so the adapter explicitly configures each session.
 
+## Admin providers page
+
+`/admin/providers` uses the same catalog. The add-provider menu (searchable, grouped by mechanism with per-provider connected state) lists every provider Jcode supports; it previously hardcoded six, which is why most providers could not be added. Selecting a provider opens the same `LoginPanel` preselected, so each kind gets its own correct flow: OAuth/device code, API key, or the honest "this backend does not expose that flow" message for CLI/local-endpoint. `openai-compatible`/custom gateways still route to `/admin/providers/create` for a base URL and model list.
+
 ## This machine's preview
 
 - Public entry: `https://194.238.18.234:8787`.

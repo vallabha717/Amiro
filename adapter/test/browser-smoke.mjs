@@ -126,9 +126,31 @@ try {
   await page.getByText(/Usage is shared Jcode provider-account data/).waitFor({ timeout: 30000 });
   await page.screenshot({ path: `${artifactDir}/amiro-usage.png`, fullPage: true });
   console.log('PASS real usage UI and scope disclaimer');
+  // The admin providers page must offer every provider too. It used to hardcode
+  // six of them, so a user could not add most of what Jcode supports.
+  await page.goto(`${base}/admin/providers`, { waitUntil: 'networkidle' });
+  await page.getByTestId('add-provider-button').click();
+  await page.getByTestId('admin-add-provider-menu').waitFor({ timeout: 20000 });
+  const adminCountText = await page.getByTestId('admin-provider-count').innerText();
+  const adminCount = Number((/(\d+)\s+providers/i.exec(adminCountText) || [])[1] || 0);
+  assert(adminCount > 30, `admin add menu should list every Jcode provider, saw ${adminCount}`);
+  const adminOptions = await page.locator('[data-testid^="admin-provider-option-"]').count();
+  assert(adminOptions > 30, `admin add menu should render every provider, saw ${adminOptions} options`);
+  const adminMenuText = await page.getByTestId('admin-add-provider-menu').innerText();
+  assert(/\bOAuth\b/.test(adminMenuText), 'admin menu must label OAuth providers');
+  assert(/API key/i.test(adminMenuText), 'admin menu must label API-key providers');
+  console.log(`PASS admin add-provider menu lists ${adminCount} providers with mechanisms`);
+  // Choosing an API-key provider must open the mechanism-appropriate form.
+  await page.getByTestId('admin-provider-search').fill('openrouter');
+  await page.getByTestId('admin-provider-option-openrouter').click();
+  await page.getByTestId('login-panel').waitFor({ timeout: 20000 });
+  await page.getByTestId('login-api-key').waitFor({ timeout: 20000 });
+  assert.equal(await page.getByTestId('login-oauth-start').count(), 0, 'an API-key provider must not show the OAuth start button');
+  await page.getByTestId('login-panel-close').click();
+  console.log('PASS admin menu opens the API-key form for an API-key provider');
   assert.deepEqual(errors, [], 'Browser runtime errors');
   assert.deepEqual(apiFailures, [], 'Server-side API failures during browser acceptance');
-  console.log(JSON.stringify({ browser: 'chrome', checks: 13, screenshot: `${artifactDir}/amiro-usage.png` }));
+  console.log(JSON.stringify({ browser: 'chrome', checks: 15, screenshot: `${artifactDir}/amiro-usage.png` }));
 } finally {
   // Revoke only this test browser's own application session.
   await page.evaluate(async (threadId) => {
