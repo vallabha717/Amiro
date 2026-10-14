@@ -27,6 +27,7 @@ import {
 } from "ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
 import { useShallow } from "zustand/shallow";
+import { FolderBrowserDialog } from "./folder-browser-dialog";
 
 export function ProjectSelector({
   disabled,
@@ -45,6 +46,7 @@ export function ProjectSelector({
 
   const [open, setOpen] = useState(false);
   const [trustPromptRoot, setTrustPromptRoot] = useState<string | null>(null);
+  const [browserOpen, setBrowserOpen] = useState(false);
 
   const folderName = useMemo(() => {
     if (!projectDirectory) return "Project";
@@ -105,35 +107,7 @@ export function ProjectSelector({
   };
 
   const handleFolderPick = async () => {
-    try {
-      if (typeof window !== "undefined" && "showDirectoryPicker" in window) {
-        const handle = await (window as any).showDirectoryPicker();
-        if (handle?.name) {
-          selectDirectory(handle.name);
-          return;
-        }
-      } else {
-        // Fallback: file input with webkitdirectory
-        const input = document.createElement("input");
-        input.type = "file";
-        (input as any).webkitdirectory = true;
-        (input as any).directory = true;
-        input.onchange = (e: any) => {
-          const file = e.target.files?.[0];
-          if (file?.webkitRelativePath) {
-            const rootDir = file.webkitRelativePath.split("/")[0];
-            if (rootDir) {
-              selectDirectory(rootDir);
-            }
-          }
-        };
-        input.click();
-      }
-    } catch (err: any) {
-      if (err?.name !== "AbortError") {
-        toast.error("Failed to pick directory");
-      }
-    }
+    setBrowserOpen(true);
   };
 
   // Show only last 5 folders
@@ -151,6 +125,7 @@ export function ProjectSelector({
             <DropdownMenuTrigger asChild disabled={disabled}>
               <button
                 type="button"
+                data-testid="project-selector-trigger"
                 className={cn(
                   "group inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium max-w-[200px] border border-transparent",
                   isProjectActive
@@ -198,6 +173,7 @@ export function ProjectSelector({
           <DropdownMenuGroup className="space-y-0.5">
             <DropdownMenuItem
               onClick={handleFolderPick}
+              data-testid="folder-browser-trigger"
               className="flex items-center gap-2.5 p-2 rounded-lg cursor-pointer hover:bg-muted/60 dark:hover:bg-white/5 transition-colors duration-100"
             >
               <div className="p-1 rounded-md bg-primary/10 text-primary shrink-0">
@@ -297,6 +273,15 @@ export function ProjectSelector({
           onGranted={() => setTrustPromptRoot(null)}
         />
       )}
+      <FolderBrowserDialog
+        open={browserOpen}
+        onOpenChange={setBrowserOpen}
+        initialPath={projectDirectory || undefined}
+        onSelect={(p) => {
+          setBrowserOpen(false);
+          selectDirectory(p);
+        }}
+      />
     </>
   );
 }

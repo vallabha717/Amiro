@@ -250,6 +250,8 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
           toolChoice: latestRef.current.toolChoice,
           permissionMode: latestRef.current.permissionMode,
           workspaceRoot: latestRef.current.projectDirectory || undefined,
+          workingDir: latestRef.current.projectDirectory || undefined,
+          projectDirectory: latestRef.current.projectDirectory || undefined,
           allowedAppDefaultToolkit:
             hasNonSkillMention || hasFilePart
               ? []

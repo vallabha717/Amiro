@@ -36,10 +36,42 @@ There are two different logins:
 
 The user's browser must complete real provider authorization. Tests can verify flow initiation/cancellation and errors without authorizing or replacing the owner's existing credentials. A passing frontend build is not proof that every provider completed OAuth.
 
+## Providers
+
+The provider panel lists every provider the installed Jcode supports, with its real mechanism, from `jcode provider list --json` joined with `jcode auth status --json` (`GET /api/providers/catalog`, cached 60s). Observed on this install: 55 providers, of which 5 are OAuth, 45 API key, 2 local endpoint, 1 device code, 1 CLI, plus the `auto` routing pseudo-provider. Each entry reports `connected`, `credentialSource`, `validation`, `lastRefresh`, `canStartOauth` and `canAcceptApiKey`; credential-looking values are redacted and key material is never returned or logged.
+
+- **OAuth / device code** providers use the interactive flow (`/api/providers/:id/oauth/start|status|callback`), which surfaces the real provider URL or device code and never handles the user's password.
+- **API key** providers are configured through `POST /api/providers/:id/api-key` (admin-only). The adapter writes the key with Jcode's own login path (`jcode login <provider> --no-validate` with the key on stdin, which stores `$JCODE_HOME/config/jcode/<provider>.env`; `openai-compatible` additionally takes `--api-base`), then confirms the provider flips to available and tells the daemon auth changed. `DELETE /api/providers/:id/credentials` removes it. A provider without an API-key mechanism is refused with an explicit error rather than silently doing nothing.
+- The catalog is rebuilt as soon as any credential change is reported, so a newly connected provider's models are selectable immediately instead of after the refresh interval.
+
+## Models
+
+The model selector offers the models of every **connected** provider, taken from `jcode model list -p <provider> --json` per connected provider. Observed on this install: 140 models across openai (11), opencode-go (39), openai-compatible (71) and antigravity (19). Models are namespaced `provider:model`, which is the route-pinned form the bridge needs; a bare model name would fall back to the daemon's default endpoint.
+
+Environment semantics:
+
+- `AMIRO_DEFAULT_MODEL` (set to `opencode-go:deepseek-v4.1-flash` on this preview) selects the model an omitted-model request uses and makes that provider group and model appear first, so a fresh chat starts on a known-working route rather than whichever provider happens to sort first.
+- `AMIRO_PINNED_MODELS` remains a hard allow-list when set: only those models are listed and anything else is rejected. It is unset on this preview so that all connected providers are usable.
+- With neither set, the connected-provider catalog is the allow-list. A model outside it is rejected with an explicit `model not allowed` error; there is no silent provider fallback. If the catalog cannot be built, the request is not refused (the daemon still rejects unknown ids) and the failure is logged.
+- A provider whose usage limit is exhausted still appears; the turn fails with the provider's own error. OpenAI on this account reached its 5-hour limit during testing, which is an account state, not an adapter behaviour.
+
+## Folder selection (works from the web)
+
+The workspace folder picker browses the **server's** filesystem over HTTP, so it works in a browser without a native OS dialog. `src/components/chat/folder-browser-dialog.tsx` calls `GET /api/fs/roots|browse|stat`; the old `showDirectoryPicker()`/`webkitdirectory` path (which only yields a bare folder name and cannot resolve to a server path) was removed.
+
+Safety rules in `adapter/src/fsbrowse.mjs`:
+
+- Allowed roots come from `AMIRO_BROWSE_ROOTS` (default `/root,/home,/srv,/opt,/var/www,/tmp`); absolute paths only.
+- A deny list (exact and prefix) covers `/root/.jcode`, `/root/.amiro-preview`, `/root/.ssh`, `/root/.aws`, `/root/.config/jcode`, `/root/.gnupg`, `/etc/letsencrypt`, `/etc/ssl/private`, `/root/.secrets`. Denied paths are neither listed nor enterable, before and after `realpath`.
+- Every request is realpath-resolved and re-checked for containment, so a symlink cannot escape an allowed root. Listing is capped at 500 entries and **never returns file contents**.
+- `GET /api/fs/*` requires an authenticated session; anonymous requests are 401.
+
+The chosen folder becomes the session's working directory: the chat request carries `workingDir` (also accepted as `projectDirectory`/`workspaceRoot`), it is validated with the same rules, and a rejected folder returns 403 instead of silently falling back. The directory is stored per thread and reported by `GET /api/thread/:id`. If the folder changes on a thread that already has a session, the adapter starts a new Jcode session for that thread pinned to the new directory (same thread id and ownership; the previous session id is retained as `previousSessionId` and archived), so the selection actually takes effect.
+
 ## Restrictions
 
 - The deployed preview defaults to `tools: { enabled: [] }`, reapplied to sessions before turns. Text chat works without giving the model server filesystem or shell access.
-- Model configuration is operator-controlled. The preview exposes the requested OpenCode Go DeepSeek V4.1 Flash and Antigravity Gemini 3.8 Flash routes. A model-route failure does not silently select a different provider.
+- Model configuration is operator-controlled: the selector offers the models of the connected providers, with `AMIRO_DEFAULT_MODEL` choosing the landing model and `AMIRO_PINNED_MODELS` (when set) acting as a hard allow-list. A model-route failure does not silently select a different provider.
 - Browser-supplied tool/MCP lists cannot widen permissions.
 - Search is not implemented or enabled.
 - Background execution, legacy skill generation, checkpoint restore, MCP tool execution/authorization, and workflow execution are not enabled. They return explicit unsupported errors rather than fabricated success.
@@ -64,7 +96,7 @@ jcode --no-update api-bridge --api-socket /run/user/0/jcode-api.sock
 JCODE_API_SOCKET=/run/user/0/jcode-api.sock pnpm start
 ```
 
-The adapter defaults to loopback. Select the home, host, port, and bridge socket with `AMIRO_HOME`, `AMIRO_HOST`, `AMIRO_PORT`, and `JCODE_API_SOCKET`. For an explicit restricted catalog, configure `AMIRO_PINNED_MODELS` with comma-separated provider-prefixed model routes. Bridge CLI startup flags alone do not select the model for newly created SDK sessions. The adapter must explicitly configure each session.
+The adapter defaults to loopback. Select the home, host, port, and bridge socket with `AMIRO_HOME`, `AMIRO_HOST`, `AMIRO_PORT`, and `JCODE_API_SOCKET`. Model selection is described above (`AMIRO_DEFAULT_MODEL`, `AMIRO_PINNED_MODELS`), and the folder picker's roots come from `AMIRO_BROWSE_ROOTS`. Bridge CLI startup flags alone do not select the model for newly created SDK sessions, so the adapter explicitly configures each session.
 
 ## This machine's preview
 

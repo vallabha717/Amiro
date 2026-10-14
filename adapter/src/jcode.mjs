@@ -80,6 +80,31 @@ export function createJcodeManager({ socketPath, jcodeHome, binary, log }) {
   const allowedModels = parseModelList(process.env.AMIRO_PINNED_MODELS);
   const routeSep = process.env.AMIRO_MODEL_ROUTE_SEP || ':';
 
+  // When no static pin is configured, the models of the currently connected
+  // Jcode providers become the allow-list. server.mjs refreshes this snapshot
+  // (see models.mjs) so the request path stays synchronous. An empty snapshot
+  // means "not known yet": requests are not refused, and the daemon still
+  // rejects a model id it does not know.
+  let dynamicModels = [];
+  let dynamicDefault = '';
+
+  function setDynamicModels(list) {
+    dynamicModels = Array.isArray(list) ? list.map((m) => normaliseModel(m)).filter(Boolean) : [];
+    // Prefer an operator-configured default so an omitted model never lands on a
+    // provider that is rate-limited or unwanted, then the catalog's own
+    // selection, then whatever comes first.
+    const configured = normaliseModel(process.env.AMIRO_DEFAULT_MODEL || '');
+    const preferred = list && typeof list === 'object' && typeof list.defaultModel === 'string' ? normaliseModel(list.defaultModel) : '';
+    dynamicDefault =
+      (configured && dynamicModels.includes(configured) && configured) ||
+      (preferred && dynamicModels.includes(preferred) && preferred) ||
+      dynamicModels[0] ||
+      '';
+  }
+
+  function activeAllowList() {
+    return allowedModels.length ? allowedModels : dynamicModels;
+  }
   // Build the route-pinned model string. A provider-qualified id is required to
   // pin a route; passing the bare id lets the daemon pick the default endpoint.
   function resolveModel(provider, model) {
@@ -97,12 +122,19 @@ export function createJcodeManager({ socketPath, jcodeHome, binary, log }) {
   function resolveChatModel(provider, model) {
     const resolved = resolveModel(provider, model);
     if (resolved) return resolved;
-    return allowedModels[0] || '';
+    return allowedModels[0] || dynamicDefault || '';
+  }
+
+  // The model an omitted-model request will actually use (pin first, then the
+  // configured/catalog default). Reported at boot so the log is not misleading.
+  function activeDefaultModel() {
+    return allowedModels[0] || dynamicDefault || '';
   }
 
   function assertModelAllowed(model) {
-    if (!allowedModels.length) return;
-    if (!allowedModels.includes(normaliseModel(model))) {
+    const list = activeAllowList();
+    if (!list.length) return;
+    if (!list.includes(normaliseModel(model))) {
       const err = new Error(`model not allowed: ${model}`);
       err.status = 400;
       err.code = 'model_not_allowed';
@@ -132,7 +164,7 @@ export function createJcodeManager({ socketPath, jcodeHome, binary, log }) {
       const providerOk = !want.provider || !runtimeProvider || normName(runtimeProvider) === normName(want.provider);
       if (!modelOk || !providerOk) {
         const message = `route pin failed: requested ${model}, runtime provider=${info.provider} model=${info.model}`;
-        if (allowedModels.length) {
+        if (activeAllowList().length) {
           const err = new Error(message);
           err.code = 'route_pin_failed';
           throw err;
@@ -188,17 +220,34 @@ export function createJcodeManager({ socketPath, jcodeHome, binary, log }) {
   }
 
   // Proxy so ctx.jcode.api.<anySdkMethod>(...) works without listing all 40.
+  // `notifyAuthChanged` additionally fires the registered hook so the connected
+  // provider/model catalog is rebuilt the moment credentials change, instead of
+  // waiting for the periodic refresh.
+  let onAuthChanged = null;
+
+  function setAuthChangedHook(fn) {
+    onAuthChanged = typeof fn === 'function' ? fn : null;
+  }
+
   const api = new Proxy(
     {},
     {
       get(_target, prop) {
         return (...args) =>
-          withClient((c) => {
+          withClient(async (c) => {
             const fn = c[prop];
             if (typeof fn !== 'function') {
               throw new Error(`unknown jcode SDK method: ${String(prop)}`);
             }
-            return fn.apply(c, args);
+            const result = await fn.apply(c, args);
+            if (prop === 'notifyAuthChanged' && onAuthChanged) {
+              try {
+                await onAuthChanged(args[0]);
+              } catch (err) {
+                log('warn', 'auth-change hook failed', { error: String(err && err.message) });
+              }
+            }
+            return result;
           });
       },
     },
@@ -343,8 +392,11 @@ export function createJcodeManager({ socketPath, jcodeHome, binary, log }) {
     resolveModel,
     resolveChatModel,
     assertModelAllowed,
+    setDynamicModels,
+    setAuthChangedHook,
     setModelPinned,
-    pinnedModels: () => [...allowedModels],
+    pinnedModels: () => [...activeAllowList()],
+    activeDefaultModel,
     client: () => connect(),
     execJson,
     authStatus,

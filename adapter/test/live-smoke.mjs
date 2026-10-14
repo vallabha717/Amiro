@@ -43,8 +43,16 @@ try {
   const models = await (await request('/api/chat/models')).json();
   const entries = models.flatMap((p) => p.models.map((m) => `${p.provider}:${m.name}`));
   assert(entries.length > 0);
-  assert(entries.every((m) => ['opencode-go:deepseek-v4.1-flash', 'antigravity:gemini-3.8-flash-tiered'].includes(m)));
-  check('permitted provider/model catalog');
+  // Every entry must belong to the provider group it is listed under, and the
+  // catalog must cover each provider Jcode reports as connected (the selector
+  // now offers all connected providers' models, not a fixed pair).
+  for (const group of models) {
+    assert(group.models.length > 0, `provider ${group.provider} listed with no models`);
+  }
+  const authStatus = await (await request('/api/auth/status', { auth: false })).json();
+  assert.equal(authStatus.deploymentSafe, true);
+  assert(entries.every((m) => m.includes(':') && !m.startsWith(':')), 'models must be provider-qualified');
+  check(`permitted provider/model catalog (${models.length} providers, ${entries.length} models)`);
   const statsResponse = await request(`/api/admin/users/${account.user.id}/stats?days=30`);
   assert.equal(statsResponse.status, 200);
   const { stats } = await statsResponse.json();

@@ -1,11 +1,17 @@
 // adapter/src/models.mjs -- /api/chat/models + all /api/ai/* routes.
 //
-// Model data comes from `jcode auth status --json` (shelled out, cached 60s)
-// plus `client.listModels(sessionId)` on a throwaway session. The model ids
-// returned are what `setModel` expects, so chat.mjs passes the frontend's
-// `chatModel.model` straight through.
+// Dynamic model catalog backed by `jcode auth status --json` (connected providers)
+// and `jcode model list -p <id> --json` (models per provider), cached for ~60s.
+// When AMIRO_PINNED_MODELS is explicitly set, it acts as a hard restriction.
+// When unset, all connected provider models are available.
 
+import { execFile, execFileSync } from 'node:child_process';
+import { promisify } from 'node:util';
+import os from 'node:os';
+import path from 'node:path';
 import { toolsOption, applyToolProfile } from './chat.mjs';
+
+const execFileAsync = promisify(execFile);
 
 function slug(value) {
   return String(value || '')
@@ -14,96 +20,271 @@ function slug(value) {
     .replace(/^-+|-+$/g, '') || 'default';
 }
 
-export function register(app, ctx) {
-  let catalogCache = { at: 0, data: null };
+function normalizeModelRef(provider, model) {
+  if (!model && provider) {
+    return String(provider).trim();
+  }
+  const m = String(model || '').trim();
+  const p = String(provider || '').trim();
+  if (!p) return m;
+  if (m.startsWith(`${p}:`)) return m;
+  return `${p}:${m}`;
+}
 
-  // Provider changes (storing/clearing API keys, listing models against a
-  // supplied key) are admin-only. Read-only listing stays available to any
-  // authenticated user.
+async function mapConcurrent(items, limit, fn) {
+  const results = new Array(items.length);
+  let index = 0;
+  async function worker() {
+    while (index < items.length) {
+      const i = index++;
+      results[i] = await fn(items[i], i);
+    }
+  }
+  const workers = Array.from({ length: Math.min(limit, items.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
+async function runJcodeJson(ctx, args) {
+  const bin = ctx?.config?.jcodeBin || process.env.JCODE_BIN || 'jcode';
+  const env = { ...process.env };
+  if (ctx?.config?.jcodeHome) env.JCODE_HOME = ctx.config.jcodeHome;
+  const { stdout } = await execFileAsync(bin, args, {
+    env,
+    timeout: 15000,
+    maxBuffer: 8 * 1024 * 1024,
+  });
+  const text = String(stdout).trim();
+  if (!text) return {};
+  return JSON.parse(text);
+}
+
+function runJcodeJsonSync(ctx, args) {
+  const bin = ctx?.config?.jcodeBin || process.env.JCODE_BIN || 'jcode';
+  const env = { ...process.env };
+  if (ctx?.config?.jcodeHome) env.JCODE_HOME = ctx.config.jcodeHome;
+  const stdout = execFileSync(bin, args, {
+    env,
+    timeout: 15000,
+    maxBuffer: 8 * 1024 * 1024,
+    encoding: 'utf8',
+  });
+  const text = String(stdout).trim();
+  if (!text) return {};
+  return JSON.parse(text);
+}
+
+let catalogCache = {
+  at: 0,
+  data: null,
+  promise: null,
+};
+
+export function invalidateCatalog() {
+  catalogCache = { at: 0, data: null, promise: null };
+}
+
+export async function buildCatalog(ctx, { force = false } = {}) {
+  const now = Date.now();
+  if (!force && catalogCache.data && now - catalogCache.at < 60000) {
+    return catalogCache.data;
+  }
+  if (!force && catalogCache.promise) {
+    return catalogCache.promise;
+  }
+
+  const p = (async () => {
+    let auth = {};
+    try {
+      auth = await runJcodeJson(ctx, ['auth', 'status', '--json']);
+    } catch (err) {
+      ctx?.log?.('warn', 'jcode auth status failed', { error: String(err && err.message) });
+      auth = { providers: [] };
+    }
+
+    const available = Array.isArray(auth.providers)
+      ? auth.providers.filter((p) => p && p.status === 'available')
+      : [];
+
+    const providerResults = await mapConcurrent(available, 4, async (p) => {
+      try {
+        const res = await runJcodeJson(ctx, ['model', 'list', '-p', p.id, '--json']);
+        return {
+          id: p.id,
+          name: p.display_name || res.provider || p.id,
+          models: Array.isArray(res.models) ? res.models : [],
+          selectedModel: res.selected_model || '',
+        };
+      } catch (err) {
+        ctx?.log?.('warn', `Failed to list models for provider ${p.id}`, { error: String(err && err.message) });
+        return null;
+      }
+    });
+
+    const providers = providerResults.filter(Boolean);
+    const data = { providers, rawStatus: auth };
+    catalogCache = { at: Date.now(), data, promise: null };
+
+    const allRefs = providers.flatMap((p) => p.models.map((m) => `${p.id}:${m}`));
+    if (typeof ctx?.jcode?.setDynamicModels === 'function') {
+      ctx.jcode.setDynamicModels(allRefs);
+    }
+
+    return data;
+  })();
+
+  catalogCache.promise = p;
+  try {
+    return await p;
+  } finally {
+    if (catalogCache.promise === p) {
+      catalogCache.promise = null;
+    }
+  }
+}
+
+function syncBuildCatalog(ctx) {
+  if (catalogCache.data && Date.now() - catalogCache.at < 60000) {
+    return catalogCache.data;
+  }
+  let auth = {};
+  try {
+    auth = runJcodeJsonSync(ctx, ['auth', 'status', '--json']);
+  } catch (err) {
+    ctx?.log?.('warn', 'sync jcode auth status failed', { error: String(err && err.message) });
+    auth = { providers: [] };
+  }
+
+  const available = Array.isArray(auth.providers)
+    ? auth.providers.filter((p) => p && p.status === 'available')
+    : [];
+
+  const providers = [];
+  for (const p of available) {
+    try {
+      const res = runJcodeJsonSync(ctx, ['model', 'list', '-p', p.id, '--json']);
+      providers.push({
+        id: p.id,
+        name: p.display_name || res.provider || p.id,
+        models: Array.isArray(res.models) ? res.models : [],
+        selectedModel: res.selected_model || '',
+      });
+    } catch (err) {
+      ctx?.log?.('warn', `sync failed to list models for provider ${p.id}`, { error: String(err && err.message) });
+    }
+  }
+
+  const data = { providers, rawStatus: auth };
+  catalogCache = { at: Date.now(), data, promise: null };
+
+  const allRefs = providers.flatMap((p) => p.models.map((m) => `${p.id}:${m}`));
+  if (typeof ctx?.jcode?.setDynamicModels === 'function') {
+    ctx.jcode.setDynamicModels(allRefs);
+  }
+
+  return data;
+}
+
+export function allowedModelRefs(ctx) {
+  const pinnedRaw = (process.env.AMIRO_PINNED_MODELS || '').trim();
+  if (pinnedRaw) {
+    const list = pinnedRaw
+      .split(',')
+      .map((s) => s.trim().replace(/^openai-compatible:/, ''))
+      .filter(Boolean);
+    return new Set(list);
+  }
+
+  let data = catalogCache.data;
+  if (!data) {
+    try {
+      data = syncBuildCatalog(ctx);
+    } catch {
+      data = { providers: [] };
+    }
+  }
+
+  const set = new Set();
+  for (const p of data.providers || []) {
+    for (const m of p.models || []) {
+      set.add(`${p.id}:${m}`);
+    }
+  }
+  return set;
+}
+
+export function isModelAllowed(ctx, provider, model) {
+  const allowed = allowedModelRefs(ctx);
+  const ref = normalizeModelRef(provider, model);
+  if (allowed.has(ref)) return true;
+
+  if (ref.includes(':')) {
+    const colonIdx = ref.indexOf(':');
+    const p = ref.slice(0, colonIdx);
+    const m = ref.slice(colonIdx + 1);
+    if (allowed.has(`${p}:${m}`)) return true;
+  }
+
+  if (ref.startsWith('openai-compatible:')) {
+    const bare = ref.replace(/^openai-compatible:/, '');
+    if (allowed.has(bare)) return true;
+  } else {
+    if (allowed.has(`openai-compatible:${ref}`)) return true;
+  }
+
+  return false;
+}
+
+export async function getDynamicModelList(ctx) {
+  const data = await buildCatalog(ctx);
+  const models = [];
+  for (const p of data.providers || []) {
+    for (const m of p.models || []) {
+      models.push(`${p.id}:${m}`);
+    }
+  }
+  const firstWithSelected = (data.providers || []).find(
+    (p) => p.selectedModel && p.models.includes(p.selectedModel),
+  );
+  const defaultModel = firstWithSelected
+    ? `${firstWithSelected.id}:${firstWithSelected.selectedModel}`
+    : models[0] || '';
+  return Object.assign([...models], { models, defaultModel });
+}
+
+export function dynamicModelList(ctx) {
+  let data = catalogCache.data;
+  if (!data) {
+    try {
+      data = syncBuildCatalog(ctx);
+    } catch {
+      data = { providers: [] };
+    }
+  }
+  const models = [];
+  for (const p of data.providers || []) {
+    for (const m of p.models || []) {
+      models.push(`${p.id}:${m}`);
+    }
+  }
+  const firstWithSelected = (data.providers || []).find(
+    (p) => p.selectedModel && p.models.includes(p.selectedModel),
+  );
+  const defaultModel = firstWithSelected
+    ? `${firstWithSelected.id}:${firstWithSelected.selectedModel}`
+    : models[0] || '';
+  return Object.assign([...models], { models, defaultModel });
+}
+
+export function register(app, ctx) {
+  buildCatalog(ctx).catch((err) => {
+    ctx?.log?.('warn', 'warm catalog failed', { error: String(err && err.message) });
+  });
+
   function requireAdmin(req, res) {
     if (ctx.auth.isAdmin(req)) return true;
     ctx.error(res, 403, 'admin required');
     return false;
-  }
-
-  // The route catalog (getRuntimeInfo.routes) is the only source that knows
-  // which provider serves which model on this bridge -- listModels returns bare
-  // names that the daemon routes to the default (wrong) endpoint.
-  async function listRoutes() {
-    return ctx.jcode.withIsolated(async (client) => {
-      const session = await ctx.jcode.createSession(client, {
-        workingDir: ctx.config.workspaceDir,
-        tools: { enabled: [] },
-      });
-      try {
-        const info = await client.getRuntimeInfo(session.session_id);
-        return Array.isArray(info.routes) ? info.routes : [];
-      } finally {
-        try {
-          await client.archiveSession(session.session_id);
-        } catch {
-          /* ignore */
-        }
-      }
-    });
-  }
-
-  function allowedModels() {
-    return ctx.jcode.pinnedModels();
-  }
-
-  // Routes filtered to the pinned allow-list (when one is configured) and to
-  // currently-available providers.
-  function usableRoutes(routes) {
-    const allowed = allowedModels();
-    return (routes || []).filter((r) => {
-      if (!r || !r.model || r.available === false) return false;
-      const pinned = ctx.jcode.resolveModel(slug(r.provider), r.model);
-      return allowed.length === 0 || allowed.includes(pinned);
-    });
-  }
-
-  async function buildCatalog() {
-    const now = Date.now();
-    if (catalogCache.data && now - catalogCache.at < 60000) return catalogCache.data;
-    const status = await ctx.jcode.authStatus();
-    let routes = [];
-    try {
-      routes = await listRoutes();
-    } catch (err) {
-      ctx.log('warn', 'listRoutes failed', { error: String(err && err.message) });
-    }
-    const authProviders = Array.isArray(status.providers) ? status.providers : [];
-    const data = { status, authProviders, routes: usableRoutes(routes) };
-    catalogCache = { at: now, data };
-    return data;
-  }
-
-  function invalidateCatalog() {
-    catalogCache = { at: 0, data: null };
-  }
-
-  function providerIds({ routes, authProviders }) {
-    const ids = new Set();
-    for (const r of routes) ids.add(slug(r.provider));
-    for (const p of authProviders) ids.add(slug(p.provider_name));
-    return [...ids];
-  }
-
-  function providerDisplayName(catalog, id) {
-    const r = catalog.routes.find((x) => slug(x.provider) === id);
-    return r ? r.provider : id;
-  }
-
-  function modelsForProvider(routes, id) {
-    const seen = new Set();
-    const out = [];
-    for (const r of routes) {
-      if (slug(r.provider) !== id || seen.has(r.model)) continue;
-      seen.add(r.model);
-      out.push({ name: r.model });
-    }
-    return out;
   }
 
   async function storedProviders() {
@@ -116,37 +297,79 @@ export function register(app, ctx) {
   app.get('/api/chat/models', async (req, res) => {
     let catalog;
     try {
-      catalog = await buildCatalog();
+      catalog = await buildCatalog(ctx);
     } catch (err) {
-      ctx.log('warn', 'buildCatalog failed', { error: String(err && err.message) });
-      catalog = { routes: [], authProviders: [] };
+      ctx?.log?.('warn', 'buildCatalog failed', { error: String(err && err.message) });
+      catalog = { providers: [] };
     }
-    const hasKey = catalog.authProviders.length > 0 || catalog.routes.length > 0;
-    const result = providerIds(catalog).map((id) => ({
-      provider: id,
-      providerName: providerDisplayName(catalog, id),
-      providerType: 'jcode',
-      hasAPIKey: hasKey,
-      models: modelsForProvider(catalog.routes, id),
-    }));
+
+    const pinnedRaw = (process.env.AMIRO_PINNED_MODELS || '').trim();
+    const isPinned = Boolean(pinnedRaw);
+    const pinnedSet = isPinned ? allowedModelRefs(ctx) : null;
+
+    const result = [];
+    for (const p of catalog.providers || []) {
+      let providerModels = p.models || [];
+      if (isPinned && pinnedSet) {
+        providerModels = providerModels.filter((m) => {
+          const ref = `${p.id}:${m}`;
+          return (
+            pinnedSet.has(ref) ||
+            pinnedSet.has(ref.replace(/^openai-compatible:/, '')) ||
+            pinnedSet.has(m)
+          );
+        });
+      }
+      if (isPinned && providerModels.length === 0) {
+        continue;
+      }
+      result.push({
+        provider: p.id,
+        providerName: p.name,
+        providerType: p.id,
+        hasAPIKey: true,
+        models: providerModels.map((name) => ({ name })),
+      });
+    }
+
+    // A configured default model must be the one the UI lands on when the user
+    // has no stored choice, so put its provider group first and its model first
+    // inside that group. Without this, a fresh chat would start on whichever
+    // provider happens to sort first (for example one already rate-limited).
+    const preferred = (process.env.AMIRO_DEFAULT_MODEL || '').trim().replace(/^openai-compatible:/, '');
+    if (preferred) {
+      const [pProvider, ...modelParts] = preferred.split(':');
+      const pModel = modelParts.join(':');
+      const group = result.find((g) => g.provider === pProvider);
+      if (group && (modelParts.length === 0 || group.models.some((m) => m.name === pModel))) {
+        if (pModel) group.models.sort((a, b) => (a.name === pModel ? -1 : b.name === pModel ? 1 : 0));
+        result.sort((a, b) => (a.provider === pProvider ? -1 : b.provider === pProvider ? 1 : 0));
+      }
+    }
+
     ctx.json(res, 200, result);
   });
 
   // --- AI providers ---------------------------------------------------------
 
   app.get('/api/ai/providers', async (req, res) => {
-    const catalog = await buildCatalog().catch(() => ({ routes: [], authProviders: [] }));
+    let catalog;
+    try {
+      catalog = await buildCatalog(ctx);
+    } catch {
+      catalog = { providers: [] };
+    }
     const stored = await storedProviders();
     const seen = new Set();
     const out = [];
-    for (const id of providerIds(catalog)) {
-      seen.add(id);
+    for (const p of catalog.providers || []) {
+      seen.add(p.id);
       out.push({
-        id,
-        name: providerDisplayName(catalog, id),
-        provider: id,
+        id: p.id,
+        name: p.name,
+        provider: p.id,
         configured: true,
-        models: modelsForProvider(catalog.routes, id).map((m) => m.name),
+        models: p.models,
       });
     }
     for (const [id, p] of Object.entries(stored)) {
@@ -233,13 +456,10 @@ export function register(app, ctx) {
     }
     let models = [];
     try {
-      const routes = usableRoutes(await listRoutes());
-      const seen = new Set();
-      for (const r of routes) {
-        if (id && slug(r.provider) !== id) continue;
-        if (seen.has(r.model)) continue;
-        seen.add(r.model);
-        models.push(r.model);
+      const catalog = await buildCatalog(ctx);
+      const match = (catalog.providers || []).find((p) => p.id === id);
+      if (match) {
+        models = match.models;
       }
     } catch (err) {
       ctx.log('warn', 'provider model fetch failed', { error: String(err && err.message) });

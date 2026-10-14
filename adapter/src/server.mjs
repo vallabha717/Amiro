@@ -350,6 +350,39 @@ async function main() {
   mod.registerRoutes(app, ctx);
   const workerRoutesLoaded = true;
 
+  // When no static pin is configured, the models of the currently connected
+  // Jcode providers form the allow-list. Compute it once before serving so the
+  // first request already sees a populated catalog, then refresh in the
+  // background (a provider login adds/removes models without a restart).
+  const modelsModule = await import('./models.mjs');
+  async function refreshDynamicModels() {
+    if ((process.env.AMIRO_PINNED_MODELS || '').trim()) return;
+    try {
+      const list = await modelsModule.getDynamicModelList(ctx);
+      ctx.jcode.setDynamicModels(list);
+      log('info', 'dynamic model catalog loaded', {
+        models: list.length,
+        catalogDefault: list.defaultModel || null,
+        effectiveDefault: ctx.jcode.activeDefaultModel(),
+      });
+    } catch (err) {
+      log('warn', 'dynamic model catalog unavailable', { error: String(err && err.message) });
+    }
+  }
+  await refreshDynamicModels();
+  const modelRefresh = setInterval(() => {
+    refreshDynamicModels().catch(() => {});
+  }, 60 * 1000);
+  modelRefresh.unref?.();
+
+  // Connecting or removing a provider must change what the model selector can
+  // offer on the very next request, so rebuild the catalog as soon as any route
+  // reports an auth change (every provider route funnels through this SDK call).
+  ctx.jcode.setAuthChangedHook(async () => {
+    modelsModule.invalidateCatalog();
+    await refreshDynamicModels();
+  });
+
   const server = http.createServer((req, res) => {
     const started = Date.now();
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);

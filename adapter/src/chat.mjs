@@ -22,6 +22,7 @@ import {
   historyToMessages,
   ownsEntry,
 } from './threads.mjs';
+import { assertUsableProjectDirectory } from './fsbrowse.mjs';
 
 const TURN_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -283,6 +284,19 @@ export function register(app, ctx) {
     const threadId = body.id || body.threadId;
     if (!threadId) return ctx.error(res, 400, 'id is required');
 
+    // Resolve requested working directory (frontend may send workingDir or projectDirectory).
+    // When present, validate explicitly; on failure return error (never silently fall back).
+    const rawWorkingDir = body.workingDir || body.projectDirectory || body.workspaceRoot || null;
+    let validatedWorkingDir = null;
+    if (rawWorkingDir) {
+      try {
+        const v = await assertUsableProjectDirectory(String(rawWorkingDir));
+        validatedWorkingDir = v.resolvedPath;
+      } catch (err) {
+        return ctx.error(res, err.status || 400, err.message || 'invalid working directory');
+      }
+    }
+
     const hasTools = toolsEnabled();
     const permissionMode = body.permissionMode;
     // With no tools (the public preview default) there is nothing to approve, so
@@ -346,8 +360,9 @@ export function register(app, ctx) {
         }
         let created = false;
         if (!entry || !entry.sessionId) {
+          const wd = validatedWorkingDir || ctx.config.workspaceDir;
           const session = await ctx.jcode.createSession(client, {
-            workingDir: ctx.config.workspaceDir,
+            workingDir: wd,
             tools: toolsOption(),
           });
           entry = await createThreadForSession(ctx, {
@@ -355,8 +370,58 @@ export function register(app, ctx) {
             sessionId: session.session_id,
             userId: user.id,
             title: deriveTitle(userText),
+            ...(validatedWorkingDir ? { workingDir: validatedWorkingDir } : {}),
           });
           created = true;
+        }
+        // If the validated directory differs from the stored one and the thread
+        // already has a session, the existing session was created with the old
+        // workingDir and cannot be moved. Start a NEW jcode session pinned to
+        // the new directory for the same thread (keep threadId/ownership, replace
+        // sessionId). Archive the previous session rather than deleting its history
+        // so it stays reachable but is no longer the active root.
+        if (validatedWorkingDir && entry && entry.sessionId && entry.workingDir !== validatedWorkingDir) {
+          // For threads that had no workingDir stored (legacy, defaults to
+          // ctx.config.workspaceDir), entry.workingDir will be undefined; we
+          // still need to rotate if the requested dir differs from the effective
+          // previous one. Normalize previous effective dir for that case.
+          const prevEffective = entry.workingDir || ctx.config.workspaceDir;
+          if (prevEffective !== validatedWorkingDir) {
+            const prevSessionId = entry.sessionId;
+            const newSession = await ctx.jcode.createSession(client, {
+              workingDir: validatedWorkingDir,
+              tools: toolsOption(),
+            });
+            // Persist new mapping before archiving old, so we never lose the thread
+            // if archiving fails. Keep previousSessionId for traceability.
+            await upsertEntry(ctx.store, home, threadId, {
+              sessionId: newSession.session_id,
+              workingDir: validatedWorkingDir,
+              previousSessionId: prevSessionId,
+            });
+            entry = { ...entry, sessionId: newSession.session_id, workingDir: validatedWorkingDir, previousSessionId: prevSessionId };
+            created = true;
+            // Best-effort: archive previous session so its history is not lost but
+            // it is no longer attached to the thread. Never fail the turn on this.
+            try {
+              await client.detachSession(prevSessionId);
+            } catch {}
+            try {
+              await client.archiveSession(prevSessionId);
+            } catch (err) {
+              ctx.log('warn', 'archive previous session after workingDir change failed', { error: String(err && err.message) });
+            }
+          } else {
+            // Validated equals effective previous -- just ensure workingDir persisted
+            if (entry.workingDir !== validatedWorkingDir) {
+              await upsertEntry(ctx.store, home, threadId, { workingDir: validatedWorkingDir });
+              entry = { ...entry, workingDir: validatedWorkingDir };
+            }
+          }
+        } else if (validatedWorkingDir && entry && entry.workingDir !== validatedWorkingDir) {
+          // Edge: entry has no sessionId (should have been handled above) but still persist
+          await upsertEntry(ctx.store, home, threadId, { workingDir: validatedWorkingDir });
+          entry = { ...entry, workingDir: validatedWorkingDir };
         }
         const sessionId = entry.sessionId;
 

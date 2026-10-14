@@ -36,8 +36,19 @@ try {
   await page.getByTestId('connect-provider-button').click();
   await page.getByTestId('login-panel').waitFor();
   console.log('PASS visible provider login UI');
+  // Every provider Jcode supports must be listed with its real mechanism.
+  const providerCountText = await page.locator('[data-testid="login-panel"]').innerText();
+  const providerCount = Number((/(\d+)\s+providers/i.exec(providerCountText) || [])[1] || 0);
+  assert(providerCount > 30, `provider catalog should list every Jcode provider, saw ${providerCount}`);
   await page.getByTestId('login-provider-select').click();
+  const optionCount = await page.getByRole('option').count();
+  assert(optionCount > 30, `provider select should offer every provider, saw ${optionCount} options`);
+  const optionText = await page.locator('[role="listbox"]').innerText();
+  assert(/\bOAuth\b/.test(optionText), 'the provider list must label its OAuth providers');
+  assert(/API key/i.test(optionText), 'the provider list must label its API-key providers');
+  assert(/Device code/i.test(optionText) || /Local\b/.test(optionText) || /CLI/.test(optionText), 'other real mechanisms must be labelled too');
   await page.getByRole('option').filter({ hasText: 'Antigravity' }).click();
+  console.log(`PASS provider catalog lists ${providerCount} providers with OAuth and API-key mechanisms`);
   await page.getByTestId('login-oauth-start').click();
   await page.getByTestId('login-oauth-cancel').waitFor({ timeout: 20000 });
   console.log('PASS real provider OAuth initiation UI (no credential exchange)');
@@ -52,6 +63,36 @@ try {
   assert.equal(chatRequests, 0, '/login must not be sent to the model');
   await page.getByTestId('login-panel-close').click();
   console.log('PASS chat /login interception without a model request');
+  // Model selector must offer models from every connected provider.
+  await page.getByTestId('model-selector-button').click();
+  await page.getByTestId('model-selector-popover').waitFor({ timeout: 20000 });
+  const providerGroups = await page.locator('[data-testid^="model-provider-"]').count();
+  const optionNodes = await page.locator('[data-testid^="model-option-"]').count();
+  assert(providerGroups >= 3, `model selector should group models for every connected provider, saw ${providerGroups}`);
+  assert(optionNodes > 50, `model selector should list the connected providers' models, saw ${optionNodes}`);
+  await page.keyboard.press('Escape');
+  console.log(`PASS model selector offers ${optionNodes} models across ${providerGroups} connected providers`);
+  // Folder picker must browse the server filesystem from the web UI.
+  const projectDir = '/root/Projects/Personal/Amiro';
+  await page.getByTestId('project-selector-trigger').click();
+  await page.getByTestId('folder-browser-trigger').click();
+  await page.getByTestId('folder-browser-dialog').waitFor({ timeout: 20000 });
+  await page.getByTestId('folder-entry-Projects').click();
+  await page.getByTestId('folder-browser-current-path').filter({ hasText: '/root/Projects' }).waitFor({ timeout: 15000 });
+  await page.getByTestId('folder-entry-Personal').click();
+  await page.getByTestId('folder-entry-Amiro').click();
+  await page.getByTestId('folder-browser-current-path').filter({ hasText: projectDir }).waitFor({ timeout: 15000 });
+  await page.getByTestId('folder-browser-use-this-folder').click();
+  await page.getByTestId('folder-browser-dialog').waitFor({ state: 'hidden', timeout: 15000 });
+  console.log(`PASS web folder picker browsed the server filesystem to ${projectDir}`);
+  // Choosing a folder may raise the workspace-trust prompt; accept it so the
+  // selection is usable, then make sure no dialog overlay is left blocking chat.
+  const trustPrompt = page.getByTestId('workspace-trust-prompt');
+  if (await trustPrompt.isVisible().catch(() => false)) {
+    await page.getByTestId('workspace-trust-grant').click();
+    await trustPrompt.waitFor({ state: 'hidden', timeout: 15000 });
+    console.log('PASS workspace trust granted for the selected folder');
+  }
   await editor.fill('Reply with exactly AMIRO_BROWSER_OK. Do not use tools.');
   await page.getByTestId('chat-send-button').click();
   await page.getByText('AMIRO_BROWSER_OK', { exact: true }).last().waitFor({ timeout: 90000 });
@@ -59,6 +100,17 @@ try {
   createdThread = new URL(page.url()).searchParams.get('thread');
   assert(createdThread, 'Chat must get a persisted thread URL');
   console.log('PASS real model response rendered by browser UI');
+  // The selected folder must be the directory the session actually uses.
+  const threadInfo = await page.evaluate(async (threadId) => {
+    const token = localStorage.getItem('amiro.session-token');
+    const res = await fetch(`/api/thread/${encodeURIComponent(threadId)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return { status: res.status, body: await res.json() };
+  }, createdThread);
+  assert.equal(threadInfo.status, 200);
+  assert.equal(threadInfo.body.workingDir, projectDir, `thread must run in the selected folder, got ${threadInfo.body.workingDir}`);
+  console.log(`PASS thread runs in the selected server folder ${threadInfo.body.workingDir}`);
   await page.reload({ waitUntil: 'networkidle' });
   await page.getByText('AMIRO_BROWSER_OK', { exact: true }).last().waitFor({ timeout: 20000 });
   console.log('PASS persisted chat visible after browser reload');
@@ -76,7 +128,7 @@ try {
   console.log('PASS real usage UI and scope disclaimer');
   assert.deepEqual(errors, [], 'Browser runtime errors');
   assert.deepEqual(apiFailures, [], 'Server-side API failures during browser acceptance');
-  console.log(JSON.stringify({ browser: 'chrome', checks: 9, screenshot: `${artifactDir}/amiro-usage.png` }));
+  console.log(JSON.stringify({ browser: 'chrome', checks: 13, screenshot: `${artifactDir}/amiro-usage.png` }));
 } finally {
   // Revoke only this test browser's own application session.
   await page.evaluate(async (threadId) => {

@@ -26,6 +26,7 @@ export const useChatModels = (options?: SWRConfiguration) => {
     revalidateOnFocus: false,
     fallbackData: [],
     onSuccess: (data) => {
+      if (!Array.isArray(data)) return;
       const state = appStore.getState();
       if (state.chatModel) {
         // A model that was selected before its provider was edited or
@@ -33,15 +34,15 @@ export const useChatModels = (options?: SWRConfiguration) => {
         const stillExists = data.some(
           (p) =>
             p.provider === state.chatModel?.provider &&
-            p.models.some((m) => m.name === state.chatModel?.model),
+            p.models?.some((m) => m.name === state.chatModel?.model),
         );
         if (stillExists) return;
       }
 
-      // No providers configured yet -- leave the selection empty rather than
+      // No providers configured yet: leave the selection empty rather than
       // reading data[0] off an empty list, which is what the admin
       // providers page exists to fix.
-      const firstProvider = data.find((p) => p.models.length > 0);
+      const firstProvider = data.find((p) => p.models && p.models.length > 0);
       if (!firstProvider) {
         if (state.chatModel) appStore.setState({ chatModel: undefined });
         return;

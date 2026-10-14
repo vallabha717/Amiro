@@ -103,6 +103,8 @@ export const chatApiSchemaRequestBodySchema = z.object({
     .enum(["plan", "manual", "interactive", "edit", "auto"])
     .optional(),
   workspaceRoot: z.string().optional(),
+  workingDir: z.string().optional(),
+  projectDirectory: z.string().optional(),
   projectDir: z.string().optional(),
   mentions: z.array(ChatMentionSchema).optional(),
   imageTool: z.object({ model: z.string().optional() }).optional(),

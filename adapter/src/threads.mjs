@@ -127,6 +127,7 @@ export function register(app, ctx) {
         createdAt: t.createdAt,
         lastMessageAt: t.lastMessageAt || t.createdAt,
         archived: Boolean(t.archived),
+        workingDir: t.workingDir || ctx.config.workspaceDir,
       })),
     );
   });
@@ -144,6 +145,7 @@ export function register(app, ctx) {
       createdAt: entry.createdAt,
       lastMessageAt: entry.lastMessageAt || entry.createdAt,
       archived: Boolean(entry.archived),
+      workingDir: entry.workingDir || ctx.config.workspaceDir,
       messages: historyToMessages(params.id, entry.sessionId, history),
     });
   });
@@ -247,7 +249,7 @@ export function register(app, ctx) {
 
 // createThreadForSession -- used by chat.mjs. Registers the mapping after a
 // jcode session is created for a fresh Amiro thread id.
-export async function createThreadForSession(ctx, { threadId, sessionId, userId, title }) {
+export async function createThreadForSession(ctx, { threadId, sessionId, userId, title, workingDir }) {
   const now = ctx.nowIso();
   return upsertEntry(ctx.store, ctx.config.home, threadId, {
     sessionId,
@@ -256,6 +258,7 @@ export async function createThreadForSession(ctx, { threadId, sessionId, userId,
     createdAt: now,
     lastMessageAt: now,
     archived: false,
+    ...(workingDir ? { workingDir } : {}),
   });
 }
 

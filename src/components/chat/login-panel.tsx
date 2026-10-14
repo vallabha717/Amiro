@@ -8,18 +8,19 @@
 // component state only. Secrets are never written to the transcript, history,
 // a toast body, or the console.
 //
-// Provider listing: the adapter's `GET /api/providers/login-status` (which
-// mirrors `jcode auth status --json`), falling back to the existing
-// `GET /api/ai/providers` when that route is absent.
+// Provider listing: the adapter's `GET /api/providers/catalog` (merged
+// `jcode provider list --json` + `jcode auth status --json`) with a fallback
+// to the older `GET /api/providers/login-status` + `GET /api/ai/providers`.
 //
-// OAuth providers get an interactive flow instead of only terminal
-// instructions:
+// OAuth / device-code providers keep the interactive flow:
 //   POST /api/providers/:id/oauth/start     -> authorization URL and/or device code
 //   GET  /api/providers/:id/oauth/status    -> pending | success | error | expired
 //   POST /api/providers/:id/oauth/callback  -> { code | callbackUrl } to finish
-// The response field names are read defensively (see the `parse*` helpers)
-// because the adapter contract landed separately; a missing route degrades to
-// the terminal `jcode login <provider>` instructions.
+// API-key providers use:
+//   POST /api/providers/:id/api-key         -> { apiKey, apiBase? }
+//   DELETE /api/providers/:id/credentials   -> remove stored key
+// The response field names are read defensively because the adapter contract
+// may evolve; a missing route degrades to terminal instructions.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
@@ -34,8 +35,10 @@ import {
   EyeOff,
   KeyRound,
   Loader,
+  Search,
   ShieldCheck,
   Smartphone,
+  Trash2,
   X,
 } from "lucide-react";
 import { Alert, AlertDescription } from "ui/alert";
@@ -53,29 +56,46 @@ import { Label } from "ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "ui/select";
 import { ApiError, apiJson, fetcher } from "@/lib/backend/client";
 import {
   PROVIDERS_KEY,
-  saveProvider,
-  selectProviders,
   type ProviderConfig,
 } from "@/lib/backend/provider-api";
 
 /**
- * One entry in the login-status listing. `jcode auth status --json` nests
- * these under a top-level `providers` key; the adapter may return the array
- * directly, so both shapes are accepted in `normalizeLoginStatus`.
+ * One entry in the catalog listing. Mirrors the shape produced by
+ * adapter/src/providers.mjs providerCatalog().
  */
-type LoginProvider = {
+type CatalogProvider = {
+  id: string;
+  displayName: string;
+  display_name?: string;
+  name?: string;
+  authKind?: string | null;
+  auth_kind?: string | null;
+  mechanism: string; // oauth | api-key | device-code | cli | local-endpoint | unknown
+  connected: boolean;
+  status?: string;
+  method?: string | null;
+  credentialSource?: string | null;
+  health?: string | null;
+  recommended?: boolean;
+  detail?: string | null;
+  aliases?: string[];
+  canStartOauth: boolean;
+  canAcceptApiKey: boolean;
+};
+
+type LegacyLoginProvider = {
   id: string;
   display_name?: string;
   name?: string;
-  /** "OAuth" | "API key" (jcode) -- anything containing "oauth" runs the
-   * interactive flow below, everything else takes a pasted key. */
   auth_kind?: string;
   status?: string;
   method?: string;
@@ -102,47 +122,139 @@ type OAuthPhase =
   | "success"
   | "error";
 
+const CATALOG_KEY = "/api/providers/catalog";
 const LOGIN_STATUS_KEY = "/api/providers/login-status";
 const DEFAULT_POLL_MS = 2000;
 const DEFAULT_EXPIRES_SECONDS = 300;
 
-function isOAuthProvider(provider: LoginProvider): boolean {
-  return (provider.auth_kind ?? "").toLowerCase().includes("oauth");
+const MECHANISM_LABEL: Record<string, string> = {
+  oauth: "OAuth",
+  "device-code": "Device code",
+  "api-key": "API key",
+  cli: "CLI",
+  "local-endpoint": "Local",
+  unknown: "Other",
+};
+
+const MECHANISM_ORDER = [
+  "oauth",
+  "device-code",
+  "api-key",
+  "cli",
+  "local-endpoint",
+  "unknown",
+];
+
+function mechanismOf(p: CatalogProvider): string {
+  if (p.mechanism) return p.mechanism;
+  const ak = (p.authKind ?? p.auth_kind ?? "").toLowerCase();
+  if (ak.includes("oauth")) return "oauth";
+  if (ak.includes("device")) return "device-code";
+  if (ak.includes("local")) return "local-endpoint";
+  if (ak === "cli") return "cli";
+  if (ak.includes("api key")) return "api-key";
+  return "unknown";
 }
 
-function isConfigured(provider: LoginProvider): boolean {
-  const status = (provider.status ?? "").toLowerCase();
+function isOAuthLike(p: CatalogProvider): boolean {
+  const m = mechanismOf(p);
+  return m === "oauth" || m === "device-code";
+}
+
+function isApiKeyLike(p: CatalogProvider): boolean {
+  return mechanismOf(p) === "api-key";
+}
+
+function isConfigured(p: CatalogProvider): boolean {
+  if (typeof p.connected === "boolean") return p.connected;
+  const status = (p.status ?? "").toLowerCase();
   return status === "available" || status === "configured";
 }
 
-function providerLabel(provider: LoginProvider): string {
-  return provider.display_name || provider.name || provider.id;
+function providerLabel(p: CatalogProvider): string {
+  return p.displayName || p.display_name || p.name || p.id;
 }
 
-function normalizeLoginStatus(data: unknown): LoginProvider[] {
-  if (Array.isArray(data)) return data as LoginProvider[];
-  if (data && typeof data === "object") {
-    const providers = (data as { providers?: unknown }).providers;
-    if (Array.isArray(providers)) return providers as LoginProvider[];
-  }
-  return [];
-}
-
-function fromProviderConfig(provider: ProviderConfig): LoginProvider {
+function fromLegacy(provider: LegacyLoginProvider): CatalogProvider {
+  const authKind = provider.auth_kind ?? null;
+  const low = String(authKind ?? "").toLowerCase();
+  let mechanism = "unknown";
+  if (low.includes("oauth")) mechanism = "oauth";
+  else if (low.includes("device")) mechanism = "device-code";
+  else if (low.includes("local")) mechanism = "local-endpoint";
+  else if (low === "cli") mechanism = "cli";
+  else if (low.includes("api key")) mechanism = "api-key";
   return {
-    id: provider.provider || provider.id,
-    display_name: provider.name || provider.provider,
-    auth_kind: "API key",
-    status: provider.configured ? "available" : "not_configured",
+    id: provider.id,
+    displayName: provider.display_name || provider.name || provider.id,
+    authKind,
+    mechanism,
+    connected: String(provider.status ?? "").toLowerCase() === "available",
+    status: provider.status,
+    method: provider.method ?? null,
+    recommended: Boolean(provider.recommended),
+    canStartOauth: mechanism === "oauth" || mechanism === "device-code",
+    canAcceptApiKey: mechanism === "api-key",
   };
 }
 
-async function loadLoginProviders(): Promise<LoginProvider[]> {
+function fromProviderConfig(provider: ProviderConfig): CatalogProvider {
+  return {
+    id: provider.provider || provider.id,
+    displayName: provider.name || provider.provider,
+    authKind: "API key",
+    mechanism: "api-key",
+    connected: Boolean(provider.configured),
+    status: provider.configured ? "available" : "not_configured",
+    canStartOauth: false,
+    canAcceptApiKey: true,
+  };
+}
+
+function normalizeCatalog(data: unknown): CatalogProvider[] | null {
+  if (!data || typeof data !== "object") return null;
+  const obj = data as Record<string, unknown>;
+  const providers = obj.providers;
+  if (Array.isArray(providers) && providers.length) {
+    // Heuristic: catalog entries have mechanism + displayName
+    const hasMechanism = providers.some(
+      (p: unknown) => p && typeof p === "object" && "mechanism" in (p as Record<string, unknown>),
+    );
+    if (hasMechanism) return providers as CatalogProvider[];
+  }
+  return null;
+}
+
+function normalizeLoginStatus(data: unknown): CatalogProvider[] | null {
+  if (Array.isArray(data) && data.length) {
+    // Could be legacy array
+    return (data as LegacyLoginProvider[]).map(fromLegacy);
+  }
+  if (data && typeof data === "object") {
+    const providers = (data as { providers?: unknown }).providers;
+    if (Array.isArray(providers) && providers.length) {
+      const hasMechanism = (providers as unknown[]).some(
+        (p: unknown) => p && typeof p === "object" && "mechanism" in (p as Record<string, unknown>),
+      );
+      if (hasMechanism) return providers as CatalogProvider[];
+      return (providers as LegacyLoginProvider[]).map(fromLegacy);
+    }
+  }
+  return null;
+}
+
+async function loadCatalogProviders(): Promise<CatalogProvider[]> {
   try {
-    const list = normalizeLoginStatus(await fetcher(LOGIN_STATUS_KEY));
-    if (list.length) return list;
+    const catalog = normalizeCatalog(await fetcher(CATALOG_KEY));
+    if (catalog && catalog.length) return catalog;
   } catch {
-    // Route missing or backend down -- fall back to the provider list.
+    // catalog route missing or not yet deployed
+  }
+  try {
+    const legacy = normalizeLoginStatus(await fetcher(LOGIN_STATUS_KEY));
+    if (legacy && legacy.length) return legacy;
+  } catch {
+    // fallback next
   }
   try {
     const providers = await fetcher(PROVIDERS_KEY);
@@ -278,21 +390,15 @@ export function LoginPanel({ onClose }: { onClose: () => void }) {
     data: providers = [],
     isLoading,
     mutate: reload,
-  } = useSWR<LoginProvider[]>(`login-status:${LOGIN_STATUS_KEY}`, loadLoginProviders, {
+  } = useSWR<CatalogProvider[]>(`catalog:${CATALOG_KEY}`, loadCatalogProviders, {
     fallbackData: [],
     revalidateOnFocus: false,
   });
 
-  // Existing saved connections, so re-saving a provider updates it in place
-  // rather than creating a duplicate link.
-  const { data: savedProviders = [] } = useSWR<ProviderConfig[]>(
-    PROVIDERS_KEY,
-    selectProviders,
-    { fallbackData: [], revalidateOnFocus: false },
-  );
-
+  const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [apiBase, setApiBase] = useState("");
   const [reveal, setReveal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -311,25 +417,76 @@ export function LoginPanel({ onClose }: { onClose: () => void }) {
     void reload();
   }, [reload]);
 
+  const filteredProviders = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return providers;
+    return providers.filter((p) => {
+      const label = providerLabel(p).toLowerCase();
+      const id = p.id.toLowerCase();
+      const mech = mechanismOf(p).toLowerCase();
+      const ak = String(p.authKind ?? p.auth_kind ?? "").toLowerCase();
+      const detail = String(p.detail ?? "").toLowerCase();
+      const aliases = (p.aliases ?? []).join(" ").toLowerCase();
+      return (
+        label.includes(q) ||
+        id.includes(q) ||
+        mech.includes(q) ||
+        ak.includes(q) ||
+        detail.includes(q) ||
+        aliases.includes(q)
+      );
+    });
+  }, [providers, search]);
+
+  const grouped = useMemo(() => {
+    const groups = new Map<string, CatalogProvider[]>();
+    for (const p of filteredProviders) {
+      const m = mechanismOf(p);
+      if (!groups.has(m)) groups.set(m, []);
+      groups.get(m)!.push(p);
+    }
+    // Stable order by MECHANISM_ORDER, then alpha within group
+    const ordered: Array<[string, CatalogProvider[]]> = [];
+    for (const m of MECHANISM_ORDER) {
+      const list = groups.get(m);
+      if (list && list.length) {
+        list.sort((a, b) => providerLabel(a).localeCompare(providerLabel(b)));
+        ordered.push([m, list]);
+      }
+    }
+    // Any remaining mechanisms not in order
+    for (const [m, list] of groups) {
+      if (!MECHANISM_ORDER.includes(m)) {
+        list.sort((a, b) => providerLabel(a).localeCompare(providerLabel(b)));
+        ordered.push([m, list]);
+      }
+    }
+    return ordered;
+  }, [filteredProviders]);
+
   const defaultProvider = useMemo(() => {
-    const unconfiguredKey = providers.find(
-      (p) => !isOAuthProvider(p) && !isConfigured(p),
-    );
+    const all = providers;
+    const unconfiguredKey = all.find((p) => isApiKeyLike(p) && !isConfigured(p));
     return (
       unconfiguredKey ??
-      providers.find((p) => !isConfigured(p)) ??
-      providers[0]
+      all.find((p) => !isConfigured(p)) ??
+      all[0]
     );
   }, [providers]);
 
   const activeId = selectedId || defaultProvider?.id || "";
-  const selected = providers.find((p) => p.id === activeId);
-  const selectedIsOAuth = selected ? isOAuthProvider(selected) : false;
+  const selected = providers.find((p) => p.id === activeId) ?? null;
+  const selectedMechanism = selected ? mechanismOf(selected) : "unknown";
+  const selectedIsOAuth = selected ? isOAuthLike(selected) : false;
+  const selectedIsApiKey = selected ? isApiKeyLike(selected) : false;
+  const isOpenAICompatible = selected?.id === "openai-compatible";
 
   const refreshConnected = useCallback(async () => {
     await Promise.all([
       reload(),
       mutate(PROVIDERS_KEY),
+      mutate(CATALOG_KEY),
+      mutate(`catalog:${CATALOG_KEY}`),
       mutate("/api/chat/models"),
     ]);
   }, [reload, mutate]);
@@ -355,29 +512,46 @@ export function LoginPanel({ onClose }: { onClose: () => void }) {
       setSaveError("Enter an API key first.");
       return;
     }
+    if (isOpenAICompatible && !apiBase.trim()) {
+      setSaveError("Enter the base URL for OpenAI-compatible.");
+      return;
+    }
     setSaving(true);
     setSaveError(null);
     setSavedId(null);
     try {
-      const existing = savedProviders.find(
-        (p) => (p.provider || p.id) === selected.id,
-      );
-      await saveProvider({
-        id: existing?.id,
-        name: providerLabel(selected),
-        provider: selected.id,
-        apiKey: key,
-        baseUrl: existing?.baseUrl ?? "",
-        models: existing?.models ?? [],
+      const payload: Record<string, unknown> = { apiKey: key };
+      if (isOpenAICompatible) payload.apiBase = apiBase.trim();
+      await apiJson(`/api/providers/${encodeURIComponent(selected.id)}/api-key`, {
+        method: "POST",
+        body: JSON.stringify(payload),
       });
       // Drop the secret from component state the moment it is stored.
       setApiKey("");
+      setApiBase("");
       setReveal(false);
       setSavedId(selected.id);
       toast.success(`${providerLabel(selected)} connected`);
       await refreshConnected();
     } catch (error) {
       setSaveError(errorMessage(error, "Failed to save the API key."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRemoveCredentials = async () => {
+    if (!selected) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await apiJson(`/api/providers/${encodeURIComponent(selected.id)}/credentials`, {
+        method: "DELETE",
+      });
+      toast.success(`${providerLabel(selected)} credentials removed`);
+      await refreshConnected();
+    } catch (error) {
+      setSaveError(errorMessage(error, "Failed to remove credentials."));
     } finally {
       setSaving(false);
     }
@@ -521,6 +695,13 @@ export function LoginPanel({ onClose }: { onClose: () => void }) {
     }
   };
 
+  // Keep selectedId in sync when provider list first loads and no selection yet.
+  useEffect(() => {
+    if (!selectedId && defaultProvider) {
+      // Do not force controlled Select to default; activeId handles it.
+    }
+  }, [selectedId, defaultProvider]);
+
   return (
     <Card
       className="border shadow-lg bg-card/95 backdrop-blur-sm"
@@ -572,34 +753,58 @@ export function LoginPanel({ onClose }: { onClose: () => void }) {
           <>
             <div className="space-y-1.5">
               <Label className="text-xs">Provider</Label>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search providers…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="h-8 pl-8 text-xs"
+                  aria-label="Search providers"
+                />
+              </div>
               <Select value={activeId} onValueChange={handleSelect}>
                 <SelectTrigger className="w-full h-9 text-xs" data-testid="login-provider-select">
                   <SelectValue placeholder="Select a provider" />
                 </SelectTrigger>
                 <SelectContent>
-                  {providers.map((provider) => (
-                    <SelectItem
-                      key={provider.id}
-                      value={provider.id}
-                      className="text-xs"
-                    >
-                      <span className="flex items-center gap-2">
-                        {providerLabel(provider)}
-                        <Badge
-                          variant={isConfigured(provider) ? "secondary" : "outline"}
-                          className="text-[9px] px-1 py-0 h-4"
+                  {grouped.map(([mechanism, list]) => (
+                    <SelectGroup key={mechanism}>
+                      <SelectLabel className="text-[10px] uppercase tracking-wide">
+                        {MECHANISM_LABEL[mechanism] ?? mechanism} · {list.length}
+                      </SelectLabel>
+                      {list.map((provider) => (
+                        <SelectItem
+                          key={provider.id}
+                          value={provider.id}
+                          className="text-xs"
                         >
-                          {isConfigured(provider)
-                            ? "Connected"
-                            : isOAuthProvider(provider)
-                              ? "OAuth"
-                              : "API key"}
-                        </Badge>
-                      </span>
-                    </SelectItem>
+                          <span className="flex items-center gap-2">
+                            {providerLabel(provider)}
+                            <Badge
+                              variant={isConfigured(provider) ? "secondary" : "outline"}
+                              className="text-[9px] px-1 py-0 h-4"
+                            >
+                              {isConfigured(provider) ? "Connected" : "Not connected"}
+                            </Badge>
+                            <span className="text-[10px] text-muted-foreground">
+                              {MECHANISM_LABEL[mechanismOf(provider)] ?? mechanismOf(provider)}
+                            </span>
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
                   ))}
+                  {filteredProviders.length === 0 && (
+                    <div className="px-2 py-6 text-center text-xs text-muted-foreground">
+                      No providers match “{search}”.
+                    </div>
+                  )}
                 </SelectContent>
               </Select>
+              <p className="text-[11px] text-muted-foreground">
+                {providers.length} providers · {providers.filter(isConfigured).length} connected
+              </p>
             </div>
 
             {selected && selectedIsOAuth ? (
@@ -758,7 +963,7 @@ export function LoginPanel({ onClose }: { onClose: () => void }) {
                 ) : (
                   <div className="space-y-2">
                     <p className="text-xs text-muted-foreground">
-                      {providerLabel(selected)} uses an OAuth login. Start the
+                      {providerLabel(selected)} uses {MECHANISM_LABEL[selectedMechanism] ?? selectedMechanism} login. Start the
                       flow here; the provider page opens in a new tab and this
                       panel completes when you are done.
                     </p>
@@ -791,56 +996,110 @@ export function LoginPanel({ onClose }: { onClose: () => void }) {
                   </div>
                 </details>
               </div>
+            ) : selected && selectedIsApiKey ? (
+              <div className="space-y-3">
+                {isOpenAICompatible && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="amiro-login-base" className="text-xs">
+                      Base URL
+                    </Label>
+                    <Input
+                      id="amiro-login-base"
+                      autoComplete="off"
+                      spellCheck={false}
+                      value={apiBase}
+                      onChange={(e) => setApiBase(e.target.value)}
+                      placeholder="https://api.example.com/v1"
+                      className="h-9 text-xs font-mono"
+                      data-testid="login-api-base"
+                    />
+                  </div>
+                )}
+                <div className="space-y-1.5">
+                  <Label htmlFor="amiro-login-api-key" className="text-xs">
+                    API key
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="amiro-login-api-key"
+                      type={reveal ? "text" : "password"}
+                      autoComplete="off"
+                      spellCheck={false}
+                      value={apiKey}
+                      onChange={(event) => setApiKey(event.target.value)}
+                      placeholder="Paste the provider API key"
+                      className="h-9 pr-9 text-xs font-mono"
+                      data-testid="login-api-key"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setReveal((value) => !value)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      aria-label={reveal ? "Hide API key" : "Show API key"}
+                    >
+                      {reveal ? (
+                        <EyeOff className="size-3.5" />
+                      ) : (
+                        <Eye className="size-3.5" />
+                      )}
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 pt-1">
+                    <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <ShieldCheck className="size-3" />
+                      Stored server-side in {selected.id}.env · never logged.
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {isConfigured(selected) && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 text-xs gap-1"
+                          onClick={handleRemoveCredentials}
+                          disabled={saving}
+                          data-testid="login-api-key-remove"
+                        >
+                          <Trash2 className="size-3.5" />
+                          Remove
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        className="h-8 text-xs gap-1"
+                        onClick={handleSave}
+                        disabled={saving || apiKey.trim().length === 0 || (isOpenAICompatible && apiBase.trim().length === 0)}
+                        data-testid="login-api-key-save"
+                      >
+                        {saving ? (
+                          <Loader className="size-3.5 animate-spin" />
+                        ) : (
+                          <Check className="size-3.5" />
+                        )}
+                        Save key
+                      </Button>
+                    </div>
+                  </div>
+                  {isConfigured(selected) && (
+                    <p className="text-[11px] text-muted-foreground">
+                      This provider is connected. Saving a new key will replace the stored one.
+                    </p>
+                  )}
+                </div>
+              </div>
             ) : selected ? (
               <div className="space-y-1.5">
-                <Label htmlFor="amiro-login-api-key" className="text-xs">
-                  API key
-                </Label>
-                <div className="relative">
-                  <Input
-                    id="amiro-login-api-key"
-                    type={reveal ? "text" : "password"}
-                    autoComplete="off"
-                    spellCheck={false}
-                    value={apiKey}
-                    onChange={(event) => setApiKey(event.target.value)}
-                    placeholder="Paste the provider API key"
-                    className="h-9 pr-9 text-xs font-mono"
-                    data-testid="login-api-key"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setReveal((value) => !value)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    aria-label={reveal ? "Hide API key" : "Show API key"}
-                  >
-                    {reveal ? (
-                      <EyeOff className="size-3.5" />
-                    ) : (
-                      <Eye className="size-3.5" />
-                    )}
-                  </button>
-                </div>
-                <div className="flex items-center justify-between gap-2 pt-1">
-                  <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                    <ShieldCheck className="size-3" />
-                    Stored server-side.
-                  </span>
-                  <Button
-                    size="sm"
-                    className="h-8 text-xs gap-1"
-                    onClick={handleSave}
-                    disabled={saving || apiKey.trim().length === 0}
-                    data-testid="login-api-key-save"
-                  >
-                    {saving ? (
-                      <Loader className="size-3.5 animate-spin" />
-                    ) : (
-                      <Check className="size-3.5" />
-                    )}
-                    Save key
-                  </Button>
-                </div>
+                <Alert>
+                  <AlertCircle />
+                  <AlertDescription className="text-xs">
+                    {providerLabel(selected)} ({MECHANISM_LABEL[selectedMechanism] ?? selectedMechanism}) cannot be configured with an API key or browser OAuth here.
+                    {selected.detail ? ` ${selected.detail}` : ""}
+                    {selectedMechanism === "cli" && " Install its CLI and run jcode login in a terminal."}
+                    {selectedMechanism === "local-endpoint" && " Make sure the local endpoint is running."}
+                  </AlertDescription>
+                </Alert>
+                <code className="block rounded bg-muted px-2 py-1 font-mono text-[11px] select-all">
+                  jcode login {selected.id}
+                </code>
               </div>
             ) : null}
 
