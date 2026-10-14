@@ -46,6 +46,18 @@ Audit run on October 14, 2026 after the initial delivery, over the rebuilt front
 | `/admin/providers` add-provider menu (reported broken by the owner) | Chrome opened the menu: it rendered 55 providers with mechanism labels and connected badges, and choosing OpenRouter opened the API-key form (no OAuth start button). Previously a hardcoded 6-provider list lived in this page | Not verified from this menu: saving a real API key (needs a real key), starting an OAuth flow from the admin page (the same flow is verified in the chat panel), and the custom-gateway editor path. The provider list itself is confirmed against the live catalog |
 | README, launch instructions, architecture/verification and retired test/skill documents | Paths and evidence references reviewed; actual build/CLI/public workflow run. Fresh clean-machine quickstart and every historical document link not fully tested |
 
+## Interpretations I had to assume
+
+These were not stated in the requests. They are recorded so they can be corrected rather than discovered later.
+
+1. **Which "providers" screen.** The request said "in providers ... show all the providers that jcode supports". I first applied it to the chat provider panel (opened by `/login` or the connect button) and only afterwards learned the owner meant the **admin** `/admin/providers` page, which had its own hardcoded six-entry list. Both are now catalog-driven from the same endpoint, so the earlier work was required rather than wasted - the admin page imports the catalog helpers the chat panel exports. If any other screen still hardcodes a provider list, I have not found it.
+2. **What choosing a folder must do.** Read as: the picked folder becomes the chat session's actual working directory, not a label. The daemon's own session record is what proves it (`cwd-daemon` 10/10), and a mismatch now fails the turn. With tools disabled in this preview the folder has no other visible effect yet.
+3. **Removing the OS picker everywhere.** "No need of Windows explorer" was implemented as: delete the `showDirectoryPicker()`/`webkitdirectory` path entirely. That also changes the Tauri/desktop code path, which now uses the same server-side browser. If the desktop build is meant to keep a native dialog, this needs revisiting.
+4. **How much of the filesystem is browsable.** I restricted browsing to `AMIRO_BROWSE_ROOTS` (default `/root,/home,/srv,/opt,/var/www,/tmp`) with a credential-directory deny list, rather than exposing the whole filesystem. A folder outside those roots is not selectable until the env is widened; that is a safety choice, not a requirement.
+5. **A default model.** `AMIRO_DEFAULT_MODEL=opencode-go:deepseek-v4.1-flash` was my decision, not requested. It exists because a fresh chat otherwise landed on whichever provider sorted first (OpenAI, which was rate-limited). Any model remains selectable.
+6. **Model scope.** "Models all the providers the user has connected" was read as exactly that: every model of every provider Jcode reports as `available`, with `AMIRO_PINNED_MODELS` removed from the preview so nothing is hidden. It does not mean a per-user notion of ownership - the backend has one shared credential home.
+7. **Swarm model instruction.** "Use gemini 3.8 flash from antigravity or muse spark 1.2 from opencode go" was read as: run the delegated workers on those two routes. They were used (`antigravity:gemini-3.8-flash-tiered`, `opencode-go:muse-spark-1.2-contributor`).
+
 ## Representative checks re-run over final implementation
 
 - `pnpm exec tsc --noEmit && pnpm build`: passed, regenerated static UI. `pnpm exec vitest run --maxWorkers=2`: 363/363 baseline tests passed, useful regression evidence but not product acceptance by itself.
