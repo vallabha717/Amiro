@@ -28,6 +28,8 @@ Amiro is the product name. `bin/amiro` delegates to the upstream `jcode` CLI, no
 There are two different logins:
 
 1. **Application sign-in:** a random initial owner password is generated into `$AMIRO_HOME/admin-initial-password`, a mode-0600 JSON file. There is no public default password. Registration is closed by default. An existing insecure `admin@local` account using the old `admin` default is rejected at startup, not reset.
+
+   The owner may replace it with a shorter password through `PUT /api/user/password` (the UI profile flow uses the same route). This preview is owner-only, so that is the owner's choice; a short password on a publicly reachable admin account is a real risk. Compensating controls currently in place: sign-in is rate-limited to 15 attempts per 15 minutes per client address, registration is closed, and provider mutation is admin-only. Prefer a long password if the preview is left running unattended. A password change takes effect immediately and survives later logins.
 2. **Provider connection:** use `/login` in the chat composer or the visible UI connection control. It opens a dedicated panel. API keys and authorization codes are never submitted as ordinary chat messages. OAuth starts a scriptable Jcode CLI flow, displays the provider authorization URL/device code, accepts callback/code input separately, and polls for completion. The CLI receives callback secrets over stdin, not process arguments. After successful login, the adapter notifies the daemon that authentication changed.
 
 **Important scope:** this preview attaches to one owner's existing daemon and credential home. Provider credentials are shared runtime/operator credentials. Provider mutation is admin-only. This is NOT an isolated multi-tenant BYOK service. Enabling multiple untrusted users requires separate credential/daemon isolation and per-user provider selection before it is safe to call this production-ready.
@@ -67,7 +69,8 @@ The adapter defaults to loopback. Select the home, host, port, and bridge socket
 ## This machine's preview
 
 - Public entry: `https://194.238.18.234:8787`.
-- TLS uses a temporary self-signed IP certificate. The browser will show a certificate warning. This is for testing, not production TLS.
+- Typing the plain-HTTP form is handled: `http://194.238.18.234:8787` is answered with a 301 to the HTTPS URL (`error_page 497`), and `http://194.238.18.234:8000` redirects to the same HTTPS preview, so a mistyped scheme no longer shows an nginx 400 plain-HTTP-on-HTTPS-port error. Ports 80 and 443 remain dedicated to the existing Vellum site
+- TLS uses a temporary self-signed IP certificate. The browser will show a certificate warning that must be accepted manually. A trusted certificate needs a DNS name pointing at this server; `certbot` here uses the nginx HTTP-01 authenticator, so adding an A record for a subdomain is enough to issue one. This is for testing, not production TLS.
 - Node API: `127.0.0.1:8788`, not publicly bound.
 - App data: `/root/.amiro-preview`, separate from any earlier development home.
 - Initial sign-in email: `admin@local`. Read the generated password from `/root/.amiro-preview/admin-initial-password` on the server. Do not publish that file.

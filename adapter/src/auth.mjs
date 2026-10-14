@@ -167,6 +167,19 @@ export function createAuth({ home, store, token, log }) {
     await store.writeJson(usersFile, { users });
   }
 
+  // Patch one user row on disk without writing a whole stale in-memory array,
+  // so a change made by another request is never silently reverted.
+  async function patchUser(userId, patch) {
+    await store.updateJson(usersFile, { users: [] }, (doc) => {
+      const list = Array.isArray(doc.users) ? doc.users : [];
+      const row = list.find((u) => u.id === userId);
+      if (row) Object.assign(row, patch);
+      else if (users.length) return { users: users.map((u) => (u.id === userId ? { ...u, ...patch } : u)) };
+      else list.push({ id: userId, ...patch });
+      return { users: list };
+    });
+  }
+
   async function persistSessions() {
     await store.writeJson(sessionsFile, { sessions });
   }
@@ -213,12 +226,37 @@ export function createAuth({ home, store, token, log }) {
   }
 
   async function login(email, password) {
+    // Re-read users.json first: a password or profile change written through the
+    // API must take effect without a restart, and must not be reverted by the
+    // lastLogin write below using a stale in-memory copy.
+    try {
+      await reload();
+    } catch {
+      /* keep in-memory */
+    }
     const user = findByEmail(email);
     if (!user || !verifyPassword(password, user.passwordHash)) return null;
     user.lastLogin = new Date().toISOString();
-    await persistUsers();
+    await patchUser(user.id, { lastLogin: user.lastLogin }).catch(() => {});
     const t = await issueToken(user.id);
     return { user: publicUser(user), token: t };
+  }
+
+  // Single source of truth for password changes: updates memory and disk
+  // together so the running server honours the new password immediately.
+  async function changePassword(userId, currentPassword, newPassword) {
+    await reload();
+    const user = getUser(userId);
+    if (!user) return { error: 'user not found', status: 404 };
+    if (!verifyPassword(currentPassword, user.passwordHash)) {
+      return { error: 'Incorrect current password', status: 400 };
+    }
+    const passwordHash = hardenPassword(newPassword);
+    const updatedAt = new Date().toISOString();
+    user.passwordHash = passwordHash;
+    user.updatedAt = updatedAt;
+    await patchUser(userId, { passwordHash, updatedAt });
+    return { ok: true };
   }
 
   async function register(name, email, password) {
@@ -313,6 +351,7 @@ export function createAuth({ home, store, token, log }) {
     init,
     authenticate,
     reload,
+    changePassword,
     isPublic,
     publicUser,
     isAdmin,

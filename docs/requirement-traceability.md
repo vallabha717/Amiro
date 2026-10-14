@@ -46,7 +46,8 @@ Audit run on October 14, 2026 after the initial delivery, over the rebuilt front
 - `pnpm exec tsc --noEmit && pnpm build`: passed, regenerated static UI. `pnpm exec vitest run --maxWorkers=2`: 363/363 baseline tests passed, useful regression evidence but not product acceptance by itself.
 - `npm --prefix adapter test`: 4 usage cases passed, covering exact totals, invalid ranges, default range and unrelated-thread exclusion.
 - `adapter/tests/integration.mjs`: 14 live-daemon assertions passed, including concurrent first chat/title, explicit/default pinned models, follow-up history, allowlist rejection, runtime route pin and disabled tools. Ran once at commit 4955620 and again after ownership hardening.
-- `adapter/tests/ownership.mjs`: 13 isolated two-user HTTP assertions passed after correcting unmapped/ownerless-session fail-opens. No preview users or passwords were changed.
+ - `adapter/tests/ownership.mjs`: 13 isolated two-user HTTP assertions passed after correcting unmapped/ownerless-session fail-opens. No preview users or passwords were changed.
+- `adapter/tests/password.mjs`: 10 isolated password assertions passed after fixing the stale in-memory credential bug (5 of them failed before the fix). The live preview then served a real browser sign-in 9/9 with the owner-chosen shorter password.
 - `adapter/test/public-contract.mjs` against public HTTPS: 12 requirement-specific checks passed, including real source parity rather than merely labeled mock data.
 - `adapter/test/live-smoke.mjs` against public HTTPS: 13 API workflow assertions passed, real model reply, history and test archival included.
 - `adapter/test/browser-smoke.mjs` against public HTTPS: 9 browser workflow checkpoints passed, same-thread follow-up and two-reply reload included; no page runtime errors or API 500s occurred.

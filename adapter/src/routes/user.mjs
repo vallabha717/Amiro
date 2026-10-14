@@ -1,21 +1,7 @@
-// adapter/src/routes/user.mjs -- user profile details, password, and preferences.
+// adapter/src/routes/user.mjs -- user profile details and preferences.
+// Password changes live in auth.mjs, which owns the hash and the in-memory copy.
 
-import crypto from 'node:crypto';
 import path from 'node:path';
-
-function hardenPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
-  const hash = crypto.scryptSync(String(password), salt, 64).toString('hex');
-  return `${salt}:${hash}`;
-}
-
-function verifyPassword(password, stored) {
-  if (typeof stored !== 'string' || !stored.includes(':')) return false;
-  const [salt, expected] = stored.split(':');
-  const actual = crypto.scryptSync(String(password), salt, 64).toString('hex');
-  const a = Buffer.from(actual);
-  const b = Buffer.from(expected);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
-}
 
 export function register(app, ctx) {
   const usersFile = path.join(ctx.config.home, 'users.json');
@@ -82,7 +68,9 @@ export function register(app, ctx) {
     });
   });
 
-  // PUT /api/user/password -- change password
+  // PUT /api/user/password -- change password.
+  // Delegates to the auth module, which owns the password hash and keeps its
+  // in-memory user copy in step with disk so the change takes effect at once.
   app.put('/api/user/password', async (req, res) => {
     const user = ctx.requireUser(req);
     const body = await ctx.readJson(req);
@@ -93,21 +81,11 @@ export function register(app, ctx) {
       return;
     }
 
-    const doc = await loadUsersDoc();
-    const found = (doc.users || []).find((u) => u.id === user.id);
-    if (!found) {
-      ctx.error(res, 404, 'user not found');
+    const result = await ctx.auth.changePassword(user.id, currentPassword, newPassword);
+    if (result.error) {
+      ctx.error(res, result.status || 400, result.error);
       return;
     }
-
-    if (!verifyPassword(currentPassword, found.passwordHash)) {
-      ctx.error(res, 400, 'Incorrect current password');
-      return;
-    }
-
-    found.passwordHash = hardenPassword(newPassword);
-    found.updatedAt = ctx.nowIso();
-    await saveUsersDoc(doc);
 
     ctx.json(res, 200, { success: true });
   });
