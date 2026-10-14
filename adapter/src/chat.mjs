@@ -322,7 +322,7 @@ export function register(app, ctx) {
     }
 
     const hasTools = toolsEnabled();
-    const permissionMode = body.permissionMode;
+    const permissionMode = body.permissionMode ?? 'auto';
     // With no tools (the public preview default) there is nothing to approve, so
     // every permission mode is accepted and the turn runs as plain text. Only
     // when tools are enabled do we require auto/edit (never stall on a

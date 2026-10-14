@@ -47,7 +47,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { DefaultToolName } from "lib/ai/tools";
 import { getStorageManager } from "lib/browser-stroage";
 import { Shortcuts, isShortcutEvent } from "lib/keyboard-shortcuts";
-import { ArrowDown, FilePlus, KeyRound, Loader } from "lucide-react";
+import { ArrowDown, FilePlus, Loader } from "lucide-react";
 import { useTranslations } from "next-intl";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
@@ -732,7 +732,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
             </div>
           )}
           {emptyMessage ? (
-            <ChatGreeting onConnectProvider={() => setIsLoginPanelOpen(true)} />
+            <ChatGreeting />
           ) : (
             <>
               <div
@@ -802,21 +802,6 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
             {isLoginPanelOpen && (
               <div className="max-w-3xl mx-auto px-4 mb-2">
                 <LoginPanel onClose={() => setIsLoginPanelOpen(false)} />
-              </div>
-            )}
-
-            {!isLoginPanelOpen && (
-              <div className="max-w-3xl mx-auto px-4 mb-1.5 flex justify-end">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  data-testid="connect-provider-button"
-                  className="h-7 rounded-full text-[11px] gap-1 text-muted-foreground hover:text-foreground"
-                  onClick={() => setIsLoginPanelOpen(true)}
-                >
-                  <KeyRound className="size-3" />
-                  Connect provider
-                </Button>
               </div>
             )}
 

@@ -33,9 +33,16 @@ try {
   console.log('PASS browser owner sign-in and honest onboarding');
   await page.getByTestId('onboarding-skip-button').click();
   await page.waitForURL(`${base}/`, { timeout: 20000 });
-  await page.getByTestId('connect-provider-button').click();
-  await page.getByTestId('login-panel').waitFor();
-  console.log('PASS visible provider login UI');
+  // Provider connection lives in the admin panel now, so the chat opens the
+  // same panel through the /login composer command only (never a visible button,
+  // and never as a model request).
+  const editor = page.locator('[contenteditable="true"]').first();
+  await editor.fill('/login');
+  await page.getByTestId('chat-send-button').click();
+  await page.getByTestId('login-panel').waitFor({ timeout: 20000 });
+  assert.equal(chatRequests, 0, '/login must not be sent to the model');
+  console.log('PASS chat /login opens the provider panel without a model request');
+  assert.equal(await page.getByTestId('connect-provider-button').count(), 0, 'the chat window must not show a connect-provider button');
   // Every provider Jcode supports must be listed with its real mechanism.
   const providerCountText = await page.locator('[data-testid="login-panel"]').innerText();
   const providerCount = Number((/(\d+)\s+providers/i.exec(providerCountText) || [])[1] || 0);
@@ -56,13 +63,6 @@ try {
   await page.getByTestId('login-oauth-start').waitFor({ timeout: 20000 });
   await page.getByTestId('login-panel-close').click();
   console.log('PASS OAuth cancellation without changing credentials');
-  const editor = page.locator('[contenteditable="true"]').first();
-  await editor.fill('/login');
-  await page.getByTestId('chat-send-button').click();
-  await page.getByTestId('login-panel').waitFor();
-  assert.equal(chatRequests, 0, '/login must not be sent to the model');
-  await page.getByTestId('login-panel-close').click();
-  console.log('PASS chat /login interception without a model request');
   // Model selector must offer models from every connected provider.
   await page.getByTestId('model-selector-button').click();
   await page.getByTestId('model-selector-popover').waitFor({ timeout: 20000 });

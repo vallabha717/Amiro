@@ -23,11 +23,9 @@ import { appStore, UploadedFile } from "@/app/store";
 import { useShallow } from "zustand/shallow";
 import { ChatMention, ChatModel } from "app-types/chat";
 import dynamic from "next/dynamic";
-import { ToolSelectDropdown } from "./tool-select-dropdown";
 import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
 import { useTranslations } from "next-intl";
 import { Editor } from "@tiptap/react";
-import { WorkflowSummary } from "app-types/workflow";
 import { Avatar, AvatarFallback, AvatarImage } from "ui/avatar";
 import equal from "lib/equal";
 import { MCPIcon } from "ui/mcp-icon";
@@ -50,7 +48,6 @@ import {
 import { cn } from "@/lib/utils";
 import { useThreadFileUploader } from "@/hooks/use-thread-file-uploader";
 import { ProjectSelector } from "./chat/project-selector";
-import { PermissionSelector } from "./chat/permission-selector";
 
 import { EMOJI_DATA } from "lib/const";
 import { FileUIPart, TextUIPart } from "ai";
@@ -263,19 +260,6 @@ export default function PromptInput({
       });
     },
     [mentions, threadId],
-  );
-
-  const onSelectWorkflow = useCallback(
-    (workflow: WorkflowSummary) => {
-      addMention({
-        type: "workflow",
-        name: workflow.name,
-        icon: workflow.icon,
-        workflowId: workflow.id,
-        description: workflow.description,
-      });
-    },
-    [addMention],
   );
 
   const onSelectSkill = useCallback(
@@ -564,29 +548,6 @@ export default function PromptInput({
                   </DropdownMenuContent>
                 </DropdownMenu>
 
-                {!toolDisabled &&
-                  (imageToolModel ? (
-                    <Button
-                      variant={"ghost"}
-                      size={"sm"}
-                      className="rounded-full hover:bg-input! p-2! group/image-generator text-primary"
-                      onClick={() => handleGenerateImage()}
-                    >
-                      <ImagesIcon className="size-3.5" />
-                      {t("generateImage")}
-                      <XIcon className="size-3 group-hover/image-generator:opacity-100 opacity-0 transition-opacity duration-200" />
-                    </Button>
-                  ) : (
-                    <ToolSelectDropdown
-                      className="mx-1"
-                      align="start"
-                      side="top"
-                      onSelectWorkflow={onSelectWorkflow}
-                      onGenerateImage={handleGenerateImage}
-                      mentions={mentions}
-                    />
-                  ))}
-
                 <div className="flex-1" />
 
                 <SelectModel onSelect={setChatModel} currentModel={chatModel}>
@@ -807,11 +768,10 @@ export default function PromptInput({
               )}
             </div>
 
-            {/* Sub-bar below composer with Project and Permission */}
+            {/* Sub-bar below composer with Project */}
             <div className="flex items-center justify-between px-3.5 py-1.5 border-t border-border/40 dark:border-white/[0.06] bg-background/40 dark:bg-white/[0.03] rounded-b-4xl transition-colors">
               <div className="flex items-center gap-1.5">
                 <ProjectSelector />
-                <PermissionSelector />
               </div>
             </div>
           </div>

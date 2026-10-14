@@ -118,7 +118,7 @@ const initialState: AppState = {
   workflowToolList: [],
   currentThreadId: null,
   toolChoice: "auto",
-  permissionMode: "manual",
+  permissionMode: "auto",
   projectDirectory: "",
   recentProjectDirectories: [],
   allowedMcpServers: undefined,

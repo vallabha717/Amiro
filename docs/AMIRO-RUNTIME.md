@@ -55,6 +55,21 @@ Environment semantics:
 - With neither set, the connected-provider catalog is the allow-list. A model outside it is rejected with an explicit `model not allowed` error; there is no silent provider fallback. If the catalog cannot be built, the request is not refused (the daemon still rejects unknown ids) and the failure is logged.
 - A provider whose usage limit is exhausted still appears; the turn fails with the provider's own error. OpenAI on this account reached its 5-hour limit during testing, which is an account state, not an adapter behaviour.
 
+## Tools and permissions
+
+Jcode has no permission *modes*. Its real controls are:
+
+- **Tool availability:** `--tool-profile full|minimal/lite|none`, `--tools <allow-list>`, `--disabled-tools`, `--disable-base-tools`. This is what the adapter configures per session, and it is the only thing that decides whether the model may run anything at all.
+- **Permission prompts (protocol):** a `permission_request` event answered with `allow`, `allow_always` or `deny` (`respondToPermission()` in the SDK, plus a `RunOptions.autoApprove` shortcut). Jcode's own SDK typings state that the **api-bridge does not advertise the `permissions` capability**, so it never issues prompts and a client that waits for one waits forever. Per-action approval is therefore unavailable through this bridge.
+- **Ambient request review:** `jcode permissions` and `docs/SAFETY_SYSTEM.md` describe a two-tier system (auto-allowed / requires-permission) with a review queue. It is marked as design work and its only consumer is ambient mode, not chat.
+- `jcode replay --auto-edit` compresses wait times when replaying a session recording. It is a video/timeline flag, unrelated to permissions.
+
+Because none of that backs a user-facing mode, the composer's four-way picker (Auto / Edit Automatically / Manual / Plan), the tools selector (`tool-select-dropdown.tsx`) and the unused `tool-mode-dropdown.tsx` were **removed**. They were Amiro's own inventions, the adapter deliberately ignores client-supplied tool lists, and with this preview's tool policy there was nothing to run, write or approve. Nothing about tools or permissions is selectable in the UI now. The store's `permissionMode` default is `auto` (the only behaviour the bridge implements when tools are on: tools run without asking) and the adapter defaults an omitted `permissionMode` to `auto` as well. Enabling tools at all still requires a trusted local operator to set **both** `AMIRO_TRUSTED_OPERATOR=1` and `AMIRO_TOOL_PROFILE=full`; deployment sets neither.
+
+## Provider connection lives in the admin panel
+
+Provider connection is presented in the admin panel (`/admin/providers`). The chat window no longer shows a "Connect provider" button in the toolbar or in the empty-state greeting; both were removed on request. The chat can still open the same panel with the `/login` composer command, which the owner asked to keep earlier and which is intercepted before any model request.
+
 ## Folder selection (works from the web)
 
 The workspace folder picker browses the **server's** filesystem over HTTP, so it works in a browser without a native OS dialog. `src/components/chat/folder-browser-dialog.tsx` calls `GET /api/fs/roots|browse|stat`; the old `showDirectoryPicker()`/`webkitdirectory` path (which only yields a bare folder name and cannot resolve to a server path) was removed.
