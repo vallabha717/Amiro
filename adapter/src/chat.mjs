@@ -26,6 +26,30 @@ import { assertUsableProjectDirectory } from './fsbrowse.mjs';
 
 const TURN_TIMEOUT_MS = 15 * 60 * 1000;
 
+// A session is created for a specific folder. The daemon echoes the directory it
+// actually used (`working_dir`); if that differs from what the user picked, the
+// turn must fail loudly instead of running in another folder. Older bridges that
+// omit the field are tolerated, with a warning.
+function assertSessionWorkingDir(ctx, session, requested) {
+  if (!requested) return;
+  const applied = session && (session.working_dir || session.workingDir);
+  if (!applied) {
+    ctx.log('warn', 'session did not report a working directory', {
+      sessionId: session && session.session_id,
+      requested,
+    });
+    return;
+  }
+  const a = String(applied).replace(/\/+$/, '');
+  const b = String(requested).replace(/\/+$/, '');
+  if (a !== b) {
+    const err = new Error(`session started in ${applied} instead of the selected folder ${requested}`);
+    err.status = 500;
+    err.code = 'working_dir_mismatch';
+    throw err;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // UIMessage helpers
 // ---------------------------------------------------------------------------
@@ -365,6 +389,10 @@ export function register(app, ctx) {
             workingDir: wd,
             tools: toolsOption(),
           });
+          // The daemon echoes the directory it actually used. Refuse to continue
+          // in a different folder than the user picked rather than silently
+          // running somewhere else.
+          assertSessionWorkingDir(ctx, session, wd);
           entry = await createThreadForSession(ctx, {
             threadId,
             sessionId: session.session_id,
@@ -392,6 +420,7 @@ export function register(app, ctx) {
               workingDir: validatedWorkingDir,
               tools: toolsOption(),
             });
+            assertSessionWorkingDir(ctx, newSession, validatedWorkingDir);
             // Persist new mapping before archiving old, so we never lose the thread
             // if archiving fails. Keep previousSessionId for traceability.
             await upsertEntry(ctx.store, home, threadId, {

@@ -68,6 +68,8 @@ Safety rules in `adapter/src/fsbrowse.mjs`:
 
 The chosen folder becomes the session's working directory: the chat request carries `workingDir` (also accepted as `projectDirectory`/`workspaceRoot`), it is validated with the same rules, and a rejected folder returns 403 instead of silently falling back. The directory is stored per thread and reported by `GET /api/thread/:id`. If the folder changes on a thread that already has a session, the adapter starts a new Jcode session for that thread pinned to the new directory (same thread id and ownership; the previous session id is retained as `previousSessionId` and archived), so the selection actually takes effect.
 
+The daemon echoes the directory it actually used when a session is created, and the adapter checks it: a session that starts somewhere other than the selected folder fails the turn with `working_dir_mismatch` rather than running in the wrong place. `adapter/tests/cwd-daemon.mjs` proves this end to end by reading the directory the daemon recorded for the session (`listSessions`), not the adapter's own mapping.
+
 ## Restrictions
 
 - The deployed preview defaults to `tools: { enabled: [] }`, reapplied to sessions before turns. Text chat works without giving the model server filesystem or shell access.
