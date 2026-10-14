@@ -3,6 +3,8 @@
 import { motion } from "framer-motion";
 import { useMemo } from "react";
 import { FlipWords } from "ui/flip-words";
+import { Button } from "ui/button";
+import { KeyRound } from "lucide-react";
 import { useTranslations } from "next-intl";
 import useSWR from "swr";
 import { BasicUser } from "app-types/user";
@@ -15,7 +17,11 @@ function getGreetingByTime() {
   return "goodEvening";
 }
 
-export const ChatGreeting = () => {
+export const ChatGreeting = ({
+  onConnectProvider,
+}: {
+  onConnectProvider?: () => void;
+} = {}) => {
   const { data: user } = useSWR<BasicUser>(`/api/user/details`, fetcher, {
     revalidateOnMount: false,
   });
@@ -49,6 +55,20 @@ export const ChatGreeting = () => {
         <h1 className="text-2xl md:text-3xl">
           {word ? <FlipWords words={[word]} className="text-primary" /> : ""}
         </h1>
+        {onConnectProvider && (
+          <div className="flex justify-center pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="connect-provider-empty-button"
+              className="rounded-full text-xs gap-1.5"
+              onClick={onConnectProvider}
+            >
+              <KeyRound className="size-3.5" />
+              Connect provider
+            </Button>
+          </div>
+        )}
       </div>
     </motion.div>
   );

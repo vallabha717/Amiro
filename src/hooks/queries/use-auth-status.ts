@@ -14,9 +14,13 @@ import { fetcher } from "@/lib/backend/client";
  * the whole point is answering it *before* anyone can sign in.
  */
 export function useAuthStatus() {
-  return useSWR<{ isFirstUser: boolean }>("/api/auth/status", fetcher, {
-    revalidateOnFocus: false,
-    revalidateIfStale: false,
-    shouldRetryOnError: false,
-  });
+  return useSWR<{ isFirstUser: boolean; registrationEnabled?: boolean }>(
+    "/api/auth/status",
+    fetcher,
+    {
+      revalidateOnFocus: false,
+      revalidateIfStale: false,
+      shouldRetryOnError: false,
+    },
+  );
 }

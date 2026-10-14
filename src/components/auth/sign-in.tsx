@@ -139,15 +139,17 @@ export default function SignIn() {
                   )}
                 </Button>
               </div>
-              <div className="my-8 text-center text-sm text-muted-foreground">
-                {t("Auth.SignIn.noAccount")}
-                <Link
-                  href="/sign-up"
-                  className="underline-offset-4 text-primary"
-                >
-                  {t("Auth.SignIn.signUp")}
-                </Link>
-              </div>
+              {authStatus?.registrationEnabled !== false && (
+                <div className="my-8 text-center text-sm text-muted-foreground">
+                  {t("Auth.SignIn.noAccount")}
+                  <Link
+                    href="/sign-up"
+                    className="underline-offset-4 text-primary"
+                  >
+                    {t("Auth.SignIn.signUp")}
+                  </Link>
+                </div>
+              )}
             </>
           )}
         </CardContent>

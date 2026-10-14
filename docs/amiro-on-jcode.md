@@ -1,5 +1,7 @@
 # Amiro on jcode
 
+> Historical design proposal, not a completion report. For the implemented runtime, restrictions, deployment, and known limitations, see `AMIRO-RUNTIME.md` and `verification-amiro.md`.
+
 Status: architecture note. No code. Explains what Vellum is, how to rebuild it with jcode as the
 harness, and exactly how to restrict jcode to Amiro's needs.
 

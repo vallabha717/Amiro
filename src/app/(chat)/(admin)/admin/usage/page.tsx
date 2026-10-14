@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { useTranslations } from "next-intl";
 import { format } from "date-fns";
-import { TrendingUp, ShieldCheck, Users, Check, ChevronsUpDown } from "lucide-react";
+import { TrendingUp, ShieldCheck, Users, Check, ChevronsUpDown, Gauge } from "lucide-react";
 import { fetcher } from "lib/utils";
 import { getUserAvatar } from "lib/user/utils";
 import { useSession } from "@/lib/backend/session-context";
@@ -59,6 +59,40 @@ type UsageStatsResponse = {
   user: AdminUserDetail;
   stats: UserStatsData;
 };
+
+/**
+ * Optional quota rows. The adapter's stats payload may surface the rate-limit
+ * windows from `jcode usage --json` (`name`, `usage_percent`, `resets_at`,
+ * `reset_in`). That field is not part of the required stats contract, so it is
+ * typed optional here and the section below renders only when it is present.
+ */
+type UsageLimit = {
+  name: string;
+  usage_percent: number;
+  resets_at?: string;
+  reset_in?: string;
+  provider?: string;
+};
+
+type StatsWithLimits = UserStatsData & {
+  limits?: UsageLimit[];
+  providerLimits?: UsageLimit[];
+};
+
+function selectUsageLimits(stats: UserStatsData): UsageLimit[] {
+  const withLimits = stats as StatsWithLimits;
+  if (Array.isArray(withLimits.limits)) return withLimits.limits;
+  if (Array.isArray(withLimits.providerLimits)) return withLimits.providerLimits;
+  return [];
+}
+
+function formatResetTime(limit: UsageLimit): string | null {
+  if (limit.reset_in) return `resets in ${limit.reset_in}`;
+  if (!limit.resets_at) return null;
+  const parsed = new Date(limit.resets_at);
+  if (isNaN(parsed.getTime())) return null;
+  return `resets ${format(parsed, "MMM d, HH:mm")}`;
+}
 
 type UserListItem = {
   id: string;
@@ -158,6 +192,8 @@ function UsageContent() {
     dailyUsage: [],
     period: "Last 30 Days",
   };
+
+  const limits = selectUsageLimits(stats);
 
   if (isSessionLoading || (isStatsLoading && !usageData && !statsError)) {
     return (
@@ -356,6 +392,65 @@ function UsageContent() {
                 </span>
               </div>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Quota & Limits -- only rendered when the backend reports them */}
+      {limits.length > 0 && (
+        <Card className="border shadow-xs" data-testid="usage-limits-card">
+          <CardHeader className="p-4 sm:p-5 pb-3">
+            <CardTitle className="flex items-center gap-2 text-sm font-bold">
+              <Gauge className="size-4 text-primary" />
+              Quota &amp; Limits
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Rate-limit windows reported by the backend for this period.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 p-4 pt-0 sm:p-5 sm:pt-0">
+            {limits.map((limit, index) => {
+              const pct = Math.max(
+                0,
+                Math.min(100, Number(limit.usage_percent) || 0),
+              );
+              const resetLabel = formatResetTime(limit);
+              return (
+                <div
+                  key={`${limit.provider ?? ""}-${limit.name}-${index}`}
+                  className="space-y-1.5"
+                >
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="truncate font-medium">
+                      {limit.provider ? `${limit.provider} · ` : ""}
+                      {limit.name}
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2 text-muted-foreground">
+                      {resetLabel && <span>{resetLabel}</span>}
+                      <span
+                        className={
+                          pct >= 90
+                            ? "font-semibold text-destructive"
+                            : "font-medium text-foreground"
+                        }
+                      >
+                        {pct.toFixed(0)}%
+                      </span>
+                    </span>
+                  </div>
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                    <div
+                      className={
+                        pct >= 90
+                          ? "h-full rounded-full bg-destructive transition-all"
+                          : "h-full rounded-full bg-primary transition-all"
+                      }
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
           </CardContent>
         </Card>
       )}

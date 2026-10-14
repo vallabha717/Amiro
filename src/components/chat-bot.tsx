@@ -14,6 +14,7 @@ import {
 } from "./artifacts/use-artifacts";
 import { usePlanDecision } from "./artifacts/use-plan-decision";
 import { ChatGreeting } from "./chat-greeting";
+import { LoginPanel } from "./chat/login-panel";
 import { ErrorMessage, PreviewMessage } from "./message";
 import PromptInput from "./prompt-input";
 
@@ -46,7 +47,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { DefaultToolName } from "lib/ai/tools";
 import { getStorageManager } from "lib/browser-stroage";
 import { Shortcuts, isShortcutEvent } from "lib/keyboard-shortcuts";
-import { ArrowDown, FilePlus, Loader } from "lucide-react";
+import { ArrowDown, FilePlus, KeyRound, Loader } from "lucide-react";
 import { useTranslations } from "next-intl";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
@@ -272,6 +273,9 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
     onFinish,
   });
   const [isDeleteThreadPopupOpen, setIsDeleteThreadPopupOpen] = useState(false);
+  // `/login` is intercepted in the composer (see handleComposerSend below) and
+  // opens this inline panel instead of ever becoming a message.
+  const [isLoginPanelOpen, setIsLoginPanelOpen] = useState(false);
 
   const addToolResult = useCallback(
     async (result: Parameters<typeof _addToolResult>[0]) => {
@@ -466,6 +470,35 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
       return sendMessage(...args);
     },
     [pendingPlanToolCallId, _addToolResult, sendMessage],
+  );
+
+  /**
+   * The composer's own send path, wrapping sendMessageAnsweringPlan so a bare
+   * `/login` command opens the provider panel instead of being sent.
+   *
+   * It has to happen here -- before the message reaches useChat -- because
+   * sendMessage appends to the transcript immediately: intercepting any later
+   * would put the command in the thread and, worse, ship it to the model.
+   * Nothing here ever forwards the command text to the chat API.
+   */
+  const handleComposerSend = useCallback<typeof sendMessage>(
+    async (...args) => {
+      const first = args[0];
+      let text: string | undefined;
+      if (typeof first === "string") {
+        text = first;
+      } else if (first && Array.isArray((first as { parts?: unknown }).parts)) {
+        const textParts = (first as { parts: Array<{ type?: string; text?: string }> })
+          .parts.filter((part) => part?.type === "text");
+        if (textParts.length === 1) text = textParts[0].text;
+      }
+      if (text?.trim().toLowerCase() === "/login") {
+        setIsLoginPanelOpen(true);
+        return;
+      }
+      return sendMessageAnsweringPlan(...args);
+    },
+    [sendMessageAnsweringPlan],
   );
 
   // Answering a plan from the graph goes through the same decision helper the
@@ -697,7 +730,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
             </div>
           )}
           {emptyMessage ? (
-            <ChatGreeting />
+            <ChatGreeting onConnectProvider={() => setIsLoginPanelOpen(true)} />
           ) : (
             <>
               <div
@@ -764,10 +797,31 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
               />
             </div>
 
+            {isLoginPanelOpen && (
+              <div className="max-w-3xl mx-auto px-4 mb-2">
+                <LoginPanel onClose={() => setIsLoginPanelOpen(false)} />
+              </div>
+            )}
+
+            {!isLoginPanelOpen && (
+              <div className="max-w-3xl mx-auto px-4 mb-1.5 flex justify-end">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  data-testid="connect-provider-button"
+                  className="h-7 rounded-full text-[11px] gap-1 text-muted-foreground hover:text-foreground"
+                  onClick={() => setIsLoginPanelOpen(true)}
+                >
+                  <KeyRound className="size-3" />
+                  Connect provider
+                </Button>
+              </div>
+            )}
+
             <PromptInput
               input={input}
               threadId={threadId}
-              sendMessage={sendMessageAnsweringPlan}
+              sendMessage={handleComposerSend}
               setInput={setInput}
               isLoading={isLoading || isPendingToolCall}
               onStop={handleStop}

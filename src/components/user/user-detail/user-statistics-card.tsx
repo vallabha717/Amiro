@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import useSWR from "swr";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "ui/card";
+import { Alert, AlertDescription } from "ui/alert";
 import { Badge } from "ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "ui/tabs";
 import { Input } from "ui/input";
@@ -27,6 +28,7 @@ import {
   X,
   RotateCcw,
   CircleDollarSign,
+  Info,
 } from "lucide-react";
 import {
   Popover,
@@ -85,6 +87,9 @@ export interface UserStatsData {
     messageCount: number;
   }>;
   period: string;
+  /** Optional backend note about how trustworthy/attributable the numbers
+   * are (e.g. shared provider-account totals). Rendered verbatim when set. */
+  usageNotice?: string;
 }
 
 interface UserStatisticsCardProps {
@@ -540,6 +545,13 @@ export function UserStatisticsCard({ stats, view = "admin" }: UserStatisticsCard
 
   return (
     <div className="space-y-6" data-testid="user-statistics-card">
+      {stats.usageNotice && (
+        <Alert data-testid="usage-notice">
+          <Info />
+          <AlertDescription>{stats.usageNotice}</AlertDescription>
+        </Alert>
+      )}
+
       {/* 1. Hero Metrics Grid: Input Tokens, Output Tokens, Estimated Cost (USD), and Conversations */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {/* Card 1: Input Tokens (Prompt) */}
