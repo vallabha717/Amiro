@@ -98,6 +98,47 @@ first chat and the title request at the same time, so this surfaced there.
 `historyFor` no longer swallows failures into `[]` (errors surface as 500), and
 export history failure returns 500.
 
+## Ownership hardening + second-user regression
+
+Audit fixes (real bugs, `threads.mjs`):
+- message DELETE/truncate required only `owner && !ownsEntry` -> a message id for
+  a session with **no mapping** reached the daemon. Now requires a mapping **and**
+  ownership (`!owner || !ownsEntry` -> 404).
+- `ownsEntry` treated ownerless (legacy, no `userId`) mappings as owned. Now
+  **fail-closed**: ownerless mappings are refused.
+- thread list and delete-all now use `ownsEntry`, so ownerless/other-user
+  mappings are excluded.
+
+New regression `adapter/tests/ownership.mjs` (fresh temp home,
+`AMIRO_ALLOW_REGISTRATION=1`, same pinned bridge). PASS 13/13:
+
+```
+PASS  two users registered in isolated home            -- a=200 b=200
+PASS  owner A's turn succeeds                          -- error=
+PASS  B cannot GET A thread                            -- status=404
+PASS  B cannot PUT A thread                            -- status=404
+PASS  B cannot DELETE A thread                         -- status=404
+PASS  B cannot TITLE A thread                          -- status=404
+PASS  B cannot EXPORT A thread                         -- status=404
+PASS  B cannot CHAT into A thread (denied before any model call) -- error=thread not found
+PASS  fabricated unmapped message id refused (404, no daemon call) -- status=404
+PASS  B cannot message-delete/truncate A thread        -- del=404 trunc=404
+PASS  B's thread list excludes A thread                -- count=0
+PASS  B's delete-all does not remove A thread          -- delAll=204 aGet=200 msgs=2
+PASS  A's thread list still contains A thread          -- count=1
+```
+
+No preview user or provider credential is touched (isolated temp home only;
+no password reset).
+
+## Provider-credential audit (noop request)
+
+The integration `provider mutation` step sends `{id:"noop",provider:"noop",apiKey:""}`.
+`POST /api/ai/providers` only calls `setApiKey`/`notifyAuthChanged` when
+`body.apiKey` is truthy, so an empty key performs **no** credential mutation; it
+only writes a `noop` row into the temp home's `store/providers.json`. No real
+provider credential is read or written by any test.
+
 Insecure-admin guard (separate check, using the pre-existing `/tmp/amiro-smoke-home`):
 `exit=1`, log: `insecure seeded admin (admin@local / admin) present; no password
 reset is performed. Refusing to start.` The user record was left untouched.

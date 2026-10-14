@@ -23,6 +23,7 @@ page.on('response', (response) => {
 });
 try {
   await page.goto(`${base}/sign-in`, { waitUntil: 'networkidle' });
+  assert.equal(await page.locator('a[href="/sign-up"]').count(), 0, 'Closed registration must not advertise sign-up');
   await page.getByTestId('signin-email-input').fill(credentials.email);
   await page.getByTestId('signin-password-input').fill(credentials.password);
   await page.getByTestId('signin-submit-button').click();
@@ -61,13 +62,21 @@ try {
   await page.reload({ waitUntil: 'networkidle' });
   await page.getByText('AMIRO_BROWSER_OK', { exact: true }).last().waitFor({ timeout: 20000 });
   console.log('PASS persisted chat visible after browser reload');
+  await page.locator('[contenteditable="true"]').first().fill('Reply with exactly AMIRO_FOLLOWUP_OK. Do not use tools.');
+  await page.getByTestId('chat-send-button').click();
+  await page.getByText('AMIRO_FOLLOWUP_OK', { exact: true }).last().waitFor({ timeout: 90000 });
+  assert.equal(new URL(page.url()).searchParams.get('thread'), createdThread, 'Follow-up must stay on the same thread');
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.getByText('AMIRO_BROWSER_OK', { exact: true }).last().waitFor({ timeout: 20000 });
+  await page.getByText('AMIRO_FOLLOWUP_OK', { exact: true }).last().waitFor({ timeout: 20000 });
+  console.log('PASS same-thread follow-up and both replies persisted after reload');
   await page.goto(`${base}/admin/usage`, { waitUntil: 'networkidle' });
   await page.getByText(/Usage is shared Jcode provider-account data/).waitFor({ timeout: 30000 });
   await page.screenshot({ path: `${artifactDir}/amiro-usage.png`, fullPage: true });
   console.log('PASS real usage UI and scope disclaimer');
   assert.deepEqual(errors, [], 'Browser runtime errors');
   assert.deepEqual(apiFailures, [], 'Server-side API failures during browser acceptance');
-  console.log(JSON.stringify({ browser: 'chrome', checks: 8, screenshot: `${artifactDir}/amiro-usage.png` }));
+  console.log(JSON.stringify({ browser: 'chrome', checks: 9, screenshot: `${artifactDir}/amiro-usage.png` }));
 } finally {
   // Revoke only this test browser's own application session.
   await page.evaluate(async (threadId) => {

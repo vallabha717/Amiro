@@ -90,4 +90,4 @@ The Tauri launch path is retargeted to the Node adapter. A launcher script is no
 
 ## Verification
 
-Current observed checks and remaining limitations are recorded in `verification-amiro.md`. Treat that report, not older reconnaissance notes, as the completion evidence.
+Current observed checks and remaining limitations are recorded in `verification-amiro.md`. That report links the requirement-to-observation matrix (`requirement-traceability.md`) and the per-route auth/read observations (`route-observations.md`). Treat those reports, not older reconnaissance notes, as the completion evidence.

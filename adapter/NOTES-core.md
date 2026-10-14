@@ -146,3 +146,14 @@ Supersedes matching guesses above:
   the title request together.
 - Regression: integration fires chat+title concurrently, then a second turn on
   the same thread, then GET /api/thread/:id (14/14 PASS).
+
+## Revision 6 (audit: fail-open ownership)
+
+- threads.mjs message DELETE/truncate now REQUIRE a mapping AND ownership
+  (`!owner || !ownsEntry` -> 404), so a guessed/unmapped session id cannot reach
+  the daemon.
+- ownsEntry is fail-closed: ownerless (no userId) mappings are refused.
+- thread list + delete-all use ownsEntry (ownerless/other-user excluded).
+- New tests/ownership.mjs: isolated temp home, 2 users, cross-user denial on
+  GET/PUT/DELETE/title/export/chat/messages + fabricated unmapped id; 13/13 PASS.
+- integration.mjs unchanged, 14/14 PASS after the change. No credentials touched.

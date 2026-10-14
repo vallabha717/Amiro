@@ -17,7 +17,7 @@ Because final tool policies and credential tenancy were not specified, the imple
 | Adapter usage unit tests | `npm --prefix adapter test`: 4 passed, 0 failed |
 | Real daemon integration | Worker ran `node adapter/tests/integration.mjs` against the real bridge in a temporary app home: 14/14 passed, including concurrent first chat/title, a follow-up turn, four persisted user/assistant messages, explicit model restrictions and no-tools configuration |
 | Deployed API smoke | `node adapter/test/live-smoke.mjs`: 13/13 passed after final restart, including authenticated real provider streaming, history round trip, test archival, usage scope, rejected execution and invalid uploads |
-| Public browser acceptance | Chrome visited `https://194.238.18.234:8787`: 8/8 passed, including owner sign-in, shared-runtime onboarding notice, visible provider panel, real OAuth initiation/cancel, `/login` interception without a chat request, real assistant text rendered, history after reload, and usage disclaimer |
+| Public browser acceptance | Chrome visited `https://194.238.18.234:8787`: 9/9 passed after the final audit, including owner sign-in, closed-registration sign-up visibility, shared-runtime onboarding, provider OAuth initiation/cancel, `/login` without a model request, real first reply, same-thread follow-up, both replies after reload, and usage disclaimer |
 | Services | `amiro.service`, `amiro-bridge.service`, nginx active; both Amiro services enabled; public HTTPS `/health` returns `{"status":"ok"}` |
 | Source hygiene | Entire tracked Go backend retired in commit `0e98d5a`; `git diff --check` passes; adapter JavaScript syntax checked before final commit |
 
@@ -33,6 +33,14 @@ Browser screenshot: `/root/.jcode/scratch/amiro-usage.png`. Tests read the owner
 - Usage cannot honestly allocate account-wide tokens and cost per model or user. The page exposes its shared-account, OpenAI-only coverage instead of fabricating allocations.
 - Storage validates issued expiring capabilities, size and paths; remote URL ingestion is disabled.
 - A default public password is not used. A generated owner secret is stored in a mode-0600 file, registration defaults closed, sign-in is rate-limited, and existing passwords were not reset.
+
+## Requirement-level audit
+
+[requirement-traceability.md](requirement-traceability.md) maps every explicit request and changed output family to its concrete observed check or a named gap. [route-observations.md](route-observations.md) records all 117 literal registered method/path auth boundaries and authenticated read smoke outcomes. These are not claims of successful mutation feature parity.
+
+After initial delivery, the complete frontend was rebuilt and baseline tests re-run. The deployed public API and browser workflow were re-run, adding a real same-thread follow-up and reload of both replies. A public usage contract check directly compared totals against the actual Jcode daily buckets, including four invalid date/range cases.
+
+Two ownership fail-opens discovered during this audit were fixed: message mutations require an owned Amiro mapping, and ownerless legacy mappings are inaccessible. A fresh-home two-user HTTP regression passed 13 assertions, including other-user read/write/chat/title/export denial, unmapped message denial and delete-all preserving the other owner's thread. The public proxy's duplicate nosniff headers were corrected and four changed HTML outputs checked for one canonical header.
 
 ## Remaining limitations and blockers
 

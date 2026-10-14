@@ -47,11 +47,11 @@ export function messageId(sessionId, index) {
   return `msg_${index}_${sessionId}`;
 }
 
-// An entry with no userId (legacy) is treated as owned; otherwise the caller's
-// id must match. Used by thread routes and the chat/title/export paths.
+// Fail-closed ownership: a mapping with no owner is not accessible to anyone,
+// and only the matching user id may access it. Refusing ownerless mappings
+// prevents a legacy/absent owner from exposing a shared-daemon session.
 export function ownsEntry(entry, user) {
-  if (!entry) return true;
-  if (!entry.userId) return true;
+  if (!entry || !entry.userId) return false;
   return Boolean(user) && entry.userId === user.id;
 }
 
@@ -110,9 +110,8 @@ export function register(app, ctx) {
 
   async function ownedThreads(req) {
     const map = await loadThreads(ctx.store, home);
-    const userId = req.user && req.user.id;
     return Object.entries(map)
-      .filter(([, e]) => !userId || !e.userId || e.userId === userId)
+      .filter(([, e]) => ownsEntry(e, req.user))
       .map(([id, e]) => ({ id, ...e }));
   }
 
@@ -196,9 +195,8 @@ export function register(app, ctx) {
     const url = new URL(req.url, 'http://localhost');
     const unarchivedOnly = url.searchParams.get('scope') === 'unarchived';
     const map = await loadThreads(ctx.store, home);
-    const userId = req.user && req.user.id;
     for (const [id, entry] of Object.entries(map)) {
-      if (userId && entry.userId && entry.userId !== userId) continue;
+      if (!ownsEntry(entry, req.user)) continue;
       if (unarchivedOnly && entry.archived) continue;
       await archiveEntry(entry);
       delete map[id];
@@ -213,7 +211,9 @@ export function register(app, ctx) {
     const parsed = parseMessageId(params.id);
     if (!parsed) return ctx.error(res, 400, 'invalid message id');
     const owner = await findEntryBySession(ctx.store, home, parsed.sessionId);
-    if (owner && !ownsEntry(owner, req.user)) return ctx.error(res, 404, 'thread not found');
+    // Fail-closed: refuse when there is no mapping OR the mapping is not the
+    // caller's, so a guessed session id can never reach the daemon.
+    if (!owner || !ownsEntry(owner, req.user)) return ctx.error(res, 404, 'thread not found');
     try {
       await ctx.jcode.withSession(parsed.sessionId, (client) =>
         client.rewind(parsed.sessionId, parsed.index),
@@ -231,7 +231,7 @@ export function register(app, ctx) {
     const parsed = parseMessageId(params.id);
     if (!parsed) return ctx.error(res, 400, 'invalid message id');
     const owner = await findEntryBySession(ctx.store, home, parsed.sessionId);
-    if (owner && !ownsEntry(owner, req.user)) return ctx.error(res, 404, 'thread not found');
+    if (!owner || !ownsEntry(owner, req.user)) return ctx.error(res, 404, 'thread not found');
     try {
       await ctx.jcode.withSession(parsed.sessionId, (client) =>
         client.rewind(parsed.sessionId, parsed.index + 1),
