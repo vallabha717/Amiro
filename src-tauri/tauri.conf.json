@@ -6,8 +6,8 @@
   "build": {
     "frontendDist": "../out",
     "devUrl": "http://localhost:3210",
-    "beforeDevCommand": "powershell -ExecutionPolicy Bypass -File ./src-tauri/build-sidecar.ps1 && pnpm dev -p 3210",
-    "beforeBuildCommand": "powershell -ExecutionPolicy Bypass -File ./src-tauri/build-sidecar.ps1 && pnpm build"
+    "beforeDevCommand": "bash ./src-tauri/build-sidecar.sh && pnpm dev -p 3210",
+    "beforeBuildCommand": "bash ./src-tauri/build-sidecar.sh && pnpm build"
   },
   "app": {
     "withGlobalTauri": false,

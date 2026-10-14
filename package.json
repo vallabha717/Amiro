@@ -5,12 +5,18 @@
   "author": "cgoinglove",
   "license": "MIT",
   "type": "module",
+  "bin": {
+    "amiro": "bin/amiro"
+  },
   "scripts": {
     "dev": "next dev",
     "dev:turbopack": "next dev --turbopack",
+    "adapter": "node adapter/src/server.mjs",
+    "adapter:install": "pnpm --dir adapter install",
+    "desktop:sidecar": "bash ./src-tauri/build-sidecar.sh",
     "dev:https": "next dev --experimental-https",
     "build": "next build",
-    "start": "next start",
+    "start": "node adapter/src/server.mjs",
     "build:local": "cross-env NO_HTTPS='1' next build",
     "test": "vitest run",
     "test:watch": "vitest",

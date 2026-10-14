@@ -3,6 +3,16 @@ name: ui
 description: Amiro's UI standards — folder structure, surface constraints and implementation rules for anything user-facing. Covers the Next.js dashboard (which ships three ways: inside the Tauri desktop webview, served from the Go binary by `amiro serve`, and `next dev` for frontend-only work) and the Go/Bubble Tea terminal UI. Use whenever adding, moving or changing a page, route group, React component, hook, styling token, translation string, client-side data fetch or auth gate under `src/`, or a screen/component/keybinding under `backend-go/internal/tui/`. Also use when deciding where a new piece of UI belongs, or when reviewing UI work for standards compliance.
 ---
 
+> ## ⚠️ Historical references
+>
+> The Go backend (`backend-go/`) and its Bubble Tea terminal UI
+> (`backend-go/internal/tui/**`) have been **removed**. The dashboard is still
+> `src/**`, but it is now served by the Node adapter
+> (`adapter/src/server.mjs`, `pnpm start`) or the Tauri shell — there is no
+> `amiro serve`, no Go binary, and no terminal UI. Any `backend-go/...` path or
+> TUI guidance below is historical; see
+> [`docs/AMIRO-RUNTIME.md`](../../../docs/AMIRO-RUNTIME.md).
+
 # Amiro UI Standards
 
 The rules any agent must follow when implementing anything a user sees.

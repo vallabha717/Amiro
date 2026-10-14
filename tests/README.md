@@ -1,4 +1,22 @@
-# Amiro tests
+# Amiro tests (RETIRED compatibility harness)
+
+> **RETIRED.** This `tests/` tree was the Go end-to-end harness for
+> `backend-go` (via `cmd/amirotest`). `backend-go` has been removed and
+> replaced by the Node adapter (`adapter/src/server.mjs`), so nothing here can
+> run: there is no Go backend for it to build, start, or query.
+>
+> The fixtures, cassettes, and suite/test code are **kept as historical
+> reference and are not deleted.** For the current tests, run from the
+> repository root:
+>
+> ```bash
+> node --test adapter/test/usage.test.mjs   # unit
+> node adapter/test/live-smoke.mjs          # optional; needs a running, authenticated preview
+> ```
+>
+> See [`docs/AMIRO-RUNTIME.md`](../docs/AMIRO-RUNTIME.md) for the current
+> runtime and its verification notes. Everything below this banner describes
+> the retired Go harness and is preserved only for context.
 
 The whole test system: one harness, one command, one run directory.
 

@@ -3,6 +3,17 @@ name: implement
 description: How Amiro executes a planned phase and records it — the counterpart to the `plan` skill. Takes one phase from a `docs/<initiative>/phases/` folder, checks its entry conditions, builds it to Amiro's UI and backend standards (loading the `ui`, `backend` and `test` skills for those rules), ships the phase's end-to-end tests in `tests/` on every surface it touches, verifies every exit criterion by running real commands, then writes the `progress/phase-NN-<slug>.md` record and `progress/verification-log-phase-NN.md`, updates the progress status table, marks the phase doc shipped, and updates every doc the work invalidated. Use whenever asked to implement, build, execute or ship a phase or a planned feature in Amiro, to continue an in-progress initiative, or to record and document work that was just completed.
 ---
 
+> ## ⚠️ Historical references
+>
+> The backend is no longer Go. `backend-go/` has been removed and replaced by
+> the Node adapter at `adapter/src/server.mjs` (see
+> [`docs/AMIRO-RUNTIME.md`](../../../docs/AMIRO-RUNTIME.md)). Any `backend-go`
+> path, `go build`/`go test` command, or `tests/` (Go harness) step in this
+> document is **historical** and will not run. Current checks are the frontend
+> scripts (`pnpm test`, `pnpm check-types`) and the adapter tests
+> (`node --test adapter/test/usage.test.mjs`). Read the rest as method, not as
+> exact commands.
+
 # Amiro Implementation Method
 
 Execute **one phase** of a plan folder (`docs/<initiative>/`), prove it, and

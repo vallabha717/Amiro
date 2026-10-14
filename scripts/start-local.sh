@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # start-local.sh
-# Starts both Go backend (port 8787) and Next.js frontend (port 3210) locally.
+# Starts both the Node adapter (port 8787) and Next.js frontend (port 3210) locally.
 #
 # Usage:
 #   ./scripts/start-local.sh              # Default: builds and runs production static server (fastest)
@@ -78,13 +78,13 @@ if [ "$MODE" = "build" ]; then
   npm run build
 fi
 
-# 3. Start Go Backend
-echo "[3/3] Starting Go Backend on port 8787..."
+# 3. Start Node adapter (replaces the old Go backend)
+echo "[3/3] Starting Node adapter on port 8787..."
 "$SCRIPT_DIR/dev-backend.sh" &
 BACKEND_PID=$!
 
 # Wait for backend to be ready
-echo "Waiting for Go backend on port 8787..."
+echo "Waiting for Node adapter on port 8787..."
 MAX_RETRIES=60
 COUNT=0
 while ! (ss -ltnp | grep -q ':8787') && [ $COUNT -lt $MAX_RETRIES ]; do
@@ -93,10 +93,10 @@ while ! (ss -ltnp | grep -q ':8787') && [ $COUNT -lt $MAX_RETRIES ]; do
 done
 
 if ! (ss -ltnp | grep -q ':8787'); then
-  echo "Error: Go backend failed to start on port 8787."
+  echo "Error: Node adapter failed to start on port 8787."
   exit 1
 fi
-echo "✓ Go backend is ready on http://127.0.0.1:8787"
+echo "✓ Node adapter is ready on http://127.0.0.1:8787"
 
 # 4. Start Frontend
 if [ "$MODE" = "dev" ]; then

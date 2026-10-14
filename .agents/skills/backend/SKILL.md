@@ -3,7 +3,25 @@ name: backend
 description: Amiro's Go backend standards — package layout, folder structure and implementation rules for `backend-go/`. Covers adding or changing HTTP API routes, handlers, repositories, database models and migrations (sqlite AND postgres), auth and middleware, provider/AI integration, MCP, storage, secrets, and the `amiro` CLI entrypoints (sidecar, `serve`, `run`, TUI). The one backend serves all Amiro surfaces — the Tauri desktop sidecar, the browser dashboard via `amiro serve`, and the terminal UI — so use whenever work touches `backend-go/**`, whenever a UI feature needs a new or changed endpoint, or when reviewing backend work for standards compliance.
 ---
 
-# Amiro Backend Standards
+> ## ⚠️ RETARGETED — the backend is now a Node adapter, not Go
+>
+> `backend-go/` has been **removed**. The active backend is
+> `adapter/src/server.mjs`: a thin Node (≥ 22) HTTP adapter that serves the
+> static Next.js export and bridges the UI to a running **Jcode** daemon via
+> `@1jehuang/jcode-sdk`. It implements no agent loop, no database, and no
+> provider integrations — Jcode owns model execution, session history, and
+> provider routing; the adapter is transport, application auth, UI
+> compatibility, and thread↔session mapping.
+>
+> Read first: [`docs/AMIRO-RUNTIME.md`](../../../docs/AMIRO-RUNTIME.md)
+> (current guide) and `docs/_adapter-contract.md`,
+> `docs/_recon-frontend-api.md`, `docs/_recon-jcode-sdk.md`.
+>
+> **Everything below this banner is historical** — it describes the removed
+> Go backend and is kept only for context (the adapter's HTTP surface
+> deliberately mirrors it). Do not follow it as current practice.
+
+# Amiro Backend Standards (historical — Go backend removed)
 
 The rules any agent must follow when implementing anything in `backend-go/`.
 The frontend and terminal UI belong to the `ui` skill — read that one when

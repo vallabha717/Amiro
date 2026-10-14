@@ -7,18 +7,11 @@ out/
 !.env.example
 .DS_Store
 
-# The dashboard bundle staged for go:embed (scripts/build-ui.sh). Generated
-# from out/, which is itself ignored -- the .gitkeep stays so `go build
-# -tags embedui` has a directory to point at in a fresh clone.
-backend-go/internal/web/dist/*
-!backend-go/internal/web/dist/.gitkeep
+# The dashboard bundle staged for go:embed was removed with backend-go
+# (scripts/build-ui.sh no longer stages it). out/ is served directly by the
+# Node adapter and by src-tauri's frontendDist.
 
-# Go sidecar build artifacts
-backend-go/bin/
-backend-go/*.exe
-backend-go/bifrost
-backend-go/server
-backend-go/amiro
+# Generated sidecar launcher for the Node adapter (src-tauri/build-sidecar.sh)
 src-tauri/binaries/
 
 # Tauri

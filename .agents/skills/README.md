@@ -24,11 +24,11 @@ step, import, or manifest to also update.
 
 | Skill | Covers |
 | --- | --- |
-| [`ui`](ui/SKILL.md) | Standards for anything a user sees: `src/**` (the Next.js dashboard, which ships to the Tauri desktop app, to the browser via `amiro serve`, and to `next dev`) and `backend-go/internal/tui/**` (the terminal UI). Folder structure, static-export constraints, backend access, styling tokens, i18n, state. |
-| [`backend`](backend/SKILL.md) | Standards for `backend-go/**`: package layout, adding an API route, the three auth guards, dual-dialect migrations, repositories, secrets, providers, MCP, build tags, and the test gates. |
-| [`test`](test/SKILL.md) | Standards for the `tests/` harness and how every change gets proven end to end across all five surfaces: where a test goes, how to write one, the fake provider and cassettes, golden screens, the `suites/meta/` guards that fail the build on an untested route, and the selection commands. |
+| [`ui`](ui/SKILL.md) | Standards for anything a user sees: `src/**` (the Next.js dashboard, served by the Node adapter via `pnpm start` and by the Tauri desktop shell). Folder structure, static-export constraints, backend access, styling tokens, i18n, state. **The Go terminal UI it used to cover has been removed**; that part is historical. |
+| [`backend`](backend/SKILL.md) | **Retargeted to the Node adapter** (`adapter/src/server.mjs` + `@1jehuang/jcode-sdk`): the HTTP surface, auth, thread↔session mapping, and how the adapter mirrors the old Go API. The `backend-go/**` Go sections are historical and no longer apply. |
+| [`test`](test/SKILL.md) | **The `tests/` Go harness is retired.** Current tests: `node --test adapter/test/usage.test.mjs` (unit), `node adapter/test/live-smoke.mjs` (optional live), and the frontend's `pnpm test` / `pnpm check-types`. The all-five-surfaces harness described in the skill is historical. |
 | [`plan`](plan/SKILL.md) | How work gets planned — the phased plan-folder method behind `docs/testing/`. Produces `docs/<initiative>/` with design docs, `phases/`, and a seeded `progress/`. Writes documents, never code. |
-| [`implement`](implement/SKILL.md) | How a planned phase gets executed and recorded: entry conditions, building to the `ui`/`backend` standards, verifying every exit criterion by running it, then writing the progress record and verification log and updating every doc the phase invalidated. |
+| [`implement`](implement/SKILL.md) | How a planned phase gets executed and recorded: entry conditions, building to the `ui`/`backend` standards, verifying every exit criterion by running it, then writing the progress record and verification log. Its Go/`tests/` commands are historical. |
 
 `plan` → `implement` is the intended loop. Both of them load `test`, and
 `implement` also loads `ui` and `backend` for the standards it builds to —

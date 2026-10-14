@@ -3,6 +3,6 @@
 /target/
 /gen/schemas
 
-# Cross-compiled Go sidecar binaries (build-sidecar.sh), one per target
-# triple -- rebuilt from backend-go on demand, not checked in.
+# Generated backend sidecar launcher (build-sidecar.sh), one per target
+# triple -- regenerated from the Node adapter on demand, not checked in.
 /binaries/

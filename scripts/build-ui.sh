@@ -1,29 +1,28 @@
 #!/usr/bin/env bash
-# Build the Next.js dashboard and stage it where go:embed can find it.
+# Build the Next.js dashboard static export into out/.
 #
-# The two halves of this are separate on purpose. `next build` writes to
-# out/ at the repo root, which is also what src-tauri bundles and what
-# serve-out.mjs serves; backend-go/internal/web/dist is a *copy*, staged
-# only so `go build -tags embedui` has something to compile in. Making the
-# Go build read out/ directly would put a path traversal out of the Go
-# module into every build, and go:embed refuses to leave the module anyway.
+# History: this used to also stage out/ into backend-go/internal/web/dist so a
+# `go build -tags embedui` binary could serve the dashboard from one listener.
+# backend-go is gone; the Node adapter (adapter/src/server.mjs) serves out/
+# directly from the repo root, so the staging step is no longer needed and out/
+# is the single source of truth for both the adapter and src-tauri's
+# frontendDist.
 #
 # Usage:
-#   ./scripts/build-ui.sh            build the frontend, then stage it
-#   ./scripts/build-ui.sh --stage    stage an existing out/, skip the build
+#   ./scripts/build-ui.sh            build the dashboard (next build -> out/)
+#   ./scripts/build-ui.sh --check    verify an existing out/ is present
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="$ROOT/out"
-DIST="$ROOT/backend-go/internal/web/dist"
 
-if [[ "${1:-}" != "--stage" ]]; then
+if [[ "${1:-}" != "--check" ]]; then
   echo "==> building the dashboard (next build)"
   cd "$ROOT"
   if command -v pnpm >/dev/null 2>&1; then
     pnpm build
   else
-    echo "pnpm not found on PATH -- install it, or run with --stage to reuse an existing out/" >&2
+    echo "pnpm not found on PATH -- install it, or run with --check to reuse an existing out/" >&2
     exit 1
   fi
 fi
@@ -33,25 +32,9 @@ if [[ ! -f "$OUT/index.html" ]]; then
   exit 1
 fi
 
-echo "==> staging $OUT -> $DIST"
-# Replace rather than merge: a file deleted from the export must not
-# survive in the embedded copy, where it would be served forever.
-rm -rf "$DIST"
-mkdir -p "$DIST"
-cp -R "$OUT/." "$DIST/"
-
-# Keep the placeholder, so a later `git clean` of the generated files still
-# leaves go:embed a directory to point at.
-cat > "$DIST/.gitkeep" <<'GITKEEP'
-Placeholder so `go:embed all:dist` (embed_on.go) has a directory to point
-at in a checkout that has not run scripts/build-ui.sh. Everything else in
-here is generated and gitignored.
-GITKEEP
-
-FILES=$(find "$DIST" -type f | wc -l | tr -d ' ')
-SIZE=$(du -sh "$DIST" | cut -f1)
-echo "==> staged $FILES files ($SIZE)"
+FILES=$(find "$OUT" -type f | wc -l | tr -d ' ')
+SIZE=$(du -sh "$OUT" | cut -f1)
+echo "==> export ready: $FILES files ($SIZE) at $OUT"
 echo
-echo "now build the binaries with the bundle compiled in:"
-echo "  cd backend-go && go build -tags embedui -o bin/amiro ./cmd/amiro"
-echo "  cd backend-go && go build -tags embedui -o bin/amiro-server ./cmd/server"
+echo "the Node adapter serves this directly; to run it standalone:"
+echo "  ./scripts/dev-backend.sh"

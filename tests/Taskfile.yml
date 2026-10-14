@@ -1,82 +1,78 @@
-# Thin wrappers over `go run ./cmd/amirotest`.
+# =============================================================================
+# RETIRED (compatibility harness for the removed Go backend)
+# =============================================================================
+# `tests/` was the Go end-to-end harness for `backend-go` (driven by
+# `cmd/amirotest`). `backend-go` has been removed and replaced by the Node
+# adapter (`adapter/src/server.mjs`). Nothing in the `go run ./cmd/amirotest`
+# surface below can run any more, because there is no Go backend for it to
+# build, start, or query.
 #
-# Deliberately thin. Every task here is one line, and none of them does
-# anything you cannot do by typing the underlying command -- see
-# docs/testing/03-selection.md: amirotest must never be the only way to run
-# a test, and a Taskfile that grew logic of its own would become a second,
-# undocumented way to configure a run.
+# The fixtures, cassettes, and suite/test code are kept as historical
+# reference (do not delete them), but the `go run ...` tasks are dead. The
+# current test entry points are the `adapter:*` tasks below, run from the
+# repository root.
 #
-# Install: https://taskfile.dev  ·  or just run the commands in `cmds:`.
+# Install: https://taskfile.dev  (or just run the commands in `cmds:`)
 version: "3"
-
-vars:
-  AMIROTEST: go run ./cmd/amirotest
 
 tasks:
   default:
-    desc: Everything config.yaml selects
-    cmds: ["{{.AMIROTEST}} run"]
+    desc: The current tests (Node adapter unit tests)
+    cmds: ["node --test adapter/test/usage.test.mjs"]
 
-  doctor:
-    desc: Is the toolchain complete, and what does each gap mean?
-    cmds: ["{{.AMIROTEST}} doctor"]
+  adapter:unit:
+    desc: Node adapter unit tests
+    cmds: ["node --test adapter/test/usage.test.mjs"]
 
-  list:
-    desc: Every discovered surface/feature/test address
-    cmds: ["{{.AMIROTEST}} list"]
+  adapter:live:
+    desc: "Adapter live smoke against a RUNNING, AUTHENTICATED preview (needs credentials + a live bridge)"
+    cmds: ["node adapter/test/live-smoke.mjs"]
 
-  smoke:
-    desc: The minimal path that proves each surface is alive
-    cmds: ["{{.AMIROTEST}} run --tag smoke"]
+  # ---------------------------------------------------------------------------
+  # Everything below is RETIRED. It targeted backend-go and will not run.
+  # Kept only so the historical commands are still discoverable.
+  # ---------------------------------------------------------------------------
 
-  backend:
-    desc: The backend surface (pass FEATURE=chat to narrow)
-    cmds: ["{{.AMIROTEST}} run --surface backend {{if .FEATURE}}--feature {{.FEATURE}}{{end}}"]
+  legacy:doctor:
+    desc: "[RETIRED] Was: is the Go toolchain complete?"
+    cmds: ["go run ./cmd/amirotest doctor"]
 
-  tui:
-    desc: The TUI surface
-    cmds: ["{{.AMIROTEST}} run --surface tui {{if .FEATURE}}--feature {{.FEATURE}}{{end}}"]
+  legacy:list:
+    desc: "[RETIRED] Was: every discovered surface/feature/test address"
+    cmds: ["go run ./cmd/amirotest list"]
 
-  ui:
-    desc: The web dashboard surface (Playwright)
-    cmds: ["{{.AMIROTEST}} run --surface ui {{if .FEATURE}}--feature {{.FEATURE}}{{end}}"]
+  legacy:run:
+    desc: "[RETIRED] Was: everything config.yaml selected"
+    cmds: ["go run ./cmd/amirotest run"]
 
-  desktop:
-    desc: The Tauri surface (skips itself if cargo is absent)
-    cmds: ["{{.AMIROTEST}} run --surface desktop"]
+  legacy:smoke:
+    desc: "[RETIRED] Was: the minimal per-surface liveness path"
+    cmds: ["go run ./cmd/amirotest run --tag smoke"]
 
-  meta:
-    desc: The guards -- tests of the test system itself
-    cmds: ["{{.AMIROTEST}} run --surface meta"]
+  legacy:backend:
+    desc: "[RETIRED] Was: the Go backend surface"
+    cmds: ["go run ./cmd/amirotest run --surface backend {{if .FEATURE}}--feature {{.FEATURE}}{{end}}"]
 
-  feature:
-    desc: One feature on EVERY surface that has it (FEATURE=chat)
-    cmds: ["{{.AMIROTEST}} run --feature {{.FEATURE}}"]
+  legacy:tui:
+    desc: "[RETIRED] Was: the TUI surface"
+    cmds: ["go run ./cmd/amirotest run --surface tui {{if .FEATURE}}--feature {{.FEATURE}}{{end}}"]
 
-  unit:
-    desc: The harness's own unit tests
+  legacy:ui:
+    desc: "[RETIRED] Was: the web dashboard surface (Playwright)"
+    cmds: ["go run ./cmd/amirotest run --surface ui {{if .FEATURE}}--feature {{.FEATURE}}{{end}}"]
+
+  legacy:desktop:
+    desc: "[RETIRED] Was: the Tauri surface"
+    cmds: ["go run ./cmd/amirotest run --surface desktop"]
+
+  legacy:meta:
+    desc: "[RETIRED] Was: guards -- tests of the test system itself"
+    cmds: ["go run ./cmd/amirotest run --surface meta"]
+
+  legacy:unit:
+    desc: "[RETIRED] Was: the Go harness's own unit tests"
     cmds: ["go test ./harness/... ./cmd/..."]
 
-  report:
-    desc: Re-render the newest run's summary
-    cmds: ["{{.AMIROTEST}} report"]
-
-  timeline:
-    desc: The merged event timeline for one test (TEST='backend/smoke/TestX')
-    cmds: ["{{.AMIROTEST}} report --timeline {{if .TEST}}--test '{{.TEST}}'{{end}}"]
-
-  config:
-    desc: Regenerate config.example.yaml from harness/config/defaults.go
-    cmds: ["{{.AMIROTEST}} config example"]
-
-  config:check:
-    desc: Fail if config.example.yaml has drifted (what CI runs)
-    cmds: ["{{.AMIROTEST}} config example --check"]
-
-  env:
-    desc: Print every AMIRO_TEST_* variable and the config key it sets
-    cmds: ["{{.AMIROTEST}} env --list"]
-
-  clean:
-    desc: Prune logs/ to logging.keepRuns
-    cmds: ["{{.AMIROTEST}} clean"]
+  legacy:report:
+    desc: "[RETIRED] Was: re-render the newest run's summary"
+    cmds: ["go run ./cmd/amirotest report"]

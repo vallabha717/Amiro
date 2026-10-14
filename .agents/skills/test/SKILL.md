@@ -3,6 +3,17 @@ name: test
 description: Amiro's testing standards and the `tests/` harness — how every change gets proven end to end across all five surfaces (backend API, terminal UI, web dashboard, Tauri desktop, cross-surface). Covers where a test goes (`tests/suites/<surface>/<feature>/` and `tests/ui/specs/<feature>/`), how to write one with `harness.New(t)` or the Playwright fixtures, the fake provider and cassettes, golden screens, the `suites/meta/` guards that fail the build when a route is untested, isolation and artifacts, and the selection commands. Use whenever adding or changing a feature, route, screen, component or keybinding — testing is part of the work, not a follow-up — and whenever asked to write, run, fix, select or debug tests, chase a flake, or check coverage of a surface.
 ---
 
+> ## ⚠️ RETIRED: the `tests/` Go harness no longer runs
+>
+> `tests/` targeted the removed Go `backend-go` backend, so nothing in it
+> builds or runs now. Its fixtures and suites are kept as historical
+> reference, not deleted. The current test entry points are
+> `node --test adapter/test/usage.test.mjs` (unit) and
+> `node adapter/test/live-smoke.mjs` (optional; needs a running, authenticated
+> preview), plus the frontend's `pnpm test` / `pnpm check-types`. The
+> cross-surface, all-five-surfaces model described below is **historical**;
+> see [`docs/AMIRO-RUNTIME.md`](../../../docs/AMIRO-RUNTIME.md).
+
 # Amiro Testing Standards
 
 Amiro's lifecycle is meant to be driven end to end by agents. That only

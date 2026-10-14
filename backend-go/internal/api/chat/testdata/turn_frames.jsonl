@@ -1,9 +1,0 @@
-{"type":"start","messageId":"\u003cgenerated\u003e"}
-{"type":"start-step"}
-{"type":"text-start","id":"\u003cgenerated\u003e"}
-{"type":"text-delta","id":"\u003cgenerated\u003e","delta":"hello "}
-{"type":"text-delta","id":"\u003cgenerated\u003e","delta":"there"}
-{"type":"text-end","id":"\u003cgenerated\u003e"}
-{"type":"finish-step"}
-{"type":"finish","messageMetadata":{"chatModel":{"model":"gpt-5","provider":"openai"},"durationMs":0,"toolCount":16,"usage":{"CompletionTokens":7,"PromptTokens":11,"TotalTokens":18}}}
-{"type":"done"}

@@ -1,0 +1,29 @@
+#!/usr/bin/env sh
+# Amiro CLI
+# ---------
+# A thin wrapper around the upstream Jcode CLI. Amiro does not fork, vendor,
+# patch, or rebrand Jcode: every argument is forwarded unchanged to the
+# installed `jcode` binary, so Jcode's own authorship, licensing, and command
+# surface are retained exactly as upstream ships them. Amiro only supplies the
+# name and the desktop/dashboard around it.
+#
+# This matters for delegation: any operation Amiro is allowed to perform in
+# its UI is performed by Jcode under the hood, and this entry point is the
+# same delegation from a shell. There is deliberately no Amiro-specific
+# command implementation here -- adding one would be the first step of a fork.
+#
+# Override the underlying binary with AMIRO_JCODE_BIN (e.g. an absolute path or
+# a specific jcode build) when it is not `jcode` on PATH.
+set -eu
+
+JCODE_BIN="${AMIRO_JCODE_BIN:-jcode}"
+
+if ! command -v "$JCODE_BIN" >/dev/null 2>&1; then
+  echo "amiro: the Jcode CLI ('$JCODE_BIN') was not found on PATH." >&2
+  echo "       amiro is a thin wrapper over Jcode; install Jcode first," >&2
+  echo "       or set AMIRO_JCODE_BIN to its path. No Amiro command is" >&2
+  echo "       implemented locally -- everything delegates to Jcode." >&2
+  exit 127
+fi
+
+exec "$JCODE_BIN" "$@"
