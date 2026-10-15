@@ -222,7 +222,18 @@ export function AgentOverview() {
   };
 
   const memoryStats = identityData?.memoryStats;
+  // The adapter only returns memoryStats to an admin (non-admins get identity
+  // alone, so shared machine memory is not leaked). An identity that loaded
+  // successfully without stats is therefore "not available to you", never
+  // "still loading".
   const memoryUnavailable = !memoryStats;
+  const memorySub = memoryStats
+    ? `${memoryStats.projectCount ?? 0} project · ${memoryStats.globalCount ?? 0} global`
+    : identityLoading
+      ? "Loading…"
+      : identityData
+        ? "Admin only"
+        : "Could not load";
 
   const accentHex = identity.accentHex || "#E9642F";
   const floodTone = toneForBg(accentHex);
@@ -234,8 +245,6 @@ export function AgentOverview() {
   const jcodeSuperpowers = totalSuperpowers - customSuperpowers;
 
   const totalMemories = memoryStats?.total ?? 0;
-  const projectMemories = memoryStats?.projectCount ?? 0;
-  const globalMemories = memoryStats?.globalCount ?? 0;
 
   // The dials shown without identityData are the app defaults, not the user's
   // saved calibration, so the summary says which of the two it is.
@@ -363,11 +372,7 @@ export function AgentOverview() {
       label: "Memory",
       subtitle: "Persistent Jcode knowledge graph",
       statValue: memoryUnavailable ? "—" : `${totalMemories} memories`,
-      statSub: memoryUnavailable
-        ? identityError
-          ? "Could not load"
-          : "Loading…"
-        : `${projectMemories} project · ${globalMemories} global`,
+      statSub: memorySub,
       href: "/agent/memory",
       icon: Brain,
       radiusClass: "rounded-[2.15rem_1.25rem_2.35rem_1.35rem]",

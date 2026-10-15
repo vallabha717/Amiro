@@ -39,6 +39,10 @@ describe("agent hub truthfulness", () => {
   it("shows a real unavailable state instead of a plausible number", () => {
     expect(hubSource).toMatch(/memoryUnavailable\s*\?/);
     expect(hubSource).toMatch(/skillsLoaded\s*\?/);
+    // Non-admins get no memoryStats at all, so the card must not keep saying
+    // "Loading…" once identity has actually loaded.
+    expect(hubSource).toMatch(/\? "Admin only"/);
+    expect(hubSource).toMatch(/const memorySub = memoryStats/);
   });
 
   it("gives identity fetch failure visible, retryable feedback", () => {
