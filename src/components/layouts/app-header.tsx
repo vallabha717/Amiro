@@ -160,6 +160,12 @@ export function AppHeader() {
                   variant={workflowView.isOpen ? "secondary" : "ghost"}
                   className="bg-secondary/40"
                   aria-pressed={workflowView.isOpen}
+                  // An icon-only button needs a name of its own: the tooltip
+                  // text is a separate element and never reaches the
+                  // accessibility tree, so a screen reader saw a nameless
+                  // "pressed" button here (measured in real Chrome: no
+                  // aria-label, no title, aria-pressed="true").
+                  aria-label={t("Chat.WorkflowView.toggle")}
                   onClick={handleToggleWorkflowView}
                 >
                   <WorkflowIcon className="size-4" />
