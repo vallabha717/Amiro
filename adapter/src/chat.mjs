@@ -26,6 +26,8 @@ import { assertUsableProjectDirectory } from './fsbrowse.mjs';
 import { buildAgentTurnReminder, beginAgentUserTurn } from './agent-context.mjs';
 
 const TURN_TIMEOUT_MS = 15 * 60 * 1000;
+// How long to wait for the daemon to accept a user message before giving up.
+const TURN_ACCEPT_TIMEOUT_MS = 10_000;
 
 // A session is created for a specific folder. The daemon echoes the directory it
 // actually used (`working_dir`); if that differs from what the user picked, the
@@ -504,7 +506,10 @@ export function register(app, ctx) {
             mentions: body.mentions,
             workingDir: entry.workingDir || ctx.config.workspaceDir,
           });
-          iterator = await beginAgentUserTurn(client, sessionId, prompt, images, reminder);
+          iterator = await beginAgentUserTurn(client, sessionId, prompt, images, reminder, TURN_ACCEPT_TIMEOUT_MS, {
+            onBusyRetry: (info) =>
+              ctx.log('warn', 'daemon was still busy; re-sending the message', { threadId, sessionId, ...info }),
+          });
         }
 
         sse.startStep();
@@ -556,7 +561,10 @@ export function register(app, ctx) {
           }
           const baseReminder = await buildAgentTurnReminder(ctx, user, { workingDir: ctx.config.workspaceDir });
           const instructions = typeof body.instructions === 'string' ? body.instructions.slice(0, 8000) : '';
-          const iterator = await beginAgentUserTurn(client, sessionId, userText || '', [], [baseReminder, instructions].filter(Boolean).join('\n\n'));
+          const iterator = await beginAgentUserTurn(client, sessionId, userText || '', [], [baseReminder, instructions].filter(Boolean).join('\n\n'), TURN_ACCEPT_TIMEOUT_MS, {
+            onBusyRetry: (info) =>
+              ctx.log('warn', 'daemon was still busy; re-sending the message', { threadId: null, sessionId, ...info }),
+          });
           sse.startStep();
           await streamTurn({ ctx, sse, client, sessionId, allowTools: toolsEnabled(), iterator });
           sse.finishStep();
