@@ -6,9 +6,9 @@ import { type ReactNode, createContext, useContext } from "react";
  * Where a presenter is being rendered.
  *
  * "chat" is the message stream, which is a *log*: it says what happened and
- * how much, and stays scannable across a hundred steps. "detail" is the
- * Workflow View's panel, which is a *record*: one node at a time, opened
- * deliberately, with room for the whole thing.
+ * how much, and stays scannable across a hundred steps. "detail" is an
+ * approval card or a result dialog, which is a *record*: one tool call,
+ * opened deliberately, with room for the whole thing.
  *
  * The distinction exists so the two surfaces can share one presenter instead
  * of drifting into two implementations of the same tool. A presenter that

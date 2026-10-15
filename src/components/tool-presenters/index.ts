@@ -12,10 +12,9 @@ export * from "./approval-card";
  * The one place a tool name maps to how it looks.
  *
  * Both surfaces read this registry: chat renders `Expanded` inside a
- * message, the chat graph's detail panel renders `Compact`/`Expanded`
- * through `statusFromNodeHistory`. Neither keeps its own switch
- * statement, so adding a tool means adding one entry here rather than
- * editing two unrelated files and forgetting the second.
+ * message, and the approval card renders `Compact` as its body. Neither
+ * keeps its own switch statement, so adding a tool means adding one entry
+ * here rather than editing two unrelated files and forgetting the second.
  *
  * Presenters for the remaining older toolkits (charts, web search, image
  * generation) still live in `tool-invocation/` and are dispatched by

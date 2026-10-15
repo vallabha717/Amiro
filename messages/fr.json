@@ -188,7 +188,6 @@
       "unmentionedTitle": "Modifiés mais non mentionnés",
       "unmentionedHint": "Ces fichiers ont été modifiés durant ce tour et le récapitulatif ne les explique pas.",
       "unmentionedCount": "{count} fichiers modifiés non mentionnés",
-      "backToGraph": "Retour au graphe",
       "close": "Fermer",
       "planWriting": "Rédaction du plan…",
       "writing": "Rédaction…",

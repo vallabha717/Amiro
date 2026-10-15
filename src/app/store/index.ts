@@ -72,12 +72,9 @@ export interface AppState {
       providerOptions?: Record<string, any>;
     };
   };
-  workflowView: {
-    isOpen: boolean;
-  };
   /**
    * The artifact pane: the implementation plan, the task list, and the
-   * walkthrough. Shares the wide pane with the Workflow View.
+   * walkthrough.
    *
    * `openedFor` is the tool call id the pane was last auto-opened for, and
    * exists so the auto-open fires once per proposal. Without it, a user who
@@ -146,9 +143,6 @@ const initialState: AppState = {
       },
     },
   },
-  workflowView: {
-    isOpen: true,
-  },
   artifactView: {
     isOpen: false,
     tab: "plan",
@@ -184,7 +178,6 @@ export const appStore = create<AppState & AppDispatch>()(
           isOpen: false,
         },
         toolPresets: state.toolPresets || initialState.toolPresets,
-        workflowView: state.workflowView || initialState.workflowView,
         // Deliberately not persisted open. The pane belongs to a specific
         // proposal in a specific thread; restoring it across a reload into a
         // different conversation would show an artifact from another one.

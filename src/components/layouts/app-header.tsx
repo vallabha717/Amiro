@@ -7,12 +7,11 @@ import {
   ChevronDown,
   MessageCircleDashed,
   PanelLeft,
-  WorkflowIcon,
 } from "lucide-react";
 import { Button } from "ui/button";
 import { Separator } from "ui/separator";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo } from "react";
 import { ThreadDropdown } from "../thread-dropdown";
 import { appStore } from "@/app/store";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -22,22 +21,13 @@ import { useTranslations } from "next-intl";
 import { TextShimmer } from "ui/text-shimmer";
 import { buildReturnUrl } from "lib/admin/navigation-utils";
 import { BackButton } from "@/components/layouts/back-button";
-import { WORKFLOW_VIEW_LAUNCH_DATE } from "app-types/chat-graph";
 
 export function AppHeader() {
   const t = useTranslations();
-  const [appStoreMutate, workflowView, threadList, currentThreadId] = appStore(
-    useShallow((state) => [
-      state.mutate,
-      state.workflowView,
-      state.threadList,
-      state.currentThreadId,
-    ]),
-  );
-  const { toggleSidebar, open, setOpen } = useSidebar();
+  const appStoreMutate = appStore((state) => state.mutate);
+  const { toggleSidebar, open } = useSidebar();
   const currentPaths = usePathname();
   const searchParams = useSearchParams();
-  const sidebarOpenBeforeWorkflowView = useRef<boolean | null>(null);
 
   const showActionButtons = useMemo(() => {
     if (currentPaths.startsWith("/admin")) {
@@ -45,44 +35,6 @@ export function AppHeader() {
     }
     return true;
   }, [currentPaths]);
-
-  const currentThread = useMemo(
-    () => threadList.find((thread) => thread.id === currentThreadId),
-    [threadList, currentThreadId],
-  );
-
-  const canToggleWorkflowView = useMemo(() => {
-    if (!currentThread) return true;
-    return (
-      new Date(currentThread.createdAt).getTime() >=
-      WORKFLOW_VIEW_LAUNCH_DATE.getTime()
-    );
-  }, [currentThread]);
-
-  // Auto-collapses the nav sidebar the moment Workflow View becomes active
-  // for an eligible thread (including by default, with no click needed), and
-  // restores whatever the sidebar's prior state was once it's turned off.
-  useEffect(() => {
-    if (workflowView.isOpen && canToggleWorkflowView) {
-      if (sidebarOpenBeforeWorkflowView.current === null) {
-        sidebarOpenBeforeWorkflowView.current = open;
-      }
-      setOpen(false);
-    } else if (sidebarOpenBeforeWorkflowView.current !== null) {
-      setOpen(sidebarOpenBeforeWorkflowView.current);
-      sidebarOpenBeforeWorkflowView.current = null;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workflowView.isOpen, canToggleWorkflowView]);
-
-  const handleToggleWorkflowView = () => {
-    appStoreMutate((state) => ({
-      workflowView: {
-        ...state.workflowView,
-        isOpen: !state.workflowView.isOpen,
-      },
-    }));
-  };
 
   const componentByPage = useMemo(() => {
     if (currentPaths === "/" && searchParams.get("thread")) {
@@ -152,30 +104,6 @@ export function AppHeader() {
       <div className="flex-1" />
       {showActionButtons && (
         <div className="flex items-center gap-2">
-          {canToggleWorkflowView && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size={"icon"}
-                  variant={workflowView.isOpen ? "secondary" : "ghost"}
-                  className="bg-secondary/40"
-                  aria-pressed={workflowView.isOpen}
-                  // An icon-only button needs a name of its own: the tooltip
-                  // text is a separate element and never reaches the
-                  // accessibility tree, so a screen reader saw a nameless
-                  // "pressed" button here (measured in real Chrome: no
-                  // aria-label, no title, aria-pressed="true").
-                  aria-label={t("Chat.WorkflowView.toggle")}
-                  onClick={handleToggleWorkflowView}
-                >
-                  <WorkflowIcon className="size-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent align="end" side="bottom">
-                {t("Chat.WorkflowView.toggle")}
-              </TooltipContent>
-            </Tooltip>
-          )}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button

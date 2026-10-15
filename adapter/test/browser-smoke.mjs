@@ -57,6 +57,8 @@ try {
   await page.getByTestId('sidebar-mcp-link').waitFor({ timeout: 20000 });
   assert.equal(await page.locator('[data-testid="sidebar-workflow-link"]').count(), 0, 'the sidebar must not link to the removed workflow feature');
   assert.equal(await page.locator('a[href="/workflow"]').count(), 0, 'no link on the chat page may point at /workflow');
+  assert.equal(await page.locator('svg.lucide-workflow').count(), 0, 'the chat header must render zero svg.lucide-workflow elements');
+  assert.equal(await page.locator('[aria-pressed]').and(page.getByRole('button', { name: /workflow/i })).count(), 0, 'chat page must have zero aria-pressed elements whose accessible name comes from the removed toggle');
   const workflowApi = await fetch(`${base}/api/workflow`);
   assert.equal(workflowApi.status, 404, `GET /api/workflow should be an unregistered 404, got ${workflowApi.status}`);
   const removedFeature = await context.newPage();
@@ -123,6 +125,14 @@ try {
   createdThread = new URL(page.url()).searchParams.get('thread');
   assert(createdThread, 'Chat must get a persisted thread URL');
   pass('real model response rendered by browser UI');
+  // The removed workflow graph pane used to derive from turn messages on a
+  // debounce. Because web-first assertions cannot await the non-appearance of
+  // an element that never mounts, a short explicit wait is used here to allow
+  // any debounced graph derivation to settle before asserting absence.
+  await page.waitForTimeout(500);
+  assert.equal(await page.locator('.react-flow__node').count(), 0, 'chat page must render zero .react-flow__node elements after a real model turn');
+  assert.equal(await page.locator('svg.lucide-workflow').count(), 0, 'chat page must still render zero svg.lucide-workflow elements after a real model turn');
+  pass('workflow pane never appears for a real turn: zero react-flow nodes and zero workflow icons');
   // The selected folder must be the directory the session actually uses.
   const threadInfo = await page.evaluate(async (threadId) => {
     const token = localStorage.getItem('amiro.session-token');

@@ -189,7 +189,6 @@
       "unmentionedTitle": "변경됐지만 언급되지 않음",
       "unmentionedHint": "이번 턴에 수정됐지만 변경 요약이 설명하지 않는 파일입니다.",
       "unmentionedCount": "언급되지 않은 변경 파일 {count}개",
-      "backToGraph": "그래프로 돌아가기",
       "close": "닫기",
       "planWriting": "계획 작성 중…",
       "writing": "작성 중…",

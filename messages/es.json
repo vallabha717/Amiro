@@ -188,7 +188,6 @@
       "unmentionedTitle": "Modificados pero no mencionados",
       "unmentionedHint": "Estos archivos se editaron en este turno y el resumen no los explica.",
       "unmentionedCount": "{count} archivos modificados sin mencionar",
-      "backToGraph": "Volver al gráfico",
       "close": "Cerrar",
       "planWriting": "Escribiendo el plan…",
       "writing": "Escribiendo…",

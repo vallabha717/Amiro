@@ -121,15 +121,6 @@
       "temporaryChatInstructionsPlaceholder": "Enter your instructions here",
       "temporaryChatInstructionsDescription": "You can set instructions for the temporary chat. This will be used as a system prompt for the temporary chat."
     },
-    "WorkflowView": {
-      "toggle": "Toggle Workflow View",
-      "emptyState": "Nodes will appear here as the conversation runs.",
-      "kindPrompt": "Prompt",
-      "kindTool": "Tool Call",
-      "kindChart": "Chart",
-      "kindResponse": "Response",
-      "input": "Input"
-    },
     "placeholder": "Ask anything or @mention",
     "Tool": {
       "webSearching": "Searching the Web...",
@@ -227,7 +218,6 @@
       "unmentionedTitle": "Changed but not mentioned",
       "unmentionedHint": "These files were edited this turn and the walkthrough does not explain them.",
       "unmentionedCount": "{count} changed files not mentioned",
-      "backToGraph": "Back to graph",
       "close": "Close",
       "planWriting": "Writing the plan…",
       "writing": "Writing…",

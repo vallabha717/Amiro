@@ -8,7 +8,6 @@ import {
   ClipboardListIcon,
   FileTextIcon,
   ListChecksIcon,
-  NetworkIcon,
   XIcon,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -25,13 +24,6 @@ interface Props {
   threadId?: string;
   addToolResult?: UseChatHelpers<UIMessage>["addToolResult"];
   busy?: boolean;
-  /**
-   * True when closing this pane reveals the Workflow View underneath, which
-   * changes what the close button means: "back to the graph" rather than
-   * "back to full-width chat". Labelling both the same way would make one of
-   * them a small lie about where the click leads.
-   */
-  canReturnToGraph?: boolean;
 }
 
 const TABS: { id: ArtifactTab; icon: typeof FileTextIcon }[] = [
@@ -43,8 +35,8 @@ const TABS: { id: ArtifactTab; icon: typeof FileTextIcon }[] = [
 /**
  * The artifact pane: plan, tasks, walkthrough.
  *
- * It occupies the wide pane the Workflow View already established, which is
- * why the chat column's 380px layout needs no new case. Three tabs rather
+ * It occupies the chat's wide pane, so the chat column's 380px layout needs
+ * no new case. Three tabs rather
  * than three panels because they are three views of one turn, and a user
  * comparing "what was agreed" against "what changed" wants them one click
  * apart, not side by side at a third of the width each.
@@ -54,7 +46,6 @@ export function ArtifactPane({
   threadId,
   addToolResult,
   busy,
-  canReturnToGraph,
 }: Props) {
   const t = useTranslations("Chat.Artifact");
   const [tab, mutate] = appStore(
@@ -130,8 +121,8 @@ export function ArtifactPane({
 
         <button
           type="button"
-          aria-label={canReturnToGraph ? t("backToGraph") : t("close")}
-          title={canReturnToGraph ? t("backToGraph") : t("close")}
+          aria-label={t("close")}
+          title={t("close")}
           onClick={() =>
             // Closing marks this turn's message as already surfaced (the same
             // key the auto-open effect uses), so it cannot fire again on the
@@ -151,14 +142,7 @@ export function ArtifactPane({
           }
           className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors duration-[120ms] ease-[var(--ease-out)] hover:bg-muted/60 hover:text-foreground"
         >
-          {canReturnToGraph ? (
-            <>
-              <NetworkIcon className="size-3.5" />
-              <span className="hidden lg:inline">{t("backToGraph")}</span>
-            </>
-          ) : (
-            <XIcon className="size-3.5" />
-          )}
+          <XIcon className="size-3.5" />
         </button>
       </nav>
 

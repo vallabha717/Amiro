@@ -189,7 +189,6 @@
       "unmentionedTitle": "已修改但未说明",
       "unmentionedHint": "这些文件在本轮被修改，但变更说明没有解释它们。",
       "unmentionedCount": "{count} 个已修改文件未被说明",
-      "backToGraph": "返回流程图",
       "close": "关闭",
       "planWriting": "正在编写计划…",
       "writing": "编写中…",

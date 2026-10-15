@@ -218,8 +218,8 @@ export const WorkLog = memo(function WorkLog({
 
       {open ? (
         // Everything inside the log renders as a log entry, not as a full
-        // record: the diff, the file body and the rest live one click away
-        // in the Workflow View, where there is room for them.
+        // record: the diff, the file body and the rest live one click away,
+        // where there is room for them.
         <PresenterSurface value="chat">
           <div className="flex flex-col gap-1 border-l ml-1.5 pl-3 mt-1">
             {rows.map((row, i) =>

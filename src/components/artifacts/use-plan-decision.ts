@@ -16,12 +16,11 @@ import {
 /**
  * Answering a proposed plan, in one place.
  *
- * Three surfaces offer Proceed -- the artifact header, the card in the chat
- * stream, and the halted node in the Workflow View -- because the user may be
- * looking at any of them when they decide. All three call this. Three copies
- * of "write the tool result, then change the permission mode" is three
- * chances for one of them to forget the second half, and the second half is
- * the one that decides what the agent is allowed to do next.
+ * Two surfaces offer Proceed -- the artifact header and the plan card in the
+ * chat stream -- because the user may be looking at either when they decide.
+ * Both call this. Copies of "write the tool result, then change the
+ * permission mode" are chances for one to forget the second half, and the
+ * second half is the one that decides what the agent is allowed to do next.
  */
 export function usePlanDecision(
   addToolResult?: UseChatHelpers<UIMessage>["addToolResult"],

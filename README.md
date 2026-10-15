@@ -129,9 +129,14 @@ silently fall back to another provider. Browser-supplied tool/MCP lists cannot
 widen permissions. Search, background execution, legacy skill generation,
 checkpoint restore, and MCP tool execution/authorization are **not enabled**
 and return explicit unsupported errors rather than fabricated success. The
-user-authored workflow builder was removed outright rather than left
-returning errors -- the sidebar entry, `/workflow` pages, the flow canvas,
-the `Workflow` toolkit and the `/api/workflow*` endpoints are all gone. See
+user-authored workflow builder and the chat's Workflow View were removed
+outright rather than left returning errors -- the sidebar entry,
+`/workflow` pages, the flow canvas, the `Workflow` toolkit, the
+`/api/workflow*` endpoints, and the chat's live graph pane (the
+header's "Toggle Workflow View" button, its `src/components/chat-graph/`
+and `src/lib/ai/chat-graph/` client graph, the artifact pane's "Back to
+graph" branch, and the `@xyflow/react` dependency) are all gone. The
+chat no longer shows a graph. See
 `docs/AMIRO-RUNTIME.md` for the full list, the usage page's scope caveats, and
 the "safe preview policy, not an OS sandbox" warning.
 

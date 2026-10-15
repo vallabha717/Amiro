@@ -4,11 +4,10 @@ import type { FC } from "react";
 /**
  * How a tool run ended, in the one vocabulary every surface shares.
  *
- * Chat and the chat graph describe the same three outcomes with
- * completely different shapes -- `ToolUIPart.state` / `errorText` on one
- * side, a chat-graph node's runtime history on the other. Presenters take
- * this instead of either, which is what lets one component render into both
- * without knowing where it is.
+ * Chat describes a tool run's three outcomes with one shape --
+ * `ToolUIPart.state` / `errorText`. Presenters take this instead of that, so
+ * a presenter that needs to render somewhere else later does not have to
+ * learn a second shape to do it.
  */
 export type ToolRunStatus = "pending" | "success" | "error";
 
@@ -55,18 +54,6 @@ export function presenterPropsFromToolPart(part: ToolUIPart): PresenterProps {
   };
 }
 
-/** Chat-graph adapter: derive status from a node's runtime history entry. */
-export function statusFromNodeHistory(history: {
-  status?: string;
-  error?: unknown;
-}): ToolRunStatus {
-  if (history.error) return "error";
-  if (history.status === "fail" || history.status === "error") return "error";
-  if (history.status === "running" || history.status === undefined)
-    return "pending";
-  return "success";
-}
-
 export interface PresenterProps {
   /** The tool's arguments, as the model produced them. */
   input: any;
@@ -89,13 +76,13 @@ export interface PresenterProps {
 export interface ToolPresenter {
   /**
    * One line, ~60 chars, answering *what happened* -- never "a tool ran".
-   * Rendered on the chat graph node face and as the collapsed chat header.
+   * Rendered on the collapsed chat header of a tool call.
    * Must tolerate a pending/absent output.
    */
   glance: (props: PresenterProps) => string;
-  /** Node-sized: fits a ~280px chat graph node body, no internal scroll. */
+  /** Compact body: the approval card sizes itself to this. */
   Compact?: FC<PresenterProps>;
-  /** Full detail: chat message card, and the chat graph's detail panel. */
+  /** Full detail: the chat message card. */
   Expanded?: FC<PresenterProps>;
 }
 

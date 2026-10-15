@@ -416,11 +416,6 @@ function EditBody({ output, status, errorText }: PresenterProps) {
   return (
     <div className="space-y-2">
       <DiffStrip added={output?.added ?? 0} removed={output?.removed ?? 0} />
-      {output?.diff ? (
-        <span className="text-muted-foreground">
-          open the Workflow View to read the diff
-        </span>
-      ) : null}
     </div>
   );
 }
@@ -457,9 +452,8 @@ function EditDetail({
 /**
  * The chat surface's rendering of an edit: the same compact, colored +N/-M
  * card the detail surface uses, with its own click-to-expand side-by-side
- * diff dialog. Chat used to point away from itself here ("open the Workflow
- * View to read the diff") -- there is no reason a reader should have to
- * leave the conversation to see what changed.
+ * diff dialog -- there is no reason a reader should have to leave the
+ * conversation to see what changed.
  */
 function EditExpanded(props: PresenterProps & { note?: string }) {
   const surface = usePresenterSurface();

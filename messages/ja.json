@@ -188,7 +188,6 @@
       "unmentionedTitle": "変更されたが説明のないファイル",
       "unmentionedHint": "このターンで編集されましたが、変更概要では説明されていません。",
       "unmentionedCount": "説明のない変更ファイル {count} 件",
-      "backToGraph": "グラフに戻る",
       "close": "閉じる",
       "planWriting": "計画を作成中…",
       "writing": "作成中…",

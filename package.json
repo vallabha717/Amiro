@@ -67,7 +67,6 @@
     "@tiptap/starter-kit": "^2.27.1",
     "@tiptap/suggestion": "^2.27.1",
     "@vercel/blob": "^2.0.0",
-    "@xyflow/react": "^12.10.0",
     "ai": "^5.0.116",
     "chokidar": "^4.0.3",
     "class-variance-authority": "^0.7.1",
