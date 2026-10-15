@@ -1,7 +1,19 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import {
+  type AgentIdentity,
+  updateAgentIdentity,
+  useInvalidateAgentIdentity,
+} from "@/hooks/queries/use-agent-identity";
+import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
+import {
+  AVATAR_COLORS,
+  type CharacterTraits,
+  accentHexForColorId,
+  getCharacterComponents,
+} from "@/lib/agent/character-catalog";
+import { motion } from "framer-motion";
+import { cn } from "lib/utils";
 import {
   AlertCircle,
   Check,
@@ -13,7 +25,9 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { Button } from "ui/button";
 import {
   Dialog,
   DialogContent,
@@ -21,22 +35,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "ui/dialog";
-import { Button } from "ui/button";
 import { Input } from "ui/input";
 import { Label } from "ui/label";
-import {
-  AVATAR_COLORS,
-  getCharacterComponents,
-  accentHexForColorId,
-  type CharacterTraits,
-} from "@/lib/agent/character-catalog";
 import { AgentCharacterAvatar } from "./avatar-primitives";
-import {
-  updateAgentIdentity,
-  useInvalidateAgentIdentity,
-  type AgentIdentity,
-} from "@/hooks/queries/use-agent-identity";
-import { cn } from "lib/utils";
 
 const BODY_LABELS: Record<string, string> = {
   blob: "Amoeba",
@@ -79,7 +80,7 @@ export function AgentCustomizerModal({
   onOpenChange,
   identity,
 }: AgentCustomizerModalProps) {
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = usePrefersReducedMotion();
   const invalidate = useInvalidateAgentIdentity();
   const components = getCharacterComponents();
   const fileInputRef = useRef<HTMLInputElement | null>(null);

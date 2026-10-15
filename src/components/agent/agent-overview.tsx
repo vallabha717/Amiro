@@ -1,50 +1,51 @@
 "use client";
 
-import {
-  useState,
-  useRef,
-  useCallback,
-  useEffect,
-  type CSSProperties,
-} from "react";
-import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { motion, useReducedMotion } from "framer-motion";
-import {
-  ArrowRight,
-  Brain,
-  Check,
-  FolderOpen,
-  Pencil,
-  SlidersHorizontal,
-  Sparkles,
-  Zap,
-  type LucideIcon,
-} from "lucide-react";
-import { toast } from "sonner";
 import { appStore } from "@/app/store";
-import { useSkills } from "@/hooks/queries/use-skills";
 import {
-  useAgentIdentity,
   updateAgentIdentity,
+  useAgentIdentity,
   useInvalidateAgentIdentity,
 } from "@/hooks/queries/use-agent-identity";
+import { useSkills } from "@/hooks/queries/use-skills";
+import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
 import {
   DEFAULT_CHARACTER_TRAITS,
   DEFAULT_PERSONALITY_SLIDERS,
   summarizePersonality,
   toneForBg,
 } from "@/lib/agent/character-catalog";
+import { motion } from "framer-motion";
+import { cn } from "lib/utils";
+import {
+  ArrowRight,
+  Brain,
+  Check,
+  FolderOpen,
+  type LucideIcon,
+  Pencil,
+  SlidersHorizontal,
+  Sparkles,
+  Zap,
+} from "lucide-react";
+import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { toast } from "sonner";
+import { AgentCustomizerModal } from "./agent-customizer-modal";
 import {
   AgentCharacterAvatar,
-  AmoebaPeekTab,
-  amoebaTargetForCard,
-  PersonalitySignature,
   type AmoebaFacing,
+  AmoebaPeekTab,
   type AmoebaTarget,
+  PersonalitySignature,
+  amoebaTargetForCard,
 } from "./avatar-primitives";
-import { AgentCustomizerModal } from "./agent-customizer-modal";
-import { cn } from "lib/utils";
 
 const CARD_HOVER_LINES: Record<string, string> = {
   personality: "Go ahead, tweak my soul",
@@ -54,7 +55,7 @@ const CARD_HOVER_LINES: Record<string, string> = {
 };
 
 function useTypewriter(text: string, intervalMs: number) {
-  const reduce = useReducedMotion();
+  const reduce = usePrefersReducedMotion();
   const [count, setCount] = useState(reduce ? text.length : 0);
 
   useEffect(() => {
@@ -160,7 +161,7 @@ function FloodableTile({
 }
 
 export function AgentOverview() {
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = usePrefersReducedMotion();
   const projectDirectory = appStore((s) => s.projectDirectory);
   const pathname = usePathname();
   const router = useRouter();

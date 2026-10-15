@@ -1,6 +1,7 @@
 "use client";
 
-import { animate, motion, useReducedMotion } from "framer-motion";
+import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
+import { animate, motion } from "framer-motion";
 import {
   type CSSProperties,
   type ReactNode,
@@ -19,10 +20,17 @@ import {
   type CharacterTraits,
   DEFAULT_CHARACTER_TRAITS,
   DEFAULT_PERSONALITY_SLIDERS,
+  type EyePathDefinition,
   PERSONALITY_AXES,
   PERSONALITY_AXIS_DEFAULT,
+  accentOrbitKeyframes,
+  bodyAccentDots,
+  bodyLattice,
+  bodyOnlyTransform,
   computeTransforms,
+  eyeMarkColor,
   getCharacterComponents,
+  latticeStrideForSize,
   pathBBox,
   resolveDefinitions,
   toneForBg,
@@ -55,7 +63,7 @@ export function AgentCharacterAvatar({
   className,
   style,
 }: AgentCharacterAvatarProps) {
-  const prefersReducedMotion = useReducedMotion();
+  const prefersReducedMotion = usePrefersReducedMotion();
   const reduce = prefersReducedMotion || !animated;
   const allComponents = useMemo(
     () => components ?? getCharacterComponents(),
@@ -106,6 +114,38 @@ export function AgentCharacterAvatar({
     };
   }, [reduce]);
 
+  // Resolve the character before any early return so the lattice and orbit
+  // hooks below always run in a stable order.
+  const resolved =
+    resolveDefinitions(
+      allComponents,
+      traits.bodyShape,
+      traits.eyeStyle,
+      traits.color,
+    ) ??
+    resolveDefinitions(
+      allComponents,
+      DEFAULT_CHARACTER_TRAITS.bodyShape,
+      DEFAULT_CHARACTER_TRAITS.eyeStyle,
+      DEFAULT_CHARACTER_TRAITS.color,
+    );
+  const resolvedBody = resolved?.bodyShape;
+  const lattice = useMemo(
+    () =>
+      resolvedBody ? bodyLattice(resolvedBody, latticeStrideForSize(size)) : [],
+    [resolvedBody, size],
+  );
+  const accentOrbits = useMemo(
+    () =>
+      resolvedBody
+        ? bodyAccentDots(resolvedBody).map((dot) => ({
+            dot,
+            keys: accentOrbitKeyframes(dot),
+          }))
+        : [],
+    [resolvedBody],
+  );
+
   if (customImageUrl) {
     return (
       <motion.div
@@ -141,54 +181,30 @@ export function AgentCharacterAvatar({
     );
   }
 
-  const resolved =
-    resolveDefinitions(
-      allComponents,
-      traits.bodyShape,
-      traits.eyeStyle,
-      traits.color,
-    ) ??
-    resolveDefinitions(
-      allComponents,
-      DEFAULT_CHARACTER_TRAITS.bodyShape,
-      DEFAULT_CHARACTER_TRAITS.eyeStyle,
-      DEFAULT_CHARACTER_TRAITS.color,
-    );
-
   if (!resolved) {
     return null;
   }
 
   const { bodyShape, eyeStyle, color } = resolved;
+  const tone = toneForBg(color.hex);
   const { bodyTransform, eyeTransform } = eyeStyle
     ? computeTransforms(bodyShape, eyeStyle, allComponents, size)
-    : {
-        bodyTransform: `matrix(${Math.min(size / bodyShape.viewBox.width, size / bodyShape.viewBox.height)},0,0,${Math.min(size / bodyShape.viewBox.width, size / bodyShape.viewBox.height)},${(size - bodyShape.viewBox.width * Math.min(size / bodyShape.viewBox.width, size / bodyShape.viewBox.height)) / 2},${(size - bodyShape.viewBox.height * Math.min(size / bodyShape.viewBox.width, size / bodyShape.viewBox.height)) / 2})`,
-        eyeTransform: "",
-      };
+    : { bodyTransform: bodyOnlyTransform(bodyShape, size), eyeTransform: "" };
 
+  // Where the gaze sits in screen space, used as the blink transform origin.
   let eyeCx = size / 2;
   let eyeCy = size / 2;
   if (eyeStyle) {
-    const eyeVB = eyeStyle.sourceViewBox;
     const bodyVB = bodyShape.viewBox;
-    const bodyScaleFactor = Math.min(size / bodyVB.width, size / bodyVB.height);
-    const bodyTx = (size - bodyVB.width * bodyScaleFactor) / 2;
-    const bodyTy = (size - bodyVB.height * bodyScaleFactor) / 2;
-    const remapScale = Math.min(
-      bodyVB.width / eyeVB.width,
-      bodyVB.height / eyeVB.height,
-    );
+    const bodyScale = Math.min(size / bodyVB.width, size / bodyVB.height);
+    const bodyTx = (size - bodyVB.width * bodyScale) / 2;
+    const bodyTy = (size - bodyVB.height * bodyScale) / 2;
     const override = allComponents.faceCenterOverrides.find(
       (o) => o.bodyShape === bodyShape.id && o.eyeStyle === eyeStyle.id,
     );
     const faceCenter = override ? override.faceCenter : bodyShape.faceCenter;
-    const remapTx = faceCenter.x - eyeStyle.eyeCenter.x * remapScale;
-    const remapTy = faceCenter.y - eyeStyle.eyeCenter.y * remapScale;
-    eyeCx =
-      bodyScaleFactor * (remapTx + eyeStyle.eyeCenter.x * remapScale) + bodyTx;
-    eyeCy =
-      bodyScaleFactor * (remapTy + eyeStyle.eyeCenter.y * remapScale) + bodyTy;
+    eyeCx = bodyTx + bodyScale * faceCenter.x;
+    eyeCy = bodyTy + bodyScale * faceCenter.y;
   }
 
   return (
@@ -221,11 +237,55 @@ export function AgentCharacterAvatar({
         viewBox={`0 0 ${size} ${size}`}
         style={{ overflow: "visible", display: "block" }}
       >
+        {/* The silhouette is the only direct <path> child; the dot lattice and
+            the orbiting accents are circles, so the body is one shape plus
+            texture and the adapter's `svg > path` contract holds. */}
         <path
           d={bodyShape.svgPath}
           fill={color.hex}
           transform={bodyTransform}
         />
+        <g transform={bodyTransform}>
+          {lattice.map((dot) => (
+            <circle
+              key={`lattice-${dot.cx}-${dot.cy}`}
+              cx={dot.cx}
+              cy={dot.cy}
+              r={dot.r}
+              fill={tone.fg}
+              fillOpacity={dot.opacity}
+            />
+          ))}
+        </g>
+        <g transform={bodyTransform}>
+          {accentOrbits.map(({ dot, keys }) =>
+            reduce ? (
+              <circle
+                key={`accent-${dot.orbitPhase}`}
+                cx={dot.cx}
+                cy={dot.cy}
+                r={dot.r}
+                fill={tone.fg}
+                fillOpacity={0.85}
+              />
+            ) : (
+              <motion.circle
+                key={`accent-${dot.orbitPhase}`}
+                cx={dot.cx}
+                cy={dot.cy}
+                r={dot.r}
+                fill={tone.fg}
+                fillOpacity={0.85}
+                animate={{ cx: keys.cx, cy: keys.cy }}
+                transition={{
+                  duration: 18 + dot.orbitPhase,
+                  repeat: Infinity,
+                  ease: "linear",
+                }}
+              />
+            ),
+          )}
+        </g>
         {eyeStyle && (
           <g
             style={{
@@ -235,12 +295,7 @@ export function AgentCharacterAvatar({
             }}
           >
             {eyeStyle.paths.map((p, i) => (
-              <path
-                key={i}
-                d={p.svgPath}
-                fill={p.color}
-                transform={eyeTransform}
-              />
+              <EyeMark key={i} mark={p} tone={tone} transform={eyeTransform} />
             ))}
           </g>
         )}
@@ -276,6 +331,43 @@ const EYE_W = 58;
 
 const clamp = (n: number, lo: number, hi: number): number =>
   Math.max(lo, Math.min(hi, n));
+
+/**
+ * Eye art can be a single thin arc, whose bbox aspect would be degenerate once
+ * it is scaled into the peek tab / stage. Keep it inside a sane band.
+ */
+function safeAspect(bbox: BBox): number {
+  if (!(bbox.w > 0) || !(bbox.h > 0)) {
+    return 0.7;
+  }
+  return clamp(bbox.h / bbox.w, 0.32, 1);
+}
+
+/** One eye mark, resolved against the aura tone and stroked when required. */
+function EyeMark({
+  mark,
+  tone,
+  transform,
+}: {
+  mark: EyePathDefinition;
+  tone: AvatarTone;
+  transform?: string;
+}) {
+  const paint = eyeMarkColor(mark.color, tone);
+  if (mark.strokeWidth) {
+    return (
+      <path
+        d={mark.svgPath}
+        fill="none"
+        stroke={paint}
+        strokeWidth={mark.strokeWidth}
+        strokeLinecap="round"
+        transform={transform}
+      />
+    );
+  }
+  return <path d={mark.svgPath} fill={paint} transform={transform} />;
+}
 
 export function amoebaTargetForCard(
   card: AmoebaRect,
@@ -336,6 +428,7 @@ export function AmoebaPeekTab({
     () => components ?? getCharacterComponents(),
     [components],
   );
+  const eyeTone = toneForBg(hex);
   const active = target !== null;
 
   const [lastTarget, setLastTarget] = useState<AmoebaTarget | null>(null);
@@ -386,7 +479,7 @@ export function AmoebaPeekTab({
   const anchor = { x: rect.left + peek.x, y: rect.top + peek.y };
   const out = OUTWARD[facing];
 
-  const aspect = eye.bbox.h / eye.bbox.w;
+  const aspect = safeAspect(eye.bbox);
   const eyeW = EYE_W;
   const eyeH = eyeW * aspect;
   const eyeCenter = {
@@ -453,7 +546,7 @@ export function AmoebaPeekTab({
             }}
           >
             {eye.paths.map((p, i) => (
-              <path key={i} d={p.svgPath} fill={p.color} />
+              <EyeMark key={i} mark={p} tone={eyeTone} />
             ))}
           </g>
         </svg>
@@ -587,7 +680,12 @@ export function AssistantStage({
       style={{ backgroundColor: bg, color: tone.fg, ...style }}
     >
       {showEyes && eyeArt && size.w > 0 && size.h > 0 && (
-        <PeekingEyesInternal art={eyeArt} stage={size} entrance={entrance} />
+        <PeekingEyesInternal
+          art={eyeArt}
+          tone={tone}
+          stage={size}
+          entrance={entrance}
+        />
       )}
 
       {showImage && customImageUrl && (
@@ -622,17 +720,19 @@ export function AssistantStage({
 }
 
 interface PeekingEyesInternalProps {
-  art: { paths: { svgPath: string; color: string }[]; bbox: BBox };
+  art: { paths: EyePathDefinition[]; bbox: BBox };
+  tone: AvatarTone;
   stage: StageSize;
   entrance?: boolean;
 }
 
 function PeekingEyesInternal({
   art,
+  tone,
   stage,
   entrance = false,
 }: PeekingEyesInternalProps) {
-  const reduce = useReducedMotion();
+  const reduce = usePrefersReducedMotion();
   const { w, h } = stage;
 
   const [blinking, setBlinking] = useState(false);
@@ -670,11 +770,9 @@ function PeekingEyesInternal({
   }, [reduce, entranceDone, entrance]);
 
   const maxEyesW = w * EYE_MAX_WIDTH;
-  const eyesH = Math.min(
-    Math.min(w, h) * EYE_TARGET_HEIGHT,
-    (maxEyesW * art.bbox.h) / art.bbox.w,
-  );
-  const eyesW = (eyesH * art.bbox.w) / art.bbox.h;
+  const aspect = safeAspect(art.bbox);
+  const eyesH = Math.min(Math.min(w, h) * EYE_TARGET_HEIGHT, maxEyesW * aspect);
+  const eyesW = eyesH / aspect;
   const eyesLeft = (w - eyesW) / 2;
   const eyesRestTop = h - (1 - EYE_REST_CUTOFF) * eyesH;
   const eyesStartY = STAGE_CENTER_FRACTION * h - (eyesRestTop + eyesH / 2);
@@ -726,7 +824,7 @@ function PeekingEyesInternal({
           }}
         >
           {art.paths.map((p, i) => (
-            <path key={i} d={p.svgPath} fill={p.color} />
+            <EyeMark key={i} mark={p} tone={tone} />
           ))}
         </g>
       </svg>
@@ -851,7 +949,7 @@ export function PersonalitySignature({
   className,
   style,
 }: PersonalitySignatureProps) {
-  const reduce = useReducedMotion();
+  const reduce = usePrefersReducedMotion();
   const frame = compact ? COMPACT_FRAME : FULL_FRAME;
 
   const axes = PERSONALITY_AXES.map((axis) => {

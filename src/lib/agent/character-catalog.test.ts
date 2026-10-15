@@ -30,17 +30,54 @@ const adapterSource = readFileSync(
   "utf8",
 );
 const customizerSource = readFileSync(
-  path.join(import.meta.dirname, "../../components/agent/agent-customizer-modal.tsx"),
+  path.join(
+    import.meta.dirname,
+    "../../components/agent/agent-customizer-modal.tsx",
+  ),
   "utf8",
 );
 
 function adapterValidColors(): string[] {
-  const match = adapterSource.match(/const VALID_COLORS = new Set\(\[([^\]]*)\]\)/);
+  const match = adapterSource.match(
+    /const VALID_COLORS = new Set\(\[([^\]]*)\]\)/,
+  );
   expect(match, "adapter must declare VALID_COLORS").not.toBeNull();
   return (match?.[1] ?? "")
     .split(",")
     .map((entry) => entry.trim().replace(/^['"]|['"]$/g, ""))
     .filter(Boolean);
+}
+
+/**
+ * Count `<path>` elements that are direct children of the root `<svg>`. The
+ * adapter asserts `svg[width="82"] > path` === 1, so the character must expose
+ * exactly one silhouette path and nothing else at the top level.
+ */
+function directPathCount(svg: string): number {
+  let depth = 0;
+  let count = 0;
+  const tag = /<(\/?)([a-zA-Z]+)\b[^>]*?(\/?)>/g;
+  let match: RegExpExecArray | null = tag.exec(svg);
+  while (match !== null) {
+    const closing = match[1] === "/";
+    const selfClosing = match[3] === "/";
+    if (closing) {
+      depth -= 1;
+    } else {
+      if (depth === 1 && match[2] === "path") {
+        count += 1;
+      }
+      if (!selfClosing) {
+        depth += 1;
+      }
+    }
+    match = tag.exec(svg);
+  }
+  return count;
+}
+
+function countOf(svg: string, element: string): number {
+  return svg.split(`<${element}`).length - 1;
 }
 
 describe("Agent character catalog", () => {
@@ -73,6 +110,50 @@ describe("Agent character catalog", () => {
         }
       }
     }
+  });
+  it("exposes exactly one direct silhouette path plus a dot lattice", () => {
+    for (const body of catalog.bodyShapes) {
+      for (const eyes of catalog.eyeStyles) {
+        for (const size of [22, 82, 236]) {
+          const svg = composeCharacterSvg(
+            catalog,
+            body.id,
+            eyes.id,
+            "orange",
+            size,
+          );
+          expect(svg, `${body.id}/${eyes.id}/${size} must render`).toContain(
+            `<svg`,
+          );
+          expect(
+            directPathCount(svg!),
+            `${body.id}/${eyes.id}/${size} must expose one body path`,
+          ).toBe(1);
+          // The lattice follows the same field at every size.
+          expect(countOf(svg!, "circle")).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+  it("keeps the character geometry generated from field maths", () => {
+    for (const body of catalog.bodyShapes) {
+      expect(body.viewBox.width).toBe(body.viewBox.height);
+      expect(body.field.harmonics.length).toBeGreaterThan(0);
+      // Only generated move/curve commands, and nowhere near third-party scale.
+      expect(body.svgPath).toMatch(/^M[\d.\-\s]+(?:C[\d.\-\s]+)+Z$/);
+      expect(body.svgPath.length).toBeLessThan(4000);
+    }
+    const seen = new Set<string>();
+    for (const style of catalog.eyeStyles) {
+      expect(style.paths.length).toBeGreaterThan(0);
+      for (const mark of style.paths) {
+        expect(mark.svgPath).not.toMatch(/nan|undefined|Infinity/i);
+        expect(mark.svgPath.length).toBeLessThan(600);
+      }
+      seen.add(JSON.stringify(style.paths));
+    }
+    // Every gaze must have its own distinct set of marks.
+    expect(seen.size).toBe(catalog.eyeStyles.length);
   });
   it("rejects unknown traits instead of inserting arbitrary SVG", () => {
     expect(
@@ -136,7 +217,9 @@ describe("aura swatch save path", () => {
     expect(customizerSource).toMatch(
       /const traits: CharacterTraits = \{\s*bodyShape,\s*eyeStyle,\s*color: resolvedColorId,?\s*\};/,
     );
-    expect(customizerSource).toMatch(/const resolvedColorId = resolveColorId\(color\)/);
+    expect(customizerSource).toMatch(
+      /const resolvedColorId = resolveColorId\(color\)/,
+    );
     // ...and the resolver must map any alias to a catalog id.
     const resolver = customizerSource.match(
       /function resolveColorId\(colorId: string\): string \{\s*return ([^;]+);/,
@@ -167,14 +250,17 @@ describe("aura swatch save path", () => {
       /useState\(resolveColorId\(identity\.traits\.color\)\)/,
     );
     expect(
-      customizerSource.match(/setColor\(resolveColorId\(identity\.traits\.color\)\)/g)
-        ?.length,
+      customizerSource.match(
+        /setColor\(resolveColorId\(identity\.traits\.color\)\)/g,
+      )?.length,
     ).toBe(2);
   });
 
   it("labels every swatch with its own catalog id", () => {
     // A test id derived from an alias hides the failure from the DOM query.
-    expect(customizerSource).toMatch(/data-testid={`agent-color-\$\{swatch\.id\}`}/);
+    expect(customizerSource).toMatch(
+      /data-testid={`agent-color-\$\{swatch\.id\}`}/,
+    );
     expect(customizerSource).not.toMatch(/"agent-color-blue"/);
     expect(customizerSource).toMatch(/setColor\(swatch\.id\)/);
   });

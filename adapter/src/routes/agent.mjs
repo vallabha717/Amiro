@@ -48,7 +48,9 @@ const DEFAULT_SLIDERS = {
 
 const DEFAULT_TRAITS = {
   bodyShape: 'blob',
-  eyeStyle: 'grumpy',
+  // A new agent should greet its owner; the inherited "grumpy" read as a
+  // frowning line. Kept in step with DEFAULT_CHARACTER_TRAITS in the UI catalog.
+  eyeStyle: 'curious',
   color: 'orange',
 };
 

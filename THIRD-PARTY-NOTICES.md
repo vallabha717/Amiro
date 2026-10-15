@@ -1,27 +1,17 @@
 # Third-party notices
 
-## Vellum avatar catalog
+## Agent character art
 
-The character geometry and color catalog in `src/lib/agent/character-catalog.ts` are adapted from `packages/avatar-catalog` in Vellum Assistant. The surrounding Amiro interface and animation are adapted for this application.
+The Agent avatar system in `src/lib/agent/character-catalog.ts` and
+`src/components/agent/avatar-primitives.tsx` is original to this repository.
 
-MIT License
+Nothing in it is imported artwork or third-party path data. Each body is
+generated at runtime from a compact radial-field definition (a few cosine
+harmonics plus an optional stem or hem), which is traced into the silhouette
+path and reused to place the dot lattice; each gaze style is likewise generated
+code (circles, rings and stroked arcs). The earlier Vellum-derived catalogue was
+removed in full, so `grep -ri vellum src/` returns nothing.
 
-Copyright (c) 2025 Vellum AI
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Vellum Assistant remains an architectural reference for Amiro and is MIT
+licensed, but no Vellum code, geometry or brand asset is copied into this
+repository.

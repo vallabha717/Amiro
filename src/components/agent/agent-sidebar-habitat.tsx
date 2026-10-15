@@ -1,11 +1,12 @@
 "use client";
 
-import Link from "next/link";
-import { motion, useReducedMotion } from "framer-motion";
+import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
+import type { CharacterTraits } from "@/lib/agent/character-catalog";
+import { motion } from "framer-motion";
 import { ArrowUpRight, Pause, Play, Sparkles } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { AgentCharacterAvatar } from "./avatar-primitives";
-import type { CharacterTraits } from "@/lib/agent/character-catalog";
 
 /** A little habitat, not an activity indicator. All movement is decorative. */
 export function AgentSidebarHabitat({
@@ -19,7 +20,7 @@ export function AgentSidebarHabitat({
   customImageUrl?: string | null;
   accent: string;
 }) {
-  const prefersReducedMotion = useReducedMotion();
+  const prefersReducedMotion = usePrefersReducedMotion();
   const [paused, setPaused] = useState(false);
   const reduceMotion = prefersReducedMotion || paused;
   const [greeting, setGreeting] = useState(false);
