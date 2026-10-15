@@ -58,6 +58,14 @@ const EYE_LABELS: Record<string, string> = {
 };
 
 const ALLOWED_IMAGE_MIME_TYPES = ["image/png", "image/jpeg", "image/webp"];
+
+// The catalog id is "cobalt". "blue" was an earlier alias for that same swatch.
+// Stored identities, the character catalog and the adapter all accept only
+// "cobalt", so every read and write resolves through here. Sending the alias
+// was a real bug: the adapter rejected "blue" as an unknown trait.
+function resolveColorId(colorId: string): string {
+  return colorId === "blue" ? "cobalt" : colorId;
+}
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024; // 2 MB
 
 interface AgentCustomizerModalProps {
@@ -80,7 +88,7 @@ export function AgentCustomizerModal({
   const [tagline, setTagline] = useState(identity.tagline);
   const [bodyShape, setBodyShape] = useState(identity.traits.bodyShape);
   const [eyeStyle, setEyeStyle] = useState(identity.traits.eyeStyle);
-  const [color, setColor] = useState(identity.traits.color);
+  const [color, setColor] = useState(resolveColorId(identity.traits.color));
   const [customImageUrl, setCustomImageUrl] = useState<string | null>(
     identity.customImageUrl,
   );
@@ -93,14 +101,13 @@ export function AgentCustomizerModal({
       setTagline(identity.tagline);
       setBodyShape(identity.traits.bodyShape);
       setEyeStyle(identity.traits.eyeStyle);
-      setColor(identity.traits.color);
+      setColor(resolveColorId(identity.traits.color));
       setCustomImageUrl(identity.customImageUrl);
       setValidationError(null);
     }
   }, [open, identity]);
 
-  // Map 'blue' alias to cobalt for character catalog resolution
-  const resolvedColorId = color === "blue" ? "cobalt" : color;
+  const resolvedColorId = resolveColorId(color);
   const activeHex =
     accentHexForColorId(resolvedColorId) || identity.accentHex || "#E9642F";
 
@@ -232,11 +239,12 @@ export function AgentCustomizerModal({
       const traits: CharacterTraits = {
         bodyShape,
         eyeStyle,
-        color,
+        color: resolvedColorId,
       };
       await updateAgentIdentity({
         name: trimmedName,
-        tagline: tagline.trim() || "Your Personal Intelligence powered by Jcode",
+        tagline:
+          tagline.trim() || "Your Personal Intelligence powered by Jcode",
         traits,
         accentHex: accentHexForColorId(resolvedColorId) ?? "#E9642F",
         customImageUrl,
@@ -289,7 +297,7 @@ export function AgentCustomizerModal({
             transition={{ type: "spring", stiffness: 260, damping: 20 }}
             className="relative my-2 flex items-center justify-center"
             role="img"
-            aria-label={`Preview of ${name || "Agent"} with ${BODY_LABELS[bodyShape] ?? bodyShape} form, ${EYE_LABELS[eyeStyle] ?? eyeStyle} gaze, and ${color} aura`}
+            aria-label={`Preview of ${name || "Agent"} with ${BODY_LABELS[bodyShape] ?? bodyShape} form, ${EYE_LABELS[eyeStyle] ?? eyeStyle} gaze, and ${resolvedColorId} aura`}
           >
             <div
               className="pointer-events-none absolute -inset-6 rounded-full opacity-35 blur-2xl transition-colors duration-300"
@@ -500,23 +508,16 @@ export function AgentCustomizerModal({
             </div>
             <div className="flex flex-wrap items-center gap-2.5">
               {AVATAR_COLORS.map((swatch) => {
-                const isSelected =
-                  color === swatch.id ||
-                  (swatch.id === "cobalt" && color === "blue");
-                // Test id matches exact 'agent-color-blue' for the cobalt/blue swatch
-                const testId =
-                  swatch.id === "cobalt"
-                    ? "agent-color-blue"
-                    : `agent-color-${swatch.id}`;
+                const isSelected = resolvedColorId === swatch.id;
                 return (
                   <button
                     key={swatch.id}
                     type="button"
-                    aria-label={`Select ${swatch.id === "cobalt" ? "blue" : swatch.id} aura`}
+                    aria-label={`Select ${swatch.id} aura`}
                     aria-pressed={isSelected}
-                    data-testid={testId}
+                    data-testid={`agent-color-${swatch.id}`}
                     onClick={() => {
-                      setColor(swatch.id === "cobalt" ? "blue" : swatch.id);
+                      setColor(swatch.id);
                     }}
                     className={cn(
                       "relative flex size-9 items-center justify-center rounded-full transition-transform hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
@@ -548,7 +549,7 @@ export function AgentCustomizerModal({
                 setTagline(identity.tagline);
                 setBodyShape(identity.traits.bodyShape);
                 setEyeStyle(identity.traits.eyeStyle);
-                setColor(identity.traits.color);
+                setColor(resolveColorId(identity.traits.color));
                 setCustomImageUrl(identity.customImageUrl);
                 setValidationError(null);
               }}

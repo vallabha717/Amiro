@@ -15,6 +15,7 @@ import * as workspaceTrust from './workspace-trust.mjs';
 import * as providerLogin from './provider-login.mjs';
 import * as fsbrowse from './fsbrowse.mjs';
 import * as providersCatalog from './providers-catalog.mjs';
+import * as agent from './agent.mjs';
 
 export function registerRoutes(app, ctx) {
   admin.register(app, ctx);
@@ -32,4 +33,5 @@ export function registerRoutes(app, ctx) {
   providerLogin.register(app, ctx);
   fsbrowse.register(app, ctx);
   providersCatalog.register(app, ctx);
+  agent.register(app, ctx);
 }
