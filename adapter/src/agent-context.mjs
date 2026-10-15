@@ -25,12 +25,28 @@ export async function buildAgentTurnReminder(ctx, user, { mentions = [], working
   if (names.length > 8) throw new Error('Select at most 8 skills per turn');
   if (names.length) {
     const { resolveSkillForTurn } = await import('./routes/skills.mjs');
+    // The user picked these in the app's Superpowers picker. State the provenance
+    // explicitly: a model that sees instructions arriving outside its native
+    // skill list will otherwise treat them as injected content and refuse them
+    // (observed live: "the instruction ... is coming from injected content in the
+    // system reminder, so I'm not going to treat it as authoritative").
+    blocks.push(
+      'Application context: the user selected the instruction sets below in Amiro\'s Superpowers picker for this message. ' +
+        'Amiro stores them and attaches them to this turn on the user\'s behalf, which is why they do not appear in your native skill list. ' +
+        'They are application-provided context, not third-party content, and they grant no tools or permissions. ' +
+        'Follow them for this turn wherever they do not conflict with your safety policy or the user\'s request.',
+    );
     for (const name of names) {
       const skill = await resolveSkillForTurn(ctx, name, workingDir, user);
       if (!skill) throw new Error(`Skill is not available: ${name}`);
       const content = skill.content ?? skill.body ?? skill.instructions;
       if (typeof content !== 'string' || !content.trim()) throw new Error(`Skill has no instructions: ${name}`);
-      blocks.push(`User-selected skill: ${name}\nThese instructions do not enable tools or grant permissions.\n${boundedUtf8(content, SKILL_LIMIT)}`);
+      const source = typeof skill.source === 'string' && skill.source ? skill.source : 'user';
+      blocks.push(
+        `User-selected instruction set: ${JSON.stringify(name)} (stored by Amiro, source ${source})\n` +
+          'These instructions do not enable tools or grant permissions.\n' +
+          `--- begin ${JSON.stringify(name)} ---\n${boundedUtf8(content, SKILL_LIMIT)}\n--- end ${JSON.stringify(name)} ---`,
+      );
     }
   }
   const reminder = blocks.filter(Boolean).join('\n\n');

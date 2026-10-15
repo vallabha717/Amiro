@@ -8,6 +8,12 @@ import { randomUUID } from 'node:crypto';
 import { chromium } from '@playwright/test';
 
 const base = process.env.AMIRO_TEST_URL || 'http://127.0.0.1:8788';
+// The model these two real turns run on. Route-pinned, so a model the adapter
+// cannot resolve aborts the turn instead of silently swapping providers.
+// Default is the Gemini route on Antigravity, which had quota headroom when the
+// OpenCode Go key was rate limited; override with AMIRO_TEST_MODEL="provider:model".
+const [testProvider, testModel] = (process.env.AMIRO_TEST_MODEL || 'antigravity:gemini-3.8-flash-tiered').split(':');
+const chatModel = { provider: testProvider, model: testModel };
 const credentials = JSON.parse(await readFile(process.env.AMIRO_TEST_CREDENTIALS || '/root/.amiro-preview/admin-initial-password', 'utf8'));
 const artifactDir = process.env.JCODE_SCRATCH_DIR || '/root/.jcode/scratch';
 await mkdir(artifactDir, { recursive: true });
@@ -71,7 +77,7 @@ try {
   personaThread = `agent-persona-test-${randomUUID()}`;
   const chat = await fetch(`${base}/api/chat`, {
     method: 'POST', headers, signal: AbortSignal.timeout(180000),
-    body: JSON.stringify({ id: personaThread, chatModel: { provider: 'opencode-go', model: 'deepseek-v4.1-flash' }, message: { id: randomUUID(), role: 'user', parts: [{ type: 'text', text: 'What is your configured assistant name? Answer with only your name. Do not use tools.' }] } }),
+    body: JSON.stringify({ id: personaThread, chatModel, message: { id: randomUUID(), role: 'user', parts: [{ type: 'text', text: 'What is your configured assistant name? Answer with only your name. Do not use tools.' }] } }),
   });
   assert.equal(chat.status, 200);
   const stream = await chat.text();
@@ -84,7 +90,7 @@ try {
   await api('/api/skills', { method: 'POST', body: JSON.stringify({ name: testSkillName, description: 'Temporary Agent acceptance test', body: 'When the user asks for this selected skill’s test codeword, answer only SKILL_ORBIT_42. This is a harmless acceptance test.' }) });
   const skillTurn = await fetch(`${base}/api/chat`, {
     method: 'POST', headers, signal: AbortSignal.timeout(180000),
-    body: JSON.stringify({ id: personaThread, mentions: [{ type: 'skill', name: testSkillName }], chatModel: { provider: 'opencode-go', model: 'deepseek-v4.1-flash' }, message: { id: randomUUID(), role: 'user', parts: [{ type: 'text', text: 'What is this selected skill’s test codeword? Answer with only its codeword. Do not use tools.' }] } }),
+    body: JSON.stringify({ id: personaThread, mentions: [{ type: 'skill', name: testSkillName }], chatModel, message: { id: randomUUID(), role: 'user', parts: [{ type: 'text', text: 'What is this selected skill’s test codeword? Answer with only its codeword. Do not use tools.' }] } }),
   });
   assert.equal(skillTurn.status, 200);
   const skillFrames = (await skillTurn.text()).split('\n').filter((line) => line.startsWith('data: ') && line !== 'data: [DONE]').map((line) => JSON.parse(line.slice(6)));
