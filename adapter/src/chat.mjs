@@ -23,6 +23,7 @@ import {
   ownsEntry,
 } from './threads.mjs';
 import { assertUsableProjectDirectory } from './fsbrowse.mjs';
+import { buildAgentTurnReminder, beginAgentUserTurn } from './agent-context.mjs';
 
 const TURN_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -172,14 +173,14 @@ async function enforceToolPolicy(ctx, client, threadId, sessionId, entry) {
 
 // Stream one jcode turn into the SSE response until `turn_done`/`turn_stopped`
 // or timeout. Returns the collected usage (if any).
-async function streamTurn({ ctx, sse, client, sessionId, allowTools }) {
+async function streamTurn({ ctx, sse, client, sessionId, allowTools, iterator }) {
   const textId = crypto.randomUUID();
   const reasoningId = crypto.randomUUID();
   let textOpen = false;
   let reasoningOpen = false;
   let usage = null;
 
-  const iter = await client.events(sessionId);
+  const iter = iterator || await client.events(sessionId);
   const closeText = () => {
     if (textOpen) {
       sse.textEnd(textId);
@@ -353,10 +354,9 @@ export function register(app, ctx) {
     const { images, extraText } = splitAttachments(body.attachments);
     const prompt = [userText, ...extraText].filter(Boolean).join('\n');
 
-    // Route-pinned model string. `body.mentions`, `allowedMcpServers` and
-    // `allowedAppDefaultToolkit` are intentionally not read: a chat payload
-    // cannot enable MCP servers or arbitrary tools. When the client omits a
-    // model, the first pinned model is used -- never the daemon's legacy default.
+    // A selected skill contributes instructions only. Client tool/MCP lists
+    // still cannot widen access. Native Jcode system assembly stays intact.
+    // The default model is provider-qualified, never a legacy daemon fallback.
     const cm = body.chatModel || {};
     const requestedModel = ctx.jcode.resolveChatModel(cm.provider, cm.model);
 
@@ -468,6 +468,7 @@ export function register(app, ctx) {
           await ctx.jcode.setModelPinned(client, sessionId, requestedModel);
         }
 
+        let iterator;
         if (toolResults.length) {
           for (const tr of toolResults) {
             try {
@@ -477,11 +478,15 @@ export function register(app, ctx) {
             }
           }
         } else {
-          await client.sendMessage(sessionId, prompt, images, {});
+          const reminder = await buildAgentTurnReminder(ctx, user, {
+            mentions: body.mentions,
+            workingDir: entry.workingDir || ctx.config.workspaceDir,
+          });
+          iterator = await beginAgentUserTurn(client, sessionId, prompt, images, reminder);
         }
 
         sse.startStep();
-        const usage = await streamTurn({ ctx, sse, client, sessionId, allowTools: hasTools });
+        const usage = await streamTurn({ ctx, sse, client, sessionId, allowTools: hasTools, iterator });
         sse.finishStep();
 
         await upsertEntry(ctx.store, home, threadId, {
@@ -504,7 +509,7 @@ export function register(app, ctx) {
 
   app.post('/api/chat/temporary', async (req, res) => {
     const body = await ctx.readJson(req);
-    ctx.requireUser(req);
+    const user = ctx.requireUser(req);
     const messages = Array.isArray(body.messages) ? body.messages : [];
     const last = [...messages].reverse().find((m) => m && m.role === 'user');
     const userText = extractText(last) || extractText(messages[messages.length - 1]);
@@ -517,7 +522,6 @@ export function register(app, ctx) {
       await ctx.jcode.withIsolated(async (client) => {
         const session = await ctx.jcode.createSession(client, {
           workingDir: ctx.config.workspaceDir,
-          systemPrompt: body.instructions ? String(body.instructions) : undefined,
           tools: toolsOption(),
         });
         const sessionId = session.session_id;
@@ -528,9 +532,11 @@ export function register(app, ctx) {
           if (requestedModel) {
             await ctx.jcode.setModelPinned(client, sessionId, requestedModel);
           }
-          await client.sendMessage(sessionId, userText || '', undefined, {});
+          const baseReminder = await buildAgentTurnReminder(ctx, user, { workingDir: ctx.config.workspaceDir });
+          const instructions = typeof body.instructions === 'string' ? body.instructions.slice(0, 8000) : '';
+          const iterator = await beginAgentUserTurn(client, sessionId, userText || '', [], [baseReminder, instructions].filter(Boolean).join('\n\n'));
           sse.startStep();
-          await streamTurn({ ctx, sse, client, sessionId, allowTools: toolsEnabled() });
+          await streamTurn({ ctx, sse, client, sessionId, allowTools: toolsEnabled(), iterator });
           sse.finishStep();
           sse.finish(null);
           sse.done();
