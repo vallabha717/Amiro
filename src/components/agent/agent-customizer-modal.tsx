@@ -192,6 +192,12 @@ export function AgentCustomizerModal({
       toast.error(msg);
       return;
     }
+    if (trimmedName.length > 32) {
+      const msg = "Agent name must be 32 characters or fewer.";
+      setValidationError(msg);
+      toast.error(msg);
+      return;
+    }
 
     // Validate data image url if present
     if (customImageUrl) {
@@ -373,7 +379,7 @@ export function AgentCustomizerModal({
                 id="agent-name-input"
                 data-testid="agent-name-input"
                 value={name}
-                maxLength={60}
+                maxLength={32}
                 aria-required="true"
                 aria-invalid={!name.trim()}
                 onChange={(e) => {
