@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export type SkillScope = "project" | "user";
 
-export type SkillSource = ".agents" | ".amiro" | ".claude" | ".codex";
+export type SkillSource = ".agents" | ".amiro" | ".claude" | ".codex" | ".jcode";
 
 export interface ShadowedSkill {
   name: string;
