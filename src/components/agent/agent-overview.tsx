@@ -1,7 +1,14 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect, type CSSProperties } from "react";
+import {
+  useState,
+  useRef,
+  useCallback,
+  useEffect,
+  type CSSProperties,
+} from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   ArrowRight,
@@ -155,6 +162,9 @@ function FloodableTile({
 export function AgentOverview() {
   const reduceMotion = useReducedMotion();
   const projectDirectory = appStore((s) => s.projectDirectory);
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const {
     data: identityData,
     error: identityError,
@@ -168,15 +178,33 @@ export function AgentOverview() {
 
   const [customizerOpen, setCustomizerOpen] = useState(false);
 
-  // The sidebar's "customize" square links here with ?customize=1. Read it from
-  // window.location inside an effect rather than useSearchParams so the static
-  // export needs no Suspense boundary.
+  // The sidebar's "customize" square links to /agent?customize=1. That can
+  // arrive as a same-route search change (already on /agent), which does NOT
+  // remount this component, so a mount-only effect misses it: useSearchParams
+  // is what re-runs. /agent/page.tsx wraps this component in <Suspense>, which
+  // useSearchParams needs for the static export.
+  const customizeParam = searchParams.get("customize");
+
+  // Consume ?customize=1 so the URL always matches what is on screen. That
+  // matters twice: a reload after saving must not re-open the modal, and an
+  // identical link click later must still count as a change.
+  const clearCustomizeParam = useCallback(() => {
+    if (customizeParam === "1") router.replace(pathname, { scroll: false });
+  }, [customizeParam, pathname, router]);
+
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (new URLSearchParams(window.location.search).get("customize") === "1") {
-      setCustomizerOpen(true);
-    }
-  }, []);
+    if (customizeParam !== "1") return;
+    setCustomizerOpen(true);
+    clearCustomizeParam();
+  }, [customizeParam, clearCustomizeParam]);
+
+  const handleCustomizerOpenChange = useCallback(
+    (next: boolean) => {
+      setCustomizerOpen(next);
+      if (!next) clearCustomizeParam();
+    },
+    [clearCustomizeParam],
+  );
 
   // Presentational defaults only. This carries NO counts: a number that was
   // never fetched (memories, skills) renders as "not loaded" instead of a
@@ -304,10 +332,7 @@ export function AgentOverview() {
 
   const hoverLine = hugged ? CARD_HOVER_LINES[hugged.key] : null;
   const headlineText = hoverLine ?? `Hi, I’m ${identity.name}`;
-  const { typed, typing } = useTypewriter(
-    headlineText,
-    hoverLine ? 24 : 52,
-  );
+  const { typed, typing } = useTypewriter(headlineText, hoverLine ? 24 : 52);
 
   const bottomSections: Array<{
     key: string;
@@ -593,7 +618,9 @@ export function AgentOverview() {
               >
                 <span className="font-mono font-medium">{identity.handle}</span>
                 <span>·</span>
-                <span className="max-w-[260px] truncate">{identity.tagline}</span>
+                <span className="max-w-[260px] truncate">
+                  {identity.tagline}
+                </span>
               </div>
             </div>
 
@@ -727,7 +754,7 @@ export function AgentOverview() {
 
       <AgentCustomizerModal
         open={customizerOpen}
-        onOpenChange={setCustomizerOpen}
+        onOpenChange={handleCustomizerOpenChange}
         identity={identity}
       />
     </div>
