@@ -76,8 +76,8 @@ function splitLines(text: string): string[] {
  * few-line hunk preview, so they fall back to rendering those fragments --
  * which is worth doing rather than showing an old thread nothing at all.
  *
- * Exported and pure so both call sites -- the presenter and the workflow node
- * face -- read a result the same way.
+ * Exported and pure so both call sites -- the presenter and the chat graph
+ * node face -- read a result the same way.
  */
 export function sectionsFromEditOutput(output: any): {
   sections: DiffSection[];

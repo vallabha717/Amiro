@@ -125,11 +125,11 @@ func TestNoAgentMentionType_IsNonVacuous(t *testing.T) {
 			name:   "TS schema",
 			source: mentionTypeUnionSources[1],
 			clean: `ChatMentionSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("workflow") }),
+  z.object({ type: z.literal("skill") }),
 ]);
 `,
 			dirty: `ChatMentionSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("workflow") }),
+  z.object({ type: z.literal("skill") }),
   z.object({ type: z.literal("agent") }),
 ]);
 `,
@@ -140,14 +140,14 @@ func TestNoAgentMentionType_IsNonVacuous(t *testing.T) {
 			clean: `type MentionKind string
 
 const (
-	MentionWorkflow MentionKind = "workflow"
+	MentionSkill MentionKind = "skill"
 )
 `,
 			dirty: `type MentionKind string
 
 const (
 	MentionAgent    MentionKind = "agent"
-	MentionWorkflow MentionKind = "workflow"
+	MentionSkill MentionKind = "skill"
 )
 `,
 		},

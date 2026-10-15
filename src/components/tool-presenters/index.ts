@@ -12,8 +12,8 @@ export * from "./approval-card";
  * The one place a tool name maps to how it looks.
  *
  * Both surfaces read this registry: chat renders `Expanded` inside a
- * message, the workflow canvas renders `glance`/`Compact` on the node face
- * and `Expanded` in the result dialog. Neither keeps its own switch
+ * message, the chat graph's detail panel renders `Compact`/`Expanded`
+ * through `statusFromNodeHistory`. Neither keeps its own switch
  * statement, so adding a tool means adding one entry here rather than
  * editing two unrelated files and forgetting the second.
  *

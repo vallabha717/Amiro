@@ -1,6 +1,6 @@
 # Observed public route boundaries
 
-Run: `NODE_TLS_REJECT_UNAUTHORIZED=0 AMIRO_TEST_URL=https://194.238.18.234:8787 node adapter/test/route-boundaries.mjs` on October 14, 2026 at 2026-10-14T13:16:16.320Z. All 123 literal registered method/path entries were enumerated from the changed adapter and mapped below. See `requirement-traceability.md` for successful workflow evidence (provider catalog, connected-provider models, folder browse, chat, ownership).
+Run: `NODE_TLS_REJECT_UNAUTHORIZED=0 AMIRO_TEST_URL=https://194.238.18.234:8787 node adapter/test/route-boundaries.mjs` on October 14, 2026 at 2026-10-14T13:16:16.320Z. All 114 literal registered method/path entries were enumerated from the changed adapter and mapped below. See `requirement-traceability.md` for successful evidence (provider catalog, connected-provider models, folder browse, chat, ownership).
 
 `Anon` is the actual unauthenticated HTTP status. `Owner GET` is a real owner-authenticated read smoke result. Parameterized URLs used `audit-missing` identifiers, so a 404 is a missing-resource boundary check, not successful CRUD acceptance. `Not run` means authenticated mutation was deliberately NOT performed. Every such mutation remains unverified for successful feature parity unless covered by the named integration/browser tests. Status 501 is an explicitly unsupported preview integration, not success. Rows marked `live auth test` are covered by live-smoke instead of repeating arbitrary login attempts.
 
@@ -109,15 +109,6 @@ Run: `NODE_TLS_REJECT_UNAUTHORIZED=0 AMIRO_TEST_URL=https://194.238.18.234:8787 
 | PUT /api/user/preferences | 401 | Not run |
 | GET /api/user/stats | 401 | 404 |
 | GET /api/user/details/:id | 401 | 404 |
-| GET /api/workflow | 401 | 200 |
-| POST /api/workflow | 401 | Not run |
-| GET /api/workflow/tools | 401 | 200 |
-| GET /api/workflow/:id | 401 | 404 |
-| PUT /api/workflow/:id | 401 | Not run |
-| DELETE /api/workflow/:id | 401 | Not run |
-| GET /api/workflow/:id/structure | 401 | 404 |
-| POST /api/workflow/:id/structure | 401 | Not run |
-| POST /api/workflow/:id/execute | 401 | Not run |
 | GET /api/workspace-trust | 401 | 200 |
 | GET /api/workspace-trust/status | 401 | 400 |
 | POST /api/workspace-trust/grant | 401 | Not run |
@@ -130,4 +121,4 @@ Run: `NODE_TLS_REJECT_UNAUTHORIZED=0 AMIRO_TEST_URL=https://194.238.18.234:8787 
 | DELETE /api/thread/messages/:id | 401 | Not run |
 | POST /api/thread/messages/:id/truncate | 401 | Not run |
 
-The machine-readable artifact `/root/.jcode/scratch/amiro-route-acceptance.json` also records the source file and the coverage limitation per row. Discovery covers literal `app.get/post/put/patch/delete` registrations, not future dynamic registration or every static frontend page. The earlier frontend inventory counted 105 caller contracts, a different population from these 123 adapter registrations.
+The machine-readable artifact `/root/.jcode/scratch/amiro-route-acceptance.json` also records the source file and the coverage limitation per row. Discovery covers literal `app.get/post/put/patch/delete` registrations, not future dynamic registration or every static frontend page. The earlier frontend inventory counted 105 caller contracts, a different population from these 114 adapter registrations.

@@ -17,13 +17,12 @@ type ChatModel struct {
 	Model    string `json:"model"`
 }
 
-// Mention is an @-reference in a message: an MCP tool, a workflow, a skill
+// Mention is an @-reference in a message: an MCP tool, a skill
 // or one of Amiro's own tools.
 type Mention struct {
-	Type       string `json:"type"`
-	Name       string `json:"name"`
-	ServerID   string `json:"serverId,omitempty"`
-	WorkflowID string `json:"workflowId,omitempty"`
+	Type     string `json:"type"`
+	Name     string `json:"name"`
+	ServerID string `json:"serverId,omitempty"`
 }
 
 // ChatRequest is POST /api/chat's body, transcribed from

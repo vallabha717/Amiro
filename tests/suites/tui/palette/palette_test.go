@@ -100,11 +100,11 @@ func TestPalette_AtSymbolCompletion(t *testing.T) {
 // still populate the completion menu with real candidates now that the
 // agent branch of loadMentionables (internal/tui/page/mentions.go) is
 // gone. Default tools need no seeding and so are what this level can prove
-// live; MCP-server and workflow candidates are proven at the
+// live; MCP-server candidates are proven at the
 // internal/tui/page unit level instead, deliberately -- h.PTY's child
 // process embeds its own backend with its own database whenever
 // attach-or-embed discovery does not find a live server to attach to
-// (backend-go/cmd/amiro/serve.go's resolveTransport), so a workflow seeded
+// (backend-go/cmd/amiro/serve.go's resolveTransport), so seeding
 // through this test's own harness.New(t) backend is not guaranteed to be
 // the same database the live TUI process reads from.
 func TestPalette_AtSymbolCompletion_OffersDefaultToolsLive(t *testing.T) {

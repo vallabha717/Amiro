@@ -24,7 +24,6 @@ import {
   FolderSearchIcon,
   PlayCircleIcon,
   PlusIcon,
-  Waypoints,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Skeleton } from "ui/skeleton";
@@ -98,18 +97,6 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
                 <SidebarMenuButton className="font-semibold">
                   <MCPIcon className="size-4 fill-accent-foreground" />
                   {t("Layout.mcpConfiguration")}
-                </SidebarMenuButton>
-              </Link>
-            </SidebarMenuItem>
-          </Tooltip>
-        </SidebarMenu>
-        <SidebarMenu>
-          <Tooltip>
-            <SidebarMenuItem>
-              <Link href="/workflow" data-testid="sidebar-workflow-link">
-                <SidebarMenuButton className="font-semibold">
-                  <Waypoints className="size-4" />
-                  {t("Layout.workflow")}
                 </SidebarMenuButton>
               </Link>
             </SidebarMenuItem>

@@ -182,57 +182,6 @@ const fetchExa = async (endpoint: string, body: any): Promise<any> => {
   return await response.json();
 };
 
-export const exaSearchToolForWorkflow = createTool({
-  description:
-    "Search the web using Exa AI - performs real-time web searches with semantic and neural search capabilities. Returns high-quality, relevant results with full content extraction.",
-  inputSchema: jsonSchemaToZod(exaSearchSchema),
-  execute: async (params) => {
-    const searchRequest: ExaSearchRequest = {
-      query: params.query,
-      type: params.type || "auto",
-      numResults: params.numResults || 5,
-      contents: {
-        text: {
-          maxCharacters: params.maxCharacters || 3000,
-        },
-        livecrawl: "preferred",
-      },
-    };
-
-    // Add optional parameters if provided
-    if (params.category) searchRequest.category = params.category;
-    if (params.includeDomains?.length)
-      searchRequest.includeDomains = params.includeDomains;
-    if (params.excludeDomains?.length)
-      searchRequest.excludeDomains = params.excludeDomains;
-    if (params.startPublishedDate)
-      searchRequest.startPublishedDate = params.startPublishedDate;
-    if (params.endPublishedDate)
-      searchRequest.endPublishedDate = params.endPublishedDate;
-
-    return fetchExa("/search", searchRequest);
-  },
-});
-
-export const exaContentsToolForWorkflow = createTool({
-  description:
-    "Extract detailed content from specific URLs using Exa AI - retrieves full text content, metadata, and structured information from web pages with live crawling capabilities.",
-  inputSchema: jsonSchemaToZod(exaContentsSchema),
-  execute: async (params) => {
-    const contentsRequest: ExaContentsRequest = {
-      ids: params.urls,
-      contents: {
-        text: {
-          maxCharacters: params.maxCharacters || 3000,
-        },
-        livecrawl: params.livecrawl || "preferred",
-      },
-    };
-
-    return fetchExa("/contents", contentsRequest);
-  },
-});
-
 export const exaSearchTool = createTool({
   description:
     "Search the web using Exa AI - performs real-time web searches with semantic and neural search capabilities. Returns high-quality, relevant results with full content extraction.",

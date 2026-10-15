@@ -333,7 +333,7 @@ TerminalWindow.displayName = "TerminalWindow";
 
 /**
  * Small, non-interactive terminal preview for embedding inside cards (e.g.
- * workflow/chat-graph nodes). Shows just the command line + status and a
+ * chat-graph nodes). Shows just the command line + status and a
  * single-line output peek; clicking anywhere opens the full TerminalWindow
  * in the big popup dialog.
  */

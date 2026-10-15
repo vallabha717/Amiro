@@ -12,7 +12,6 @@ import * as skills from './skills.mjs';
 import * as storage from './storage.mjs';
 import * as user from './user.mjs';
 import * as workspaceTrust from './workspace-trust.mjs';
-import * as workflow from './workflow.mjs';
 import * as providerLogin from './provider-login.mjs';
 import * as fsbrowse from './fsbrowse.mjs';
 import * as providersCatalog from './providers-catalog.mjs';
@@ -30,7 +29,6 @@ export function registerRoutes(app, ctx) {
   storage.register(app, ctx);
   user.register(app, ctx);
   workspaceTrust.register(app, ctx);
-  workflow.register(app, ctx);
   providerLogin.register(app, ctx);
   fsbrowse.register(app, ctx);
   providersCatalog.register(app, ctx);

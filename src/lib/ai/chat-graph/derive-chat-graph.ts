@@ -373,7 +373,7 @@ function buildStepNode(
 }
 
 /**
- * Derives the workflow graph as a single horizontal spine.
+ * Derives the chat graph as a single horizontal spine.
  *
  * Every turn reads left to right as INPUT -> OUTPUT. Between them, the model's
  * execution for that turn (tool calls plus any INFO commentary) stacks

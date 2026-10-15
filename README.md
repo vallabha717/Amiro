@@ -127,10 +127,13 @@ Text chat works with tools disabled by default (`tools: { enabled: [] }`).
 Model configuration is operator-controlled and a model-route failure does not
 silently fall back to another provider. Browser-supplied tool/MCP lists cannot
 widen permissions. Search, background execution, legacy skill generation,
-checkpoint restore, MCP tool execution/authorization, and workflow execution
-are **not enabled** and return explicit unsupported errors rather than
-fabricated success. See `docs/AMIRO-RUNTIME.md` for the full list, the usage
-page's scope caveats, and the "safe preview policy, not an OS sandbox" warning.
+checkpoint restore, and MCP tool execution/authorization are **not enabled**
+and return explicit unsupported errors rather than fabricated success. The
+user-authored workflow builder was removed outright rather than left
+returning errors -- the sidebar entry, `/workflow` pages, the flow canvas,
+the `Workflow` toolkit and the `/api/workflow*` endpoints are all gone. See
+`docs/AMIRO-RUNTIME.md` for the full list, the usage page's scope caveats, and
+the "safe preview policy, not an OS sandbox" warning.
 
 ## Testing
 

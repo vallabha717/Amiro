@@ -54,10 +54,6 @@ import { extractMCPToolId } from "lib/ai/mcp/mcp-tool-id";
 import { useTranslations } from "next-intl";
 import { Separator } from "ui/separator";
 
-import {
-  VercelAIWorkflowToolStreamingResult,
-  VercelAIWorkflowToolStreamingResultTag,
-} from "app-types/workflow";
 import { DefaultToolName, ImageToolName } from "lib/ai/tools";
 import equal from "lib/equal";
 import {
@@ -65,14 +61,12 @@ import {
   getShortcutKeyList,
   isShortcutEvent,
 } from "lib/keyboard-shortcuts";
-import { Avatar, AvatarFallback, AvatarImage } from "ui/avatar";
 import { TextShimmer } from "ui/text-shimmer";
 
 import { notify } from "lib/notify";
 import dynamic from "next/dynamic";
 import { ModelProviderIcon } from "ui/model-provider-icon";
 import { ToolRenderBoundary } from "./tool-invocation/tool-render-boundary";
-import { WorkflowInvocation } from "./tool-invocation/workflow-invocation";
 import {
   getToolPresenter,
   presenterPropsFromToolPart,
@@ -888,15 +882,10 @@ export const ToolMessagePart = memo(
       return null;
     }, [isCompleted, output, state, errorText]);
 
-    const isWorkflowTool = useMemo(
-      () => VercelAIWorkflowToolStreamingResultTag.isMaybe(result),
-      [result],
-    );
-
     const CustomToolComponent = useMemo(() => {
-      // Registry first: a tool with a presenter renders through the shared
-      // component the workflow canvas also uses, so the two surfaces cannot
-      // drift. Tools still living in tool-invocation/ fall through below.
+      // Registry first: a tool with a presenter renders through a shared
+      // component, so the chat and any other surface cannot drift. Tools
+      // still living in tool-invocation/ fall through below.
       const presenter = getToolPresenter(toolName);
       if (presenter?.Expanded) {
         const Expanded = presenter.Expanded;
@@ -963,16 +952,12 @@ export const ToolMessagePart = memo(
     }, [toolName]);
 
     const isExpanded = useMemo(() => {
-      return expanded || result === null || isWorkflowTool;
-    }, [expanded, result, isWorkflowTool]);
+      return expanded || result === null;
+    }, [expanded, result]);
 
     const isExecuting = useMemo(() => {
-      if (isWorkflowTool)
-        return (
-          (result as VercelAIWorkflowToolStreamingResult)?.status == "running"
-        );
       return !isCompleted && isLast;
-    }, [isWorkflowTool, isCompleted, result, isLast]);
+    }, [isCompleted, isLast]);
 
     return (
       <div className="group w-full">
@@ -998,18 +983,6 @@ export const ToolMessagePart = memo(
                   <Loader className="size-3.5 animate-spin" />
                 ) : isError ? (
                   <TriangleAlert className="size-3.5 text-destructive" />
-                ) : isWorkflowTool ? (
-                  <Avatar className="size-3.5">
-                    <AvatarImage
-                      src={
-                        (result as VercelAIWorkflowToolStreamingResult)
-                          .workflowIcon?.value
-                      }
-                    />
-                    <AvatarFallback>
-                      {toolName.slice(0, 2).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
                 ) : (
                   <HammerIcon className="size-3.5" />
                 )}
@@ -1081,11 +1054,7 @@ export const ToolMessagePart = memo(
                     </div>
                   )}
                 </div>
-                {!result ? null : isWorkflowTool ? (
-                  <WorkflowInvocation
-                    result={result as VercelAIWorkflowToolStreamingResult}
-                  />
-                ) : (
+                {!result ? null : (
                   <div
                     className={cn(
                       "min-w-0 w-full p-4 rounded-lg bg-card px-4 border text-xs mt-2 transition-colors fade-300",

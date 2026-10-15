@@ -320,7 +320,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
     [messages.length, error],
   );
 
-  // The workflow canvas has nothing to derive from until the thread has at
+  // The Workflow View has nothing to derive from until the thread has at
   // least one message, so an untouched "new chat" shows the plain greeting.
   // Keying off messages.length (rather than the persisted thread) makes it
   // appear on the same render as the optimistically-appended user message.

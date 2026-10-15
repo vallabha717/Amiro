@@ -50,6 +50,22 @@ try {
   assert.equal(chatRequests, 0, '/login must not be sent to the model');
   pass('chat /login opens the provider panel without a model request');
   assert.equal(await page.getByTestId('connect-provider-button').count(), 0, 'the chat window must not show a connect-provider button');
+  // The user-authored workflow feature is gone, not hidden: no sidebar entry,
+  // no /workflow page, and no /api/workflow route family at all (404, not 401
+  // -- an unregistered route never reaches the auth boundary). The sidebar is
+  // asserted to actually be rendered first, so this cannot pass vacuously.
+  await page.getByTestId('sidebar-mcp-link').waitFor({ timeout: 20000 });
+  assert.equal(await page.locator('[data-testid="sidebar-workflow-link"]').count(), 0, 'the sidebar must not link to the removed workflow feature');
+  assert.equal(await page.locator('a[href="/workflow"]').count(), 0, 'no link on the chat page may point at /workflow');
+  const workflowApi = await fetch(`${base}/api/workflow`);
+  assert.equal(workflowApi.status, 404, `GET /api/workflow should be an unregistered 404, got ${workflowApi.status}`);
+  const removedFeature = await context.newPage();
+  const workflowPage = await removedFeature.goto(`${base}/workflow`, { waitUntil: 'domcontentloaded' });
+  assert.equal(workflowPage.status(), 404, `GET /workflow should 404, got ${workflowPage.status()}`);
+  const workflowEditPage = await removedFeature.goto(`${base}/workflow/edit`, { waitUntil: 'domcontentloaded' });
+  assert.equal(workflowEditPage.status(), 404, `GET /workflow/edit should 404, got ${workflowEditPage.status()}`);
+  await removedFeature.close();
+  pass('workflow removal: sidebar renders without a workflow entry, /workflow and /workflow/edit 404, /api/workflow 404');
   // Every provider Jcode supports must be listed with its real mechanism.
   const providerCountText = await page.locator('[data-testid="login-panel"]').innerText();
   const providerCount = Number((/(\d+)\s+providers/i.exec(providerCountText) || [])[1] || 0);

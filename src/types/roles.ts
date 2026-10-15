@@ -31,7 +31,7 @@ export const userRolesInfo: UserRolesInfo = {
   editor: {
     label: "Editor",
     description:
-      "Default role for users who can create agents, workflows and add MCPs",
+      "Default role for users who can create agents and add MCPs",
   },
   user: {
     label: "User",

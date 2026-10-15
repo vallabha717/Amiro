@@ -45,7 +45,7 @@ try {
       await authenticated.arrayBuffer();
       assert(authenticated.status < 500 || authenticated.status === 501, `${key}: authenticated server failure ${authenticated.status}`);
       row.authenticatedStatus = authenticated.status;
-      row.positiveCheck = item.route.includes(':') ? 'missing-resource read only, NOT success workflow' : 'real authenticated read, shape not fully asserted';
+      row.positiveCheck = item.route.includes(':') ? 'missing-resource read only, NOT success path' : 'real authenticated read, shape not fully asserted';
     }
     rows.push(row);
     console.log(`PASS ${key}: anonymous=${row.unauthenticatedStatus}${row.authenticatedStatus ? ` authenticated=${row.authenticatedStatus}` : ''}`);

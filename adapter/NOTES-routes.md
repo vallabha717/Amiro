@@ -14,7 +14,6 @@
 - `adapter/src/routes/skills.mjs`
 - `adapter/src/routes/storage.mjs`
 - `adapter/src/routes/user.mjs`
-- `adapter/src/routes/workflow.mjs`
 - `adapter/src/routes/workspace-trust.mjs`
 - `adapter/src/routes/provider-login.mjs`
 

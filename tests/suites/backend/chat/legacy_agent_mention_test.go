@@ -26,7 +26,7 @@ import (
 //
 // What "safe" means here is deliberately NOT "returns a 400": every other
 // unrecognized or inaccessible mention in this codebase is silently
-// ignored rather than rejected (mentions.go's loadMCPTools/loadWorkflowTools/
+// ignored rather than rejected (mentions.go's loadMCPTools/
 // resolveSkills all skip a mention whose type they don't recognize, and the
 // deleted resolveAgent's own doc comment said as much for an unknown or
 // inaccessible agent id: "no error surfaced to the chat request either

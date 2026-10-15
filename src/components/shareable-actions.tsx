@@ -31,20 +31,6 @@ const VISIBILITY_ICONS = {
 } as const;
 
 const VISIBILITY_CONFIG = {
-  workflow: {
-    private: {
-      label: "Workflow.private",
-      description: "Workflow.privateDescription",
-    },
-    readonly: {
-      label: "Workflow.readonly",
-      description: "Workflow.readonlyDescription",
-    },
-    public: {
-      label: "Workflow.public",
-      description: "Workflow.publicDescription",
-    },
-  },
   mcp: {
     private: {
       label: "MCP.private",
@@ -58,7 +44,7 @@ const VISIBILITY_CONFIG = {
 } as const;
 
 interface ShareableActionsProps {
-  type: "workflow" | "mcp";
+  type: "mcp";
   visibility?: Visibility;
   isOwner: boolean;
   canChangeVisibility?: boolean;

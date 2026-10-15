@@ -4,9 +4,9 @@ import type { FC } from "react";
 /**
  * How a tool run ended, in the one vocabulary every surface shares.
  *
- * Chat and the workflow canvas describe the same three outcomes with
+ * Chat and the chat graph describe the same three outcomes with
  * completely different shapes -- `ToolUIPart.state` / `errorText` on one
- * side, `NodeRuntimeHistory.status` / `error` on the other. Presenters take
+ * side, a chat-graph node's runtime history on the other. Presenters take
  * this instead of either, which is what lets one component render into both
  * without knowing where it is.
  */
@@ -55,7 +55,7 @@ export function presenterPropsFromToolPart(part: ToolUIPart): PresenterProps {
   };
 }
 
-/** Workflow adapter: derive status from a node's runtime history entry. */
+/** Chat-graph adapter: derive status from a node's runtime history entry. */
 export function statusFromNodeHistory(history: {
   status?: string;
   error?: unknown;
@@ -89,13 +89,13 @@ export interface PresenterProps {
 export interface ToolPresenter {
   /**
    * One line, ~60 chars, answering *what happened* -- never "a tool ran".
-   * Rendered on the workflow node face and as the collapsed chat header.
+   * Rendered on the chat graph node face and as the collapsed chat header.
    * Must tolerate a pending/absent output.
    */
   glance: (props: PresenterProps) => string;
-  /** Node-sized: fits a ~280px workflow node body, no internal scroll. */
+  /** Node-sized: fits a ~280px chat graph node body, no internal scroll. */
   Compact?: FC<PresenterProps>;
-  /** Full detail: chat message card, and the workflow result dialog. */
+  /** Full detail: chat message card, and the chat graph's detail panel. */
   Expanded?: FC<PresenterProps>;
 }
 

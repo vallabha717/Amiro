@@ -91,7 +91,8 @@ The daemon echoes the directory it actually used when a session is created, and 
 - Model configuration is operator-controlled: the selector offers the models of the connected providers, with `AMIRO_DEFAULT_MODEL` choosing the landing model and `AMIRO_PINNED_MODELS` (when set) acting as a hard allow-list. A model-route failure does not silently select a different provider.
 - Browser-supplied tool/MCP lists cannot widen permissions.
 - Search is not implemented or enabled.
-- Background execution, legacy skill generation, checkpoint restore, MCP tool execution/authorization, and workflow execution are not enabled. They return explicit unsupported errors rather than fabricated success.
+- Background execution, legacy skill generation, checkpoint restore, and MCP tool execution/authorization are not enabled. They return explicit unsupported errors rather than fabricated success.
+- The user-authored workflow feature was removed, not disabled: the sidebar entry, the `/workflow` and `/workflow/edit` pages, the flow canvas and its node editor, the `Workflow` app toolkit and `createWorkflow`/`updateWorkflow`/`getWorkflowStructure` tool names, the workflow mention type, and the whole `/api/workflow*` route family (including its honest 501 `execute`). A `GET /api/workflow` now 404s like any other unregistered path.
 - Uploaded files use opaque, expiring capabilities, bounded sizes, validated storage paths, and download-only content types. Remote URL ingestion is disabled.
 - Public application sign-in is rate-limited. Arbitrary cross-origin browser requests are rejected.
 

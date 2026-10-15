@@ -456,7 +456,7 @@ function EditDetail({
 
 /**
  * The chat surface's rendering of an edit: the same compact, colored +N/-M
- * card the workflow canvas uses, with its own click-to-expand side-by-side
+ * card the detail surface uses, with its own click-to-expand side-by-side
  * diff dialog. Chat used to point away from itself here ("open the Workflow
  * View to read the diff") -- there is no reason a reader should have to
  * leave the conversation to see what changed.

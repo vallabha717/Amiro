@@ -26,7 +26,6 @@ import dynamic from "next/dynamic";
 import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
 import { useTranslations } from "next-intl";
 import { Editor } from "@tiptap/react";
-import { Avatar, AvatarFallback, AvatarImage } from "ui/avatar";
 import equal from "lib/equal";
 import { MCPIcon } from "ui/mcp-icon";
 import { DefaultToolName } from "lib/ai/tools";
@@ -49,7 +48,6 @@ import { cn } from "@/lib/utils";
 import { useThreadFileUploader } from "@/hooks/use-thread-file-uploader";
 import { ProjectSelector } from "./chat/project-selector";
 
-import { EMOJI_DATA } from "lib/const";
 import { FileUIPart, TextUIPart } from "ai";
 import { toast } from "sonner";
 import { isFilePartSupported, isIngestSupported } from "@/lib/ai/file-support";
@@ -413,33 +411,16 @@ export default function PromptInput({
                   }
                   return (
                     <div key={i} className="flex items-center gap-2">
-                      {mention.type === "workflow" ? (
-                        <Avatar
-                          className="size-6 p-1 ring ring-border rounded-full flex-shrink-0"
-                          style={mention.icon?.style}
-                        >
-                          <AvatarImage
-                            src={
-                              mention.icon?.value ||
-                              EMOJI_DATA[i % EMOJI_DATA.length]
-                            }
+                      <Button className="size-6 flex items-center justify-center ring ring-border rounded-full flex-shrink-0 p-0.5">
+                        {mention.type == "mcpServer" ? (
+                          <MCPIcon className="size-3.5" />
+                        ) : (
+                          <DefaultToolIcon
+                            name={mention.name as DefaultToolName}
+                            className="size-3.5"
                           />
-                          <AvatarFallback>
-                            {mention.name.slice(0, 1)}
-                          </AvatarFallback>
-                        </Avatar>
-                      ) : (
-                        <Button className="size-6 flex items-center justify-center ring ring-border rounded-full flex-shrink-0 p-0.5">
-                          {mention.type == "mcpServer" ? (
-                            <MCPIcon className="size-3.5" />
-                          ) : (
-                            <DefaultToolIcon
-                              name={mention.name as DefaultToolName}
-                              className="size-3.5"
-                            />
-                          )}
-                        </Button>
-                      )}
+                        )}
+                      </Button>
 
                       <div className="flex flex-col flex-1 min-w-0">
                         <span className="text-sm font-semibold truncate">

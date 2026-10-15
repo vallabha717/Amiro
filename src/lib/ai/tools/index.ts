@@ -4,7 +4,6 @@ export enum AppDefaultToolkit {
   Http = "http",
   Terminal = "terminal",
   Code = "terminal", // alias
-  Workflow = "workflow",
   File = "file",
   // Durable notes about the workspace. A real toggle, unlike the plan
   // tools -- a note that changes how the agent behaves in every future
@@ -53,9 +52,6 @@ export enum DefaultToolName {
   MemoryWrite = "memory_write",
   MemoryRead = "memory_read",
   MemoryForget = "memory_forget",
-  CreateWorkflow = "createWorkflow",
-  UpdateWorkflow = "updateWorkflow",
-  GetWorkflow = "getWorkflowStructure",
 }
 
 export const SequentialThinkingToolName = "sequential-thinking";

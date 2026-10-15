@@ -2,11 +2,9 @@
  * The wire shapes web_search and web_content actually return.
  *
  * Deliberately not `ExaSearchResponse`/`ExaSearchResult` from ./web-search --
- * those describe Exa's own raw API response, which is what the *workflow*
- * node still returns (internal/ai/workflow/web_search.go passes Exa's body
- * through untouched). The chat agent's tools go through the multi-provider
- * abstraction in the Go backend's internal/search package instead
- * (internal/ai/tools/web_search.go), which normalizes every provider --
+ * those describe Exa's own raw API response. The chat agent's tools go through
+ * the multi-provider abstraction in the Go backend's internal/search package
+ * instead (internal/ai/tools/web_search.go), which normalizes every provider --
  * Brave, Tavily, Exa, Serper -- to one shape and reports which one answered.
  * A card rendering agent tool calls has to match that shape, not Exa's.
  */

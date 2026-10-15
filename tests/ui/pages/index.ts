@@ -344,31 +344,6 @@ export class McpPage {
   }
 }
 
-export class WorkflowPage {
-  readonly page: Page;
-  readonly createWithExampleButton: Locator;
-  readonly createWorkflowCard: Locator;
-
-  constructor(page: Page) {
-    this.page = page;
-    this.createWithExampleButton = page.locator(
-      '[data-testid="create-workflow-with-example-button"]',
-    );
-    this.createWorkflowCard = page.locator(
-      '[data-testid="create-workflow-card"]',
-    );
-  }
-
-  async goto() {
-    await this.page.goto("/workflow");
-    await this.page.waitForLoadState("domcontentloaded");
-  }
-
-  workflowCards() {
-    return this.page.locator('[data-testid="workflow-card"]');
-  }
-}
-
 export class ArchivePage {
   readonly page: Page;
   readonly archivePage: Locator;

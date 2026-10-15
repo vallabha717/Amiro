@@ -68,19 +68,6 @@ export const ChatMentionSchema = z.discriminatedUnion("type", [
     serverId: z.string(),
   }),
   z.object({
-    type: z.literal("workflow"),
-    name: z.string(),
-    description: z.string().nullish(),
-    workflowId: z.string(),
-    icon: z
-      .object({
-        type: z.literal("emoji"),
-        value: z.string(),
-        style: z.record(z.string(), z.string()).optional(),
-      })
-      .nullish(),
-  }),
-  z.object({
     type: z.literal("skill"),
     name: z.string(),
     description: z.string().optional(),
@@ -188,7 +175,7 @@ export type ChatRepository = {
  * resubmit with the confirmation object itself read back as the tool's
  * result, not a real answer. `__tag` is used directly instead of fixing
  * `tag()`'s DEFAULT_KEY because that key is shared with
- * VercelAIWorkflowToolTag/VercelAIMcpToolTag, which have no such contract.
+ * VercelAIMcpToolTag, which has no such contract.
  */
 export const ManualToolConfirmTag = {
   create: (data: { confirm: boolean; scope?: "once" | "always" }) => ({

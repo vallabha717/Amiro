@@ -1,10 +1,10 @@
 import { Node } from "@xyflow/react";
 
 /**
- * Node kinds for the live, auto-derived chat workflow view.
- * Deliberately separate from `NodeKind` in `lib/ai/workflow/workflow.interface.ts`,
- * which models the user-authored workflow *builder* (DB-persisted, editable).
- * These nodes are derived read-only from chat messages and never saved.
+ * Node kinds for the live, auto-derived chat graph view.
+ *
+ * These nodes are derived read-only from chat messages and never saved; they
+ * are unrelated to the retired user-authored workflow builder.
  */
 export type ChatGraphNodeKind =
   | "prompt"

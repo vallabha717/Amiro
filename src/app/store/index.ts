@@ -3,7 +3,6 @@ import { persist } from "zustand/middleware";
 import { ChatMention, ChatModel, ChatThread } from "app-types/chat";
 import { AllowedMCPServer, MCPServerInfo } from "app-types/mcp";
 import { OPENAI_VOICE } from "lib/ai/speech/open-ai/use-voice-chat.openai";
-import { WorkflowSummary } from "app-types/workflow";
 import { AppDefaultToolkit } from "lib/ai/tools";
 import { ArchiveWithItemCount } from "app-types/archive";
 
@@ -23,7 +22,6 @@ export interface UploadedFile {
 export interface AppState {
   threadList: ChatThread[];
   mcpList: (MCPServerInfo & { id: string })[];
-  workflowToolList: WorkflowSummary[];
   currentThreadId: ChatThread["id"] | null;
   toolChoice: "auto" | "none" | "manual";
   /**
@@ -115,7 +113,6 @@ const initialState: AppState = {
   threadFiles: {},
   threadImageToolModel: {},
   mcpList: [],
-  workflowToolList: [],
   currentThreadId: null,
   toolChoice: "auto",
   permissionMode: "auto",
@@ -130,7 +127,6 @@ const initialState: AppState = {
     AppDefaultToolkit.Memory,
     AppDefaultToolkit.WebSearch,
     AppDefaultToolkit.Http,
-    AppDefaultToolkit.Workflow,
   ],
   toolPresets: [],
   chatModel: undefined,
