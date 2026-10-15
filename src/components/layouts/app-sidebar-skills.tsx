@@ -56,7 +56,8 @@ export function AppSidebarSkills() {
     (name: string) => {
       const currentThreadId = appStore.getState().currentThreadId;
       const skill = allSkills.find((s) => s.name === name);
-      if (!skill) return;
+      if (!skill || skill.deliverable === false || skill.disableModelInvocation)
+        return;
 
       const newMention: ChatMention = {
         type: "skill",
@@ -84,6 +85,7 @@ export function AppSidebarSkills() {
             },
           };
         });
+        router.push(`/?thread=${encodeURIComponent(currentThreadId)}`);
       } else {
         router.push("/");
         appStore.setState(() => ({
@@ -273,12 +275,18 @@ export function AppSidebarSkills() {
                         key={skill.name}
                         className="group/skill mr-0 w-full"
                       >
-                        <SidebarMenuItem
-                          className="w-full cursor-pointer px-2"
-                          onClick={() => handleSkillClick(skill.name)}
-                        >
+                        <SidebarMenuItem className="w-full px-2">
                           <SidebarMenuButton
-                            asChild
+                            onClick={() => handleSkillClick(skill.name)}
+                            disabled={
+                              skill.deliverable === false ||
+                              skill.disableModelInvocation
+                            }
+                            title={
+                              skill.deliverable === false
+                                ? skill.invokableReason
+                                : `Add /${skill.name} instructions to your next message`
+                            }
                             className="w-full data-[state=open]:bg-input!"
                           >
                             <div className="flex w-full min-w-0 items-center gap-1.5">

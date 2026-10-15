@@ -1,5 +1,6 @@
-// Live acceptance test. Temporarily changes only the owner's Agent identity,
-// restores it in finally, and never edits native memory or workspace files.
+// Live acceptance test. Temporarily changes the owner's Agent identity and
+// creates one disposable skill and chat. Restores them in finally. Native
+// memory and pre-existing workspace files are never edited.
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
@@ -30,6 +31,7 @@ page.on('pageerror', (error) => errors.push(error.message));
 page.on('response', (r) => { if (new URL(r.url()).pathname.startsWith('/api/') && r.status() >= 500) failures.push(`${r.status()} ${r.url()}`); });
 let checks = 0;
 let personaThread;
+let testSkillName;
 const pass = (message) => { checks++; console.log(`PASS ${message}`); };
 try {
   await page.goto(`${base}/agent`, { waitUntil: 'networkidle' });
@@ -54,14 +56,14 @@ try {
   await page.getByTestId('agent-name-input').fill(testName);
   await page.getByTestId('agent-next-body-shape').click();
   await page.getByTestId('agent-next-eye-style').click();
-  await page.getByTestId('agent-color-blue').click();
+  await page.getByTestId('agent-color-cobalt').click();
   await page.screenshot({ path: path.join(artifactDir, 'amiro-agent-customizer.png'), fullPage: true });
   await page.getByTestId('agent-customizer-save').click();
   await page.getByTestId('agent-customizer-modal').waitFor({ state: 'hidden' });
   await page.waitForFunction(() => document.querySelector('[data-testid="sidebar-agent-link"]')?.textContent?.includes('Orbit Test'));
   const saved = await api('/api/agent/identity');
   assert.equal(saved.name, testName);
-  assert.equal(saved.traits.color, 'blue');
+  assert.equal(saved.traits.color, 'cobalt');
   assert(!await page.getByTestId('sidebar-agent-link').textContent().then((s) => s.includes('Agent ·')));
   await page.reload({ waitUntil: 'networkidle' });
   await page.getByTestId('sidebar-agent-link').filter({ hasText: testName }).waitFor();
@@ -78,6 +80,17 @@ try {
   const reply = frames.filter((frame) => frame.type === 'text-delta').map((frame) => frame.delta).join('');
   assert(reply.includes(testName), `model should receive saved identity, got ${reply}`);
   pass('saved Agent name reaches a real Jcode model turn');
+  testSkillName = `agent-probe-${randomUUID().slice(0, 8)}`;
+  await api('/api/skills', { method: 'POST', body: JSON.stringify({ name: testSkillName, description: 'Temporary Agent acceptance test', body: 'When the user asks for this selected skill’s test codeword, answer only SKILL_ORBIT_42. This is a harmless acceptance test.' }) });
+  const skillTurn = await fetch(`${base}/api/chat`, {
+    method: 'POST', headers, signal: AbortSignal.timeout(180000),
+    body: JSON.stringify({ id: personaThread, mentions: [{ type: 'skill', name: testSkillName }], chatModel: { provider: 'opencode-go', model: 'deepseek-v4.1-flash' }, message: { id: randomUUID(), role: 'user', parts: [{ type: 'text', text: 'What is this selected skill’s test codeword? Answer with only its codeword. Do not use tools.' }] } }),
+  });
+  assert.equal(skillTurn.status, 200);
+  const skillFrames = (await skillTurn.text()).split('\n').filter((line) => line.startsWith('data: ') && line !== 'data: [DONE]').map((line) => JSON.parse(line.slice(6)));
+  assert(!skillFrames.some((frame) => frame.type === 'error'));
+  assert.equal(skillFrames.filter((frame) => frame.type === 'text-delta').map((frame) => frame.delta).join('').trim(), 'SKILL_ORBIT_42');
+  pass('selected Superpower delivers server-resolved skill instructions on a real model turn');
   await page.getByTestId('sidebar-agent-personality-link').click();
   await page.getByTestId('agent-personality-page').waitFor();
   const slider = page.getByTestId('personality-slider-playfulSerious');
@@ -126,7 +139,11 @@ try {
   pass('no browser exceptions or API server errors');
   console.log(JSON.stringify({ checks, screenshots: artifactDir }));
 } finally {
-  if (personaThread) await fetch(`${base}/api/thread/${personaThread}`, { method: 'DELETE', headers });
-  await api('/api/agent/identity', { method: 'PUT', body: JSON.stringify({ name: original.name, handle: original.handle, tagline: original.tagline, traits: original.traits, accentHex: original.accentHex, customImageUrl: original.customImageUrl, sliders: original.sliders }) });
-  await browser.close();
+  try {
+    if (testSkillName) await fetch(`${base}/api/skills/items/${testSkillName}`, { method: 'DELETE', headers });
+    if (personaThread) await fetch(`${base}/api/thread/${personaThread}`, { method: 'DELETE', headers });
+    await api('/api/agent/identity', { method: 'PUT', body: JSON.stringify({ name: original.name, handle: original.handle, tagline: original.tagline, traits: original.traits, accentHex: original.accentHex, customImageUrl: original.customImageUrl, sliders: original.sliders }) });
+  } finally {
+    await browser.close();
+  }
 }

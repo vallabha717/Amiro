@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { beginAgentUserTurn } from '../src/agent-context.mjs';
+import { beginAgentUserTurn, buildAgentTurnReminder } from '../src/agent-context.mjs';
 
 function harness(frames, { failNotify = false } = {}) {
   let opened = false;
@@ -80,4 +80,31 @@ test('chat never replaces the assembled native Jcode system prompt', async () =>
   assert(!source.includes('systemPrompt:'), 'persona must not erase native system or memory');
   assert(source.includes('buildAgentTurnReminder(ctx, user'));
   assert(!source.includes('sendSystemReminder('), 'standalone reminders start an extra model turn');
+});
+
+function identityContext() {
+  return {
+    nowIso: () => '2026-10-15T00:00:00.000Z',
+    config: {},
+    store: { read: async (key, fallback) => key === 'agent-identity/owner.json' ? { name: 'Orbit', sliders: { playfulSerious: 22 } } : fallback },
+  };
+}
+
+test('each user turn reads only that user presentation identity', async () => {
+  const ctx = identityContext();
+  const owner = await buildAgentTurnReminder(ctx, { id: 'owner' });
+  const other = await buildAgentTurnReminder(ctx, { id: 'other' });
+  assert.match(owner, /Orbit/);
+  assert.match(owner, /underlying runtime remains Jcode/);
+  assert(!other.includes('Orbit'));
+  assert.match(other, /Amiro/);
+});
+
+test('excess skill selections are rejected before any turn is sent', async () => {
+  const mentions = Array.from({ length: 9 }, (_, i) => ({ type: 'skill', name: `skill-${i}` }));
+  await assert.rejects(buildAgentTurnReminder(identityContext(), { id: 'owner' }, { mentions }), /at most 8/);
+});
+
+test('path-like skill names cannot become filesystem reads or prompt text', async () => {
+  await assert.rejects(buildAgentTurnReminder(identityContext(), { id: 'owner' }, { mentions: [{ type: 'skill', name: '../../credentials' }] }), /not available/);
 });

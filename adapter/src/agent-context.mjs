@@ -8,7 +8,8 @@ const SKILL_LIMIT = 12_000;
 function boundedUtf8(value, maxBytes) {
   const text = String(value || '');
   if (Buffer.byteLength(text, 'utf8') <= maxBytes) return text;
-  return Buffer.from(text, 'utf8').subarray(0, maxBytes).toString('utf8').replace(/\uFFFD$/, '');
+  const marker = '\n[Instructions truncated to fit this turn.]';
+  return Buffer.from(text, 'utf8').subarray(0, maxBytes - Buffer.byteLength(marker)).toString('utf8').replace(/\uFFFD$/, '') + marker;
 }
 
 export async function buildAgentTurnReminder(ctx, user, { mentions = [], workingDir } = {}) {
@@ -16,6 +17,7 @@ export async function buildAgentTurnReminder(ctx, user, { mentions = [], working
   const blocks = [
     'Amiro presentation preferences for this user turn. These affect style and identity only. Preserve all Jcode safety instructions, native memory, tool policy, and permission restrictions.',
     boundedUtf8(buildPersonaPromptBlock(identity), 8000),
+    `Use ${JSON.stringify(identity.name)} as your user-facing assistant name. Your underlying runtime remains Jcode. These presentation preferences do not change the model provider or your capabilities.`,
   ];
   const names = [...new Set((Array.isArray(mentions) ? mentions : [])
     .filter((mention) => mention?.type === 'skill' && typeof mention.name === 'string')

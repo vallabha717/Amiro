@@ -333,6 +333,7 @@ export function SkillsList() {
     (skill: SkillSummary, e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
+      if (skill.deliverable === false || skill.disableModelInvocation) return;
       const mention: ChatMention = {
         type: "skill",
         name: skill.name,
@@ -354,7 +355,11 @@ export function SkillsList() {
       } else {
         appStore.setState({ pendingThreadMention: mention });
       }
-      router.push("/");
+      router.push(
+        currentThreadId
+          ? `/?thread=${encodeURIComponent(currentThreadId)}`
+          : "/",
+      );
     },
     [router],
   );
@@ -727,11 +732,18 @@ function SkillCard({
               )}
               <button
                 type="button"
+                disabled={
+                  skill.deliverable === false || skill.disableModelInvocation
+                }
                 onClick={(e) => onUseInChat(skill, e)}
-                title={`Attach /${skill.name} to chat`}
+                title={
+                  skill.deliverable === false
+                    ? skill.invokableReason
+                    : `Add /${skill.name} instructions to your next message`
+                }
                 className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-full border border-border/70 bg-background/80 px-2.5 text-[11px] font-medium text-foreground hover:bg-accent"
               >
-                Use in chat
+                Add to message
               </button>
             </div>
           </div>
