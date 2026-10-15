@@ -55,9 +55,26 @@ const DEFAULT_TRAITS = {
 const MAX_NAME_LEN = 32;
 const MAX_TAGLINE_LEN = 120;
 const MAX_HANDLE_LEN = 32;
-const MAX_CUSTOM_IMAGE_LEN = 2 * 1024 * 1024; // 2MB base64
+const MAX_CUSTOM_IMAGE_RAW_LEN = 4 * 1024 * 1024; // 4MB raw string to allow ~2MB decoded + base64 overhead
+const MAX_CUSTOM_IMAGE_DECODED = 2 * 1024 * 1024; // 2MB decoded bytes cap
 const VALID_HANDLE_RE = /^@[a-z0-9_]{1,32}$/i;
 const VALID_HEX_RE = /^#[0-9a-fA-F]{6}$/;
+// Strict allowlist: only png, jpeg/jpg, webp data URIs. Full anchored, no svg+xml/gif/http.
+const VALID_DATA_IMAGE_RE = /^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
+
+function isValidDataImageUrl(v) {
+  const s = String(v || '');
+  if (s.length > MAX_CUSTOM_IMAGE_RAW_LEN) return false;
+  if (!VALID_DATA_IMAGE_RE.test(s)) return false;
+  const comma = s.indexOf(',');
+  const b64 = s.slice(comma + 1);
+  // decoded size = ceil(b64Len * 3/4) - padding
+  const pad = b64.endsWith('==') ? 2 : b64.endsWith('=') ? 1 : 0;
+  const decoded = Math.floor((b64.length * 3) / 4) - pad;
+  if (decoded > MAX_CUSTOM_IMAGE_DECODED) return false;
+  if (decoded <= 0) return false;
+  return true;
+}
 
 function clampSlider(n, fallback = 50) {
   const num = Number(n);
@@ -157,10 +174,21 @@ export async function getAgentIdentity(ctx, userId) {
   let saved = null;
   if (uid) {
     saved = await ctx.store.read(identityKeyForUser(uid), null);
-    // migrate legacy shared key once per user if per-user missing
     if (!saved) {
       const legacy = await ctx.store.read(LEGACY_IDENTITY_KEY, null);
-      if (legacy) saved = legacy;
+      if (legacy) {
+        // Only migrate legacy to admin owner (or skip if no owner) to prevent leaking shared legacy to every user
+        try {
+          const usersDoc = await ctx.store.readJson(path.join(ctx.config.home, 'users.json'), { users: [] });
+          const legacyOwnerIsAdmin = Array.isArray(usersDoc.users)
+            ? usersDoc.users.some(u => String(u.id) === String(uid) && String(u.role) === 'admin')
+            : false;
+          // If users.json unreadable or user not admin, do not leak legacy personalization
+          if (legacyOwnerIsAdmin) saved = legacy;
+        } catch {
+          // ignore, no migration
+        }
+      }
     }
   } else {
     saved = await ctx.store.read(LEGACY_IDENTITY_KEY, null);
@@ -175,23 +203,11 @@ export async function getAgentIdentity(ctx, userId) {
   const handleRaw = String(saved?.handle || `@${name.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'amiro'}`).trim();
   const handle = VALID_HANDLE_RE.test(handleRaw) ? handleRaw : `@${name.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 30) || 'amiro'}`;
   const personalitySummary = saved?.personalitySummary || summarizePersonality(sliders);
-  // normalize customImageUrl length / prefix
   let customImageUrl = saved?.customImageUrl ?? null;
   if (customImageUrl != null) {
     const s = String(customImageUrl);
-    if (s.length > MAX_CUSTOM_IMAGE_LEN) customImageUrl = null;
-    else if (s.startsWith('data:image/')) {
-      if (!/^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(s.slice(0, 2000)) && s.length > 22) {
-        // allow but length checked; strict prefix check for data uri
-        if (!s.startsWith('data:image/')) customImageUrl = null;
-      }
-    } else if (s.startsWith('http://') || s.startsWith('https://')) {
-      try { new URL(s); } catch { customImageUrl = null; }
-    } else if (s !== '') {
-      // only allow data: or https
-      customImageUrl = null;
-    }
-    if (customImageUrl === '') customImageUrl = null;
+    if (s === '' ) customImageUrl = null;
+    else if (!isValidDataImageUrl(s)) customImageUrl = null;
   }
   return {
     name: name.slice(0, MAX_NAME_LEN),
@@ -242,19 +258,8 @@ function validateIdentityPayload(body) {
   }
   if (body?.customImageUrl !== undefined && body.customImageUrl !== null && body.customImageUrl !== '') {
     const v = String(body.customImageUrl);
-    if (v.length > MAX_CUSTOM_IMAGE_LEN) errors.push(`customImageUrl must be <= ${MAX_CUSTOM_IMAGE_LEN} chars`);
-    else if (v.startsWith('data:')) {
-      if (!v.startsWith('data:image/')) errors.push('customImageUrl data URI must be data:image/*;base64,');
-      else if (!/^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(v.slice(0, 5000)) && v.length > 22) {
-        // allow up to 2MB, regex limited to prefix check
-        if (!v.includes(';base64,')) errors.push('customImageUrl data URI must contain ;base64,');
-      }
-    } else if (v.startsWith('http://') || v.startsWith('https://')) {
-      try { new URL(v); } catch { errors.push('customImageUrl must be a valid URL'); }
-      if (v.length > 2048) errors.push('customImageUrl URL too long');
-    } else {
-      errors.push('customImageUrl must be https:// or data:image/*;base64,');
-    }
+    if (v.length > MAX_CUSTOM_IMAGE_RAW_LEN) errors.push(`customImageUrl must be <= ${MAX_CUSTOM_IMAGE_RAW_LEN} chars`);
+    else if (!isValidDataImageUrl(v)) errors.push('customImageUrl must be data:image/(png|jpeg|webp);base64,... (decoded <=2MB, no http, no svg)');
   }
   if (body?.sliders !== undefined) {
     const s = body.sliders || {};
@@ -270,13 +275,81 @@ function validateIdentityPayload(body) {
   return errors;
 }
 
+function normalizeCategoryField(raw) {
+  if (typeof raw === 'string') {
+    const s = raw.trim().toLowerCase();
+    return s || 'fact';
+  }
+  if (raw && typeof raw === 'object') {
+    // Rust tagged enum: e.g. { Custom: "myCat" } or { Standard: "fact" } or { name: "fact" }
+    const keys = Object.keys(raw);
+    if (keys.length === 1) {
+      const k = keys[0];
+      const v = raw[k];
+      if (typeof v === 'string') return v.trim().toLowerCase() || k.toLowerCase();
+      if (v && typeof v === 'object') {
+        if (typeof v.name === 'string') return v.name.trim().toLowerCase() || k.toLowerCase();
+        if (typeof v.value === 'string') return v.value.trim().toLowerCase() || k.toLowerCase();
+        if (typeof v.category === 'string') return v.category.trim().toLowerCase() || k.toLowerCase();
+      }
+      return k.toLowerCase();
+    }
+    if (typeof raw.name === 'string') return raw.name.trim().toLowerCase() || 'fact';
+    if (typeof raw.value === 'string') return raw.value.trim().toLowerCase() || 'fact';
+  }
+  return 'fact';
+}
+
 async function syncPersonaFiles(ctx, identity, userId) {
   try {
     const uid = sanitizeUserId(userId);
     if (!uid) return;
+    const baseWs = path.resolve(ctx.config.workspaceDir);
+    // Harden base: realpath check (defend against workspaceDir itself being a symlink)
+    let realBaseWs;
+    try {
+      realBaseWs = await fs.realpath(baseWs);
+    } catch {
+      realBaseWs = baseWs;
+      await fs.mkdir(baseWs, { recursive: true });
+      try { realBaseWs = await fs.realpath(baseWs); } catch { realBaseWs = baseWs; }
+    }
     // Per-user directory only; never writes to shared prompt-overlay.md or global memory
-    const wsDir = path.join(ctx.config.workspaceDir, 'users', uid);
+    const wsDir = path.join(baseWs, 'users', uid);
+    // Ensure parent chain exists without following an attacker-planted symlink
+    const usersDir = path.join(baseWs, 'users');
+    try {
+      const ls = await fs.lstat(usersDir).catch(() => null);
+      if (ls && ls.isSymbolicLink()) {
+        await fs.unlink(usersDir);
+      }
+    } catch {}
+    await fs.mkdir(usersDir, { recursive: true });
+    try {
+      const st = await fs.lstat(usersDir);
+      if (st.isSymbolicLink()) throw new Error('users dir is a symlink');
+      const realUsers = await fs.realpath(usersDir);
+      if (realUsers !== realBaseWs && !realUsers.startsWith(`${realBaseWs}${path.sep}`)) {
+        throw new Error('users dir escapes workspace');
+      }
+    } catch (e) {
+      if (e && e.message && e.message.includes('escapes')) throw e;
+      // allow missing -> already created
+    }
+    try {
+      const l2 = await fs.lstat(wsDir).catch(() => null);
+      if (l2 && l2.isSymbolicLink()) await fs.unlink(wsDir);
+    } catch {}
     await fs.mkdir(wsDir, { recursive: true });
+    let realWsDir;
+    try {
+      realWsDir = await fs.realpath(wsDir);
+    } catch {
+      realWsDir = wsDir;
+    }
+    if (realWsDir !== realBaseWs && !realWsDir.startsWith(`${realBaseWs}${path.sep}`)) {
+      throw new Error('per-user dir escapes workspace');
+    }
     const identityMd = [
       `# Identity`,
       ``,
@@ -308,13 +381,22 @@ async function syncPersonaFiles(ctx, identity, userId) {
       ``,
     ].join('\n');
 
+    // Guard each target against symlink: if existing file is a symlink, remove before write
+    for (const name of ['IDENTITY.md', 'SOUL.md', 'prompt-overlay.md']) {
+      const p = path.join(wsDir, name);
+      try {
+        const st = await fs.lstat(p).catch(() => null);
+        if (st && st.isSymbolicLink()) await fs.unlink(p);
+      } catch {}
+    }
     await fs.writeFile(path.join(wsDir, 'IDENTITY.md'), identityMd, 'utf8');
     await fs.writeFile(path.join(wsDir, 'SOUL.md'), soulMd, 'utf8');
 
     // Per-user prompt overlay inside workspaceDir/users/<uid>/prompt-overlay.md
     // Intentionally NOT writing to ctx.config.home/prompt-overlay.md (global overlay)
-    // to avoid cross-user prompt injection. Chat worker reads per-user overlay via
-    // getAgentIdentity -> buildPersonaPromptBlock + sendSystemReminder.
+    // to avoid cross-user prompt injection. Chat worker consumes per-user
+    // identity via getAgentIdentity/buildPersonaPromptBlock and applies it as a
+    // system reminder at turn start (no global file coupling).
     const overlayPath = path.join(wsDir, 'prompt-overlay.md');
     await fs.writeFile(overlayPath, `${buildPersonaPromptBlock(identity)}\n`, 'utf8');
   } catch (err) {
@@ -384,12 +466,16 @@ async function loadAllMemoryGraphs(ctx) {
       if (!m || typeof m !== 'object') continue;
       const active = m.active !== false && !m.superseded_by;
       if (active) activeInScope += 1;
-      const category = String(m.category || 'fact').toLowerCase();
+      const category = normalizeCategoryField(m.category);
       if (active) {
         byCategory[category] = (byCategory[category] || 0) + 1;
       }
-      const tags = Array.isArray(m.tags) ? m.tags.map(String) : [];
-      for (const t of tags) allTags.add(t);
+      // Native tags can be either an array of strings or a map object { "tag:foo": ... }
+      let tags = [];
+      if (Array.isArray(m.tags)) tags = m.tags.map(String);
+      else if (m.tags && typeof m.tags === 'object') tags = Object.keys(m.tags).map(String).map(t => t.replace(/^tag:/,''));
+      else if (Array.isArray(m.tag)) tags = m.tag.map(String);
+      for (const t of tags) if (t) allTags.add(String(t));
       const reinforcementsCount = Array.isArray(m.reinforcements)
         ? m.reinforcements.length
         : Number(m.reinforcements || 0);
@@ -636,19 +722,10 @@ function isAllowedWorkspaceRel(rootId, relPosix) {
 }
 
 function isWritableWorkspaceRel(rootId, relPosix, userId) {
-  const rel = String(relPosix || '').replace(/^\/+/, '').split(path.sep).join('/');
-  if (!rel) return false;
-  if (rootId === 'jcode') return false; // jcode is read-only via workspace
-  if (rootId === 'amiro') {
-    const uid = sanitizeUserId(userId);
-    if (uid && rel === `users/${uid}/IDENTITY.md`) return true;
-    if (uid && rel === `users/${uid}/SOUL.md`) return true;
-    if (uid && rel === `users/${uid}/prompt-overlay.md`) return true;
-    // legacy top-level persona files: allow only for admin migrating? deny by default to enforce per-user
-    // skills under amiro are managed via /api/skills, not workspace
-    return false;
-  }
-  if (rootId === 'project') return false; // project writes not via agent workspace
+  // Workspace is display-only; persona mirrors under users/<uid>/ are
+  // regenerated from JSON (PUT /api/agent/identity|personality) and not
+  // consumed by chat. Allow no writes via workspace to avoid fake-edit UX.
+  // Internal syncPersonaFiles still regenerates mirrors server-side.
   return false;
 }
 
@@ -811,8 +888,8 @@ export function register(app, ctx) {
     if (body?.customImageUrl !== undefined) {
       if (body.customImageUrl === null || body.customImageUrl === '') nextImage = null;
       else nextImage = String(body.customImageUrl);
-      if (nextImage && nextImage.length > MAX_CUSTOM_IMAGE_LEN) {
-        return ctx.error(res, 400, 'customImageUrl too large (max 2MB)');
+      if (nextImage && !isValidDataImageUrl(nextImage)) {
+        return ctx.error(res, 400, 'customImageUrl must be data:image/(png|jpeg|webp);base64,... (decoded <=2MB, no http, no svg)');
       }
     }
 
@@ -1046,36 +1123,10 @@ export function register(app, ctx) {
     }
   });
 
-  // PUT /api/agent/workspace/file -- admin-gated, strictly allowlisted writable paths only
+  // PUT /api/agent/workspace/file -- 501 read-only (mirrors are display-only; edits via identity/personality)
   app.put('/api/agent/workspace/file', async (req, res) => {
     const user = requireAdmin(req, res, ctx);
     if (!user) return;
-    const body = await ctx.readJson(req);
-    const roots = getWorkspaceRoots(ctx);
-    const rootId = String(body?.root || 'amiro');
-    const relPath = String(body?.path || '');
-    const content = String(body?.content ?? '');
-    if (content.length > 512 * 1024) {
-      return ctx.error(res, 400, 'content too large (max 512KB)');
-    }
-    const activeRoot = roots.find((r) => r.id === rootId);
-    if (!activeRoot || !relPath) {
-      return ctx.error(res, 400, 'root and path are required');
-    }
-
-    try {
-      const { resolvedTarget, cleanRel } = await resolveContainedWorkspacePath(
-        activeRoot.basePath,
-        relPath,
-        { rootId: activeRoot.id, userId: user.id, forWrite: true },
-      );
-      await fs.mkdir(path.dirname(resolvedTarget), { recursive: true });
-      await fs.writeFile(resolvedTarget, content, 'utf8');
-      const st = await fs.stat(resolvedTarget);
-      ctx.json(res, 200, { ok: true, updatedAt: st.mtime.toISOString() });
-    } catch (err) {
-      const status = err && err.status ? err.status : 400;
-      ctx.error(res, status, err && err.message ? err.message : 'failed to write file');
-    }
+    return ctx.error(res, 501, 'Workspace is read-only; edit persona via Customize (PUT /api/agent/identity) or Personality (PUT /api/agent/personality)');
   });
 }

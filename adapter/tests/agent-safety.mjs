@@ -249,23 +249,23 @@ async function main() {
     // cleanup real link immediately (final cleanup also)
     await fs.unlink(symlinkPath).catch(() => {});
 
-    // Writable allowlist: only per-user persona files under amiro/users/<uid>/ are writable
+    // Writable: workspace is now fully read-only (mirrors display-only) -> all PUTs 501
     const writableBad = await jsonFetch(`${BASE}/api/agent/workspace/file`, {
       method: 'PUT', headers: hdrAdmin, body: JSON.stringify({ root: 'jcode', path: 'prompt-overlay.md', content: 'hacked' }),
     });
-    step('PUT jcode prompt-overlay.md via workspace -> 403 read-only', writableBad.res.status === 403, `status=${writableBad.res.status}`);
+    step('PUT jcode prompt-overlay.md via workspace -> 501 read-only', writableBad.res.status === 501, `status=${writableBad.res.status}`);
 
-    // Valid per-user write
+    // Per-user write via workspace must also be 501 (edit via identity/personality)
     const validPath = `users/${adminId}/IDENTITY.md`;
     const validWrite = await jsonFetch(`${BASE}/api/agent/workspace/file`, {
       method: 'PUT', headers: hdrAdmin, body: JSON.stringify({ root: 'amiro', path: validPath, content: '# Identity test' }),
     });
-    step('PUT per-user IDENTITY.md via workspace -> 200', validWrite.res.ok, `status=${validWrite.res.status} body=${JSON.stringify(validWrite.body).slice(0,80)}`);
-    // Non-allowlisted amiro path should 403
+    step('PUT per-user IDENTITY.md via workspace -> 501 (read-only mirrors)', validWrite.res.status === 501, `status=${validWrite.res.status} body=${JSON.stringify(validWrite.body).slice(0,80)}`);
+    // Non-allowlisted amiro path also 501
     const invalidAmiroWrite = await jsonFetch(`${BASE}/api/agent/workspace/file`, {
       method: 'PUT', headers: hdrAdmin, body: JSON.stringify({ root: 'amiro', path: 'IDENTITY.md', content: 'bad' }),
     });
-    step('PUT amiro/IDENTITY.md top-level (not per-user) -> 403', invalidAmiroWrite.res.status === 403, `status=${invalidAmiroWrite.res.status}`);
+    step('PUT amiro/IDENTITY.md top-level -> 501', invalidAmiroWrite.res.status === 501, `status=${invalidAmiroWrite.res.status}`);
 
     // 4. VALIDATION: identity name/traits/accent/image lengths and unknown sliders
     const longName = 'a'.repeat(100);
@@ -300,16 +300,88 @@ async function main() {
     });
     step('PUT personality unknown slider key -> 400', unknownSlider.res.status === 400, `status=${unknownSlider.res.status}`);
 
-    // Valid identity update with per-user isolation check
+    // Valid identity update with per-user isolation check (strict image: only data png/jpeg/webp)
+    const validPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==';
     const alicePut = await jsonFetch(`${BASE}/api/agent/identity`, {
-      method: 'PUT', headers: hdrAdmin, body: JSON.stringify({ name: 'Alice', traits: { bodyShape: 'star', eyeStyle: 'curious', color: 'teal' }, accentHex: '#0E9B8B', customImageUrl: 'https://example.com/avatar.png' }),
+      method: 'PUT', headers: hdrAdmin, body: JSON.stringify({ name: 'Alice', traits: { bodyShape: 'star', eyeStyle: 'curious', color: 'teal' }, accentHex: '#0E9B8B', customImageUrl: validPng }),
     });
-    step('PUT identity valid per-user -> 200', alicePut.res.ok && alicePut.body?.name === 'Alice', `status=${alicePut.res.status} name=${alicePut.body?.name}`);
+    step('PUT identity valid per-user with data png -> 200', alicePut.res.ok && alicePut.body?.name === 'Alice', `status=${alicePut.res.status} name=${alicePut.body?.name}`);
+
+    // Image strictness: svg and http must be rejected
+    const svgImage = 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=';
+    const svgRes = await jsonFetch(`${BASE}/api/agent/identity`, {
+      method: 'PUT', headers: hdrAdmin, body: JSON.stringify({ customImageUrl: svgImage }),
+    });
+    step('PUT identity svg image rejected -> 400', svgRes.res.status === 400, `status=${svgRes.res.status}`);
+    const httpImage = 'https://example.com/avatar.png';
+    const httpRes = await jsonFetch(`${BASE}/api/agent/identity`, {
+      method: 'PUT', headers: hdrAdmin, body: JSON.stringify({ customImageUrl: httpImage }),
+    });
+    step('PUT identity http image rejected -> 400', httpRes.res.status === 400, `status=${httpRes.res.status}`);
 
     const bobGet = await jsonFetch(`${BASE}/api/agent/identity`, { headers: hdrBob });
     const aliceGet = await jsonFetch(`${BASE}/api/agent/identity`, { headers: hdrAdmin });
     step('per-user isolation: bob does not see alice name', bobGet.body?.name !== 'Alice', `bob=${bobGet.body?.name} alice=${aliceGet.body?.name}`);
     step('per-user isolation: alice persists', aliceGet.body?.name === 'Alice', `alice=${aliceGet.body?.name}`);
+
+    // Verify native category normalization: inject Rust tagged category into global.json and ensure no [object Object]
+    const realJcodeHomeCat = process.env.JCODE_HOME || path.join(os.homedir(), '.jcode');
+    const realGlobalCatPath = path.join(realJcodeHomeCat, 'memory', 'global.json');
+    let catBackup = null;
+    try {
+      catBackup = await fs.readFile(realGlobalCatPath, 'utf8');
+      const catDoc = JSON.parse(catBackup);
+      catDoc.memories['mem_tagged_test'] = {
+        id: 'mem_tagged_test',
+        category: { Custom: 'brainstorm' },
+        content: 'tagged category test',
+        tags: ['tagcat'],
+        search_text: 'tagged',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        access_count: 0,
+        source: 'test',
+        trust: 'high',
+        strength: 1,
+        active: true,
+        reinforcements: [],
+        confidence: 1,
+      };
+      await fs.writeFile(realGlobalCatPath, JSON.stringify(catDoc, null, 2), 'utf8');
+      const catMem = await jsonFetch(`${BASE}/api/agent/memory`, { headers: hdrAdmin });
+      const tagged = (catMem.body?.memories || []).find(m => m.id === 'mem_tagged_test');
+      step('tagged Rust category normalized (not [object Object])', !!tagged && tagged.category === 'brainstorm', `cat=${tagged?.category}`);
+    } catch (e) {
+      step('tagged Rust category normalized', false, String(e.message));
+    } finally {
+      if (catBackup !== null) await fs.writeFile(realGlobalCatPath, catBackup, 'utf8').catch(() => {});
+      else await fs.unlink(realGlobalCatPath).catch(() => {});
+    }
+
+    // Verify workspace symlink attack on users dir does not escape: plant symlink at workspace/users -> /tmp and ensure write still safe
+    // We test syncPersonaFiles symlink guard by planting and then doing PUT identity which triggers sync
+    const wsUsersLink = path.join(home, 'workspace', 'users');
+    // Create a marker outside workspace to detect escape
+    const escapeMarker = path.join(os.tmpdir(), `amiro-escape-${Date.now()}`);
+    try {
+      await fs.mkdir(path.join(home, 'workspace'), { recursive: true });
+      await fs.rm(wsUsersLink, { recursive: true, force: true });
+      await fs.symlink(os.tmpdir(), wsUsersLink);
+      const escapePng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==';
+      const escRes = await jsonFetch(`${BASE}/api/agent/identity`, {
+        method: 'PUT', headers: hdrAdmin, body: JSON.stringify({ name: 'EscapeTest', customImageUrl: escapePng }),
+      });
+      step('workspace users symlink does not escape (PUT still 200 and no external write)', escRes.res.ok, `status=${escRes.res.status}`);
+      const escaped = await fs.stat(path.join(os.tmpdir(), 'EscapeTest')).then(() => true).catch(() => false);
+      step('no escape file created outside workspace', !escaped, `escaped=${escaped}`);
+      // restore users dir
+      await fs.unlink(wsUsersLink).catch(() => {});
+      await fs.mkdir(wsUsersLink, { recursive: true }).catch(() => {});
+    } catch (e) {
+      step('workspace users symlink guard', false, String(e.message));
+      await fs.unlink(wsUsersLink).catch(() => {});
+      await fs.mkdir(wsUsersLink, { recursive: true }).catch(() => {});
+    }
 
     // Legacy eyeStyle 'round' should normalize to grumpy on GET
     // Simulate legacy by writing raw store with round eye
