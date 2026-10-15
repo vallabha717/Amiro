@@ -25,6 +25,11 @@ import { JcodeClient } from '@1jehuang/jcode-sdk';
 
 const execFileAsync = promisify(execFile);
 
+// Backoff schedule for capability-gated connects (see connectWithCapability).
+// Zero first delay keeps the healthy path immediate; the rest spans ~9s, which
+// covers the bridge's post-turn session_tools withholding window.
+const DEFAULT_CAPABILITY_DELAYS_MS = [0, 200, 400, 700, 1100, 1700, 2500, 2500];
+
 function isConnectionError(err) {
   if (!err) return false;
   const code = err.code || '';
@@ -325,8 +330,56 @@ export function createJcodeManager({ socketPath, jcodeHome, binary, log }) {
     return JcodeClient.connect({ socketPath, clientName: 'amiro-adapter/0.1.0' });
   }
 
-  async function withIsolated(fn) {
-    const c = await newClient();
+  // Capability-gated connect. The bridge negotiates capabilities per connection
+  // in the `hello` handshake, and the preview bridge withholds `session_tools`
+  // for several seconds after a turn connection closes (measured ~2.7s, longer
+  // under load). A client that depends on that capability -- createSession with
+  // a tool policy, or configureTools -- therefore has to open its connection
+  // after the bridge is willing again. Capabilities never change on an existing
+  // connection, so retrying a call on the same client cannot recover.
+  //
+  // The healthy path pays nothing: the first attempt is immediate and is kept.
+  // Bounded so a bridge that genuinely lacks the capability still fails instead
+  // of hanging.
+  async function connectWithCapability(connectFn, capability, options = {}) {
+    const delays = options.retryDelaysMs || DEFAULT_CAPABILITY_DELAYS_MS;
+    const sleep = options.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    const onWait = options.onWait || ((info) => log('warn', 'waited for a bridge capability', info));
+    let attempts = 0;
+    let waitedMs = 0;
+    for (const delay of delays) {
+      if (delay) {
+        await sleep(delay);
+        waitedMs += delay;
+      }
+      attempts += 1;
+      const candidate = await connectFn();
+      if (!candidate.supports || candidate.supports(capability)) {
+        if (attempts > 1) onWait({ capability, attempts, waitedMs });
+        return candidate;
+      }
+      try {
+        await candidate.close();
+      } catch {
+        /* ignore */
+      }
+    }
+    throw new Error(
+      `The Jcode bridge did not advertise the ${capability} capability after ${attempts} connections over ~${Math.round(waitedMs / 100) / 10}s.`,
+    );
+  }
+
+  // Every caller of withIsolated creates a session with a tool policy (the six
+  // sites that pass `tools:` to createSession), so `session_tools` is required
+  // by default. Connects that do not touch tools -- withSession, used for
+  // history/rename/archive and therefore hit right after a turn -- pass
+  // requireCapability: null so they are never delayed by the withholding window.
+  async function withIsolated(fn, options = {}) {
+    const capability =
+      options.requireCapability === undefined ? 'session_tools' : options.requireCapability;
+    const c = capability
+      ? await connectWithCapability(newClient, capability, options)
+      : await newClient();
     try {
       return await fn(c);
     } finally {
@@ -343,10 +396,13 @@ export function createJcodeManager({ socketPath, jcodeHome, binary, log }) {
   // runtime_info etc.; skipping it yields unknown_session or empty results.
   // attachSession is idempotent, so this is safe for freshly created sessions too.
   async function withSession(sessionId, fn) {
-    return withIsolated(async (client) => {
-      await client.attachSession(sessionId);
-      return fn(client);
-    });
+    return withIsolated(
+      async (client) => {
+        await client.attachSession(sessionId);
+        return fn(client);
+      },
+      { requireCapability: null },
+    );
   }
 
   async function attach(client, sessionId) {
@@ -385,6 +441,7 @@ export function createJcodeManager({ socketPath, jcodeHome, binary, log }) {
     withClient,
     newClient,
     withIsolated,
+    connectWithCapability,
     withSession,
     attach,
     createSession,

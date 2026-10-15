@@ -146,8 +146,23 @@ export function toolsEnabled() {
 }
 
 // Explicitly (re)apply the tool policy. configureTools requires an idle
-// session; callers do this before sending the turn. FAIL-CLOSED: a failure
+// session, and the capability itself is negotiated per connection; callers
+// must therefore open their connection with `requireCapability: 'session_tools'`
+// (see ctx.jcode.withIsolated) before calling this. FAIL-CLOSED: a failure
 // propagates so the turn is aborted rather than sent with unknown tools.
+//
+// The bridge withholds `session_tools` for several seconds after a turn
+// connection closes, which is why this cannot retry in place: the capability
+// never appears on an already-open connection. Enforcing at connect time is
+// what keeps a follow-up message working. This classifier exists so the
+// remaining race is logged as the known bridge condition rather than as an
+// unexplained harness failure.
+const SESSION_TOOLS_WITHHELD = /does not support session_tools/i;
+
+export function isSessionToolsWithheld(error) {
+  return SESSION_TOOLS_WITHHELD.test(String(error && error.message ? error.message : error));
+}
+
 export async function applyToolProfile(client, sessionId) {
   await client.configureTools(sessionId, toolsOption());
   return true;
@@ -159,7 +174,14 @@ export async function applyToolProfile(client, sessionId) {
 // client may not widen its own tool access. Throws on failure (fail-closed).
 async function enforceToolPolicy(ctx, client, threadId, sessionId, entry) {
   const profile = toolProfile();
-  await applyToolProfile(client, sessionId);
+  try {
+    await applyToolProfile(client, sessionId);
+  } catch (err) {
+    if (isSessionToolsWithheld(err)) {
+      ctx.log('error', 'bridge withheld session_tools on a connection that advertised it', { threadId, sessionId });
+    }
+    throw err;
+  }
   if (threadId) {
     await upsertEntry(ctx.store, ctx.config.home, threadId, {
       toolsProfile: profile === null ? 'inherit' : profile.length ? 'safe' : 'none',
