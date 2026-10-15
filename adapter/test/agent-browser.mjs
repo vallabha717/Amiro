@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { chromium } from '@playwright/test';
 
 const base = process.env.AMIRO_TEST_URL || 'http://127.0.0.1:8788';
@@ -28,6 +29,7 @@ const failures = [];
 page.on('pageerror', (error) => errors.push(error.message));
 page.on('response', (r) => { if (new URL(r.url()).pathname.startsWith('/api/') && r.status() >= 500) failures.push(`${r.status()} ${r.url()}`); });
 let checks = 0;
+let personaThread;
 const pass = (message) => { checks++; console.log(`PASS ${message}`); };
 try {
   await page.goto(`${base}/agent`, { waitUntil: 'networkidle' });
@@ -37,9 +39,15 @@ try {
   const habitat = page.getByTestId('sidebar-agent-habitat');
   await habitat.waitFor();
   const box = await habitat.boundingBox();
+  assert.equal(await habitat.locator('svg[width="82"] > path').count(), 1, 'sidebar agent must render a body, including for legacy traits');
+  assert.equal(await page.getByTestId('agent-hero-avatar-button').locator('svg[width="236"] > path').count(), 1, 'central agent must render a body');
   assert(box && Math.abs(box.width - box.height) < 2, 'sidebar habitat must be square');
   assert.equal((await page.getByTestId('sidebar-agent-name').textContent()).trim(), original.name);
   pass('sidebar contains a visible square agent habitat');
+  await page.getByRole('button', { name: 'Pause agent animation' }).click();
+  await page.getByRole('button', { name: 'Play agent animation' }).waitFor();
+  await page.getByRole('button', { name: 'Play agent animation' }).click();
+  pass('decorative sidebar animation has an accessible pause and play control');
   await habitat.click();
   await page.getByTestId('agent-customizer-modal').waitFor();
   const testName = 'Orbit Test';
@@ -47,6 +55,7 @@ try {
   await page.getByTestId('agent-next-body-shape').click();
   await page.getByTestId('agent-next-eye-style').click();
   await page.getByTestId('agent-color-blue').click();
+  await page.screenshot({ path: path.join(artifactDir, 'amiro-agent-customizer.png'), fullPage: true });
   await page.getByTestId('agent-customizer-save').click();
   await page.getByTestId('agent-customizer-modal').waitFor({ state: 'hidden' });
   await page.waitForFunction(() => document.querySelector('[data-testid="sidebar-agent-link"]')?.textContent?.includes('Orbit Test'));
@@ -57,10 +66,23 @@ try {
   await page.reload({ waitUntil: 'networkidle' });
   await page.getByTestId('sidebar-agent-link').filter({ hasText: testName }).waitFor();
   pass('sidebar opens customization, name and avatar save and survive reload');
+  personaThread = `agent-persona-test-${randomUUID()}`;
+  const chat = await fetch(`${base}/api/chat`, {
+    method: 'POST', headers, signal: AbortSignal.timeout(180000),
+    body: JSON.stringify({ id: personaThread, chatModel: { provider: 'opencode-go', model: 'deepseek-v4.1-flash' }, message: { id: randomUUID(), role: 'user', parts: [{ type: 'text', text: 'What is your configured assistant name? Answer with only your name. Do not use tools.' }] } }),
+  });
+  assert.equal(chat.status, 200);
+  const stream = await chat.text();
+  const frames = stream.split('\n').filter((line) => line.startsWith('data: ') && line !== 'data: [DONE]').map((line) => JSON.parse(line.slice(6)));
+  assert(!frames.some((frame) => frame.type === 'error'), 'personality model turn must not error');
+  const reply = frames.filter((frame) => frame.type === 'text-delta').map((frame) => frame.delta).join('');
+  assert(reply.includes(testName), `model should receive saved identity, got ${reply}`);
+  pass('saved Agent name reaches a real Jcode model turn');
   await page.getByTestId('sidebar-agent-personality-link').click();
   await page.getByTestId('agent-personality-page').waitFor();
   const slider = page.getByTestId('personality-slider-playfulSerious');
   await slider.fill('22');
+  await page.screenshot({ path: path.join(artifactDir, 'amiro-agent-personality.png'), fullPage: true });
   await page.getByTestId('personality-update-button').click();
   await page.waitForURL('**/agent');
   assert.equal((await api('/api/agent/identity')).sliders.playfulSerious, 22);
@@ -69,6 +91,7 @@ try {
   await page.getByTestId('superpowers-constellation-canvas').waitFor();
   assert((await page.locator('body').innerText()).includes('Superpowers'));
   pass('Superpowers displays existing skills');
+  await page.screenshot({ path: path.join(artifactDir, 'amiro-agent-superpowers.png'), fullPage: true });
   await page.getByTestId('sidebar-agent-memory-link').click();
   await page.getByTestId('memory-search-input').waitFor();
   assert.equal(await page.getByTestId('memory-create-button').count(), 0, 'native memory must be read-only');
@@ -80,6 +103,7 @@ try {
   await page.getByTestId('workspace-root-tabs').waitFor();
   await page.getByTestId('workspace-search-input').waitFor();
   pass('workspace browser loads real root tabs and file search');
+  await page.screenshot({ path: path.join(artifactDir, 'amiro-agent-workspace.png'), fullPage: true });
   await page.goto(`${base}/agent`, { waitUntil: 'networkidle' });
   await page.screenshot({ path: path.join(artifactDir, 'amiro-agent-desktop.png'), fullPage: true });
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -102,6 +126,7 @@ try {
   pass('no browser exceptions or API server errors');
   console.log(JSON.stringify({ checks, screenshots: artifactDir }));
 } finally {
+  if (personaThread) await fetch(`${base}/api/thread/${personaThread}`, { method: 'DELETE', headers });
   await api('/api/agent/identity', { method: 'PUT', body: JSON.stringify({ name: original.name, handle: original.handle, tagline: original.tagline, traits: original.traits, accentHex: original.accentHex, customImageUrl: original.customImageUrl, sliders: original.sliders }) });
   await browser.close();
 }

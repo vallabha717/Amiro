@@ -400,7 +400,7 @@ export function getCharacterComponents(): CharacterComponents {
     ],
     colors: AVATAR_COLORS,
     faceCenterOverrides: [
-      // Ghost body — shift non-native eyes from y=167 -> y=200
+      // Ghost body, shift non-native eyes from y=167 -> y=200
       {
         bodyShape: "ghost",
         eyeStyle: "grumpy",
@@ -429,7 +429,7 @@ export function getCharacterComponents(): CharacterComponents {
         faceCenter: { x: 321, y: 200 },
       },
       { bodyShape: "ghost", eyeStyle: "dazed", faceCenter: { x: 321, y: 200 } },
-      // Sprout body — shift non-native eyes from y=415 -> y=385
+      // Sprout body, shift non-native eyes from y=415 -> y=385
       {
         bodyShape: "sprout",
         eyeStyle: "grumpy",

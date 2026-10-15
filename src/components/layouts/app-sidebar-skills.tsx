@@ -95,7 +95,12 @@ export function AppSidebarSkills() {
   );
 
   return (
-    <SidebarGroup>
+    <SidebarGroup
+      style={{
+        fontFamily:
+          "var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif",
+      }}
+    >
       <SidebarGroupContent className="group-data-[collapsible=icon]:hidden group/skills">
         <SidebarMenu className="group/skills" data-testid="skills-sidebar-menu">
           {/* Main Agent Hub Link (replaces Skills header) */}

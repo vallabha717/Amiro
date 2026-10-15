@@ -108,6 +108,7 @@ function SuperpowersConstellation({
     let raf = 0;
 
     const render = () => {
+      cancelAnimationFrame(raf);
       const rect = canvas.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
       if (
@@ -273,7 +274,7 @@ function SuperpowersConstellation({
         }}
         className="h-full w-full cursor-pointer"
       />
-      <div className="sr-only">
+      <div className="sr-only focus-within:not-sr-only focus-within:absolute focus-within:inset-x-4 focus-within:bottom-3 focus-within:z-20 focus-within:flex focus-within:flex-wrap focus-within:gap-2 focus-within:rounded-lg focus-within:bg-background focus-within:p-2">
         {skills.map((skill) => (
           <button key={skill.name} onClick={() => onSelectSkill(skill)}>
             Inspect {skill.name}
@@ -430,6 +431,7 @@ export function SkillsList() {
               <button
                 key={id}
                 type="button"
+                aria-pressed={viewMode === id}
                 onClick={() => setViewMode(id)}
                 className={cn(
                   "cursor-pointer rounded-full px-3 py-1 font-medium transition-colors",
@@ -459,6 +461,10 @@ export function SkillsList() {
       </div>
 
       {/* Search & Source Filters */}
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        Skills shape your agent’s instructions, not its permissions. Actions
+        still depend on the tools enabled in Jcode.
+      </p>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="relative min-w-[240px] flex-1 max-w-md">
           <Search
@@ -468,6 +474,7 @@ export function SkillsList() {
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search superpowers"
             placeholder="Search superpowers by name, source, or purpose…"
             data-testid="superpowers-search-input"
             className="h-9 rounded-full pl-9 text-xs"
@@ -480,7 +487,7 @@ export function SkillsList() {
               ["all", `All (${items.length})`],
               [
                 "jcode",
-                `Jcode Built-in (${items.filter((s) => s.source === ".jcode").length})`,
+                `Jcode (${items.filter((s) => s.source === ".jcode").length})`,
               ],
               [
                 "custom",
@@ -496,6 +503,7 @@ export function SkillsList() {
               key={id}
               type="button"
               data-testid={`superpowers-filter-${id}`}
+              aria-pressed={filter === id}
               onClick={() => setFilter(id)}
               className={cn(
                 "cursor-pointer rounded-full border px-3 py-1 text-xs font-medium transition-colors",
@@ -645,10 +653,7 @@ function SkillCard({
   };
 
   return (
-    <Link
-      href={`/skill?name=${encodeURIComponent(skill.name)}`}
-      title={skill.name}
-    >
+    <div>
       <Card
         className={cn(
           "group @container flex min-h-[204px] w-full cursor-pointer flex-col justify-between gap-3 rounded-2xl border-border/60 transition-all hover:-translate-y-0.5 hover:bg-input/60 hover:shadow-md",
@@ -666,9 +671,13 @@ function SkillCard({
                 <Sparkles className="size-4" aria-hidden="true" />
               </div>
               <div className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate font-mono text-sm font-semibold">
+                <Link
+                  href={`/skill?name=${encodeURIComponent(skill.name)}`}
+                  title={skill.name}
+                  className="truncate font-mono text-sm font-semibold hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                >
                   /{skill.name}
-                </span>
+                </Link>
                 <span className="text-[11px] font-normal text-muted-foreground">
                   {meta.label}
                 </span>
@@ -728,6 +737,6 @@ function SkillCard({
           </div>
         </CardHeader>
       </Card>
-    </Link>
+    </div>
   );
 }

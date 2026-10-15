@@ -141,12 +141,19 @@ export function AgentCharacterAvatar({
     );
   }
 
-  const resolved = resolveDefinitions(
-    allComponents,
-    traits.bodyShape,
-    traits.eyeStyle,
-    traits.color,
-  );
+  const resolved =
+    resolveDefinitions(
+      allComponents,
+      traits.bodyShape,
+      traits.eyeStyle,
+      traits.color,
+    ) ??
+    resolveDefinitions(
+      allComponents,
+      DEFAULT_CHARACTER_TRAITS.bodyShape,
+      DEFAULT_CHARACTER_TRAITS.eyeStyle,
+      DEFAULT_CHARACTER_TRAITS.color,
+    );
 
   if (!resolved) {
     return null;
