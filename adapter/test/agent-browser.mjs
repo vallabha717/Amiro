@@ -88,7 +88,8 @@ try {
   });
   assert.equal(skillTurn.status, 200);
   const skillFrames = (await skillTurn.text()).split('\n').filter((line) => line.startsWith('data: ') && line !== 'data: [DONE]').map((line) => JSON.parse(line.slice(6)));
-  assert(!skillFrames.some((frame) => frame.type === 'error'));
+  const skillError = skillFrames.find((frame) => frame.type === 'error');
+  assert(!skillError, `skill turn must not error: ${JSON.stringify(skillError).slice(0, 800)}`);
   assert.equal(skillFrames.filter((frame) => frame.type === 'text-delta').map((frame) => frame.delta).join('').trim(), 'SKILL_ORBIT_42');
   pass('selected Superpower delivers server-resolved skill instructions on a real model turn');
   await page.getByTestId('sidebar-agent-personality-link').click();

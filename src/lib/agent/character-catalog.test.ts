@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   AVATAR_COLORS,
@@ -14,6 +16,32 @@ import {
 } from "./character-catalog";
 
 const catalog = getCharacterComponents();
+
+/**
+ * The aura swatch had two connected defects that a browser timeout hid: the
+ * cobalt swatch stored the legacy alias "blue" while the adapter only accepts
+ * the catalog ids, so that one swatch could not be saved, and its test id was
+ * derived from the alias, which is why the live acceptance script could not
+ * find `agent-color-cobalt` at all. These read the real sources instead of a
+ * copy so the alias cannot reappear unnoticed on either side.
+ */
+const adapterSource = readFileSync(
+  path.join(import.meta.dirname, "../../../adapter/src/routes/agent.mjs"),
+  "utf8",
+);
+const customizerSource = readFileSync(
+  path.join(import.meta.dirname, "../../components/agent/agent-customizer-modal.tsx"),
+  "utf8",
+);
+
+function adapterValidColors(): string[] {
+  const match = adapterSource.match(/const VALID_COLORS = new Set\(\[([^\]]*)\]\)/);
+  expect(match, "adapter must declare VALID_COLORS").not.toBeNull();
+  return (match?.[1] ?? "")
+    .split(",")
+    .map((entry) => entry.trim().replace(/^['"]|['"]$/g, ""))
+    .filter(Boolean);
+}
 
 describe("Agent character catalog", () => {
   it("provides unique, renderable default traits", () => {
@@ -87,5 +115,67 @@ describe("Agent character catalog", () => {
         { x: 1, y: -1, w: 8, h: 2 },
       ]),
     ).toEqual({ x: -2, y: -1, w: 11, h: 16 });
+  });
+});
+
+describe("aura swatch save path", () => {
+  it("offers the adapter exactly the colors the adapter accepts", () => {
+    const valid = adapterValidColors();
+    expect(valid.length).toBeGreaterThan(0);
+    for (const color of AVATAR_COLORS) {
+      expect(valid, `${color.id} must be an accepted trait`).toContain(
+        color.id,
+      );
+    }
+    expect(new Set(valid).size).toBe(valid.length);
+  });
+
+  it("sends the catalog id rather than an alias the server rejects", () => {
+    // The save payload must go through the resolver, not raw local state.
+    // The saved traits object must carry the resolved id, not raw local state.
+    expect(customizerSource).toMatch(
+      /const traits: CharacterTraits = \{\s*bodyShape,\s*eyeStyle,\s*color: resolvedColorId,?\s*\};/,
+    );
+    expect(customizerSource).toMatch(/const resolvedColorId = resolveColorId\(color\)/);
+    // ...and the resolver must map any alias to a catalog id.
+    const resolver = customizerSource.match(
+      /function resolveColorId\(colorId: string\): string \{\s*return ([^;]+);/,
+    );
+    expect(resolver, "resolveColorId must exist").not.toBeNull();
+    // The alias it rewrites (left of ?) must NOT be a valid trait, which is
+    // what made the raw value un-saveable; the replacement (right of ?) must be
+    // one, or the adapter rejects the write.
+    const valid = adapterValidColors();
+    const body = resolver?.[1] ?? "";
+    const [aliasPart = "", targetPart = ""] = body.split("?");
+    const aliases = [...aliasPart.matchAll(/"([^"]+)"/g)].map(
+      (match) => match[1],
+    );
+    const targets = [...targetPart.matchAll(/"([^"]+)"/g)].map(
+      (match) => match[1],
+    );
+    expect(aliases.length).toBeGreaterThan(0);
+    expect(targets.length).toBeGreaterThan(0);
+    for (const alias of aliases) {
+      expect(valid, `${alias} must not reach the adapter`).not.toContain(alias);
+    }
+    for (const target of targets) {
+      expect(valid, `${target} must be an accepted trait`).toContain(target);
+    }
+    // The funnel must cover every path that feeds local color state.
+    expect(customizerSource).toMatch(
+      /useState\(resolveColorId\(identity\.traits\.color\)\)/,
+    );
+    expect(
+      customizerSource.match(/setColor\(resolveColorId\(identity\.traits\.color\)\)/g)
+        ?.length,
+    ).toBe(2);
+  });
+
+  it("labels every swatch with its own catalog id", () => {
+    // A test id derived from an alias hides the failure from the DOM query.
+    expect(customizerSource).toMatch(/data-testid={`agent-color-\$\{swatch\.id\}`}/);
+    expect(customizerSource).not.toMatch(/"agent-color-blue"/);
+    expect(customizerSource).toMatch(/setColor\(swatch\.id\)/);
   });
 });
