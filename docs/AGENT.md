@@ -2,12 +2,12 @@
 
 The Agent section replaces the Skills sidebar entry. The sidebar heading uses the signed-in user's saved agent name. It no longer lists individual skills or offers a create-skill action: the section is the agent, its square habitat, and the four quick-jump pills (Personality, Superpowers, Memory, Workspace). Selecting a skill happens in the Superpowers surface and the composer's mention picker, not the sidebar. The habitat contains a decorative roaming avatar, playful cube, hover greeting and an explicit pause control. It is not a claim that a background job is running. Reduced-motion preferences stop decorative movement.
 
-The character art is original to this repository: dot-lattice bodies and gaze marks composed in code, not the Vellum catalogue that earlier revisions ported. See `THIRD-PARTY-NOTICES.md` for the current attributions.
+The Agent uses four OpenDots plush characters, vendored locally from CopilotKit/OpenDots with its MIT licence and attribution retained. Character tint and Agent interface accents follow the active sidebar theme, including light/dark changes. See `THIRD-PARTY-NOTICES.md` for provenance.
 
 ## Included
 
 - **Agent hub** at `/agent`: central clickable avatar, editable display name, Personality, Superpowers, Memory and Workspace.
-- **Customize**: six character forms, nine eye styles, eight colors, optional local image upload, name and tagline. Click the central avatar or the sidebar square. The sidebar uses the same saved appearance and name after a reload.
+- **Customize**: four OpenDots plush characters, the existing sidebar theme choices, optional local image upload, name and tagline. Click the central avatar or the sidebar square. Saving a theme here changes the sidebar theme too. Changing the sidebar theme updates Agent colors immediately. Uploaded portraits retain their original colors.
 - **Personality**: five bipolar style sliders and presets. The writing sample is illustrative, not a model-generated response or an audio preview. Sliders do not change permissions or grant autonomy.
 - **Superpowers**: existing Jcode, project and supported discovered skills, plus user-authored instruction sets. The old `/skills` URL remains compatible. "Add to message" attaches instruction text, not tool permissions. The server resolves selected names from the authenticated user's catalog. Unsupported or disabled skills are rejected, not silently substituted.
 - **Memory**: an admin-only, read-only inspection of Jcode's existing native global and project memory graphs, with search and constellation/card/list views. There is no second memory engine. Category/tag visual links are presentation relationships, not newly written native memory associations.
@@ -31,7 +31,9 @@ Jcode memory mutations through the Agent HTTP surface are intentionally unsuppor
 
 ## Design provenance
 
-The Agent character art is generated in code and original to this repository. See `THIRD-PARTY-NOTICES.md`. Each body is a radial field traced into a single silhouette path and reused to place a dot lattice; the dots are drawn in the character's own hue, the silhouette is a tint of it with a rim, and the face has a keep-out zone so gaze marks stay readable from 22px to 236px. Gaze styles are generated marks (dots, rings, stroked arcs). The Agent interface combines those characters with an Amiro sidebar habitat and bento navigation. Design work used the available frontend-design, better-colors and web-design-guidelines skills, reviewed Impeccable and Apple design-skill guidance, and used `docs/_agent-visual-brief.md` for reference study of the dot-matrix agent idiom and its licences. Brand display headings retain Fraunces, while Agent controls use Geist sans.
+The current plush character assets come from `CopilotKit/OpenDots`, with its MIT copyright and permission notice retained alongside the assets and in `THIRD-PARTY-NOTICES.md`. The dot-lattice renderer has been replaced in the visible Agent avatar. Legacy saved body identifiers remain compatible, while the picker presents four distinct characters. The characters' existing faces are part of their artwork, so there is no separate eye-style control. The Agent interface combines these characters with an Amiro sidebar habitat and bento navigation. Brand display headings retain Fraunces, while Agent controls use Geist sans.
+
+The sidebar theme is the single source of truth for displayed Agent colors. The customizer offers the same named themes rather than a second independent eight-color palette. Its theme selection is a draft until Save, so canceling does not change the application theme. Saved legacy trait colors remain compatible with the adapter API but do not override the active theme. Native Jcode memory and personality instruction delivery are unchanged.
 
 Decorative motion reads `prefers-reduced-motion` through `usePrefersReducedMotion`, which stays subscribed to the media query. framer-motion's own hook samples the query once at mount, so a user who turns the setting on while the page is open would otherwise keep seeing the habitat roam and blink.
 
