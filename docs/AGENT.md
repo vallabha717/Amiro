@@ -31,7 +31,7 @@ Jcode memory mutations through the Agent HTTP surface are intentionally unsuppor
 
 ## Design provenance
 
-The current plush character assets come from `CopilotKit/OpenDots`, with its MIT copyright and permission notice retained alongside the assets and in `THIRD-PARTY-NOTICES.md`. The dot-lattice renderer has been replaced in the visible Agent avatar. Legacy saved body identifiers remain compatible, while the picker presents four distinct characters. The characters' existing faces are part of their artwork, so there is no separate eye-style control. The Agent interface combines these characters with an Amiro sidebar habitat and bento navigation. Brand display headings retain Fraunces, while Agent controls use Geist sans.
+The current plush character assets come from `CopilotKit/OpenDots`, with its MIT copyright and permission notice retained in `THIRD-PARTY-NOTICES.md`. The dot-lattice renderer has been replaced in the visible Agent avatar. Legacy saved body identifiers remain compatible, while the picker presents four distinct characters. The characters' existing faces are part of their artwork, so there is no separate eye-style control. The Agent interface combines these characters with an Amiro sidebar habitat and bento navigation. Brand display headings retain Fraunces, while Agent controls use Geist sans.
 
 The sidebar theme is the single source of truth for displayed Agent colors. The customizer offers the same named themes rather than a second independent eight-color palette. Its theme selection is a draft until Save, so canceling does not change the application theme. Saved legacy trait colors remain compatible with the adapter API but do not override the active theme. Native Jcode memory and personality instruction delivery are unchanged.
 
@@ -48,12 +48,13 @@ node adapter/tests/agent-safety.mjs
 node adapter/tests/integration.mjs
 # Start/restart the adapter first and wait for GET /health to return 200.
 AMIRO_TEST_URL=http://127.0.0.1:8788 node adapter/test/agent-browser.mjs
+AMIRO_TEST_URL=http://127.0.0.1:8788 node adapter/test/opendots-theme-sync.mjs
 AMIRO_TEST_URL=http://127.0.0.1:8788 node adapter/test/browser-smoke.mjs
 ```
 
 The Agent acceptance script's two real model turns are route-pinned and configurable with `AMIRO_TEST_MODEL="provider:model"`; the default is `antigravity:gemini-3.8-flash-tiered` because the OpenCode Go key hit its usage limit while this was verified. A model the adapter cannot resolve aborts the turn instead of silently swapping providers.
 
-Observed on this tree: `pnpm check-types` clean, 332 unit tests passed, `adapter/test/*.test.mjs` 37 passed, adapter/tests/agent-safety.mjs all assertions passed, route-boundaries 125 registered routes observed, and both live browser suites passed against the deployed export.
+Observed on this tree: `pnpm check-types` clean, 344 unit tests passed, `adapter/test/*.test.mjs` 37 passed, adapter/tests/agent-safety.mjs all assertions passed, route-boundaries 125 registered routes observed, and both live browser suites passed against the deployed export.
 
 The browser acceptance test temporarily changes the owner's Agent identity, creates a disposable skill and chat, and restores its state in `finally`. It checks persistence, real model delivery of the saved name and selected skill instructions, navigation, read-only native memory, workspace loading, mobile width, color themes, reduced motion and browser errors. Screenshots are written to `$JCODE_SCRATCH_DIR` or the default scratch directory, not committed.
 

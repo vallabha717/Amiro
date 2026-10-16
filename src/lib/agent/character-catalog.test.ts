@@ -212,13 +212,12 @@ describe("aura swatch save path", () => {
   });
 
   it("sends the catalog id rather than an alias the server rejects", () => {
-    // The save payload must go through the resolver, not raw local state.
-    // The saved traits object must carry the resolved id, not raw local state.
+    // The save payload preserves the legacy trait through the resolver.
     expect(customizerSource).toMatch(
-      /const traits: CharacterTraits = \{\s*bodyShape,\s*eyeStyle,\s*color: resolvedColorId,?\s*\};/,
+      /const traits: CharacterTraits = \{\s*bodyShape,\s*eyeStyle,\s*color: legacyColor,?\s*\};/,
     );
     expect(customizerSource).toMatch(
-      /const resolvedColorId = resolveColorId\(color\)/,
+      /const legacyColor = resolveColorId\(identity\.traits\.color\)/,
     );
     // ...and the resolver must map any alias to a catalog id.
     const resolver = customizerSource.match(
@@ -245,23 +244,13 @@ describe("aura swatch save path", () => {
     for (const target of targets) {
       expect(valid, `${target} must be an accepted trait`).toContain(target);
     }
-    // The funnel must cover every path that feeds local color state.
-    expect(customizerSource).toMatch(
-      /useState\(resolveColorId\(identity\.traits\.color\)\)/,
-    );
-    expect(
-      customizerSource.match(
-        /setColor\(resolveColorId\(identity\.traits\.color\)\)/g,
-      )?.length,
-    ).toBe(2);
   });
 
-  it("labels every swatch with its own catalog id", () => {
-    // A test id derived from an alias hides the failure from the DOM query.
+  it("labels every theme option in the customizer with its own theme id", () => {
+    // The customizer offers the unified sidebar themes instead of separate color swatches.
     expect(customizerSource).toMatch(
-      /data-testid={`agent-color-\$\{swatch\.id\}`}/,
+      /data-testid={`agent-theme-\$\{t\}`}/,
     );
-    expect(customizerSource).not.toMatch(/"agent-color-blue"/);
-    expect(customizerSource).toMatch(/setColor\(swatch\.id\)/);
+    expect(customizerSource).toMatch(/setThemeDraft\(t\)/);
   });
 });
