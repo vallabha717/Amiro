@@ -36,7 +36,7 @@ export function AgentSidebarHabitat({
         onBlur={() => setGreeting(false)}
         className="group/habitat relative mx-2 mt-1 mb-2 block aspect-square overflow-hidden rounded-[24px] border border-border/70 bg-background outline-none transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         style={{
-          backgroundImage: `radial-gradient(ellipse at 65% 20%, ${accent}18, transparent 65%)`,
+          backgroundImage: `radial-gradient(ellipse at 65% 20%, color-mix(in srgb, ${accent} 18%, transparent) 0%, transparent 65%)`,
         }}
       >
         <div
@@ -93,7 +93,10 @@ export function AgentSidebarHabitat({
         <motion.span
           aria-hidden="true"
           className="absolute right-[19%] bottom-[29%] size-3 rounded-[4px] border"
-          style={{ borderColor: accent, backgroundColor: `${accent}24` }}
+          style={{
+            borderColor: accent,
+            backgroundColor: `color-mix(in srgb, ${accent} 14%, transparent)`,
+          }}
           animate={
             reduceMotion
               ? { rotate: 0, y: 0 }

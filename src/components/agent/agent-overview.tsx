@@ -1,4 +1,5 @@
 "use client";
+import { useAgentTheme } from "@/hooks/use-agent-theme";
 
 import { appStore } from "@/app/store";
 import {
@@ -41,7 +42,6 @@ import { AgentCustomizerModal } from "./agent-customizer-modal";
 import {
   AgentCharacterAvatar,
   type AmoebaFacing,
-  AmoebaPeekTab,
   type AmoebaTarget,
   PersonalitySignature,
   amoebaTargetForCard,
@@ -236,7 +236,7 @@ export function AgentOverview() {
         ? "Admin only"
         : "Could not load";
 
-  const accentHex = identity.accentHex || "#E9642F";
+  const { accentHex } = useAgentTheme();
   const floodTone = toneForBg(accentHex);
 
   const skillItems = skillsData?.items ?? [];
@@ -402,13 +402,6 @@ export function AgentOverview() {
         ref={containerRef}
         className="relative mx-auto flex w-full max-w-[1360px] flex-1 flex-col justify-between gap-5 px-5 py-6 sm:px-8 sm:py-8"
       >
-        {/* Amoeba peeking character tab when hovering any bento card */}
-        <AmoebaPeekTab
-          hex={accentHex}
-          traits={identity.traits}
-          target={hugged?.target ?? null}
-        />
-
         {/* Top Bar: subtle Apple-style pill breadcrumb + customize button */}
         <div className="relative z-10 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">

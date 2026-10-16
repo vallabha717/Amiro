@@ -1,23 +1,24 @@
 "use client";
+import { useAgentTheme } from "@/hooks/use-agent-theme";
 
-import { useState, useMemo, Fragment } from "react";
-import { useRouter } from "next/navigation";
-import { ArrowLeft, RotateCcw, Sparkles, Wand2 } from "lucide-react";
-import { toast } from "sonner";
 import {
-  useAgentIdentity,
   updateAgentPersonality,
+  useAgentIdentity,
   useInvalidateAgentIdentity,
 } from "@/hooks/queries/use-agent-identity";
 import {
+  type AvatarTone,
   DEFAULT_CHARACTER_TRAITS,
   DEFAULT_PERSONALITY_SLIDERS,
   PERSONALITY_AXES,
   PERSONALITY_AXIS_DEFAULT,
-  summarizePersonality,
-  type AvatarTone,
   type PersonalityAxisDefinition,
+  summarizePersonality,
 } from "@/lib/agent/character-catalog";
+import { ArrowLeft, RotateCcw, Sparkles, Wand2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Fragment, useMemo, useState } from "react";
+import { toast } from "sonner";
 import {
   AssistantStage,
   PersonalitySignature,
@@ -428,7 +429,7 @@ export function AgentPersonalityStudio() {
   const values = edits ?? identity?.sliders ?? DEFAULT_PERSONALITY_SLIDERS;
   const assistantName = identity?.name || "Amiro";
   const traits = identity?.traits ?? DEFAULT_CHARACTER_TRAITS;
-  const accentHex = identity?.accentHex || "#E9642F";
+  const { accentHex } = useAgentTheme();
 
   const handleUpdate = async () => {
     setApplying(true);

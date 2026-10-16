@@ -1,10 +1,14 @@
 "use client";
+import { useAgentTheme } from "@/hooks/use-agent-theme";
 
-import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { appStore } from "@/app/store";
+import { useAgentIdentity } from "@/hooks/queries/use-agent-identity";
+import { useMutateSkills, useSkills } from "@/hooks/queries/use-skills";
+import { duplicateSkill } from "@/lib/backend/skills-api";
+import type { SkillSummary } from "@/types/skill";
+import type { ChatMention } from "app-types/chat";
 import { useReducedMotion } from "framer-motion";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { cn } from "lib/utils";
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -17,19 +21,16 @@ import {
   Sparkles,
   Zap,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { BackgroundPaths } from "ui/background-paths";
 import { Badge } from "ui/badge";
 import { Button } from "ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "ui/card";
 import { Input } from "ui/input";
-import { BackgroundPaths } from "ui/background-paths";
-import { appStore } from "@/app/store";
-import { useSkills, useMutateSkills } from "@/hooks/queries/use-skills";
-import { useAgentIdentity } from "@/hooks/queries/use-agent-identity";
-import { duplicateSkill } from "@/lib/backend/skills-api";
-import type { SkillSummary } from "@/types/skill";
-import type { ChatMention } from "app-types/chat";
-import { cn } from "lib/utils";
 
 type SuperpowerFilter = "all" | "jcode" | "custom" | "project";
 type SuperpowerViewMode = "split" | "constellation" | "grid";
@@ -302,7 +303,7 @@ export function SkillsList() {
   const [duplicatingName, setDuplicatingName] = useState<string | null>(null);
 
   const items = data?.items ?? [];
-  const accentHex = identity?.accentHex || "#E9642F";
+  const { accentHex } = useAgentTheme();
   const agentName = identity?.name || "Amiro";
 
   const filtered = useMemo(() => {

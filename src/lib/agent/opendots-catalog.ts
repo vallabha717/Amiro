@@ -1,4 +1,5 @@
 import type { CharacterTraits } from "@/lib/agent/character-catalog";
+import { AGENT_ACCENT } from "@/lib/agent/theme-colors";
 
 /**
  * OpenDots plush mascots.
@@ -66,7 +67,7 @@ export const OPENDOTS_DEFAULT_VARIANT: OpenDotVariant = OPENDOTS_BY_ID.blue;
  * default. Callers may pass an explicit `accentColor` to preview a pending
  * theme colour before it is committed.
  */
-export const OPENDOTS_DEFAULT_TINT = "var(--sidebar-primary)";
+export const OPENDOTS_DEFAULT_TINT = AGENT_ACCENT;
 
 /**
  * Persisted body-shape ids (6, from the retired lattice catalogue) folded onto
@@ -95,6 +96,8 @@ export function openDotVariantForTraits(
   return OPENDOTS_BY_ID[bodyShapeToVariant(traits?.bodyShape)];
 }
 
-export function openDotVariantById(id: string | null | undefined): OpenDotVariant {
+export function openDotVariantById(
+  id: string | null | undefined,
+): OpenDotVariant {
   return OPENDOTS_BY_ID[id as OpenDotVariantId] ?? OPENDOTS_DEFAULT_VARIANT;
 }

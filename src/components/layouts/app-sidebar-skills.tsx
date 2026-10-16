@@ -1,5 +1,6 @@
 // Renders the Agent sidebar section: the Agent hub link, habitat, and quick-jump pills.
 "use client";
+import { useAgentTheme } from "@/hooks/use-agent-theme";
 
 import { appStore } from "@/app/store";
 import { AgentSidebarHabitat } from "@/components/agent/agent-sidebar-habitat";
@@ -28,7 +29,7 @@ export function AppSidebarSkills() {
   const { data: identity } = useAgentIdentity();
 
   const allSkills = useMemo(() => data?.items ?? [], [data]);
-  const accentHex = identity?.accentHex || "#E9642F";
+  const { accentHex } = useAgentTheme();
   const agentName = identity?.name || "Amiro";
   const traits = identity?.traits ?? DEFAULT_CHARACTER_TRAITS;
   const memoryTotal = identity?.memoryStats?.total ?? 0;
