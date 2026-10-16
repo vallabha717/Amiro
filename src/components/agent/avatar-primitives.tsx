@@ -5,9 +5,11 @@ import { animate, motion } from "framer-motion";
 import {
   type CSSProperties,
   type ReactNode,
+  type SVGProps,
   createContext,
   useContext,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useState,
@@ -23,128 +25,71 @@ import {
   type EyePathDefinition,
   PERSONALITY_AXES,
   PERSONALITY_AXIS_DEFAULT,
-  accentOrbitKeyframes,
-  bodyAccentDots,
-  bodyLattice,
-  bodyOnlyTransform,
-  computeTransforms,
   eyeMarkColor,
   getCharacterComponents,
-  latticeStrideForSize,
   pathBBox,
-  resolveDefinitions,
   toneForBg,
   unionBBox,
 } from "@/lib/agent/character-catalog";
+import {
+  OPENDOTS_DEFAULT_TINT,
+  openDotVariantForTraits,
+} from "@/lib/agent/opendots-catalog";
 import { cn } from "@/lib/utils";
 
 /* -------------------------------------------------------------------------
    1. AgentCharacterAvatar
    ------------------------------------------------------------------------- */
 
+/**
+ * SVG2 `mask-type` is not in React's typings, so it is applied via a typed
+ * attribute bag. Alpha masking keeps the plush sprite's cut-out silhouette.
+ */
+const MASK_ALPHA_PROPS = {
+  "mask-type": "alpha",
+} as unknown as SVGProps<SVGMaskElement>;
+
 export interface AgentCharacterAvatarProps {
   traits?: CharacterTraits;
+  /**
+   * Retained for API compatibility with callers that still pass a character
+   * catalogue. The plush render is driven solely by `traits.bodyShape`; this
+   * prop is ignored.
+   */
   components?: CharacterComponents;
   customImageUrl?: string | null;
   size?: number;
   interactive?: boolean;
   animated?: boolean;
+  /**
+   * Body tint for the plush sprite. Defaults to `var(--sidebar-primary)` so the
+   * mascot follows the active theme accent; pass an explicit colour to preview
+   * a pending theme before it is committed.
+   */
+  accentColor?: string;
   className?: string;
   style?: CSSProperties;
 }
 
 export function AgentCharacterAvatar({
   traits = DEFAULT_CHARACTER_TRAITS,
-  components,
   customImageUrl,
   size = 120,
   interactive = false,
   animated = true,
+  accentColor = OPENDOTS_DEFAULT_TINT,
   className,
   style,
 }: AgentCharacterAvatarProps) {
   const prefersReducedMotion = usePrefersReducedMotion();
   const reduce = prefersReducedMotion || !animated;
-  const allComponents = useMemo(
-    () => components ?? getCharacterComponents(),
-    [components],
-  );
 
-  const [isBlinking, setIsBlinking] = useState(false);
-
-  useEffect(() => {
-    if (reduce) {
-      setIsBlinking(false);
-      return;
-    }
-    let cancelled = false;
-    let t: ReturnType<typeof setTimeout>;
-
-    const scheduleBlink = () => {
-      t = setTimeout(
-        () => {
-          if (cancelled) return;
-          setIsBlinking(true);
-          t = setTimeout(() => {
-            if (cancelled) return;
-            setIsBlinking(false);
-            if (Math.random() < 0.2) {
-              t = setTimeout(() => {
-                if (cancelled) return;
-                setIsBlinking(true);
-                t = setTimeout(() => {
-                  if (cancelled) return;
-                  setIsBlinking(false);
-                  scheduleBlink();
-                }, 140);
-              }, 120);
-            } else {
-              scheduleBlink();
-            }
-          }, 140);
-        },
-        3000 + Math.random() * 4000,
-      );
-    };
-
-    scheduleBlink();
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-    };
-  }, [reduce]);
-
-  // Resolve the character before any early return so the lattice and orbit
-  // hooks below always run in a stable order.
-  const resolved =
-    resolveDefinitions(
-      allComponents,
-      traits.bodyShape,
-      traits.eyeStyle,
-      traits.color,
-    ) ??
-    resolveDefinitions(
-      allComponents,
-      DEFAULT_CHARACTER_TRAITS.bodyShape,
-      DEFAULT_CHARACTER_TRAITS.eyeStyle,
-      DEFAULT_CHARACTER_TRAITS.color,
-    );
-  const resolvedBody = resolved?.bodyShape;
-  const lattice = useMemo(
-    () =>
-      resolvedBody ? bodyLattice(resolvedBody, latticeStrideForSize(size)) : [],
-    [resolvedBody, size],
-  );
-  const accentOrbits = useMemo(
-    () =>
-      resolvedBody
-        ? bodyAccentDots(resolvedBody).map((dot) => ({
-            dot,
-            keys: accentOrbitKeyframes(dot),
-          }))
-        : [],
-    [resolvedBody],
-  );
+  const variant = useMemo(() => openDotVariantForTraits(traits), [traits]);
+  // useId contains characters (e.g. ":r0:") that are invalid in a `url(#id)`
+  // reference, so strip them before building the per-instance filter/mask ids.
+  const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const grayId = `opendots-gray-${uid}`;
+  const maskId = `opendots-mask-${uid}`;
 
   if (customImageUrl) {
     return (
@@ -172,6 +117,7 @@ export function AgentCharacterAvatar({
         whileTap={interactive ? { scale: 0.98 } : undefined}
       >
         <img
+          data-testid="agent-avatar"
           src={customImageUrl}
           alt="Agent avatar"
           className="h-full w-full object-cover"
@@ -179,32 +125,6 @@ export function AgentCharacterAvatar({
         />
       </motion.div>
     );
-  }
-
-  if (!resolved) {
-    return null;
-  }
-
-  const { bodyShape, eyeStyle, color } = resolved;
-  const tone = toneForBg(color.hex);
-  const { bodyTransform, eyeTransform } = eyeStyle
-    ? computeTransforms(bodyShape, eyeStyle, allComponents, size)
-    : { bodyTransform: bodyOnlyTransform(bodyShape, size), eyeTransform: "" };
-
-  // Where the gaze sits in screen space, used as the blink transform origin.
-  let eyeCx = size / 2;
-  let eyeCy = size / 2;
-  if (eyeStyle) {
-    const bodyVB = bodyShape.viewBox;
-    const bodyScale = Math.min(size / bodyVB.width, size / bodyVB.height);
-    const bodyTx = (size - bodyVB.width * bodyScale) / 2;
-    const bodyTy = (size - bodyVB.height * bodyScale) / 2;
-    const override = allComponents.faceCenterOverrides.find(
-      (o) => o.bodyShape === bodyShape.id && o.eyeStyle === eyeStyle.id,
-    );
-    const faceCenter = override ? override.faceCenter : bodyShape.faceCenter;
-    eyeCx = bodyTx + bodyScale * faceCenter.x;
-    eyeCy = bodyTy + bodyScale * faceCenter.y;
   }
 
   return (
@@ -234,71 +154,63 @@ export function AgentCharacterAvatar({
       <svg
         width={size}
         height={size}
-        viewBox={`0 0 ${size} ${size}`}
-        style={{ overflow: "visible", display: "block" }}
+        viewBox="0 0 512 512"
+        role="img"
+        aria-label="Agent avatar"
+        data-testid="agent-avatar"
+        style={{ display: "block" }}
       >
-        {/* The silhouette is the only direct <path> child; the dot lattice and
-            the orbiting accents are circles, so the body is one shape plus
-            texture and the adapter's `svg > path` contract holds. */}
-        <path
-          d={bodyShape.svgPath}
-          fill={color.hex}
-          transform={bodyTransform}
-        />
-        <g transform={bodyTransform}>
-          {lattice.map((dot) => (
-            <circle
-              key={`lattice-${dot.cx}-${dot.cy}`}
-              cx={dot.cx}
-              cy={dot.cy}
-              r={dot.r}
-              fill={tone.fg}
-              fillOpacity={dot.opacity}
-            />
-          ))}
-        </g>
-        <g transform={bodyTransform}>
-          {accentOrbits.map(({ dot, keys }) =>
-            reduce ? (
-              <circle
-                key={`accent-${dot.orbitPhase}`}
-                cx={dot.cx}
-                cy={dot.cy}
-                r={dot.r}
-                fill={tone.fg}
-                fillOpacity={0.85}
-              />
-            ) : (
-              <motion.circle
-                key={`accent-${dot.orbitPhase}`}
-                cx={dot.cx}
-                cy={dot.cy}
-                r={dot.r}
-                fill={tone.fg}
-                fillOpacity={0.85}
-                animate={{ cx: keys.cx, cy: keys.cy }}
-                transition={{
-                  duration: 18 + dot.orbitPhase,
-                  repeat: Infinity,
-                  ease: "linear",
-                }}
-              />
-            ),
-          )}
-        </g>
-        {eyeStyle && (
-          <g
-            style={{
-              transform: isBlinking && !reduce ? "scaleY(0.1)" : "scaleY(1)",
-              transformOrigin: `${eyeCx}px ${eyeCy}px`,
-              transition: "transform 0.14s ease-in-out",
-            }}
+        <defs>
+          {/* Grayscale first, so the tint below can remap luminance without
+              dragging the sprite's own hue along. */}
+          <filter id={grayId} colorInterpolationFilters="sRGB">
+            <feColorMatrix type="saturate" values="0" />
+          </filter>
+          {/* Alpha mask keeps the plush cut-out: transparent corners stay
+              transparent instead of taking the tint colour. */}
+          <mask
+            id={maskId}
+            maskUnits="userSpaceOnUse"
+            x={0}
+            y={0}
+            width={512}
+            height={512}
+            {...MASK_ALPHA_PROPS}
           >
-            {eyeStyle.paths.map((p, i) => (
-              <EyeMark key={i} mark={p} tone={tone} transform={eyeTransform} />
-            ))}
-          </g>
-        )}
+            <image
+              href={variant.src}
+              x={0}
+              y={0}
+              width={512}
+              height={512}
+              preserveAspectRatio="xMidYMid meet"
+            />
+          </mask>
+        </defs>
+        <g style={{ isolation: "isolate" }}>
+          <image
+            href={variant.src}
+            x={0}
+            y={0}
+            width={512}
+            height={512}
+            preserveAspectRatio="xMidYMid meet"
+            filter={`url(#${grayId})`}
+          />
+          {/* `mix-blend-mode: color` takes the tint's hue/saturation and keeps
+              the sprite's luminance, so the glossy black eyes, soft shading
+              and white highlights are preserved while the body follows the
+              accent. */}
+          <rect
+            x={0}
+            y={0}
+            width={512}
+            height={512}
+            fill={accentColor}
+            mask={`url(#${maskId})`}
+            style={{ mixBlendMode: "color" }}
+          />
+        </g>
       </svg>
     </motion.div>
   );

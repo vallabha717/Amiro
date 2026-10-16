@@ -119,3 +119,29 @@ character must look right in all of them without new tokens.
    against body dots, and the frame contains at most two hue families.
 8. With 12 avatars on one page, Performance shows no long task >50ms and no per-frame style
    recalculation; each avatar sits on its own composited layer.
+
+## 5. Decision (implemented)
+
+The owner chose the **OpenDots** reference over the original `lattice` brief. The four
+plush PNGs from `CopilotKit/OpenDots` (MIT, Copyright (c) Atai Barkai, see
+`THIRD-PARTY-NOTICES.md`) are now the Agent avatar. Shipped:
+
+- `public/agent/opendots/{blue,mint,orange,purple}.png`, copied verbatim from
+  `CopilotKit/OpenDots@main public/dots/`.
+- `src/lib/agent/opendots-catalog.ts`, the four variants plus the map from Amiro's six
+  persisted body ids onto them (`blob`/`urchin`/`ghost` -> blue, `sprout` -> mint,
+  `star` -> orange, `cloud` -> purple; unknowns -> blue), so saved agents stay stable.
+- `src/components/agent/avatar-primitives.tsx`, one `<svg width={size}>` per instance
+  holding an `<image href>` of the sprite plus a per-instance tint.
+
+**Tint.** The body hue follows `var(--sidebar-primary)` (overridable with the
+`accentColor` prop for theme previews). The sprite is desaturated with an SVG
+`feColorMatrix` (`saturate 0`), then a `mix-blend-mode: color` rect takes the tint's hue
+and saturation while keeping the sprite's luminance, so the glossy black eyes, soft
+shading and white highlights survive. The rect is alpha-masked to the sprite so the
+transparent corners stay transparent. `prefers-reduced-motion` disables the idle bob, and
+custom uploads are unchanged.
+
+The acceptance criteria in section 4 described the lattice avatar and no longer apply;
+they are kept above as the rejected-design record. The adapter browser assertion for
+`svg > path` is superseded by the sprite `<image>` contract.
