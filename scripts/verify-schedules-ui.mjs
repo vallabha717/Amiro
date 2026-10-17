@@ -29,7 +29,14 @@ const stub = withRuntime
   ? spawn(
       "python3",
       [path.join(ROOT, "scripts/native-stub-provider.py"), String(stubPort)],
-      { stdio: "ignore" },
+      {
+        stdio: "ignore",
+        env: {
+          ...process.env,
+          AMIRO_STUB_EXPECT_MODEL: "stub-scheduled-model",
+          AMIRO_STUB_REQUEST_LOG: path.join(fixture, "provider-requests.jsonl"),
+        },
+      },
     )
   : null;
 const base = `http://127.0.0.1:${port}`;
@@ -51,7 +58,7 @@ const child = spawn(binary, [], {
     AMIRO_OPENAI_COMPAT_API_KEY_NAME: "AMIRO_SCHEDULE_STUB_KEY",
     AMIRO_SCHEDULE_STUB_KEY: "stub-key",
     AMIRO_DEFAULT_MODEL: "openai-compatible:stub-model",
-    AMIRO_PINNED_MODELS: "openai-compatible:stub-model",
+    AMIRO_PINNED_MODELS: "openai-compatible:stub-model,openai-compatible:stub-scheduled-model",
     AMIRO_TRUSTED_OPERATOR: "0",
     AMIRO_TOOL_PROFILE: "none",
     AMIRO_NO_TELEMETRY: "1",
@@ -326,7 +333,7 @@ try {
         name: "Runtime acceptance",
         prompt: "Return the local stub greeting",
         mode: "execute",
-        model: "openai-compatible:stub-model",
+        model: "openai-compatible:stub-scheduled-model",
         timezone: "UTC",
         schedule: { kind: "interval", minutes: 60 },
       }),
@@ -341,6 +348,16 @@ try {
           part.text?.includes("Hello from the local stub provider."),
         ),
       ),
+    );
+    const requests = (await fs.readFile(path.join(fixture, "provider-requests.jsonl"), "utf8"))
+      .trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    check(
+      "saved schedule model overrides daemon default at the provider",
+      requests.length > 0 && requests.every((request) => request.model === "stub-scheduled-model"),
+    );
+    check(
+      "scheduled execution exposes no tools to the provider",
+      requests.every((request) => request.toolsCount === 0),
     );
     await api(`/api/schedules/${created.schedule.id}`, { method: "DELETE" });
   }

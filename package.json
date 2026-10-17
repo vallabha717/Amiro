@@ -28,6 +28,7 @@
     "test:e2e:ui": "playwright test --ui",
     "test:native-backend": "cargo test --manifest-path backend/Cargo.toml",
     "verify:native-ui": "bash scripts/start-native-ui-check.sh",
+    "verify:schedules-ui": "node scripts/verify-schedules-ui.mjs",
     "lint": "biome lint",
     "lint:fix": "biome lint --write --unsafe",
     "format": "biome format --write",

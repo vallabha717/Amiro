@@ -816,7 +816,13 @@ fn run_turn_worker(
         }
     };
     if let Some(tx) = session_tx.take() {
-        let _ = tx.send(Ok(handle.clone()));
+        if tx.send(Ok(handle.clone())).is_err() {
+            let _ = client.detach_session(&handle.session_id);
+            if handle.created {
+                let _ = client.archive_session(&handle.session_id);
+            }
+            return;
+        }
     }
     let session_id = handle.session_id.clone();
 

@@ -19,12 +19,16 @@ the backend owns the conversion to UTC. For example 09:00 in Asia/Kolkata is
 stored as 03:30Z. A wall time that never exists, such as 02:30 on the spring
 forward day in America/New_York, is rejected with a 400 error instead of
 being silently shifted. A wall time that happens twice on the fall back day
-resolves to one unambiguous UTC instant.
+is ambiguous and is also rejected with 400. Pass an explicit offset such as
+2029-11-04T01:30:00-04:00 to pick one instant.
 
 Pausing a schedule stops all timer firings. Run now still works while paused
 because it is an explicit action, and it appends to run history like any
-other firing. Deleting a schedule removes it and keeps past runs readable
-until retention trims them.
+other firing. Running a once schedule manually consumes it, so the timer
+can never fire it a second time. Deleting a schedule while a run is in
+flight is rejected with 409. A successful delete removes the schedule row
+with 204 and keeps the run history file, so past firings stay on disk even
+though GET runs for the deleted id answers 404.
 
 Scheduled runs have no tools and send no external notifications. There is no
 email, no push, and no inbox access. The default prompt should describe a
@@ -50,9 +54,12 @@ safety mechanism. The OS advisory lock is.
 
 Execute mode pins the model server side, forces tools off through the
 `runtime::configure_tools` path with no CLI bypass, and runs under a turn
-timeout with cancel. Cron evaluation and next run computation are bounded
-per request, schedules per owner are capped, and run history plus stored
-output are bounded.
+timeout with cancel. The saved model is applied to each runtime session, not
+inherited from the daemon default. Results retain up to 8,000 characters in
+the conversation and 2,000 characters in run previews. Delivery or missing
+owner failures cannot be reported as successful. Cron evaluation and next
+run computation are bounded per request, schedules per owner are capped,
+and run history is bounded.
 
 ## Contract v1 (base `/api/schedules`, auth required, user scoped camelCase)
 
@@ -77,7 +84,7 @@ Schedule shape:
   "mode": "notify",
   "timezone": "Asia/Kolkata",
   "schedule": {"kind": "cron", "expression": "0 9 * * MON"},
-  "model": "pinned-model-id",
+  "model": null,
   "enabled": true,
   "nextRunAt": "2030-05-06T03:30:00.000Z",
   "lastRunAt": null,
@@ -120,18 +127,31 @@ fresh temp homes and never touches `native_acceptance.rs`:
 3. Malformed time and spec bodies are 400, unknown ids are 404, bad preview
    persists nothing.
 4. Once preview returns exactly one time. Cron and interval previews return exactly 5 ascending runs with correct spacing.
-5. DST gap wall time is 400. Fold wall time resolves to one UTC instant.
+5. DST gap wall time is 400 on create and preview. Fold wall time is 400
+   on create and preview. An explicit offset is accepted and converts.
 6. Naive 09:00 plus Asia/Kolkata previews and persists as 03:30Z.
 7. Genuine stop, due instant passes with no process alive, boot: the overdue
    once fires exactly once, and a second restart never replays it.
-8. A run stuck in running across a restart is marked interrupted and never
-   completes as success.
-9. Eight concurrent run now calls never fan out into parallel executions.
-10. A second backend on the same home is rejected on mutation while the
+8. A seeded running row in schedule-runs.json is marked interrupted with
+   finishedAt on reboot, with no replay row appended.
+9. Eight concurrent run now calls never overlap: at most one running row,
+   no fabricated extra completed runs.
+10. Delete while a run is in flight is 409. After the run closes, delete
+    is 204, the schedule row is gone, and the run history file keeps the row.
+11. A second backend on the same home is rejected on mutation while the
     holder keeps working.
 
+Verified on October 17, 2026: the complete native test suite passed, including
+all 13 schedule acceptance tests and all 4 durability tests. Frontend type
+checking passed, and all 388 frontend tests passed. The browser harness
+passed 24 checks with the real owned runtime and an isolated local provider.
+Provider request evidence confirmed a saved model different from the daemon
+default was actually used, with zero tools exposed. No paid provider request
+was needed. Desktop and mobile screenshots were also inspected.
+
 Run: `cd backend && cargo test --test schedules_acceptance`.
-The main harness supports a real runtime with a local stub via
-`AMIRO_SCHEDULE_TEST_RUNTIME=1`. The coordinator owns the execute mode
-success end to end. Native acceptance here stays on notify mode for the
-persist, timer, and restart path.
+Run browser verification after building the UI and native binary:
+`AMIRO_SCHEDULE_TEST_RUNTIME=1 pnpm verify:schedules-ui`.
+It uses disposable accounts and storage, the real owned runtime, and a local
+stub provider. Native acceptance stays on notify mode for the persistence,
+timer, and restart paths.
