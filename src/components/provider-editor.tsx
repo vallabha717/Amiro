@@ -81,6 +81,7 @@ export default function ProviderEditor({
   );
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
+  const [modelsError, setModelsError] = useState<string | null>(null);
   const [revealKey, setRevealKey] = useState(false);
 
   const [name, setName] = useState(initialConfig?.name ?? "");
@@ -125,6 +126,7 @@ export default function ProviderEditor({
     }
 
     setIsLoadingModels(true);
+    setModelsError(null);
     try {
       const data = await fetchProviderModels({
         id: initialConfig?.id,
@@ -135,8 +137,12 @@ export default function ProviderEditor({
       if (data.models && Array.isArray(data.models)) {
         setRemoteModels(data.models);
       }
-    } catch {
-      // Silently catch in-background; user can still enter models manually
+    } catch (e) {
+      // The suggestion list is the only place a provider's models are
+      // discoverable from this page, so a failed fetch has to say so: an empty
+      // panel that silently claims "no models found" is what made a short list
+      // look like a complete one. Manual ids keep working either way.
+      setModelsError(e instanceof Error ? e.message : String(e));
     } finally {
       setIsLoadingModels(false);
     }
@@ -586,6 +592,15 @@ export default function ProviderEditor({
 
                   {/* Suggestions List */}
                   <div className="max-h-[220px] overflow-y-auto p-1 divide-y divide-border/20">
+                    {modelsError && (
+                      <div
+                        className="px-3 py-2 text-[11px] text-destructive bg-destructive/5"
+                        data-testid="provider-model-fetch-error"
+                      >
+                        Could not list models from the provider ({modelsError}).
+                        The list below is incomplete; ids typed here still work.
+                      </div>
+                    )}
                     {/* Option to add custom typed model if not an exact match */}
                     {newModelInput.trim() && !exactInputMatch && (
                       <div
@@ -611,7 +626,11 @@ export default function ProviderEditor({
 
                     {filteredSuggestions.length === 0 && !newModelInput.trim() ? (
                       <div className="p-4 text-center text-xs text-muted-foreground italic">
-                        {isLoadingModels ? "Fetching available models from provider endpoint..." : "No models found from provider. Type an ID above to add."}
+                        {isLoadingModels
+                          ? "Fetching available models from provider endpoint..."
+                          : modelsError
+                            ? "Model list unavailable. Type an ID above to add."
+                            : "No models found from provider. Type an ID above to add."}
                       </div>
                     ) : (
                       filteredSuggestions.map((item) => {

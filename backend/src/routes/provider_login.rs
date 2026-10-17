@@ -27,7 +27,10 @@ fn user_id_of(user: &AuthUser) -> String {
         .to_string()
 }
 
-const SUPPORTED_OAUTH_PROVIDERS: &[&str] = &[
+/// Static fallback only: used when the live engine catalog cannot be read.
+/// The live check in `can_start_oauth_flow` consults `auth status --json` so
+/// new engine OAuth providers work without editing this file.
+const FALLBACK_OAUTH_PROVIDERS: &[&str] = &[
     "claude",
     "openai",
     "gemini",
@@ -35,6 +38,47 @@ const SUPPORTED_OAUTH_PROVIDERS: &[&str] = &[
     "copilot",
     "google",
 ];
+
+/// True when the provider's live engine entry can start an OAuth/device flow.
+/// Unknown ids return false; when the engine CLI is unreadable we fall back to
+/// the static set above so a transient failure cannot lock out logins.
+async fn can_start_oauth_flow(state: &AppState, provider: &str) -> bool {
+    let mut cmd = Command::new(&state.runtime_bin);
+    cmd.args(["auth", "status", "--json"]);
+    cmd.env("AMIRO_HOME", &state.home);
+    cmd.env("AMIRO_RUNTIME_HOME", &state.runtime_home);
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let output = match cmd.output().await {
+        Ok(o) if o.status.success() => o,
+        _ => return FALLBACK_OAUTH_PROVIDERS.contains(&provider),
+    };
+    let text = String::from_utf8_lossy(&output.stdout);
+    let parsed: Value = match serde_json::from_str(text.trim()) {
+        Ok(v) => v,
+        Err(_) => return FALLBACK_OAUTH_PROVIDERS.contains(&provider),
+    };
+    let empty = Vec::new();
+    let providers = parsed
+        .get("providers")
+        .and_then(|p| p.as_array())
+        .unwrap_or(&empty);
+    match providers.iter().find(|p| {
+        p.get("id")
+            .and_then(|i| i.as_str())
+            .map(|s| s.eq_ignore_ascii_case(provider))
+            .unwrap_or(false)
+    }) {
+        Some(entry) => {
+            let kind = entry
+                .get("auth_kind")
+                .and_then(|k| k.as_str())
+                .unwrap_or("")
+                .to_lowercase();
+            kind.contains("oauth") || kind.contains("device")
+        }
+        None => false,
+    }
+}
 
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
@@ -69,7 +113,7 @@ async fn post_oauth_start(
     require_admin(&user)?;
 
     let provider = id.trim().to_lowercase();
-    if !SUPPORTED_OAUTH_PROVIDERS.contains(&provider.as_str()) {
+    if !can_start_oauth_flow(&state, &provider).await {
         return Err(ApiError(
             StatusCode::BAD_REQUEST,
             format!("Interactive OAuth is not supported for provider '{provider}'. Please configure with an API key."),
@@ -254,6 +298,11 @@ async fn post_oauth_callback(
         f.status = "authorized".to_string();
         f.error = None;
     }
+
+    // A provider that just finished logging in is connected with a fresh
+    // catalog; drop the cached one so its models appear on the next read
+    // instead of after the catalog's TTL.
+    crate::models::invalidate_catalog();
 
     Ok(Json(json!({ "ok": true, "provider": provider })))
 }

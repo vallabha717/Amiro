@@ -437,7 +437,27 @@ where
 // provider login state, so the owned runtime CLI answers them.
 // ---------------------------------------------------------------------------
 
+/// One runtime CLI read: the parsed JSON, plus whatever the CLI wrote to
+/// stderr.
+///
+/// The runtime reports a *failed dynamic catalog refresh* on stderr while still
+/// exiting 0 (it answers from its static fallback), so a caller that needs to
+/// tell a live catalog from a stub has to read both streams.
+pub struct CliRead {
+    pub json: Value,
+    pub stderr: String,
+}
+
 pub async fn exec_json(state: &AppState, args: &[&str]) -> Result<Value, ApiError> {
+    Ok(exec_json_with_diagnostics(state, args).await?.json)
+}
+
+/// [`exec_json`] keeping the CLI's stderr for callers that care about its
+/// warnings (see [`CliRead`]).
+pub async fn exec_json_with_diagnostics(
+    state: &AppState,
+    args: &[&str],
+) -> Result<CliRead, ApiError> {
     let output = Command::new(&state.runtime_bin)
         .args(args)
         .envs(runtime_env(state))
@@ -472,11 +492,15 @@ pub async fn exec_json(state: &AppState, args: &[&str]) -> Result<Value, ApiErro
             format!("runtime {:?} produced no output", args),
         ));
     }
-    serde_json::from_str(&text).map_err(|error| {
+    let json = serde_json::from_str(&text).map_err(|error| {
         ApiError(
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("invalid json from runtime {:?}: {error}", args),
         )
+    })?;
+    Ok(CliRead {
+        json,
+        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
     })
 }
 
@@ -486,6 +510,15 @@ pub async fn auth_status(state: &AppState) -> Result<Value, ApiError> {
 
 pub async fn model_list(state: &AppState, provider: &str) -> Result<Value, ApiError> {
     exec_json(state, &["model", "list", "-p", provider, "--json"]).await
+}
+
+/// A provider's model list read together with the CLI's warnings, so callers
+/// can see whether the runtime had to fall back to its static catalog.
+pub async fn model_list_with_diagnostics(
+    state: &AppState,
+    provider: &str,
+) -> Result<CliRead, ApiError> {
+    exec_json_with_diagnostics(state, &["model", "list", "-p", provider, "--json"]).await
 }
 
 // ---------------------------------------------------------------------------

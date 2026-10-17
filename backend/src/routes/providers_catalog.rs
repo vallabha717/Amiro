@@ -40,6 +40,40 @@ async fn run_cli_json(state: &AppState, args: &[&str]) -> Option<Value> {
     }
 }
 
+/// Map the engine's `auth_kind` to the machine `mechanism` the web UI groups
+/// by. Mirrors `normalizeMechanism` in adapter/src/providers.mjs: the catalog
+/// route must emit `mechanism` (plus the capability flags below) or the
+/// frontend cannot parse the catalog and the providers page renders empty.
+fn mechanism_of(auth_kind: &str, id: &str) -> &'static str {
+    if id.eq_ignore_ascii_case("auto") {
+        return "automatic";
+    }
+    let key = auth_kind.trim().to_lowercase();
+    match key.as_str() {
+        "oauth" => "oauth",
+        "api key" => "api-key",
+        "device code" => "device-code",
+        "cli" => "cli",
+        "api key / cli" => "api-key",
+        "local endpoint" => "local-endpoint",
+        _ => {
+            if key.contains("oauth") {
+                "oauth"
+            } else if key.contains("device") {
+                "device-code"
+            } else if key.contains("local") {
+                "local-endpoint"
+            } else if key.contains("api key") {
+                "api-key"
+            } else if key == "cli" {
+                "cli"
+            } else {
+                "unknown"
+            }
+        }
+    }
+}
+
 async fn get_provider_catalog(
     State(state): State<AppState>,
     _user: AuthUser,
@@ -60,30 +94,98 @@ async fn get_provider_catalog(
         .and_then(|p| p.as_array())
         .unwrap_or(&empty_vec);
 
+    // Full jcode-supported catalog is the UNION of both engine sources:
+    // `auth status --json` is the superset carrying connection state,
+    // `provider list --json` contributes SKU-only entries (e.g. `auto`,
+    // `google`) plus display detail. Iterating only one side drops providers.
     let mut result_providers = Vec::new();
+    for a in auth_list {
+        let id = a.get("id").and_then(|i| i.as_str()).unwrap_or("");
+        if id.is_empty()
+            || result_providers.iter().any(|p: &Value| {
+                p.get("id").and_then(|i| i.as_str()) == Some(id)
+            })
+        {
+            continue;
+        }
+        result_providers.push(a.clone());
+    }
     for p in providers_list {
         let id = p.get("id").and_then(|i| i.as_str()).unwrap_or("");
+        if id.is_empty() {
+            continue;
+        }
         let auth_entry = auth_list
             .iter()
             .find(|a| a.get("id").and_then(|i| i.as_str()) == Some(id));
 
-        let status = auth_entry
-            .and_then(|a| a.get("status"))
-            .cloned()
-            .unwrap_or_else(|| json!("not_configured"));
+        if auth_entry.is_some() {
+            // Already pushed from the auth side above; merge display detail.
+            if let Some(existing) = result_providers.iter_mut().find(|e| {
+                e.get("id").and_then(|i| i.as_str()) == Some(id)
+            }) {
+                if let (Some(e), Some(src)) =
+                    (existing.as_object_mut(), p.as_object())
+                {
+                    for (k, v) in src {
+                        if k == "detail" || k == "aliases" || k == "display_name" {
+                            e.entry(k.clone()).or_insert(v.clone());
+                        }
+                    }
+                }
+            }
+            continue;
+        }
 
         let mut item = p.clone();
         if let Some(obj) = item.as_object_mut() {
-            obj.insert("status".to_string(), status);
+            obj.insert("status".to_string(), json!("not_configured"));
         }
         result_providers.push(item);
+    }
+
+    // The web UI parses the catalog by `mechanism` and reads the capability
+    // flags, so every entry carries them. Without `mechanism` the frontend
+    // rejects the whole catalog and the providers page renders empty.
+    for item in &mut result_providers {
+        if let Some(obj) = item.as_object_mut() {
+            let id = obj
+                .get("id")
+                .and_then(|i| i.as_str())
+                .unwrap_or("")
+                .to_string();
+            let auth_kind = obj
+                .get("auth_kind")
+                .and_then(|k| k.as_str())
+                .unwrap_or("")
+                .to_string();
+            let mechanism = mechanism_of(&auth_kind, &id);
+            obj.insert("mechanism".to_string(), json!(mechanism));
+            obj.insert(
+                "canStartOauth".to_string(),
+                json!(mechanism == "oauth" || mechanism == "device-code"),
+            );
+            obj.insert(
+                "canAcceptApiKey".to_string(),
+                json!(mechanism == "api-key"),
+            );
+            let status = obj
+                .get("status")
+                .and_then(|s| s.as_str())
+                .unwrap_or("")
+                .to_lowercase();
+            obj.insert(
+                "connected".to_string(),
+                json!(status == "available" || status == "configured"),
+            );
+        }
     }
 
     if result_providers.is_empty() {
         // Fallback standard catalog if CLI didn't respond
         let default_providers = json!([
             { "id": "openai", "name": "OpenAI", "mechanism": "api-key", "status": "not_configured" },
-            { "id": "anthropic", "name": "Anthropic", "mechanism": "api-key", "status": "not_configured" },
+            { "id": "anthropic-api", "name": "Anthropic", "mechanism": "api-key", "status": "not_configured" },
             { "id": "openrouter", "name": "OpenRouter", "mechanism": "api-key", "status": "not_configured" },
             { "id": "gemini", "name": "Google Gemini", "mechanism": "api-key", "status": "not_configured" },
             { "id": "groq", "name": "Groq", "mechanism": "api-key", "status": "not_configured" },
@@ -186,6 +288,11 @@ async fn post_provider_api_key(
         ));
     }
 
+    // The provider is connected from here on, with whatever catalog the
+    // runtime already has for it: drop Amiro's cached copy so its models show
+    // up immediately instead of after the catalog's TTL.
+    crate::models::invalidate_catalog();
+
     Ok(Json(json!({
         "ok": true,
         "provider": provider_id,
@@ -208,6 +315,10 @@ async fn delete_provider_credentials(
     let file = env_file_path(&state, &provider_id);
     let _ = tokio::fs::remove_file(&file).await;
     let _ = tokio::fs::remove_file(format!("{}.bak", file.to_string_lossy())).await;
+
+    // Removing the key can change the model list (the runtime falls back to
+    // its static catalog), so the cached copy must not outlive the change.
+    crate::models::invalidate_catalog();
 
     Ok(Json(json!({
         "ok": true,

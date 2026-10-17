@@ -1,7 +1,10 @@
 "use client";
 
-// Client-side calls against the Go sidecar's /api/ai/providers/** routes
-// (internal/api/ai/providers.go), mirroring mcp-api.ts for MCP servers.
+// Client-side calls against the native backend's /api/ai/providers/** routes
+// (backend/src/models.rs: connected providers only, with the runtime's full
+// model catalog per provider), mirroring mcp-api.ts for MCP servers. For the
+// full provider *catalog* -- every provider the runtime supports, connected or
+// not -- use GET /api/providers/catalog (backend/src/routes/providers_catalog.rs).
 import { apiJson } from "./client";
 
 export interface ProviderConfig {
