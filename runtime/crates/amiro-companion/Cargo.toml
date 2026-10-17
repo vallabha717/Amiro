@@ -1,0 +1,32 @@
+[package]
+name = "amiro-companion"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "amiro companion: per-login helper for desktop-only effects (open, terminals, lid override, global voice, browser bridge updates)"
+
+# Runs in the user's graphical session. The harness server reaches it only
+# through amiro_base::companion_client and never links this crate.
+[lib]
+name = "amiro_companion"
+path = "src/lib.rs"
+
+[dependencies]
+amiro-base = { path = "../amiro-base", default-features = false }
+amiro-desktop-open = { path = "../amiro-desktop-open" }
+amiro-transport = { path = "../amiro-transport" }
+amiro-voice = { path = "../amiro-voice" }
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+async-io = "2.6"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Power", "Win32_System_SystemServices"] }
+
+[dev-dependencies]
+amiro-base = { path = "../amiro-base", default-features = false, features = ["test-support"] }
+tempfile = "3"

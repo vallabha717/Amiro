@@ -1,0 +1,9 @@
+[package]
+name = "amiro-batch-types"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+amiro-message-types = { path = "../amiro-message-types" }
+serde = { version = "1", features = ["derive"] }

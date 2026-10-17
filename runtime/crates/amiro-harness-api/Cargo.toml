@@ -1,0 +1,18 @@
+[package]
+name = "amiro-harness-api"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Stable, versioned client API for the amiro harness (agent runtime)"
+
+[dependencies]
+amiro-session-types = { path = "../amiro-session-types" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+amiro-usage-types = { path = "../amiro-usage-types" }
+
+amiro-side-panel-types = { path = "../amiro-side-panel-types" }
+amiro-applet-types = { path = "../amiro-applet-types" }
+amiro-todo-policy = { path = "../amiro-todo-policy" }
+
+[dev-dependencies]

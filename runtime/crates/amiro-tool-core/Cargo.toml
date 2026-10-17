@@ -1,0 +1,17 @@
+[package]
+name = "amiro-tool-core"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "amiro_tool_core"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+async-trait = "0.1"
+amiro-agent-runtime = { path = "../amiro-agent-runtime" }
+amiro-message-types = { path = "../amiro-message-types" }
+amiro-tool-types = { path = "../amiro-tool-types" }
+serde_json = "1"
+tokio = { version = "1", features = ["sync"] }

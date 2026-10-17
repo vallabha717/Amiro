@@ -1,0 +1,125 @@
+[package]
+name = "amiro-tui"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Presentation layer for amiro: the terminal UI (`tui`) and the offline replay
+# `video_export`, extracted out of the monolithic root `amiro` crate so they
+# compile as a separate rustc unit. This crate builds on top of the application
+# core (`amiro-app-core`) and re-exports it via `pub use amiro_app_core::*`, so
+# every existing `crate::<module>` path (e.g. `crate::config`, `crate::server`)
+# keeps resolving unchanged across the tui code that was moved here. The root
+# `amiro` crate (cli + bin) in turn re-exports this crate via
+# `pub use amiro_tui::*`.
+
+[lib]
+name = "amiro_tui"
+path = "src/lib.rs"
+
+[dependencies]
+# Application core (server, agent, provider, auth, session, tool, config, ...).
+# Re-exported via `pub use amiro_app_core::*` in lib.rs. default-features=false
+# so this crate (and ultimately the root crate) controls app-core's features.
+amiro-app-core = { path = "../amiro-app-core", default-features = false }
+
+# Pure math kernels for the idle animations (3D samplers, glyph chooser,
+# HSV->RGB). Pinned to opt-level = 3 in all profiles via workspace Cargo.toml so
+# the hot trig loops stay optimized even in debug/selfdev builds.
+amiro-tui-anim = { path = "../amiro-tui-anim" }
+
+# Async runtime
+tokio = { version = "1", features = ["fs", "io-std", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value"] }
+
+# Utilities
+anyhow = "1"
+libc = "0.2"
+chrono = { version = "0.4", features = ["serde"] }
+regex = "1"
+dirs = "5"
+similar = "2"
+tempfile = "3"
+open = "5"
+
+# OAuth / hashing helpers used by the login + account UI
+base64 = "0.22"
+sha2 = "0.10"
+rand = "0.9.3"
+hex = "0.4"
+url = "2"
+urlencoding = "2"
+
+# TUI
+ratatui = "0.30"
+crossterm = { version = "0.29", features = ["event-stream"] }
+arboard = "3"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+unicode-width = "0.2"
+
+# Presentation-layer workspace crates
+amiro-build-meta = { path = "../amiro-build-meta" }
+amiro-logging = { path = "../amiro-logging" }
+amiro-core = { path = "../amiro-core" }
+amiro-fuzzy = { path = "../amiro-fuzzy" }
+amiro-config-types = { path = "../amiro-config-types" }
+amiro-selfdev-types = { path = "../amiro-selfdev-types" }
+amiro-session-types = { path = "../amiro-session-types" }
+amiro-provider-core = { path = "../amiro-provider-core" }
+amiro-tui-markdown = { path = "../amiro-tui-markdown" }
+amiro-tui-messages = { path = "../amiro-tui-messages" }
+amiro-tui-core = { path = "../amiro-tui-core" }
+amiro-tui-mermaid = { path = "../amiro-tui-mermaid" }
+amiro-tui-account-picker = { path = "../amiro-tui-account-picker" }
+amiro-tui-render = { path = "../amiro-tui-render" }
+amiro-tui-visual-debug = { path = "../amiro-tui-visual-debug" }
+amiro-tui-session-picker = { path = "../amiro-tui-session-picker", features = ["serde"] }
+amiro-tui-style = { path = "../amiro-tui-style" }
+terminal-colorsaurus = "1.0"
+amiro-tui-permissions = { path = "../amiro-tui-permissions" }
+amiro-tui-tool-display = { path = "../amiro-tui-tool-display" }
+amiro-tui-usage-overlay = { path = "../amiro-tui-usage-overlay" }
+amiro-terminal-image = { path = "../amiro-terminal-image", features = ["display"] }
+amiro-terminal-prompt = { path = "../amiro-terminal-prompt" }
+amiro-voice = { path = "../amiro-voice" }
+amiro-productivity-core = { path = "../amiro-productivity-core" }
+amiro-tui-workspace = { path = "../amiro-tui-workspace" }
+
+[features]
+default = ["pdf", "bedrock"]
+# Exposes bench-only debug helpers (e.g. debug_copy_selection_text_for_bench)
+# consumed by the dev `tui_bench` binary in the root crate.
+dev-bins = []
+# Forwarded to app-core (and onward to amiro-base) so the root crate's feature
+# set fully controls the optional stacks.
+jemalloc = ["amiro-app-core/jemalloc"]
+jemalloc-prof = ["amiro-app-core/jemalloc-prof"]
+embeddings = ["amiro-app-core/embeddings"]
+pdf = ["amiro-app-core/pdf"]
+bedrock = ["amiro-app-core/bedrock"]
+linux-compat-vendored-openssl = ["amiro-app-core/linux-compat-vendored-openssl"]
+mmdr-size-api = ["amiro-tui-mermaid/mmdr-size-api"]
+# Forwards the application core's `test-support` feature (and onward to
+# amiro-base) so downstream crates' test targets can reach the whole stack's
+# test helpers. Never enabled in normal (non-test) builds.
+test-support = ["amiro-app-core/test-support"]
+
+[dev-dependencies]
+# Enables the downstream test-support helpers for *this* crate's own test
+# target. Feature unification applies this only to test/bench/example builds.
+amiro-app-core = { path = "../amiro-app-core", default-features = false, features = ["test-support"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+global-hotkey = "0.7"
+
+# Built-in voice input (/voice, Ctrl+Space). macOS and Windows capture natively
+# through CoreAudio / WASAPI (system frameworks, like Amiro Desktop). Linux uses
+# an external recorder (pw-record, parecord, arecord, ...) so release builds
+# need no ALSA development headers.
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+amiro-voice = { path = "../amiro-voice", features = ["voice-capture"] }

@@ -1,0 +1,18 @@
+[package]
+name = "amiro-provider-env"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "amiro_provider_env"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+amiro-core = { path = "../amiro-core" }
+amiro-logging = { path = "../amiro-logging" }
+amiro-provider-metadata = { path = "../amiro-provider-metadata" }
+amiro-storage = { path = "../amiro-storage" }
+
+[dev-dependencies]
+tempfile = "3"

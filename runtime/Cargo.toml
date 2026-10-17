@@ -1,0 +1,620 @@
+[package]
+name = "amiro-runtime"
+version = "0.98.1"
+description = "Possibly the greatest coding agent ever built — blazing-fast TUI, multi-model, swarm coordination, 30+ tools"
+edition = "2024"
+autobins = false
+
+[workspace]
+members = [
+    ".",
+    "crates/amiro-agent-runtime",
+    "crates/amiro-app-core",
+    "crates/amiro-base",
+    "crates/amiro-tui",
+    "crates/amiro-build-meta",
+    "crates/amiro-ambient-types",
+    "crates/amiro-auth-types",
+    "crates/amiro-embedding",
+    "crates/amiro-gateway-types",
+    "crates/amiro-import-core",
+    "crates/amiro-pdf",
+    "crates/amiro-logging",
+    "crates/amiro-background-types",
+    "crates/amiro-batch-types",
+    "crates/amiro-build-support",
+    "crates/amiro-compaction-core",
+    "crates/amiro-config-types",
+    "crates/amiro-command-risk",
+    "crates/amiro-core",
+    "crates/amiro-fuzzy",
+    "crates/amiro-harness-api",
+    "crates/amiro-harness-api-server",
+    "crates/amiro-sdk",
+    "crates/amiro-memory-types",
+    "crates/amiro-message-types",
+    "crates/amiro-overnight-core",
+    "crates/amiro-plan",
+    "crates/amiro-productivity-core",
+    "crates/amiro-swarm-core",
+    "crates/amiro-protocol",
+    "crates/amiro-selfdev-types",
+    "crates/amiro-session-types",
+    "crates/amiro-setup-hints",
+    "crates/amiro-storage",
+    "crates/amiro-side-panel-types",
+    "crates/amiro-applet-types",
+    "crates/amiro-azure-auth",
+    "crates/amiro-notify-email",
+    "crates/amiro-provider-metadata",
+    "crates/amiro-provider-env",
+    "crates/amiro-provider-core",
+    "crates/amiro-schema-dialect",
+    "crates/amiro-provider-bedrock",
+    "crates/amiro-provider-anthropic",
+    "crates/amiro-provider-antigravity",
+    "crates/amiro-provider-copilot",
+    "crates/amiro-provider-openrouter",
+    "crates/amiro-provider-openai",
+    "crates/amiro-provider-gemini",
+    "crates/amiro-provider-gemini-runtime",
+    "crates/amiro-provider-cursor-runtime",
+    "crates/amiro-provider-antigravity-runtime",
+    "crates/amiro-provider-copilot-runtime",
+    "crates/amiro-provider-openrouter-runtime",
+    "crates/amiro-provider-anthropic-runtime",
+    "crates/amiro-provider-openai-runtime",
+    "crates/amiro-provider-grok-build-runtime",
+    "crates/amiro-provider-doctor",
+    "crates/amiro-tui-markdown",
+    "crates/amiro-tui-messages",
+    "crates/amiro-usage-types",
+    "crates/amiro-tui-core",
+    "crates/amiro-tui-mermaid",
+    "crates/amiro-task-types",
+    "crates/amiro-todo-policy",
+    "crates/amiro-transport",
+    "crates/amiro-codemode",
+    "crates/amiro-tool-core",
+    "crates/amiro-tool-types",
+    "crates/amiro-tui-account-picker",
+    "crates/amiro-tui-anim",
+    "crates/amiro-tui-render",
+    "crates/amiro-tui-visual-debug",
+    "crates/amiro-tui-session-picker",
+    "crates/amiro-tui-style",
+    "crates/amiro-tui-permissions",
+    "crates/amiro-tui-tool-display",
+    "crates/amiro-tui-usage-overlay",
+    "crates/amiro-update-core",
+    "crates/amiro-terminal-launch",
+    "crates/amiro-terminal-image",
+    "crates/amiro-terminal-prompt",
+    "crates/amiro-voice",
+    "crates/amiro-desktop-open",
+    "crates/amiro-companion",
+    "crates/amiro-telemetry-core",
+    "crates/amiro-tui-workspace",
+    "crates/amiro-render-core",
+]
+
+[lib]
+name = "amiro_runtime"
+path = "src/lib.rs"
+
+[[bin]]
+name = "amiro-runtime"
+path = "src/main.rs"
+
+[[bin]]
+name = "test_api"
+path = "src/bin/test_api.rs"
+
+[[bin]]
+name = "amiro-harness"
+path = "src/bin/harness.rs"
+
+[[bin]]
+name = "session_memory_bench"
+path = "src/bin/session_memory_bench.rs"
+required-features = ["dev-bins"]
+
+[[bin]]
+name = "memory_recall_bench"
+path = "src/bin/memory_recall_bench.rs"
+required-features = ["dev-bins"]
+
+[[bin]]
+name = "mermaid_side_panel_probe"
+path = "src/bin/mermaid_side_panel_probe.rs"
+required-features = ["dev-bins"]
+
+[[bin]]
+name = "tui_bench"
+path = "src/bin/tui_bench.rs"
+required-features = ["dev-bins"]
+
+[dependencies]
+# Memory allocator (reduces fragmentation for long-running server)
+tikv-jemallocator = { version = "0.6", features = ["unprefixed_malloc_on_supported_platforms"], optional = true }
+
+# Async runtime
+tokio = { version = "1", features = ["fs", "io-std", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# HTTP client
+reqwest = { version = "0.12", default-features = false, features = ["json", "charset", "http2", "system-proxy", "rustls-tls", "rustls-tls-native-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
+tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "rustls-tls-native-roots"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value"] }
+toml = "0.8"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# File operations
+
+# Utilities
+dirs = "5"               # home directory
+anyhow = "1"
+libc = "0.2"             # Unix system calls (flock)
+chrono = { version = "0.4", features = ["serde"] }
+
+# Embeddings (local inference) - behind feature flag (163 crates, slow to compile)
+
+# OAuth
+sha2 = "0.10"
+hex = "0.4"
+open = "5"               # Open URLs in browser
+amiro-tui-style = { path = "crates/amiro-tui-style" }
+amiro-tui-session-picker = { path = "crates/amiro-tui-session-picker", features = ["serde"] }
+
+# Streaming
+tokio-stream = "0.1"
+
+# TUI
+ratatui = "0.30"
+crossterm = { version = "0.29", features = ["event-stream"] }
+unicode-width = "0.2"
+
+# Markdown & syntax highlighting
+
+# PDF parsing (behind feature flag)
+amiro-build-meta = { path = "crates/amiro-build-meta" }
+# Tiny leaf helpers (console/env/fs/id) used directly by the cli layer.
+# Presentation layer: the terminal UI (`tui`) + offline replay (`video_export`),
+# compiled as a separate rustc unit. It re-exports the application core
+# (`amiro-app-core`, which re-exports `amiro-base`), so the root crate (cli +
+# bin) re-exports everything via `pub use amiro_tui::*`. default-features=false
+# so the root feature set fully controls the downstream features (see
+# [features]).
+amiro-tui = { path = "crates/amiro-tui", default-features = false }
+amiro-terminal-prompt = { path = "crates/amiro-terminal-prompt" }
+amiro-voice = { path = "crates/amiro-voice" }
+amiro-companion = { path = "crates/amiro-companion" }
+# `amiro provider-doctor` / provider diagnostics; sits downstream of amiro-base
+# so doctor edits do not rebuild the base -> app-core -> tui spine.
+amiro-provider-doctor = { path = "crates/amiro-provider-doctor" }
+# Gemini provider runtime; sits downstream of amiro-base so gemini edits do
+# not rebuild the base -> app-core -> tui spine. Registered with the external
+# provider registry at startup (src/cli/startup.rs).
+amiro-provider-gemini-runtime = { path = "crates/amiro-provider-gemini-runtime" }
+amiro-provider-cursor-runtime = { path = "crates/amiro-provider-cursor-runtime" }
+amiro-provider-antigravity-runtime = { path = "crates/amiro-provider-antigravity-runtime" }
+amiro-provider-copilot-runtime = { path = "crates/amiro-provider-copilot-runtime" }
+amiro-provider-openrouter-runtime = { path = "crates/amiro-provider-openrouter-runtime" }
+amiro-provider-anthropic-runtime = { path = "crates/amiro-provider-anthropic-runtime" }
+amiro-provider-openai-runtime = { path = "crates/amiro-provider-openai-runtime" }
+amiro-provider-grok-build-runtime = { path = "crates/amiro-provider-grok-build-runtime" }
+amiro-selfdev-types = { path = "crates/amiro-selfdev-types" }
+
+# Archive extraction (for auto-update)
+tempfile = "3"
+
+[features]
+# Memory recall uses Jev Decisions and needs no local inference stack.
+# Keep embeddings opt-in for historical benchmarks/debugging only.
+default = ["pdf", "bedrock"]
+dev-bins = ["amiro-tui/dev-bins"]
+jemalloc = [
+    "dep:tikv-jemallocator",
+    "tikv-jemallocator/stats",
+    "amiro-tui/jemalloc",
+]
+jemalloc-prof = [
+    "jemalloc",
+    "tikv-jemallocator/profiling",
+    "amiro-tui/jemalloc-prof",
+]
+# Local embeddings and PDF extraction live in amiro-base / amiro-app-core;
+# these features just forward down the stack.
+embeddings = ["amiro-tui/embeddings"]
+# Live AWS Bedrock support (the AWS SDK stack) lives in amiro-provider-bedrock;
+# forwards down through amiro-tui -> amiro-app-core -> amiro-base.
+bedrock = ["amiro-tui/bedrock"]
+# Internal release feature: build a supported OpenSSL inside the CentOS 7
+# compatibility image while preserving the glibc 2.17 runtime baseline.
+linux-compat-vendored-openssl = ["amiro-tui/linux-compat-vendored-openssl"]
+mmdr-size-api = ["amiro-tui/mmdr-size-api"]
+pdf = ["amiro-tui/pdf"]
+
+# The harness API bridge ships inside the released binary as `amiro api-bridge`.
+# SDK users must not need a Rust toolchain to reach the API: requiring
+# `cargo run -p amiro-harness-api-server` made the TypeScript SDK unusable for
+# anyone who installed amiro from a release artifact. Unix-only because the
+# bridge listens on a Unix socket.
+[target.'cfg(unix)'.dependencies]
+amiro-harness-api-server = { path = "crates/amiro-harness-api-server" }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Threading"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+global-hotkey = "0.7"
+objc2 = "0.6"
+block2 = "0.6"
+objc2-foundation = { version = "0.3", features = [
+    "NSString",
+    "NSThread",
+    "NSRunLoop",
+    "NSDate",
+    "NSTimer",
+    "NSUserDefaults",
+    "NSValue",
+    "NSAttributedString",
+    "NSDictionary",
+    "block2",
+] }
+objc2-app-kit = { version = "0.3", features = [
+    "NSAppearance",
+    "NSApplication",
+    "NSResponder",
+    "NSStatusBar",
+    "NSStatusItem",
+    "NSStatusBarButton",
+    "NSButton",
+    "NSCell",
+    "NSColor",
+    "NSControl",
+    "NSFont",
+    "NSFontDescriptor",
+    "NSImage",
+    "NSAttributedString",
+    "NSMenu",
+    "NSMenuItem",
+    "NSRunningApplication",
+] }
+objc2-user-notifications = "0.3"
+
+[profile.release]
+opt-level = 1
+debug = 0
+codegen-units = 256
+incremental = true
+
+[profile.selfdev]
+inherits = "release"
+opt-level = 0
+
+# Full LTO release for stable/distribution builds
+[profile.release-lto]
+inherits = "release"
+lto = "thin"
+codegen-units = 16
+incremental = false
+
+[profile.dev]
+debug = 0
+incremental = true
+
+[profile.dev.package."*"]
+opt-level = 0
+
+# Keep the idle-animation math kernels fully optimized even in debug-style
+# builds. This crate is pure, dependency-free numeric code (the trig-heavy 3D
+# samplers that otherwise dominate idle CPU). Pinning it to opt-level = 3 here
+# means the optimized object is compiled once and reused across iterative
+# dev/selfdev rebuilds, since it only recompiles when the animation code itself
+# changes. The "*" glob above sets the default for dependencies; these explicit
+# package entries take precedence for this one crate in each profile.
+[profile.dev.package."amiro-tui-anim"]
+opt-level = 3
+
+[profile.selfdev.package."amiro-tui-anim"]
+opt-level = 3
+
+[profile.test.package."amiro-tui-anim"]
+opt-level = 3
+
+# The fuzzy matcher runs a char-level DP over every picker entry on every
+# keystroke (e.g. /model search across hundreds of routes). Like the anim
+# kernels above, it is small, pure, dependency-free code that rarely changes,
+# so keeping it fully optimized in dev/selfdev builds costs one compile and
+# removes visible input lag in unoptimized builds.
+[profile.dev.package."amiro-fuzzy"]
+opt-level = 3
+
+[profile.selfdev.package."amiro-fuzzy"]
+opt-level = 3
+
+[profile.test.package."amiro-fuzzy"]
+opt-level = 3
+
+[profile.release.package."amiro-fuzzy"]
+opt-level = 3
+
+# Keep the terminal render stack optimized even in dev/selfdev/test builds.
+#
+# Every TUI frame walks ratatui buffers cell-by-cell and re-measures visible
+# text with unicode-width/unicode-segmentation. At opt-level = 0 those inner
+# loops dominated live-client profiles (perf showed str_width, grapheme
+# bsearch, and Buffer::index_of_opt as the top symbols) and pushed a routine
+# full frame to ~12ms p50 / 21ms p95, which reads as input-line lag while
+# streaming saturates the redraw loop. These are stable third-party crates
+# that almost never recompile, so pinning them is a one-time compile cost
+# (same rationale as amiro-tui-anim above).
+[profile.dev.package.ratatui]
+opt-level = 3
+[profile.selfdev.package.ratatui]
+opt-level = 3
+[profile.test.package.ratatui]
+opt-level = 3
+
+[profile.dev.package.ratatui-core]
+opt-level = 3
+[profile.selfdev.package.ratatui-core]
+opt-level = 3
+[profile.test.package.ratatui-core]
+opt-level = 3
+
+[profile.dev.package.ratatui-widgets]
+opt-level = 3
+[profile.selfdev.package.ratatui-widgets]
+opt-level = 3
+[profile.test.package.ratatui-widgets]
+opt-level = 3
+
+[profile.dev.package.ratatui-crossterm]
+opt-level = 3
+[profile.selfdev.package.ratatui-crossterm]
+opt-level = 3
+[profile.test.package.ratatui-crossterm]
+opt-level = 3
+
+[profile.dev.package.crossterm]
+opt-level = 3
+[profile.selfdev.package.crossterm]
+opt-level = 3
+[profile.test.package.crossterm]
+opt-level = 3
+
+[profile.dev.package.unicode-width]
+opt-level = 3
+[profile.selfdev.package.unicode-width]
+opt-level = 3
+[profile.test.package.unicode-width]
+opt-level = 3
+
+[profile.dev.package.unicode-segmentation]
+opt-level = 3
+[profile.selfdev.package.unicode-segmentation]
+opt-level = 3
+[profile.test.package.unicode-segmentation]
+opt-level = 3
+
+[profile.dev.package.unicode-truncate]
+opt-level = 3
+[profile.selfdev.package.unicode-truncate]
+opt-level = 3
+[profile.test.package.unicode-truncate]
+opt-level = 3
+
+[profile.dev.package.unicode-linebreak]
+opt-level = 3
+[profile.selfdev.package.unicode-linebreak]
+opt-level = 3
+[profile.test.package.unicode-linebreak]
+opt-level = 3
+
+[profile.dev.package.compact_str]
+opt-level = 3
+[profile.selfdev.package.compact_str]
+opt-level = 3
+[profile.test.package.compact_str]
+opt-level = 3
+
+# Keep the text-shaping stack optimized even in dev/selfdev/test builds.
+#
+# cosmic-text + rustybuzz + ttf-parser + swash + yazi do all of the desktop
+# transcript glyph shaping. At opt-level = 0 they are 15-40x slower, which made
+# scrolling real (emoji/markdown-heavy) transcripts janky in dev/selfdev builds
+# even though the production release build was smooth. These are stable
+# third-party crates that almost never recompile, so pinning them to opt-level =
+# 3 costs a one-time compile and is then reused across every iterative amiro
+# rebuild (same rationale as amiro-tui-anim above). It does NOT slow down
+# recompiles of amiro's own crates.
+[profile.dev.package.cosmic-text]
+opt-level = 3
+[profile.selfdev.package.cosmic-text]
+opt-level = 3
+[profile.test.package.cosmic-text]
+opt-level = 3
+
+[profile.dev.package.rustybuzz]
+opt-level = 3
+[profile.selfdev.package.rustybuzz]
+opt-level = 3
+[profile.test.package.rustybuzz]
+opt-level = 3
+
+[profile.dev.package.ttf-parser]
+opt-level = 3
+[profile.selfdev.package.ttf-parser]
+opt-level = 3
+[profile.test.package.ttf-parser]
+opt-level = 3
+
+[profile.dev.package.swash]
+opt-level = 3
+[profile.selfdev.package.swash]
+opt-level = 3
+[profile.test.package.swash]
+opt-level = 3
+
+[profile.dev.package.yazi]
+opt-level = 3
+[profile.selfdev.package.yazi]
+opt-level = 3
+[profile.test.package.yazi]
+opt-level = 3
+
+[profile.dev.package.fontdb]
+opt-level = 3
+[profile.selfdev.package.fontdb]
+opt-level = 3
+[profile.test.package.fontdb]
+opt-level = 3
+
+# Keep the raster image pipeline optimized in dev/selfdev/test builds.
+#
+# Inline transcript images decode (png/zune-jpeg/fdeflate/miniz_oxide), resize
+# (image), and base64-encode (kitty transmit) at draw time; at opt-level 0 a
+# single screenshot costs 100-200ms per decode/resize, which reads as input
+# lag. These are pure pixel crates with no amiro logic, so optimizing them
+# does not hurt rebuild times for our own code.
+[profile.dev.package.image]
+opt-level = 3
+[profile.selfdev.package.image]
+opt-level = 3
+[profile.test.package.image]
+opt-level = 3
+
+[profile.dev.package.png]
+opt-level = 3
+[profile.selfdev.package.png]
+opt-level = 3
+[profile.test.package.png]
+opt-level = 3
+
+[profile.dev.package.zune-jpeg]
+opt-level = 3
+[profile.selfdev.package.zune-jpeg]
+opt-level = 3
+[profile.test.package.zune-jpeg]
+opt-level = 3
+
+[profile.dev.package.fdeflate]
+opt-level = 3
+[profile.selfdev.package.fdeflate]
+opt-level = 3
+[profile.test.package.fdeflate]
+opt-level = 3
+
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+[profile.selfdev.package.miniz_oxide]
+opt-level = 3
+[profile.test.package.miniz_oxide]
+opt-level = 3
+
+[profile.dev.package.base64]
+opt-level = 3
+[profile.selfdev.package.base64]
+opt-level = 3
+[profile.test.package.base64]
+opt-level = 3
+
+# session_search scans multi-megabyte session files with memchr-based
+# case-insensitive matching; keep the SIMD scanner optimized everywhere.
+[profile.dev.package.memchr]
+opt-level = 3
+[profile.selfdev.package.memchr]
+opt-level = 3
+[profile.test.package.memchr]
+opt-level = 3
+
+# The embedding stack (tract ONNX inference + HF tokenizer) runs the MiniLM
+# model for memory recall/maintenance on the shared server. At opt-level 0 a
+# single embed measured ~666 ms (matmul inner loops unoptimized), which keeps
+# the model "busy" long enough that the idle unloader rarely fires and burns
+# CPU on every memory-maintenance pass. These crates are pure compute and
+# change only when the dependency is bumped, so the optimized objects are
+# compiled once and cached across dev/selfdev iterations.
+[profile.dev.package.tract-core]
+opt-level = 3
+[profile.selfdev.package.tract-core]
+opt-level = 3
+[profile.test.package.tract-core]
+opt-level = 3
+[profile.dev.package.tract-linalg]
+opt-level = 3
+[profile.selfdev.package.tract-linalg]
+opt-level = 3
+[profile.test.package.tract-linalg]
+opt-level = 3
+[profile.dev.package.tract-data]
+opt-level = 3
+[profile.selfdev.package.tract-data]
+opt-level = 3
+[profile.test.package.tract-data]
+opt-level = 3
+[profile.dev.package.tract-hir]
+opt-level = 3
+[profile.selfdev.package.tract-hir]
+opt-level = 3
+[profile.test.package.tract-hir]
+opt-level = 3
+[profile.dev.package.tract-onnx]
+opt-level = 3
+[profile.selfdev.package.tract-onnx]
+opt-level = 3
+[profile.test.package.tract-onnx]
+opt-level = 3
+[profile.dev.package.tract-onnx-opl]
+opt-level = 3
+[profile.selfdev.package.tract-onnx-opl]
+opt-level = 3
+[profile.test.package.tract-onnx-opl]
+opt-level = 3
+[profile.dev.package.tract-nnef]
+opt-level = 3
+[profile.selfdev.package.tract-nnef]
+opt-level = 3
+[profile.test.package.tract-nnef]
+opt-level = 3
+[profile.dev.package.ndarray]
+opt-level = 3
+[profile.selfdev.package.ndarray]
+opt-level = 3
+[profile.test.package.ndarray]
+opt-level = 3
+[profile.dev.package.tokenizers]
+opt-level = 3
+[profile.selfdev.package.tokenizers]
+opt-level = 3
+[profile.test.package.tokenizers]
+opt-level = 3
+
+[profile.test]
+debug = 0
+incremental = true
+codegen-units = 256
+
+[dev-dependencies]
+async-stream = "0.3"
+amiro-harness-api = { path = "crates/amiro-harness-api" }
+# Used by tests/context_window_matrix.rs to assert the shared context-window
+# resolution invariants directly, without going through a live provider.
+amiro-provider-core = { path = "crates/amiro-provider-core" }
+# Enables the downstream test-support helpers (storage::lock_test_env,
+# auth::test_sandbox, bus::reset_models_updated_publish_state_for_tests, the
+# ExternalAuthReviewCandidate read accessors) for the root crate's own cli test
+# target. Feature unification applies this only to test/bench/example builds,
+# never to a normal `cargo build`/release binary.
+amiro-tui = { path = "crates/amiro-tui", default-features = false, features = ["test-support"] }
+
+[build-dependencies]

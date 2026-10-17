@@ -1,0 +1,22 @@
+[package]
+name = "amiro-protocol"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+amiro-batch-types = { path = "../amiro-batch-types" }
+amiro-config-types = { path = "../amiro-config-types" }
+amiro-message-types = { path = "../amiro-message-types" }
+amiro-plan = { path = "../amiro-plan" }
+amiro-provider-core = { path = "../amiro-provider-core" }
+amiro-selfdev-types = { path = "../amiro-selfdev-types" }
+amiro-session-types = { path = "../amiro-session-types" }
+amiro-side-panel-types = { path = "../amiro-side-panel-types" }
+amiro-applet-types = { path = "../amiro-applet-types" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+anyhow = "1"
+rand = "0.9"
