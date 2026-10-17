@@ -3,8 +3,8 @@
 // Spawns the adapter against a fresh temp AMIRO_HOME with AMIRO_PINNED_MODELS unset,
 // asserting:
 //   1. /api/chat/models is accessible without authentication (public route)
-//   2. /api/chat/models contains groups for every provider that jcode auth status reports available
-//   3. Each group's models match jcode model list -p <id> --json
+//   2. /api/chat/models contains groups for every provider that `amiro auth status --json` reports available
+//   3. Each group's models match `amiro model list -p <id> --json`
 //   4. Entries are namespaced provider:model
 //   5. isModelAllowed agrees with the catalog (all catalog models allowed, fake models rejected)
 
@@ -20,7 +20,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ADAPTER = path.resolve(__dirname, '..');
 const PORT = Number(process.env.AMIRO_TEST_PORT || 8792);
 const BASE = `http://127.0.0.1:${PORT}`;
-const SOCKET = process.env.JCODE_API_SOCKET || '/run/user/0/amiro-preview-api.sock';
+const SOCKET = process.env.AMIRO_API_SOCKET || process.env.JCODE_API_SOCKET || '/run/user/0/amiro-preview-api.sock';
+// The Amiro runtime CLI (bin/amiro), which delegates to the runtime engine.
+// AMIRO_RUNTIME_BIN overrides it; the pre-rename variables stay supported.
+const RUNTIME_BIN =
+  process.env.AMIRO_RUNTIME_BIN ||
+  process.env.AMIRO_JCODE_BIN ||
+  process.env.JCODE_BIN ||
+  path.resolve(__dirname, '..', '..', 'bin', 'amiro');
 
 const evidence = { steps: [], passed: true };
 function step(name, ok, detail) {
@@ -48,14 +55,14 @@ async function main() {
   let server;
 
   // Run authoritative CLI checks directly to compare with adapter
-  const authStdout = execFileSync('jcode', ['auth', 'status', '--json'], { encoding: 'utf8' });
+  const authStdout = execFileSync(RUNTIME_BIN, ['auth', 'status', '--json'], { encoding: 'utf8' });
   const authData = JSON.parse(authStdout || '{}');
   const availableProviders = (authData.providers || []).filter((p) => p && p.status === 'available');
 
   const expectedByProvider = {};
   for (const p of availableProviders) {
     try {
-      const modelStdout = execFileSync('jcode', ['model', 'list', '-p', p.id, '--json'], {
+      const modelStdout = execFileSync(RUNTIME_BIN, ['model', 'list', '-p', p.id, '--json'], {
         encoding: 'utf8',
       });
       const res = JSON.parse(modelStdout || '{}');
@@ -74,7 +81,7 @@ async function main() {
   spawnedEnv.AMIRO_PORT = String(PORT);
   spawnedEnv.AMIRO_HOST = '127.0.0.1';
   spawnedEnv.AMIRO_TOKEN = '';
-  spawnedEnv.JCODE_API_SOCKET = SOCKET;
+  spawnedEnv.AMIRO_API_SOCKET = SOCKET;
 
   try {
     server = spawn(process.execPath, ['src/server.mjs'], {
@@ -106,7 +113,7 @@ async function main() {
       `length=${Array.isArray(catalog) ? catalog.length : typeof catalog}`,
     );
 
-    // 2. Contains groups for every provider reported available by jcode auth status
+    // 2. Contains groups for every provider reported available by `amiro auth status`
     const returnedProviderIds = catalog.map((g) => g.provider);
     const expectedProviderIds = Object.keys(expectedByProvider);
     const hasAllProviders = expectedProviderIds.every((id) => returnedProviderIds.includes(id));
@@ -116,7 +123,7 @@ async function main() {
       `expected=${expectedProviderIds.join(', ')} got=${returnedProviderIds.join(', ')}`,
     );
 
-    // 3. Each group's models match jcode model list -p <id> --json
+    // 3. Each group's models match `amiro model list -p <id> --json`
     let allModelsMatch = true;
     const mismatches = [];
     for (const group of catalog) {
@@ -138,7 +145,7 @@ async function main() {
       }
     }
     step(
-      'each group models match jcode model list per provider',
+      'each group models match amiro model list per provider',
       allModelsMatch,
       mismatches.length ? mismatches.join('; ') : `verified ${catalog.length} providers`,
     );

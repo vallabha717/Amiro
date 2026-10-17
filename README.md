@@ -1,27 +1,35 @@
 # Amiro
 
-Amiro is a chat UI for the [Jcode](https://github.com/1jehuang/jcode) coding
-agent. It pairs a [Tauri](https://tauri.app) (Rust) desktop shell with a
-statically-exported [Next.js](https://nextjs.org) frontend and a thin **Node
-adapter** that bridges the UI to a running Jcode daemon.
+Amiro is a Personal Intelligence chat product. It pairs a
+[Tauri](https://tauri.app) (Rust) desktop shell with a
+statically-exported [Next.js](https://nextjs.org) frontend and a thin Amiro
+**Node adapter** that bridges the UI to the runtime daemon.
+
+The Amiro runtime engine is external, MIT-licensed software (the
+`@1jehuang/jcode-sdk` client plus the engine binary it drives); Amiro neither
+forks nor patches it. See `THIRD-PARTY-NOTICES.md` for attribution.
 
 > **Current status:** this is a working local/preview build, not a finished,
 > self-contained desktop product. The Go backend that used to live in this repo
 > has been removed; the adapter is now the only backend and it is plain Node
 > (≥ 22). **[`docs/AMIRO-RUNTIME.md`](docs/AMIRO-RUNTIME.md) is the source of
 > truth** for architecture, quickstart, login, restrictions, and known gaps.
-> Older documents in `docs/` (including `amiro-on-jcode.md`) are design history,
-> not statements of what works today.
+> Older documents in `docs/` (including the pre-rename design note
+> `amiro-on-jcode.md`) are design history, not statements of what works today.
 
 ## What Amiro is (and is not)
 
 - Amiro is the product name and UI. It does **not** fork, vendor, or reimplement
-  Jcode: `bin/amiro` delegates to the installed `jcode` CLI, and the adapter
-  talks to Jcode through the upstream `@1jehuang/jcode-sdk`. Jcode owns model
-  execution, session history, and provider routing; the adapter is transport,
-  application authentication, UI compatibility, and thread↔session mapping.
+  its runtime engine: `bin/amiro` delegates to the installed runtime engine,
+  and the adapter talks to it through the MIT-licensed `@1jehuang/jcode-sdk`. The
+  runtime owns model execution, session history, and provider routing; the adapter
+  is transport, application authentication, UI compatibility, and thread↔session
+  mapping.
 - The adapter does **not** implement its own agent loop, database, or provider
   integrations.
+- The active backend is the plain Node adapter in `adapter/` (`adapter/src/server.mjs`).
+  Work on a native backend in `backend/` and vendored runtime in `runtime/` is in
+  progress, but the Node adapter remains the operational backend.
 
 ## Architecture
 
@@ -30,9 +38,9 @@ flowchart TD
     W[Existing Amiro web UI] -->|HTTPS and authenticated HTTP/SSE| N[Nginx TLS preview port 8787]
     N --> A[Thin Node adapter on loopback port 8788]
     D[Tauri desktop UI] -->|Loopback HTTP and sidecar token| L[Local Node adapter]
-    A -->|Jcode TypeScript SDK over Unix socket| B[Jcode API bridge]
-    L -->|Jcode TypeScript SDK over Unix socket| B
-    B --> J[Existing persistent Jcode daemon]
+    A -->|Amiro runtime SDK over Unix socket| B[Amiro runtime bridge]
+    L -->|Amiro runtime SDK over Unix socket| B
+    B --> J[Existing persistent Amiro runtime]
     J --> P[Configured model provider]
 ```
 
@@ -46,7 +54,7 @@ injects the port/token into the webview (`window.__BACKEND_PORT__` /
 | Tool | Version | Notes |
 |---|---|---|
 | [Node.js](https://nodejs.org) | ≥ 22 | the adapter is Node ≥ 22; the Next.js frontend needs ≥ 20.9 |
-| [Jcode](https://github.com/1jehuang/jcode) | current | the adapter drives it; `jcode` must be on `PATH` |
+| Amiro runtime engine | current | a separate engine binary; `bin/amiro` delegates to it and has no engine of its own. It prefers an Amiro-owned build in `runtime/target/{release,debug}`, then a compatibility engine on `PATH`. Override with `AMIRO_RUNTIME_BIN` |
 | [pnpm](https://pnpm.io) | 10.x | repo pins `pnpm@10.2.1` |
 | [Rust + Cargo](https://rustup.rs) | ≥ 1.77.2 | only for the Tauri desktop shell |
 | [Tauri CLI](https://v2.tauri.app/reference/cli/) | 2.x | `cargo install tauri-cli --version "^2" --locked`; invoked as `cargo tauri ...` |
@@ -59,14 +67,34 @@ You do **not** need Go. The backend is JavaScript.
 pnpm install
 npm --prefix adapter ci          # or: pnpm --dir adapter install
 pnpm build                       # static export into out/
-jcode --no-update api-bridge --api-socket /run/user/0/jcode-api.sock
-JCODE_API_SOCKET=/run/user/0/jcode-api.sock pnpm start
+amiro --no-update api-bridge --api-socket /run/user/0/amiro-api.sock
+AMIRO_API_SOCKET=/run/user/0/amiro-api.sock pnpm start
 ```
 
 `pnpm start` runs `node adapter/src/server.mjs`, which serves the static `out/`
 export **and** the API from one listener. `AMIRO_HOME`, `AMIRO_HOST`,
-`AMIRO_PORT`, and `JCODE_API_SOCKET` select the home, bind address, port, and
-bridge socket; the adapter defaults to loopback.
+`AMIRO_PORT`, and `AMIRO_API_SOCKET` select the home, bind address, port, and
+runtime socket; the adapter defaults to loopback. The pre-rename
+`JCODE_API_SOCKET` is still read as a fallback.
+
+### The `amiro` CLI
+
+`bin/amiro` is a delegation shim, not a runtime. It resolves an engine binary in
+this order and then `exec`s it with your arguments untouched (no output is
+rewritten or filtered):
+
+1. `AMIRO_RUNTIME_BIN` (explicit; if set and unusable it fails instead of
+   quietly picking a different engine)
+2. `amiro-runtime` next to the CLI (a packaged runtime)
+3. `runtime/target/release/amiro-runtime`, then `runtime/target/debug/amiro-runtime`
+   (the Amiro-owned build from `scripts/build-native.sh`)
+4. a compatibility engine on `PATH` (`AMIRO_JCODE_BIN`, `JCODE_BIN`, or the
+   upstream engine name) -- a separately installed program, not bundled with Amiro
+
+`amiro --help` and `amiro --version` are answered locally and both name the
+engine and which of those sources it came from, so the output never implies an
+engine that Amiro does not ship. A packaged install stages the owned runtime as
+the real native `amiro` binary, so this shim is not present there.
 
 ### Application login
 
@@ -116,8 +144,8 @@ cargo tauri build
 This packages platform installers, but **the desktop backend is not yet
 distributable**: the sidecar slot holds a launcher that execs the local `node`
 and the checkout's `adapter/src/server.mjs`. A shippable build needs the
-adapter packaged (e.g. a Node SEA) or a bundled Node runtime, plus Jcode
-installation/bridge lifecycle. See
+adapter packaged (e.g. a Node SEA) or a bundled Node runtime, plus runtime
+engine installation and bridge lifecycle. See
 [`src-tauri/SIDECAR-LIMITATIONS.md`](src-tauri/SIDECAR-LIMITATIONS.md). Do not
 read a passing web preview as proof that a portable installer works.
 
@@ -167,8 +195,8 @@ removed Go backend). Its fixtures and test code are kept for reference; see
 ```
 .
 ├── src/                     # Next.js app, statically exported into the Tauri webview
-├── adapter/                 # Node backend: HTTP router, SSE, jcode bridge, routes/, test/
-├── bin/amiro                # thin CLI wrapper that delegates to `jcode`
+├── adapter/                 # Amiro backend: HTTP router, SSE, runtime bridge, routes/, test/
+├── bin/amiro                # CLI shim: delegates to the runtime engine, holds no engine itself
 ├── src-tauri/               # Rust shell: sidecar lifecycle, window creation, bundler config
 │   ├── src/lib.rs           # reserves the port, spawns/kills the adapter sidecar, injects port+token
 │   ├── build-sidecar.sh     # stages the adapter launcher into src-tauri/binaries/
@@ -180,20 +208,24 @@ removed Go backend). Its fixtures and test code are kept for reference; see
 
 ## Troubleshooting
 
-- **`backend sidecar launcher not found`** — `src-tauri/build-sidecar.sh` didn't
+- **`backend sidecar launcher not found`** -- `src-tauri/build-sidecar.sh` didn't
   run or failed; ensure `rustc` and `node` are on `PATH`, then re-run
   `cargo tauri dev`.
-- **Adapter exits immediately / `Cannot find module '@1jehuang/jcode-sdk'`** —
+- **Adapter exits immediately / `Cannot find module '@1jehuang/jcode-sdk'`** --
   adapter deps aren't installed: `npm --prefix adapter ci`.
-- **`jcode` not found** — install Jcode, or set `AMIRO_JCODE_BIN` to its path.
-- **401 from the app (frontend-only dev)** — `NEXT_PUBLIC_BACKEND_TOKEN` in
+- **Runtime engine not found** -- build the Amiro-owned engine with
+  `scripts/build-native.sh` (it lands in `runtime/target/`), install a compatible
+  engine where `bin/amiro` can reach it, or set `AMIRO_RUNTIME_BIN` to its path.
+  `amiro --help` prints the engine and engine source it resolved.
+- **401 from the app (frontend-only dev)** -- `NEXT_PUBLIC_BACKEND_TOKEN` in
   `.env.local` doesn't match the adapter's `AMIRO_TOKEN`.
-- **Linux: GTK/webkit errors under `cargo tauri dev`** — install
+- **Linux: GTK/webkit errors under `cargo tauri dev`** -- install
   `libwebkit2gtk-4.1-dev` and friends.
 
 ## License
 
 `package.json` declares this project MIT-licensed. **No `LICENSE` file is
-committed yet** — add one with the appropriate copyright holder before treating
-this repo as open source. Jcode and `@1jehuang/jcode-sdk` remain their upstream
-authors' works under their own licenses.
+committed yet** -- add one with the appropriate copyright holder before treating
+this repo as open source. The Amiro runtime engine and
+`@1jehuang/jcode-sdk` remain their upstream authors' works under their own
+(MIT) licenses; see `THIRD-PARTY-NOTICES.md`.

@@ -1,16 +1,16 @@
-// adapter/src/routes/agent.mjs -- Agent identity, personality, Jcode memory graph,
-// and Jcode workspace file browser routes.
+// adapter/src/routes/agent.mjs -- Agent identity, personality, Amiro runtime memory graph,
+// and Amiro workspace file browser routes.
 //
 // Security posture (2026-10-15 hardening):
 //   - Identity/personality are per-user (agent-identity/<userId>.json) to prevent
 //     cross-user persona clobbering. Legacy shared key is migrated read-only.
 //     Persona markdown is written only under ctx.config.workspaceDir/users/<userId>/
-//     never to global ~/.jcode/memory/*.json or global prompt-overlay.md.
-//   - Jcode native memory graph (~/.jcode/memory/*.json) is READ ONLY via adapter.
+//     never to the runtime's global memory JSONs or global prompt-overlay.md.
+//   - The Amiro runtime memory graph (engine storage) is READ ONLY via adapter.
 //     GET /api/agent/memory is admin-gated and returns readOnly:true. POST /
 //     reinforce / DELETE return 501 (readOnly) instead of mutating JSON.
 //   - Workspace browser is admin-gated and allowlisted with realpath containment,
-//     forbidding secrets/credentials/sessions and arbitrary ~/.jcode files.
+//     forbidding secrets/credentials/sessions and arbitrary engine-state files.
 //   - Identity/personality inputs are strictly validated (name/traits/accent/image).
 
 import { promises as fs } from 'node:fs';
@@ -214,7 +214,7 @@ export async function getAgentIdentity(ctx, userId) {
   return {
     name: name.slice(0, MAX_NAME_LEN),
     handle: handle.slice(0, MAX_HANDLE_LEN + 1),
-    tagline: String(saved?.tagline || 'Your Personal Intelligence powered by Jcode').slice(0, MAX_TAGLINE_LEN) || 'Your Personal Intelligence powered by Jcode',
+    tagline: String(saved?.tagline || 'Your Personal Intelligence powered by Amiro').slice(0, MAX_TAGLINE_LEN) || 'Your Personal Intelligence powered by Amiro',
     traits,
     accentHex,
     customImageUrl: customImageUrl || null,
@@ -368,7 +368,7 @@ async function syncPersonaFiles(ctx, identity, userId) {
     const soulMd = [
       `# Soul & Behavioral Calibration`,
       ``,
-      `You are **${identity.name}** (${identity.handle}), a Personal Intelligence running on the Jcode harness.`,
+      `You are **${identity.name}** (${identity.handle}), a Personal Intelligence running on the Amiro runtime.`,
       ``,
       `## Voice & Trait Calibration`,
       `- **Role (${s.companionCoworker >= 50 ? 'Coworker-leaning' : 'Companion-leaning'}):** ${100 - s.companionCoworker}% Companion / ${s.companionCoworker}% Coworker`,
@@ -379,7 +379,7 @@ async function syncPersonaFiles(ctx, identity, userId) {
       ``,
       `## Operating Principles`,
       `- Stay direct, grounded in verified measurements, and aligned with your guardian's goals.`,
-      `- Draw on Jcode's local memory graph and installed Superpowers (skills) whenever relevant.`,
+      `- Draw on Amiro's local runtime memory graph and installed Superpowers (skills) whenever relevant.`,
       ``,
     ].join('\n');
 
@@ -407,15 +407,18 @@ async function syncPersonaFiles(ctx, identity, userId) {
 }
 
 // ---------------------------------------------------------------------------
-// Jcode Memory Graph Reader (READ ONLY) (~/.jcode/memory/*.json)
+// Amiro Runtime Memory Graph Reader (engine storage) (READ ONLY)
 // ---------------------------------------------------------------------------
 
-function resolveJcodeHome(ctx) {
-  return ctx.config.jcodeHome || process.env.JCODE_HOME || path.join(os.homedir(), '.jcode');
+// Memory graphs live in the runtime engine's state directory: AMIRO_RUNTIME_HOME
+// first, then the pre-rename variables, and finally the engine's own legacy
+// on-disk directory (~/.jcode), resolved silently. Amiro only ever reads it.
+function resolveRuntimeHome(ctx) {
+  return ctx.config.runtimeHome || process.env.JCODE_HOME || path.join(os.homedir(), '.jcode');
 }
 
 function resolveMemoryDir(ctx) {
-  return path.join(resolveJcodeHome(ctx), 'memory');
+  return path.join(resolveRuntimeHome(ctx), 'memory');
 }
 
 async function readJsonSafe(filePath, fallback) {
@@ -529,7 +532,7 @@ async function loadAllMemoryGraphs(ctx) {
       id: scopeId,
       label: scopeLabel,
       kind: scopeKind,
-      file: path.relative(resolveJcodeHome(ctx), filePath),
+      file: path.relative(resolveRuntimeHome(ctx), filePath),
       count: activeInScope,
       updatedAt: stat?.mtime ? stat.mtime.toISOString() : null,
     });
@@ -627,15 +630,15 @@ async function loadAllMemoryGraphs(ctx) {
 // ---------------------------------------------------------------------------
 
 function getWorkspaceRoots(ctx) {
-  const jcodeHome = resolveJcodeHome(ctx);
+  const runtimeHome = resolveRuntimeHome(ctx);
   const amiroWorkspace = ctx.config.workspaceDir;
   const repoRoot = path.resolve(ctx.config.outDir, '..');
   return [
     {
-      id: 'jcode',
-      label: 'Jcode Memory & Skills (~/.jcode)',
-      basePath: jcodeHome,
-      description: 'Live Jcode memory graph JSONs, installed skills, and prompt overlays (read-only)',
+      id: 'runtime',
+      label: 'Amiro Memory & Skills',
+      basePath: runtimeHome,
+      description: 'Live runtime memory graph JSONs, installed skills, and prompt overlays (read-only)',
     },
     {
       id: 'amiro',
@@ -678,6 +681,8 @@ function isBlockedWorkspacePath(relPath) {
     .filter(Boolean);
   for (const part of parts) {
     if (BLOCKED_WORKSPACE_NAMES.has(part)) return true;
+    // `~/.jcode` is the runtime engine's real legacy state directory; it stays
+    // blocked so no workspace view can read engine-internal files.
     if (part === '.jcode' || part === '.ssh' || part === '.aws' || part === '.gnupg') return true;
     if (part.endsWith('.env') || part.endsWith('.key') || part.endsWith('.pem') || part.endsWith('.sock')) {
       return true;
@@ -691,12 +696,20 @@ function isBlockedWorkspacePath(relPath) {
   return false;
 }
 
-// Allowlist for each root: only these relative posix paths are readable
+// Allowlist for each root: only these relative posix paths are readable.
+//
+// A directory node has to be allowed *itself* as well as its children: the
+// browser lists a directory by checking each child entry against this function,
+// so allowing only `memory/<file>` hid the `memory` and `skills` directories
+// entirely and the runtime tree rendered almost empty.
 function isAllowedWorkspaceRel(rootId, relPosix) {
   const rel = String(relPosix || '').replace(/^\/+/, '').split(path.sep).join('/');
   if (rel === '' || rel === '.') return true; // listing root itself
   if (isBlockedWorkspacePath(rel)) return false;
-  if (rootId === 'jcode') {
+  if (rootId === 'runtime') {
+    // Listable directories (entry nodes only; their readable children are
+    // listed below and everything else under them still falls through).
+    if (rel === 'memory' || rel === 'skills') return true;
     if (rel === 'prompt-overlay.md') return true;
     if (rel === 'config.toml') return true;
     if (rel.startsWith('memory/')) return true;
@@ -705,9 +718,12 @@ function isAllowedWorkspaceRel(rootId, relPosix) {
   }
   if (rootId === 'amiro') {
     if (rel === 'IDENTITY.md' || rel === 'SOUL.md' || rel === 'prompt-overlay.md') return true;
+    if (rel === 'skills') return true;
+    if (rel === 'users') return true;
     if (rel.startsWith('users/')) {
       const parts = rel.split('/');
-      // users/<userId>/IDENTITY.md etc.
+      // users/<userId> is a directory node; users/<userId>/<file> is a file node.
+      if (parts.length === 2) return true;
       if (parts.length === 3 && ['IDENTITY.md', 'SOUL.md', 'prompt-overlay.md'].includes(parts[2])) return true;
       return false;
     }
@@ -716,11 +732,67 @@ function isAllowedWorkspaceRel(rootId, relPosix) {
   }
   if (rootId === 'project') {
     // project root is more permissive but still blocks sensitive names via isBlocked
-    // also forbid arbitrary ~/.jcode references
+    // also forbid arbitrary engine-state references
     if (rel.includes('..')) return false;
     return true;
   }
   return false;
+}
+
+// ---------------------------------------------------------------------------
+// Config redaction
+// ---------------------------------------------------------------------------
+
+// The runtime home's config.toml is in the browser's allowlist because it is
+// useful to see, but a TOML config can carry credentials inline. Values of
+// credential-looking keys are replaced before the text leaves the adapter, and
+// the response reports how many replacements happened. Key *names* (including
+// `*_env` references and `*_tokens` / `*_threshold` counters) are never touched.
+const CONFIG_SECRET_KEY_RE =
+  /(^|[._-])(api_?key|apikey|access_?token|refresh_?token|auth_?token|secret|client_?secret|password|passwd|private_?key|credential|credentials|bearer)($|[._-])/;
+const CONFIG_BARE_KEY_RE = /(^|[._-])key($|[._-])/;
+const ENV_VAR_KEY_SUFFIX_RE = /(_env|_env_var|_name)$/;
+const CONFIG_INLINE_SECRET_RE =
+  /\b(sk-[A-Za-z0-9_-]{16,}|xox[baprs]-[A-Za-z0-9-]{10,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16})\b/g;
+const REDACTABLE_FILE_NAMES = new Set(['config.toml']);
+
+function isSecretConfigKey(rawKey) {
+  const key = String(rawKey || '').toLowerCase().replace(/["']/g, '');
+  if (!key) return false;
+  // `*_env`, `*_env_var` and `*_name` keys name an environment variable or a
+  // label rather than holding the credential, so they stay readable (an inline
+  // secret in their value is still caught by CONFIG_INLINE_SECRET_RE).
+  if (ENV_VAR_KEY_SUFFIX_RE.test(key)) return false;
+  if (CONFIG_SECRET_KEY_RE.test(key)) return true;
+  if (CONFIG_BARE_KEY_RE.test(key)) return true;
+  return false;
+}
+
+// Replace credential values with a marker. Returns the text and the number of
+// replacements so the caller can report `redacted: true` honestly.
+export function redactSensitiveConfig(fileName, text) {
+  const raw = String(text ?? '');
+  if (!REDACTABLE_FILE_NAMES.has(String(fileName || '').toLowerCase())) {
+    return { text: raw, redactions: 0 };
+  }
+  let redactions = 0;
+  const lines = raw.split('\n').map((line) => {
+    const m = /^(\s*)([A-Za-z0-9_.\-"']+)(\s*[=:]\s*)(\S.*)$/.exec(line);
+    if (!m) return line;
+    if (!isSecretConfigKey(m[2])) return line;
+    // Keep known-safe booleans and numbers readable: `allow_api_keys = false`
+    // and `max_context_tokens = 0` carry no secrets.
+    if (/^(true|false|\d+)$/i.test(m[4])) return line;
+    redactions += 1;
+    return `${m[1]}${m[2]}${m[3]}"<redacted>"`;
+  });
+  const out = lines
+    .join('\n')
+    .replace(CONFIG_INLINE_SECRET_RE, () => {
+      redactions += 1;
+      return '<redacted>';
+    });
+  return { text: out, redactions };
 }
 
 function isWritableWorkspaceRel(rootId, relPosix, userId) {
@@ -928,7 +1000,7 @@ export function register(app, ctx) {
     });
   });
 
-  // PUT /api/agent/personality -- per-user update; NO mutation of Jcode global memory
+  // PUT /api/agent/personality -- per-user update; NO mutation of the runtime's global memory
   app.put('/api/agent/personality', async (req, res) => {
     const user = ctx.requireUser(req);
     const body = await ctx.readJson(req);
@@ -952,9 +1024,9 @@ export function register(app, ctx) {
     await ctx.store.write(identityKeyForUser(user.id), updated);
     await syncPersonaFiles(ctx, updated, user.id);
 
-    // Intentionally NOT writing to ~/.jcode/memory/global.json to avoid corrupting
-    // native Jcode memory graph. Native memory is read-only via adapter; Jcode itself
-    // manages its own memory writes through its SDK.
+    // Intentionally NOT writing to the engine's memory/global.json to avoid
+    // corrupting the runtime's native memory graph. Native memory is read-only via
+    // the adapter; the Amiro runtime manages its own memory writes through its SDK.
 
     ctx.json(res, 200, { ...updated, fingerprint: personaFingerprint(updated) });
   });
@@ -964,25 +1036,25 @@ export function register(app, ctx) {
     const user = requireAdmin(req, res, ctx);
     if (!user) return;
     const graph = await loadAllMemoryGraphs(ctx);
-    ctx.json(res, 200, { ...graph, readOnly: true, message: 'Jcode native memory is read-only via adapter' });
+    ctx.json(res, 200, { ...graph, readOnly: true, message: 'Amiro runtime memory is read-only via the adapter' });
   });
 
   // POST /api/agent/memory -- 501 read-only
   app.post('/api/agent/memory', async (req, res) => {
     ctx.requireUser(req);
-    return ctx.error(res, 501, 'Jcode memory is read-only via adapter (use Jcode SDK directly)');
+    return ctx.error(res, 501, 'Amiro runtime memory is read-only via the adapter (use the runtime SDK directly)');
   });
 
   // POST /api/agent/memory/:id/reinforce -- 501 read-only
   app.post('/api/agent/memory/:id/reinforce', async (req, res) => {
     ctx.requireUser(req);
-    return ctx.error(res, 501, 'Jcode memory is read-only via adapter');
+    return ctx.error(res, 501, 'Amiro runtime memory is read-only via the adapter');
   });
 
   // DELETE /api/agent/memory/:id -- 501 read-only
   app.delete('/api/agent/memory/:id', async (req, res) => {
     ctx.requireUser(req);
-    return ctx.error(res, 501, 'Jcode memory is read-only via adapter');
+    return ctx.error(res, 501, 'Amiro runtime memory is read-only via the adapter');
   });
 
   // GET /api/agent/workspace -- admin-gated, allowlisted, realpath-contained
@@ -991,7 +1063,7 @@ export function register(app, ctx) {
     if (!user) return;
     const url = new URL(req.url, 'http://localhost');
     const roots = getWorkspaceRoots(ctx);
-    const rootId = url.searchParams.get('root') || 'jcode';
+    const rootId = url.searchParams.get('root') || 'runtime';
     const relPath = url.searchParams.get('path') || '';
     const activeRoot = roots.find((r) => r.id === rootId) || roots[0];
 
@@ -1048,7 +1120,7 @@ export function register(app, ctx) {
         activeRoot: activeRoot.id,
         currentPath: cleanRel === '.' ? '' : cleanRel.split(path.sep).join('/'),
         entries,
-        readOnly: activeRoot.id === 'jcode',
+        readOnly: activeRoot.id === 'runtime',
       });
     } catch (err) {
       const status = err && err.status ? err.status : 400;
@@ -1062,7 +1134,7 @@ export function register(app, ctx) {
     if (!user) return;
     const url = new URL(req.url, 'http://localhost');
     const roots = getWorkspaceRoots(ctx);
-    const rootId = url.searchParams.get('root') || 'jcode';
+    const rootId = url.searchParams.get('root') || 'runtime';
     const relPath = url.searchParams.get('path') || '';
     const activeRoot = roots.find((r) => r.id === rootId) || roots[0];
 
@@ -1102,6 +1174,12 @@ export function register(app, ctx) {
         const ext = path.extname(resolvedTarget).toLowerCase();
         const posixRel = cleanRel.split(path.sep).join('/');
         const writable = isWritableWorkspaceRel(activeRoot.id, posixRel, user.id);
+        // A config file can carry inline credentials; redact before emitting and
+        // say so instead of returning them silently.
+        const { text: content, redactions } = redactSensitiveConfig(
+          path.basename(resolvedTarget),
+          buf.toString('utf8'),
+        );
         ctx.json(res, 200, {
           root: activeRoot.id,
           path: posixRel,
@@ -1113,7 +1191,9 @@ export function register(app, ctx) {
           language: detectLanguage(ext),
           writable,
           truncated: st.size > MAX_BYTES,
-          content: buf.toString('utf8'),
+          content,
+          redacted: redactions > 0,
+          redactionCount: redactions,
           readOnly: !writable,
         });
       } finally {

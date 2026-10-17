@@ -1,6 +1,6 @@
 // adapter/src/routes/provider-login.mjs -- interactive OAuth provider login backend routes.
 //
-// Supports scriptable OAuth/device login flows using jcode CLI:
+// Supports scriptable OAuth/device login flows using the Amiro runtime CLI:
 //   - POST /api/providers/:id/oauth/start     -> allocates flow, prints auth URL / device code
 //   - GET /api/providers/:id/oauth/status     -> checks current flow status (polling)
 //   - POST /api/providers/:id/oauth/callback  -> submits authorization code or callback URL
@@ -9,6 +9,7 @@
 
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
+import { buildRuntimeCliEnv, resolveRuntimeBin } from '../runtime.mjs';
 
 const SUPPORTED_OAUTH_PROVIDERS = new Set([
   'claude',
@@ -134,9 +135,8 @@ export function register(app, ctx) {
 
   async function cancelCliFlow(provider, flowId) {
     if (!flowId) return;
-    const bin = ctx.config.jcodeBin || 'jcode';
-    const env = { ...process.env, JCODE_NO_TELEMETRY: '1' };
-    if (ctx.config.jcodeHome) env.JCODE_HOME = ctx.config.jcodeHome;
+    const bin = resolveRuntimeBin(ctx.config.runtimeBin);
+    const env = buildRuntimeCliEnv(ctx.config);
 
     await runCli(bin, ['login', provider, '--cancel', '--flow-id', flowId], null, env, 10000);
   }
@@ -163,9 +163,8 @@ export function register(app, ctx) {
     }
 
     const flowId = crypto.randomUUID().replace(/-/g, '').slice(0, 32);
-    const bin = ctx.config.jcodeBin || 'jcode';
-    const env = { ...process.env, JCODE_NO_TELEMETRY: '1' };
-    if (ctx.config.jcodeHome) env.JCODE_HOME = ctx.config.jcodeHome;
+    const bin = resolveRuntimeBin(ctx.config.runtimeBin);
+    const env = buildRuntimeCliEnv(ctx.config);
 
     const { code, stdout, stderr } = await runCli(
       bin,
@@ -176,7 +175,7 @@ export function register(app, ctx) {
 
     if (code !== 0) {
       const errMsg = sanitizeError(stderr || stdout || 'Failed to start login flow');
-      ctx.log('warn', 'jcode login --print-auth-url failed', { provider, error: errMsg });
+      ctx.log('warn', 'amiro runtime login --print-auth-url failed', { provider, error: errMsg });
       ctx.error(res, 400, errMsg);
       return;
     }
@@ -245,12 +244,12 @@ export function register(app, ctx) {
           flowRecord.status = 'authorized';
           flowRecord.error = null;
           try {
-            await ctx.jcode.api.notifyAuthChanged(provider);
+            await ctx.runtime.api.notifyAuthChanged(provider);
           } catch (err) {
             ctx.log('warn', 'notifyAuthChanged failed', { provider, error: String(err && err.message) });
           }
           try {
-            await ctx.jcode.authStatus({ force: true });
+            await ctx.runtime.authStatus({ force: true });
           } catch (err) {
             ctx.log('warn', 'authStatus refresh failed', { provider, error: String(err && err.message) });
           }
@@ -324,9 +323,8 @@ export function register(app, ctx) {
     }
 
     const isUrl = rawInput.startsWith('http://') || rawInput.startsWith('https://') || rawInput.includes('?');
-    const bin = ctx.config.jcodeBin || 'jcode';
-    const env = { ...process.env, JCODE_NO_TELEMETRY: '1' };
-    if (ctx.config.jcodeHome) env.JCODE_HOME = ctx.config.jcodeHome;
+    const bin = resolveRuntimeBin(ctx.config.runtimeBin);
+    const env = buildRuntimeCliEnv(ctx.config);
 
     const flag = isUrl ? '--callback-url' : '--auth-code';
     const args = ['login', provider, '--flow-id', flow.flowId, flag, '-'];
@@ -337,12 +335,12 @@ export function register(app, ctx) {
       flow.status = 'authorized';
       flow.error = null;
       try {
-        await ctx.jcode.api.notifyAuthChanged(provider);
+        await ctx.runtime.api.notifyAuthChanged(provider);
       } catch (err) {
         ctx.log('warn', 'notifyAuthChanged failed', { provider, error: String(err && err.message) });
       }
       try {
-        await ctx.jcode.authStatus({ force: true });
+        await ctx.runtime.authStatus({ force: true });
       } catch (err) {
         ctx.log('warn', 'authStatus refresh failed', { provider, error: String(err && err.message) });
       }

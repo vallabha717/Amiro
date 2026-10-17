@@ -1,6 +1,6 @@
 // adapter/tests/providers-catalog.mjs -- regression test for the full provider catalog + API-key routes.
 //
-// Spawns the adapter on a fresh temp AMIRO_HOME + temp JCODE_HOME on port 8791,
+// Spawns the adapter on a fresh temp AMIRO_HOME + temp AMIRO_RUNTIME_HOME on port 8791,
 // then asserts:
 //   - GET /api/providers/catalog returns >40 providers with normalized mechanisms
 //   - at least one OAuth and one API-key provider present
@@ -13,7 +13,8 @@
 //   - DELETE /api/providers/:id/credentials removes it again
 //
 // Run: AMIRO_TEST_PORT=8791 node tests/providers-catalog.mjs  (default port 8791)
-// Uses AMIRO_JCODE_HOME for isolated credential files so the real /root/.jcode is untouched.
+// Uses AMIRO_RUNTIME_HOME for isolated credential files so the engine's real
+// on-disk state directory (/root/.jcode) is untouched.
 
 import { spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
@@ -25,7 +26,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ADAPTER = path.resolve(__dirname, '..');
 const PORT = Number(process.env.AMIRO_TEST_PORT || 8791);
 const BASE = `http://127.0.0.1:${PORT}`;
-const SOCKET = process.env.JCODE_API_SOCKET || '/run/user/0/amiro-preview-api.sock';
+const SOCKET = process.env.AMIRO_API_SOCKET || process.env.JCODE_API_SOCKET || '/run/user/0/amiro-preview-api.sock';
 
 const evidence = { steps: [], passed: true };
 function step(name, ok, detail) {
@@ -48,8 +49,9 @@ async function waitForHealth(timeoutMs = 15000) {
 
 async function main() {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'amiro-provcat-'));
-  const jhome = await fs.mkdtemp(path.join(os.tmpdir(), 'jcode-provcat-'));
-  // Pre-seed jhome with a minimal config so auth status works without real credentials.
+  const jhome = await fs.mkdtemp(path.join(os.tmpdir(), 'amiro-provcat-'));
+  // Pre-seed jhome with a minimal config (the engine's real on-disk credential
+  // layout) so auth status works without real credentials.
   await fs.mkdir(path.join(jhome, 'config', 'jcode'), { recursive: true });
 
   let server;
@@ -63,9 +65,8 @@ async function main() {
         AMIRO_PORT: String(PORT),
         AMIRO_HOST: '127.0.0.1',
         AMIRO_TOKEN: '',
-        JCODE_API_SOCKET: SOCKET,
-        AMIRO_JCODE_HOME: jhome,
-        JCODE_HOME: jhome,
+        AMIRO_API_SOCKET: SOCKET,
+        AMIRO_RUNTIME_HOME: jhome,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -73,7 +74,7 @@ async function main() {
     server.stderr.on('data', (d) => (serverLog += d.toString()));
 
     const healthy = await waitForHealth();
-    step('server boots on loopback with fresh home + isolated JCODE_HOME', healthy, `home=${home} jhome=${jhome}`);
+    step('server boots on loopback with fresh home + isolated runtime home', healthy, `home=${home} jhome=${jhome}`);
     if (!healthy) throw new Error(`server did not become healthy:\n${serverLog.slice(-2000)}`);
 
     // 1) Unauthenticated catalog should be 401 (auth required, not public)

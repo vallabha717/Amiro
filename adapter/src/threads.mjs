@@ -1,12 +1,12 @@
-// adapter/src/threads.mjs -- /api/thread* routes + Amiro thread <-> jcode session map.
+// adapter/src/threads.mjs -- /api/thread* routes + Amiro thread <-> runtime session map.
 //
 // Store: $AMIRO_HOME/threads.json
 //   { "<threadId>": { sessionId, title, userId, createdAt, lastMessageAt, archived } }
 //
-// Message ids are synthesized because jcode history has no persisted message
-// ids: `msg_<historyIndex>_<sessionId>`. Message *content* lives in the jcode
+// Message ids are synthesized because runtime history has no persisted message
+// ids: `msg_<historyIndex>_<sessionId>`. Message *content* lives in the runtime
 // session; this adapter stores only the mapping, so history always reflects
-// what the daemon actually has.
+// what the runtime actually has.
 
 import crypto from 'node:crypto';
 import path from 'node:path';
@@ -73,7 +73,7 @@ function roleFor(role) {
   return role === 'user' ? 'user' : 'assistant';
 }
 
-// Translate jcode HistoryMessage[] -> the frontend's persisted message shape
+// Translate runtime HistoryMessage[] -> the frontend's persisted message shape
 // {id, threadId, role, parts, metadata?, createdAt}.
 export function historyToMessages(threadId, sessionId, history) {
   return (history || []).map((m, index) => {
@@ -102,7 +102,7 @@ export function historyToMessages(threadId, sessionId, history) {
 // Session-scoped read on an attached connection. Failures propagate (no silent
 // empty history): the caller's error handling decides the HTTP status.
 async function historyFor(ctx, sessionId) {
-  return ctx.jcode.withSession(sessionId, (client) => client.getHistory(sessionId));
+  return ctx.runtime.withSession(sessionId, (client) => client.getHistory(sessionId));
 }
 
 export function register(app, ctx) {
@@ -156,7 +156,7 @@ export function register(app, ctx) {
     const body = await ctx.readJson(req);
     const title = body.title ?? entry.title;
     try {
-      await ctx.jcode.withSession(entry.sessionId, (client) =>
+      await ctx.runtime.withSession(entry.sessionId, (client) =>
         client.renameSession(entry.sessionId, title),
       );
     } catch (err) {
@@ -175,7 +175,7 @@ export function register(app, ctx) {
 
   async function archiveEntry(entry) {
     try {
-      await ctx.jcode.withSession(entry.sessionId, (client) =>
+      await ctx.runtime.withSession(entry.sessionId, (client) =>
         client.archiveSession(entry.sessionId),
       );
     } catch (err) {
@@ -217,7 +217,7 @@ export function register(app, ctx) {
     // caller's, so a guessed session id can never reach the daemon.
     if (!owner || !ownsEntry(owner, req.user)) return ctx.error(res, 404, 'thread not found');
     try {
-      await ctx.jcode.withSession(parsed.sessionId, (client) =>
+      await ctx.runtime.withSession(parsed.sessionId, (client) =>
         client.rewind(parsed.sessionId, parsed.index),
       );
     } catch (err) {
@@ -235,7 +235,7 @@ export function register(app, ctx) {
     const owner = await findEntryBySession(ctx.store, home, parsed.sessionId);
     if (!owner || !ownsEntry(owner, req.user)) return ctx.error(res, 404, 'thread not found');
     try {
-      await ctx.jcode.withSession(parsed.sessionId, (client) =>
+      await ctx.runtime.withSession(parsed.sessionId, (client) =>
         client.rewind(parsed.sessionId, parsed.index + 1),
       );
     } catch (err) {
@@ -248,7 +248,7 @@ export function register(app, ctx) {
 }
 
 // createThreadForSession -- used by chat.mjs. Registers the mapping after a
-// jcode session is created for a fresh Amiro thread id.
+// runtime session is created for a fresh Amiro thread id.
 export async function createThreadForSession(ctx, { threadId, sessionId, userId, title, workingDir }) {
   const now = ctx.nowIso();
   return upsertEntry(ctx.store, ctx.config.home, threadId, {

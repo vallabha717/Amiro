@@ -69,8 +69,9 @@ async function makeHarness({ userId = "user-a" } = {}) {
   const projectDir = await fs.mkdtemp(
     path.join("/tmp", "amiro-skills-project-"),
   );
-  // A separate JCODE_HOME so discovery cannot touch the real ~/.jcode.
-  const jcodeHome = path.join(home, ".jcode");
+  // A separate runtime home so discovery cannot touch the real engine state
+  // directory (the engine's own legacy `~/.jcode`, used on disk only).
+  const runtimeHome = path.join(home, ".jcode");
   await fs.mkdir(workspaceDir, { recursive: true });
 
   const store = createStore(home);
@@ -79,7 +80,7 @@ async function makeHarness({ userId = "user-a" } = {}) {
   let pendingBody = "{}";
 
   const ctx = {
-    config: { home, workspaceDir, jcodeHome, outDir: here },
+    config: { home, workspaceDir, runtimeHome, outDir: here },
     store,
     nowIso: () => new Date().toISOString(),
     log: (level, message, meta) => logs.push({ level, message, meta }),
@@ -102,7 +103,7 @@ async function makeHarness({ userId = "user-a" } = {}) {
     home,
     workspaceDir,
     projectDir,
-    jcodeHome,
+    runtimeHome,
     store,
     logs,
     ctx,

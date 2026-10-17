@@ -9,9 +9,9 @@ The Agent uses four OpenDots plush characters, vendored locally from CopilotKit/
 - **Agent hub** at `/agent`: central clickable avatar, editable display name, Personality, Superpowers, Memory and Workspace.
 - **Customize**: four OpenDots plush characters, the existing sidebar theme choices, optional local image upload, name and tagline. Click the central avatar or the sidebar square. Saving a theme here changes the sidebar theme too. Changing the sidebar theme updates Agent colors immediately. Uploaded portraits retain their original colors.
 - **Personality**: five bipolar style sliders and presets. The writing sample is illustrative, not a model-generated response or an audio preview. Sliders do not change permissions or grant autonomy.
-- **Superpowers**: existing Jcode, project and supported discovered skills, plus user-authored instruction sets. The old `/skills` URL remains compatible. "Add to message" attaches instruction text, not tool permissions. The server resolves selected names from the authenticated user's catalog. Unsupported or disabled skills are rejected, not silently substituted.
-- **Memory**: an admin-only, read-only inspection of Jcode's existing native global and project memory graphs, with search and constellation/card/list views. There is no second memory engine. Category/tag visual links are presentation relationships, not newly written native memory associations.
-- **Workspace**: an admin-only, allowlisted file browser for Jcode memory/skills, Amiro persona mirrors and repository documentation. Credential files, session logs and arbitrary Jcode-home content are not exposed. Paths are checked after symlink resolution.
+- **Superpowers**: existing runtime, project and supported discovered skills, plus user-authored instruction sets. The old `/skills` URL remains compatible. "Add to message" attaches instruction text, not tool permissions. The server resolves selected names from the authenticated user's catalog. Unsupported or disabled skills are rejected, not silently substituted.
+- **Memory**: an admin-only, read-only inspection of the Amiro runtime's existing global and project memory graphs, with search and constellation/card/list views. There is no second memory engine. Category/tag visual links are presentation relationships, not newly written native memory associations.
+- **Workspace**: an admin-only, allowlisted file browser for runtime memory/skills, Amiro persona mirrors and repository documentation. Credential files, session logs and arbitrary engine-state content are not exposed. Paths are checked after symlink resolution.
 
 Schedules are deferred. Contacts, Channels and Library are not part of this Agent implementation.
 
@@ -19,7 +19,7 @@ Schedules are deferred. Contacts, Channels and Library are not part of this Agen
 
 Identity and personality settings are stored per authenticated user under `$AMIRO_HOME/store/agent-identity/`. User-authored skills are stored per user under `$AMIRO_HOME/store/skills/`. Ownerless legacy skill records are not automatically exposed to another user.
 
-Chat retains Jcode's assembled system prompt and native memory context. Persona and selected skill instructions are delivered in `system_reminder` on the **same** `send_message` frame as each actual user message, including follow-ups and folder-rotated sessions. The adapter does not issue an empty auxiliary model turn and does not replace `systemPrompt`. The reminder is not persisted as visible user text in Jcode history.
+Chat retains the runtime's assembled system prompt and native memory context. Persona and selected skill instructions are delivered in `system_reminder` on the **same** `send_message` frame as each actual user message, including follow-ups and folder-rotated sessions. The adapter does not issue an empty auxiliary model turn and does not replace `systemPrompt`. The reminder is not persisted as visible user text in runtime history.
 
 Follow-up turns depend on two bridge behaviours that were found by running the deployed preview rather than by reading code, and both are handled explicitly. The bridge negotiates capabilities per connection and withholds `session_tools` for several seconds after a turn connection closes, so `withIsolated` opens its connection only once the capability is advertised again (bounded ~9s schedule), while `withSession` reads such as history and rename deliberately do not wait. The daemon also refuses a message with `Session is busy` while it is still finishing the previous turn; that refusal arrives before `message_accepted`, so the adapter re-sends the same message (bounded 150/400/900/1800ms) instead of failing the turn. Neither retry can duplicate a message, and both are covered by adapter unit tests plus the live browser suites.
 
@@ -27,13 +27,13 @@ Up to eight selected skills are accepted. Each instruction body is bounded to 12
 
 The tool-result continuation branch does not send a new persona reminder. Tool execution remains disabled on the public preview unless a trusted operator explicitly enables it with both existing environment controls. Style preferences and instruction-only skills still work with tools disabled.
 
-Jcode memory mutations through the Agent HTTP surface are intentionally unsupported (`501`), protecting its native serialization and daemon-owned writes. Use the native Jcode memory facilities to manage that data. Shared machine memory and workspace inspection require an administrator.
+Runtime memory mutations through the Agent HTTP surface are intentionally unsupported (`501`), protecting the runtime's native serialization and its own writes. Use the runtime's own memory facilities to manage that data. Shared machine memory and workspace inspection require an administrator.
 
 ## Design provenance
 
 The current plush character assets come from `CopilotKit/OpenDots`, with its MIT copyright and permission notice retained in `THIRD-PARTY-NOTICES.md`. The dot-lattice renderer has been replaced in the visible Agent avatar. Legacy saved body identifiers remain compatible, while the picker presents four distinct characters. The characters' existing faces are part of their artwork, so there is no separate eye-style control. The Agent interface combines these characters with an Amiro sidebar habitat and bento navigation. Brand display headings retain Fraunces, while Agent controls use Geist sans.
 
-The sidebar theme is the single source of truth for displayed Agent colors. The customizer offers the same named themes rather than a second independent eight-color palette. Its theme selection is a draft until Save, so canceling does not change the application theme. Saved legacy trait colors remain compatible with the adapter API but do not override the active theme. Native Jcode memory and personality instruction delivery are unchanged.
+The sidebar theme is the single source of truth for displayed Agent colors. The customizer offers the same named themes rather than a second independent eight-color palette. Its theme selection is a draft until Save, so canceling does not change the application theme. Saved legacy trait colors remain compatible with the adapter API but do not override the active theme. Native runtime memory and personality instruction delivery are unchanged.
 
 Decorative motion reads `prefers-reduced-motion` through `usePrefersReducedMotion`, which stays subscribed to the media query. framer-motion's own hook samples the query once at mount, so a user who turns the setting on while the page is open would otherwise keep seeing the habitat roam and blink.
 
@@ -56,7 +56,7 @@ The Agent acceptance script's two real model turns are route-pinned and configur
 
 Observed on this tree: `pnpm check-types` clean, 344 unit tests passed, `adapter/test/*.test.mjs` 37 passed, adapter/tests/agent-safety.mjs all assertions passed, route-boundaries 125 registered routes observed, and both live browser suites passed against the deployed export.
 
-The browser acceptance test temporarily changes the owner's Agent identity, creates a disposable skill and chat, and restores its state in `finally`. It checks persistence, real model delivery of the saved name and selected skill instructions, navigation, read-only native memory, workspace loading, mobile width, color themes, reduced motion and browser errors. Screenshots are written to `$JCODE_SCRATCH_DIR` or the default scratch directory, not committed.
+The browser acceptance test temporarily changes the owner's Agent identity, creates a disposable skill and chat, and restores its state in `finally`. It checks persistence, real model delivery of the saved name and selected skill instructions, navigation, read-only native memory, workspace loading, mobile width, color themes, reduced motion and browser errors. Screenshots are written to `$AMIRO_SCRATCH_DIR` (the pre-rename `JCODE_SCRATCH_DIR` is still read) or the default scratch directory, not committed.
 
 ## Boundaries
 

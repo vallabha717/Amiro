@@ -19,7 +19,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 
-import { JcodeClient } from '@1jehuang/jcode-sdk';
+import { JcodeClient as AmiroRuntimeClient } from '@1jehuang/jcode-sdk';
 import { applyToolProfile } from '../src/chat.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -27,7 +27,7 @@ const ADAPTER = path.resolve(__dirname, '..');
 const PORT = Number(process.env.AMIRO_TEST_PORT || 8797);
 const BASE = `http://127.0.0.1:${PORT}`;
 // Dedicated preview bridge (loopback, --tool-profile none, same daemon).
-const SOCKET = process.env.JCODE_API_SOCKET || '/run/user/0/amiro-preview-api.sock';
+const SOCKET = process.env.AMIRO_API_SOCKET || process.env.JCODE_API_SOCKET || '/run/user/0/amiro-preview-api.sock';
 // Route pinning on this bridge uses the colon separator.
 const PINNED = 'opencode-go:deepseek-v4.1-flash,antigravity:gemini-3.8-flash-tiered';
 
@@ -65,7 +65,7 @@ async function main() {
         AMIRO_HOST: '127.0.0.1',
         AMIRO_TOKEN: '',
         AMIRO_PINNED_MODELS: PINNED,
-        JCODE_API_SOCKET: SOCKET,
+        AMIRO_API_SOCKET: SOCKET,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -235,7 +235,7 @@ async function main() {
     );
 
     // 6. gemini route-pins via SDK (runtime model must match the request)
-    const jc = await JcodeClient.connect({ socketPath: SOCKET, clientName: 'amiro-inttest/1' });
+    const jc = await AmiroRuntimeClient.connect({ socketPath: SOCKET, clientName: 'amiro-inttest/1' });
     try {
       const s = await jc.createSession({ workingDir: path.join(home, 'workspace') });
       await jc.setModel(s.session_id, 'antigravity:gemini-3.8-flash-tiered');

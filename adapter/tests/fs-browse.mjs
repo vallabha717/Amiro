@@ -21,7 +21,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ADAPTER = path.resolve(__dirname, '..');
 const PORT = Number(process.env.AMIRO_TEST_PORT || 8795);
 const BASE = `http://127.0.0.1:${PORT}`;
-const SOCKET = process.env.JCODE_API_SOCKET || '/run/user/0/amiro-preview-api.sock';
+const SOCKET = process.env.AMIRO_API_SOCKET || process.env.JCODE_API_SOCKET || '/run/user/0/amiro-preview-api.sock';
 const PINNED = 'opencode-go:deepseek-v4.1-flash,antigravity:gemini-3.8-flash-tiered';
 
 const results = [];
@@ -48,8 +48,9 @@ async function main() {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'amiro-fsbrowse-'));
   let server;
   // Temp dirs for valid workingDir and symlink target
-  // Use /tmp explicitly: os.tmpdir() may resolve to /root/.jcode/scratch
-  // which is under the deny list (/root/.jcode) and would make validDir invalid.
+  // Use /tmp explicitly: os.tmpdir() may resolve to the engine's real state
+  // directory (/root/.jcode/scratch), which is under the deny list and would
+  // make validDir invalid.
   const TMP_BASE = '/tmp';
   const validDir = path.join(TMP_BASE, `amiro-fsbrowse-valid-${Date.now()}-${process.pid}`);
   const symlinkPath = path.join(TMP_BASE, `amiro-fsbrowse-link-${Date.now()}-${process.pid}`);
@@ -67,7 +68,7 @@ async function main() {
         AMIRO_HOST: '127.0.0.1',
         AMIRO_TOKEN: '',
         AMIRO_PINNED_MODELS: PINNED,
-        JCODE_API_SOCKET: SOCKET,
+        AMIRO_API_SOCKET: SOCKET,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -165,7 +166,7 @@ async function main() {
     });
     const chatValidText = await chatValidRes.text();
     const validIsSse = chatValidRes.ok && /"type":"text-delta"/.test(chatValidText) && chatValidText.includes('data: [DONE]');
-    // Even if jcode bridge not available, the adapter should still accept the dir and attempt a turn; we check thread mapping
+    // Even if the runtime is not available, the adapter should still accept the dir and attempt a turn; we check thread mapping
     // If bridge unavailable, turn may error but thread should still be created with workingDir
     // So we check SSE success OR at least thread exists with workingDir
     let threadValidBody = null;

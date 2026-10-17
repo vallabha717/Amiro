@@ -1,9 +1,9 @@
 // adapter/src/usage.mjs -- usage and stats aggregation.
 //
 // Computes user usage stats from:
-//   - jcode usage --json (quota limits & extra info)
-//   - ~/.jcode/openai_oauth_usage.json (lifetime + daily token buckets & cost)
-//   - ~/.jcode/model-usage-v1.sqlite3 turns table (modelStats & message counts)
+//   - `amiro usage --json` (quota limits & extra info)
+//   - the runtime home's openai_oauth_usage.json (lifetime + daily token buckets & cost)
+//   - the runtime home's model-usage-v1.sqlite3 turns table (modelStats & message counts)
 //   - threads.json / listSessions (threadCount)
 
 import path from 'node:path';
@@ -70,7 +70,7 @@ export async function getUserStats(ctx, userId, query = {}) {
   // 2. Turns from model-usage-v1.sqlite3
   let turns = [];
   try {
-    turns = await ctx.jcode.readModelUsageTurns();
+    turns = await ctx.runtime.readModelUsageTurns();
   } catch {
     turns = [];
   }
@@ -103,7 +103,7 @@ export async function getUserStats(ctx, userId, query = {}) {
   // 3. OAuth usage data (openai_oauth_usage.json)
   let oauthUsage = { accounts: {} };
   try {
-    oauthUsage = await ctx.jcode.readOpenAiOauthUsage();
+    oauthUsage = await ctx.runtime.readOpenAiOauthUsage();
   } catch {
     oauthUsage = { accounts: {} };
   }
@@ -164,10 +164,10 @@ export async function getUserStats(ctx, userId, query = {}) {
     a.date.localeCompare(b.date),
   );
 
-  // 4. Rate-limit quotas from jcode usage --json
+  // 4. Rate-limit quotas from `amiro usage --json`
   const limits = [];
   try {
-    const usageJson = await ctx.jcode.jcodeUsage();
+    const usageJson = await ctx.runtime.runtimeUsage();
     if (usageJson && Array.isArray(usageJson.providers)) {
       for (const prov of usageJson.providers) {
         if (Array.isArray(prov.limits)) {
@@ -208,6 +208,6 @@ export async function getUserStats(ctx, userId, query = {}) {
     tokenSource: 'OpenAI OAuth daily buckets only',
     perUserAttributionAvailable: false,
     perModelBillingAvailable: false,
-    usageNotice: 'Usage is shared Jcode provider-account data, not per-user billing. Token and known-cost totals cover OpenAI OAuth only. Per-model token attribution is unavailable.',
+    usageNotice: 'Usage is shared Amiro runtime provider-account data, not per-user billing. Token and known-cost totals cover OpenAI OAuth only. Per-model token attribution is unavailable.',
   };
 }

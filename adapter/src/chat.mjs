@@ -9,7 +9,7 @@
 // the bridge does NOT advertise the `permissions` capability, so
 // `permission_request` events never arrive and a turn must never block waiting
 // for one. When `permissionMode` is "auto" or "edit" the turn runs normally
-// (jcode's own tool policy applies). For any other mode the adapter does not
+// (the runtime's own tool policy applies). For any other mode the adapter does not
 // stall: it ends the stream immediately with a text part telling the user to
 // use auto/edit mode.
 
@@ -95,7 +95,7 @@ function serializeOutput(output) {
   }
 }
 
-// Convert attachment entries to jcode ImageAttachment [mediaType, base64] when
+// Convert attachment entries to runtime ImageAttachment [mediaType, base64] when
 // they carry an inline data URL; anything else is appended to the prompt text
 // as a URL reference.
 function splitAttachments(attachments) {
@@ -150,7 +150,7 @@ export function toolsEnabled() {
 // Explicitly (re)apply the tool policy. configureTools requires an idle
 // session, and the capability itself is negotiated per connection; callers
 // must therefore open their connection with `requireCapability: 'session_tools'`
-// (see ctx.jcode.withIsolated) before calling this. FAIL-CLOSED: a failure
+// (see ctx.runtime.withIsolated) before calling this. FAIL-CLOSED: a failure
 // propagates so the turn is aborted rather than sent with unknown tools.
 //
 // The bridge withholds `session_tools` for several seconds after a turn
@@ -195,7 +195,7 @@ async function enforceToolPolicy(ctx, client, threadId, sessionId, entry) {
 // Turn streaming
 // ---------------------------------------------------------------------------
 
-// Stream one jcode turn into the SSE response until `turn_done`/`turn_stopped`
+// Stream one runtime turn into the SSE response until `turn_done`/`turn_stopped`
 // or timeout. Returns the collected usage (if any).
 async function streamTurn({ ctx, sse, client, sessionId, allowTools, iterator }) {
   const textId = crypto.randomUUID();
@@ -288,7 +288,7 @@ async function streamTurn({ ctx, sse, client, sessionId, allowTools, iterator })
         case 'turn_done':
           return;
         case 'error':
-          sse.error(ev.message || 'jcode error');
+          sse.error(ev.message || 'amiro runtime error');
           break;
         default:
           break;
@@ -379,16 +379,16 @@ export function register(app, ctx) {
     const prompt = [userText, ...extraText].filter(Boolean).join('\n');
 
     // A selected skill contributes instructions only. Client tool/MCP lists
-    // still cannot widen access. Native Jcode system assembly stays intact.
+    // still cannot widen access. The runtime's native system assembly stays intact.
     // The default model is provider-qualified, never a legacy daemon fallback.
     const cm = body.chatModel || {};
-    const requestedModel = ctx.jcode.resolveChatModel(cm.provider, cm.model);
+    const requestedModel = ctx.runtime.resolveChatModel(cm.provider, cm.model);
 
     // Fail fast (and without creating a session) for a model outside the
     // pinned allow-list. No fallback to another model is attempted.
     if (requestedModel) {
       try {
-        ctx.jcode.assertModelAllowed(requestedModel);
+        ctx.runtime.assertModelAllowed(requestedModel);
       } catch (err) {
         sse.error(String(err && err.message ? err.message : err));
         sse.finish(null);
@@ -398,8 +398,8 @@ export function register(app, ctx) {
     }
 
     try {
-      await ctx.jcode.withIsolated(async (client) => {
-        // Resolve (or create) the jcode session backing this thread.
+      await ctx.runtime.withIsolated(async (client) => {
+        // Resolve (or create) the runtime session backing this thread.
         let entry = await getEntry(ctx.store, home, threadId);
         if (entry && !ownsEntry(entry, user)) {
           const err = new Error('thread not found');
@@ -409,7 +409,7 @@ export function register(app, ctx) {
         let created = false;
         if (!entry || !entry.sessionId) {
           const wd = validatedWorkingDir || ctx.config.workspaceDir;
-          const session = await ctx.jcode.createSession(client, {
+          const session = await ctx.runtime.createSession(client, {
             workingDir: wd,
             tools: toolsOption(),
           });
@@ -428,7 +428,7 @@ export function register(app, ctx) {
         }
         // If the validated directory differs from the stored one and the thread
         // already has a session, the existing session was created with the old
-        // workingDir and cannot be moved. Start a NEW jcode session pinned to
+        // workingDir and cannot be moved. Start a NEW runtime session pinned to
         // the new directory for the same thread (keep threadId/ownership, replace
         // sessionId). Archive the previous session rather than deleting its history
         // so it stays reachable but is no longer the active root.
@@ -440,7 +440,7 @@ export function register(app, ctx) {
           const prevEffective = entry.workingDir || ctx.config.workspaceDir;
           if (prevEffective !== validatedWorkingDir) {
             const prevSessionId = entry.sessionId;
-            const newSession = await ctx.jcode.createSession(client, {
+            const newSession = await ctx.runtime.createSession(client, {
               workingDir: validatedWorkingDir,
               tools: toolsOption(),
             });
@@ -481,7 +481,7 @@ export function register(app, ctx) {
         // Attach ONLY an existing session: a just-created, not-yet-persisted
         // session is dropped by a redundant attach ("Failed to restore session").
         if (!created) {
-          await ctx.jcode.attach(client, sessionId);
+          await ctx.runtime.attach(client, sessionId);
         }
 
         await enforceToolPolicy(ctx, client, threadId, sessionId, entry);
@@ -489,7 +489,7 @@ export function register(app, ctx) {
         if (requestedModel) {
           // No fallback: a refused model or a failed route pin aborts the turn
           // rather than silently continuing on the session default.
-          await ctx.jcode.setModelPinned(client, sessionId, requestedModel);
+          await ctx.runtime.setModelPinned(client, sessionId, requestedModel);
         }
 
         let iterator;
@@ -546,8 +546,8 @@ export function register(app, ctx) {
     sse.start(responseId);
 
     try {
-      await ctx.jcode.withIsolated(async (client) => {
-        const session = await ctx.jcode.createSession(client, {
+      await ctx.runtime.withIsolated(async (client) => {
+        const session = await ctx.runtime.createSession(client, {
           workingDir: ctx.config.workspaceDir,
           tools: toolsOption(),
         });
@@ -555,9 +555,9 @@ export function register(app, ctx) {
         try {
           await enforceToolPolicy(ctx, client, null, sessionId, null);
           const cm = body.chatModel || {};
-          const requestedModel = ctx.jcode.resolveChatModel(cm.provider, cm.model);
+          const requestedModel = ctx.runtime.resolveChatModel(cm.provider, cm.model);
           if (requestedModel) {
-            await ctx.jcode.setModelPinned(client, sessionId, requestedModel);
+            await ctx.runtime.setModelPinned(client, sessionId, requestedModel);
           }
           const baseReminder = await buildAgentTurnReminder(ctx, user, { workingDir: ctx.config.workspaceDir });
           const instructions = typeof body.instructions === 'string' ? body.instructions.slice(0, 8000) : '';
@@ -610,19 +610,19 @@ export function register(app, ctx) {
 
     let title = '';
     try {
-      title = await ctx.jcode.withIsolated(async (client) => {
+      title = await ctx.runtime.withIsolated(async (client) => {
         // Generate in a throwaway session so the title prompt never enters the
         // user's conversation transcript.
-        const session = await ctx.jcode.createSession(client, {
+        const session = await ctx.runtime.createSession(client, {
           workingDir: ctx.config.workspaceDir,
           tools: toolsOption(),
         });
         try {
           await enforceToolPolicy(ctx, client, null, session.session_id, null);
           const cm = body.chatModel || {};
-          const requestedModel = ctx.jcode.resolveChatModel(cm.provider, cm.model);
+          const requestedModel = ctx.runtime.resolveChatModel(cm.provider, cm.model);
           if (requestedModel) {
-            await ctx.jcode.setModelPinned(client, session.session_id, requestedModel);
+            await ctx.runtime.setModelPinned(client, session.session_id, requestedModel);
           }
           const result = await client.run(
             session.session_id,
@@ -650,7 +650,7 @@ export function register(app, ctx) {
       sse.textDelta(responseId, title);
       if (entry) {
         try {
-          await ctx.jcode.withSession(entry.sessionId, (client) =>
+          await ctx.runtime.withSession(entry.sessionId, (client) =>
             client.renameSession(entry.sessionId, title),
           );
         } catch (err) {
@@ -681,7 +681,7 @@ export function register(app, ctx) {
     let messages = [];
     if (entry) {
       try {
-        const history = await ctx.jcode.withSession(entry.sessionId, (client) =>
+        const history = await ctx.runtime.withSession(entry.sessionId, (client) =>
           client.getHistory(entry.sessionId),
         );
         messages = historyToMessages(threadId, entry.sessionId, history);
@@ -719,6 +719,6 @@ export function register(app, ctx) {
 
   app.post('/api/chat/openai-realtime', async (req, res) => {
     ctx.requireUser(req);
-    ctx.error(res, 501, 'not supported on jcode backend');
+    ctx.error(res, 501, 'not supported on the amiro runtime backend');
   });
 }

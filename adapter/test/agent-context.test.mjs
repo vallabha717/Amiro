@@ -75,7 +75,7 @@ test('another session cannot acknowledge this user turn', async () => {
   for await (const event of iter) { assert.equal(event.session_id, 's'); break; }
 });
 
-test('chat never replaces the assembled native Jcode system prompt', async () => {
+test('chat never replaces the assembled native runtime system prompt', async () => {
   const source = await readFile(new URL('../src/chat.mjs', import.meta.url), 'utf8');
   assert(!source.includes('systemPrompt:'), 'persona must not erase native system or memory');
   assert(source.includes('buildAgentTurnReminder(ctx, user'));
@@ -95,7 +95,7 @@ test('each user turn reads only that user presentation identity', async () => {
   const owner = await buildAgentTurnReminder(ctx, { id: 'owner' });
   const other = await buildAgentTurnReminder(ctx, { id: 'other' });
   assert.match(owner, /Orbit/);
-  assert.match(owner, /underlying runtime remains Jcode/);
+  assert.match(owner, /underlying runtime remains the Amiro runtime/);
   assert(!other.includes('Orbit'));
   assert.match(other, /Amiro/);
 });

@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
+import { buildRuntimeCliEnv, resolveRuntimeBin } from '../runtime.mjs';
 
 export function register(app, ctx) {
   const STORE_KEY = 'background-jobs.json';
@@ -78,9 +79,8 @@ export function register(app, ctx) {
 
     // Run detached child_process
     try {
-      const bin = ctx.config.jcodeBin || 'jcode';
-      const env = { ...process.env };
-      if (ctx.config.jcodeHome) env.JCODE_HOME = ctx.config.jcodeHome;
+      const bin = resolveRuntimeBin(ctx.config.runtimeBin);
+      const env = buildRuntimeCliEnv(ctx.config);
 
       const proc = spawn(bin, ['run', '--json', prompt], {
         cwd: workspaceRoot,

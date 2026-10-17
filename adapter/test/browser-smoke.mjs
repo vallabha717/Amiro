@@ -4,7 +4,7 @@ import { readFile, mkdir } from 'node:fs/promises';
 
 const base = process.env.AMIRO_TEST_URL || 'http://127.0.0.1:8788';
 const credentials = JSON.parse(await readFile(process.env.AMIRO_TEST_CREDENTIALS || '/root/.amiro-preview/admin-initial-password', 'utf8'));
-const artifactDir = process.env.JCODE_SCRATCH_DIR || '/root/.jcode/scratch';
+const artifactDir = process.env.AMIRO_SCRATCH_DIR || process.env.JCODE_SCRATCH_DIR || '/root/.jcode/scratch';
 await mkdir(artifactDir, { recursive: true });
 const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--no-sandbox'] });
 const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1440, height: 1000 } });
@@ -68,10 +68,10 @@ try {
   assert.equal(workflowEditPage.status(), 404, `GET /workflow/edit should 404, got ${workflowEditPage.status()}`);
   await removedFeature.close();
   pass('workflow removal: sidebar renders without a workflow entry, /workflow and /workflow/edit 404, /api/workflow 404');
-  // Every provider Jcode supports must be listed with its real mechanism.
+  // Every provider the Amiro runtime supports must be listed with its real mechanism.
   const providerCountText = await page.locator('[data-testid="login-panel"]').innerText();
   const providerCount = Number((/(\d+)\s+providers/i.exec(providerCountText) || [])[1] || 0);
-  assert(providerCount > 30, `provider catalog should list every Jcode provider, saw ${providerCount}`);
+  assert(providerCount > 30, `provider catalog should list every runtime provider, saw ${providerCount}`);
   await page.getByTestId('login-provider-select').click();
   const optionCount = await page.getByRole('option').count();
   assert(optionCount > 30, `provider select should offer every provider, saw ${optionCount} options`);
@@ -156,17 +156,17 @@ try {
   await page.getByText('AMIRO_FOLLOWUP_OK', { exact: true }).last().waitFor({ timeout: 20000 });
   pass('same-thread follow-up and both replies persisted after reload');
   await page.goto(`${base}/admin/usage`, { waitUntil: 'networkidle' });
-  await page.getByText(/Usage is shared Jcode provider-account data/).waitFor({ timeout: 30000 });
+  await page.getByText(/Usage is shared Amiro runtime provider-account data/).waitFor({ timeout: 30000 });
   await page.screenshot({ path: `${artifactDir}/amiro-usage.png`, fullPage: true });
   pass('real usage UI and scope disclaimer');
   // The admin providers page must offer every provider too. It used to hardcode
-  // six of them, so a user could not add most of what Jcode supports.
+  // six of them, so a user could not add most of what the runtime supports.
   await page.goto(`${base}/admin/providers`, { waitUntil: 'networkidle' });
   await page.getByTestId('add-provider-button').click();
   await page.getByTestId('admin-add-provider-menu').waitFor({ timeout: 20000 });
   const adminCountText = await page.getByTestId('admin-provider-count').innerText();
   const adminCount = Number((/(\d+)\s+providers/i.exec(adminCountText) || [])[1] || 0);
-  assert(adminCount > 30, `admin add menu should list every Jcode provider, saw ${adminCount}`);
+  assert(adminCount > 30, `admin add menu should list every runtime provider, saw ${adminCount}`);
   const adminOptions = await page.locator('[data-testid^="admin-provider-option-"]').count();
   assert(adminOptions > 30, `admin add menu should render every provider, saw ${adminOptions} options`);
   const adminMenuText = await page.getByTestId('admin-add-provider-menu').innerText();

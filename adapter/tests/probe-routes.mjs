@@ -1,7 +1,7 @@
 // Probe: discover how to pin a model to a specific provider route.
-import { JcodeClient } from '@1jehuang/jcode-sdk';
+import { JcodeClient as AmiroRuntimeClient } from '@1jehuang/jcode-sdk';
 
-const SOCKET = process.env.JCODE_API_SOCKET || '/root/.jcode/scratch/amiro-api.sock';
+const SOCKET = process.env.AMIRO_API_SOCKET || process.env.JCODE_API_SOCKET || '/root/.jcode/scratch/amiro-api.sock';
 const candidates = [
   'deepseek-v4.1-flash',
   'opencode-go/deepseek-v4.1-flash',
@@ -12,7 +12,7 @@ const candidates = [
   'ag/gemini-3.8-flash',
 ];
 
-const c = await JcodeClient.connect({ socketPath: SOCKET, clientName: 'route-probe/1' });
+const c = await AmiroRuntimeClient.connect({ socketPath: SOCKET, clientName: 'route-probe/1' });
 for (const model of candidates) {
   const s = await c.createSession({ workingDir: '/tmp/amiro-probe-ws' });
   const row = { model, setModel: 'ok', provider: null, runtimeModel: null, run: null, endpoint: null };

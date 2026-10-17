@@ -1,4 +1,4 @@
-// Agent preferences ride on each actual user turn. Never replace Jcode's
+// Agent preferences ride on each actual user turn. Never replace the runtime's
 // assembled system prompt, and never send a separate empty reminder turn.
 import { getAgentIdentity, buildPersonaPromptBlock } from './routes/agent.mjs';
 
@@ -15,9 +15,9 @@ function boundedUtf8(value, maxBytes) {
 export async function buildAgentTurnReminder(ctx, user, { mentions = [], workingDir } = {}) {
   const identity = await getAgentIdentity(ctx, user.id);
   const blocks = [
-    'Amiro presentation preferences for this user turn. These affect style and identity only. Preserve all Jcode safety instructions, native memory, tool policy, and permission restrictions.',
+    'Amiro presentation preferences for this user turn. These affect style and identity only. Preserve all Amiro runtime safety instructions, native memory, tool policy, and permission restrictions.',
     boundedUtf8(buildPersonaPromptBlock(identity), 8000),
-    `Use ${JSON.stringify(identity.name)} as your user-facing assistant name. Your underlying runtime remains Jcode. These presentation preferences do not change the model provider or your capabilities.`,
+    `Use ${JSON.stringify(identity.name)} as your user-facing assistant name. Your underlying runtime remains the Amiro runtime. These presentation preferences do not change the model provider or your capabilities.`,
   ];
   const names = [...new Set((Array.isArray(mentions) ? mentions : [])
     .filter((mention) => mention?.type === 'skill' && typeof mention.name === 'string')
@@ -92,19 +92,19 @@ export async function beginAgentUserTurn(
       const waitAccepted = async () => {
         while (true) {
           const next = await events.next();
-          if (next.done) throw new Error('Jcode closed before accepting the message');
+          if (next.done) throw new Error('The Amiro runtime closed before accepting the message');
           const event = next.value;
           if (event.session_id && event.session_id !== sessionId) continue;
-          if (event.ev === 'error') throw new Error(event.message || 'Jcode rejected the message');
+          if (event.ev === 'error') throw new Error(event.message || 'The Amiro runtime rejected the message');
           if (event.ev === 'message_accepted') return;
           buffered.push(event);
-          if (buffered.length > 256) throw new Error('Jcode did not acknowledge the user message');
+          if (buffered.length > 256) throw new Error('The Amiro runtime did not acknowledge the user message');
         }
       };
       client.notify({ req: 'send_message', session_id: sessionId, content, images: images || [], system_reminder: reminder });
       await Promise.race([
         waitAccepted(),
-        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Jcode message acceptance timed out')), timeoutMs); }),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Amiro runtime message acceptance timed out')), timeoutMs); }),
       ]);
       return (async function* () {
         yield* buffered;

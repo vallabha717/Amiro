@@ -15,20 +15,20 @@
 // adapter/test/browser-smoke.mjs and adapter/test/agent-browser.mjs.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createJcodeManager } from '../src/jcode.mjs';
+import { createAmiroRuntime } from '../src/runtime.mjs';
 
 process.env.AMIRO_TRUSTED_OPERATOR = '';
 process.env.AMIRO_TOOL_PROFILE = 'none';
 
 const { applyToolProfile, isSessionToolsWithheld, toolsOption } = await import('../src/chat.mjs');
 
-const WITHHELD = 'unsupported: This harness does not support session_tools. Update the jcode runtime and API bridge.';
+const WITHHELD = 'unsupported: This harness does not support session_tools. Update the amiro runtime and API bridge.';
 const DELAYS = [0, 200, 400, 700];
 
-const manager = createJcodeManager({
+const manager = createAmiroRuntime({
   socketPath: '/nonexistent-test-socket',
-  jcodeHome: '/nonexistent-test-home',
-  binary: 'jcode',
+  runtimeHome: '/nonexistent-test-home',
+  binary: 'amiro',
   log: () => {},
 });
 
@@ -77,7 +77,7 @@ function harness(capabilitySets) {
   };
 }
 
-test('uses the first connection when the bridge advertises session_tools', async () => {
+test('uses the first connection when the runtime advertises session_tools', async () => {
   const { spy, options, waits } = harness([['sessions', 'session_tools']]);
   const client = await manager.connectWithCapability(spy.connect, 'session_tools', options);
   assert.equal(spy.created.length, 1);
@@ -146,7 +146,7 @@ test('applyToolProfile sends the policy and fails closed with no retry loop', as
   assert.equal(attempts, 1, 'the capability cannot appear on an open connection, so retrying it is pointless');
 });
 
-test('classifies the bridge message and nothing else', () => {
+test('classifies the runtime message and nothing else', () => {
   assert.equal(isSessionToolsWithheld(new Error(WITHHELD)), true);
   assert.equal(isSessionToolsWithheld({ message: WITHHELD }), true);
   assert.equal(isSessionToolsWithheld(new Error('A tool configuration request is already in flight for this session')), false);

@@ -44,7 +44,7 @@ try {
   const entries = models.flatMap((p) => p.models.map((m) => `${p.provider}:${m.name}`));
   assert(entries.length > 0);
   // Every entry must belong to the provider group it is listed under, and the
-  // catalog must cover each provider Jcode reports as connected (the selector
+  // catalog must cover each provider the runtime reports as connected (the selector
   // now offers all connected providers' models, not a fixed pair).
   for (const group of models) {
     assert(group.models.length > 0, `provider ${group.provider} listed with no models`);
@@ -57,7 +57,7 @@ try {
   assert.equal(statsResponse.status, 200);
   const { stats } = await statsResponse.json();
   assert.equal(stats.perModelBillingAvailable, false);
-  assert.match(stats.usageNotice, /shared Jcode/);
+  assert.match(stats.usageNotice, /shared Amiro runtime/);
   assert.deepEqual(stats.modelStats, []);
   check('real usage source and attribution disclaimer');
   for (const route of ['/api/background-jobs', '/api/skills/generate', '/api/checkpoint/restore', '/api/mcp']) {

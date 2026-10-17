@@ -1,10 +1,10 @@
 // adapter/src/routes/skills.mjs -- skill catalog CRUD, duplicate, and real
-// filesystem skill discovery across ~/.jcode/skills, ~/.codex/skills, and
-// project .agents/skills + .jcode/skills.
+// filesystem skill discovery across the runtime home's skills dir, ~/.codex/skills,
+// and project .agents/skills + the engine state dir's skills.
 //
 // Two independent storage layers, kept deliberately separate:
-//   1. Filesystem discovery (read-only). Real SKILL.md files owned by Jcode,
-//      the project, or Codex. Never written to, never deleted.
+//   1. Filesystem discovery (read-only). Real SKILL.md files owned by the Amiro
+//      runtime, the project, or Codex. Never written to, never deleted.
 //   2. User store (read/write, ONE FILE PER USER). `$AMIRO_HOME/store/skills/
 //      <userId>.json`. A user can only ever read and mutate their own file, so
 //      one signed-in user can never list, edit, duplicate or delete another
@@ -202,17 +202,24 @@ export function skillGenerationEnabled() {
 // ---------------------------------------------------------------------------
 
 function skillsRoots(ctx, repoRoot) {
-  const jcodeHome =
-    ctx.config.jcodeHome ||
+  // Discovery reads the runtime engine's real state directory: the Amiro
+  // variable first, then the pre-rename variable, then the engine's own legacy
+  // on-disk directory. Those directories are still named `.jcode` on disk and
+  // are read as-is (no migration, no rename); only the *source label* the API
+  // reports is canonical Amiro, so the UI does not have to know the engine's
+  // legacy directory names.
+  const runtimeHome =
+    ctx.config.runtimeHome ||
+    process.env.AMIRO_RUNTIME_HOME ||
     process.env.JCODE_HOME ||
     path.join(os.homedir(), ".jcode");
   const codexHome = path.join(os.homedir(), ".codex");
   return [
-    { dir: path.join(jcodeHome, "skills"), scope: "user", source: ".jcode" },
+    { dir: path.join(runtimeHome, "skills"), scope: "user", source: ".amiro" },
     {
       dir: path.join(repoRoot, ".jcode", "skills"),
       scope: "project",
-      source: ".jcode",
+      source: ".amiro",
     },
     {
       dir: path.join(repoRoot, ".agents", "skills"),
@@ -687,7 +694,9 @@ export function register(app, ctx) {
     let draft = null;
     try {
       const prompt = `Generate a single JSON object with exact keys "name" (lowercase, digits, hyphens), "description", and "body" (markdown content) for a skill with this requirement: ${message}. Output only JSON.`;
-      const resText = await ctx.jcode.execJson(["run", prompt]);
+      // `run` prints model text, not JSON, so it must go through runRuntimeCli:
+      // execJson would parse stdout and throw on anything that is not JSON.
+      const resText = await ctx.runtime.runRuntimeCli(["run", prompt]);
       if (typeof resText === "string") {
         const jsonMatch = resText.match(/\{[\s\S]*\}/);
         if (jsonMatch) draft = JSON.parse(jsonMatch[0]);

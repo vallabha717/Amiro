@@ -4,21 +4,25 @@
 // POST /api/providers/:id/api-key           -> store API key via CLI, admin-only
 // DELETE /api/providers/:id/credentials     -> remove stored key, admin-only
 //
-// API-key storage mechanism (verified in isolated JCODE_HOME):
-//   jcode login <provider> --no-validate  with the raw key on STDIN
-//     -> writes $JCODE_HOME/config/jcode/<provider>.env  (OPENROUTER_API_KEY=...)
-//   For openai-compatible: jcode login openai-compatible --api-base <url> --api-key <key> --no-validate
-//   Deletion: unlink the env file + (best-effort) jcode SDK clearApiKey + notifyAuthChanged.
+// API-key storage mechanism (verified in an isolated runtime home):
+//   `amiro login <provider> --no-validate` with the raw key on STDIN
+//     -> writes <runtimeHome>/config/jcode/<provider>.env  (OPENROUTER_API_KEY=...)
+//   For openai-compatible: `amiro login openai-compatible --api-base <url> --api-key <key> --no-validate`
+//   Deletion: unlink the env file + (best-effort) runtime SDK clearApiKey + notifyAuthChanged.
 //
-// After storing or deleting we run `jcode auth status --json` to confirm the flip
-// and call `notifyAuthChanged` so the live daemon picks up the new file without restart.
+// After storing or deleting we run `amiro auth status --json` to confirm the flip
+// and call `notifyAuthChanged` so the live runtime picks up the new file without restart.
 
 import { spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 
 import { providerCatalog, invalidateCatalog } from '../providers.mjs';
+import {
+  buildRuntimeCliEnv,
+  resolveRuntimeBin,
+  resolveRuntimeConfigDir,
+} from '../runtime.mjs';
 
 const CLI_TIMEOUT_MS = 30_000;
 const MAX_OUTPUT = 1024 * 1024;
@@ -41,17 +45,17 @@ function sanitizeError(msg) {
     .trim() || 'Authentication error';
 }
 
-function resolveJcodeHome(ctx) {
-  return ctx.config.jcodeHome || process.env.JCODE_HOME || path.join(os.homedir(), '.jcode');
-}
-
 function envFilePath(ctx, providerId) {
-  // Mirrors jcode's file layout: $JCODE_HOME/config/jcode/<provider>.env
-  // XDG_CONFIG_HOME is ignored by jcode when JCODE_HOME is set (verified).
-  return path.join(resolveJcodeHome(ctx), 'config', 'jcode', `${providerId}.env`);
+  // Mirrors the engine's real credential layout: `<configured home>/config/jcode/
+  // <providerId>.env` when a home is configured, otherwise the XDG config
+  // directory (`$XDG_CONFIG_HOME/jcode`, default ~/.config/jcode). This is where
+  // the engine actually reads API keys from (verified on this machine: the
+  // credentials for opencode-go/openai-compatible/openrouter live in
+  // ~/.config/jcode, not in ~/.jcode/config/jcode).
+  return path.join(resolveRuntimeConfigDir(ctx.config.runtimeCliHome), `${providerId}.env`);
 }
 
-// Run jcode CLI with fixed argv (no shell), pipe stdin, cap buffers, timeout.
+// Run the runtime CLI with fixed argv (no shell), pipe stdin, cap buffers, timeout.
 function runCli(bin, args, stdin, env, timeoutMs = CLI_TIMEOUT_MS) {
   return new Promise((resolve) => {
     let stdout = '';
@@ -89,14 +93,14 @@ function runCli(bin, args, stdin, env, timeoutMs = CLI_TIMEOUT_MS) {
 async function notifyAuthChanged(ctx, providerId) {
   // Best-effort: SDK path first (daemon hot-reload), then CLI fallback.
   try {
-    if (ctx.jcode && ctx.jcode.api && typeof ctx.jcode.api.notifyAuthChanged === 'function') {
-      await ctx.jcode.api.notifyAuthChanged(providerId);
+    if (ctx.runtime && ctx.runtime.api && typeof ctx.runtime.api.notifyAuthChanged === 'function') {
+      await ctx.runtime.api.notifyAuthChanged(providerId);
     }
   } catch (err) {
     ctx.log('warn', 'notifyAuthChanged SDK failed', { provider: providerId, error: String(err && err.message) });
   }
   try {
-    await ctx.jcode.authStatus({ force: true });
+    await ctx.runtime.authStatus({ force: true });
   } catch (err) {
     ctx.log('warn', 'authStatus refresh failed', { provider: providerId, error: String(err && err.message) });
   }
@@ -163,9 +167,8 @@ export function register(app, ctx) {
       return ctx.error(res, 404, `unknown provider '${providerId}'`);
     }
 
-    const bin = ctx.config.jcodeBin || 'jcode';
-    const env = { ...process.env, JCODE_NO_TELEMETRY: '1' };
-    if (ctx.config.jcodeHome) env.JCODE_HOME = ctx.config.jcodeHome;
+    const bin = resolveRuntimeBin(ctx.config.runtimeBin);
+    const env = buildRuntimeCliEnv(ctx.config);
 
     let cliResult;
     if (providerId === 'openai-compatible') {
@@ -182,7 +185,7 @@ export function register(app, ctx) {
 
     if (cliResult.code !== 0) {
       const msg = sanitizeError(cliResult.stderr || cliResult.stdout || 'Failed to store API key');
-      ctx.log('warn', 'jcode login store key failed', { provider: providerId, error: msg });
+      ctx.log('warn', 'amiro runtime login store key failed', { provider: providerId, error: msg });
       // Never include key material in error.
       return ctx.error(res, 400, msg);
     }
@@ -193,7 +196,7 @@ export function register(app, ctx) {
     // Re-check status to include in response (redacted).
     let statusEntry = null;
     try {
-      const status = await ctx.jcode.authStatus({ force: true });
+      const status = await ctx.runtime.authStatus({ force: true });
       const list = Array.isArray(status.providers) ? status.providers : [];
       statusEntry = list.find((p) => String(p.id).toLowerCase() === providerId) || null;
     } catch {
@@ -224,8 +227,8 @@ export function register(app, ctx) {
 
     // Best-effort SDK clear.
     try {
-      if (ctx.jcode && ctx.jcode.api && typeof ctx.jcode.api.clearApiKey === 'function') {
-        await ctx.jcode.api.clearApiKey(providerId);
+      if (ctx.runtime && ctx.runtime.api && typeof ctx.runtime.api.clearApiKey === 'function') {
+        await ctx.runtime.api.clearApiKey(providerId);
       }
     } catch (err) {
       ctx.log('warn', 'clearApiKey SDK failed', { provider: providerId, error: String(err && err.message) });
@@ -240,7 +243,7 @@ export function register(app, ctx) {
         ctx.log('warn', 'failed to remove credential file', { provider: providerId, file, error: String(err.message) });
       }
     }
-    // Also remove .bak if present (jcode rotates it).
+    // Also remove .bak if present (the engine rotates it).
     try {
       await fs.unlink(`${file}.bak`);
     } catch {

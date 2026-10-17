@@ -17,7 +17,7 @@
 //     called as `handler(req, res, params)` where `params` is a plain object of
 //     decoded path params. `req.user` is set on authenticated routes.
 //   * `ctx` is documented at its construction site below and carries helpers:
-//       ctx.config, ctx.log, ctx.store, ctx.jcode, ctx.auth,
+//       ctx.config, ctx.log, ctx.store, ctx.runtime, ctx.auth,
 //       ctx.readJson(req), ctx.json(res, status, obj), ctx.error(res, status, msg),
 //       ctx.sse(res), ctx.requireUser(req), ctx.nowIso()
 //
@@ -34,7 +34,13 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 
 import { createStore } from './store.mjs';
-import { createJcodeManager } from './jcode.mjs';
+import {
+  createAmiroRuntime,
+  configuredRuntimeHome,
+  describeRuntimeCli,
+  resolveRuntimeHome,
+  resolveRuntimeSocket,
+} from './runtime.mjs';
 import { createAuth } from './auth.mjs';
 import * as chat from './chat.mjs';
 import * as threads from './threads.mjs';
@@ -52,16 +58,30 @@ function resolveHome(raw, fallbackSuffix) {
   return raw.startsWith('~') ? path.join(os.homedir(), raw.slice(1)) : raw;
 }
 
+// Which runtime CLI the adapter delegates to, and what kind it is. Logged so the
+// adapter never implies it contains the engine: the engine is a separate program
+// (an Amiro-owned build once one is packaged, otherwise a compatibility install).
+const runtimeCli = describeRuntimeCli();
+
 const config = {
   port: Number(process.env.AMIRO_PORT || 8787),
   host: process.env.AMIRO_HOST || '127.0.0.1',
   token: process.env.AMIRO_TOKEN || '',
   home: resolveHome(process.env.AMIRO_HOME, '.amiro'),
-  jcodeSocket: process.env.JCODE_API_SOCKET || '/root/.jcode/scratch/amiro-api.sock',
-  jcodeHome: process.env.AMIRO_JCODE_HOME || undefined,
+  // Runtime wiring is resolved centrally in runtime.mjs, so the adapter and any
+  // other caller agree on the socket, the runtime home and the CLI binary.
+  runtimeSocket: resolveRuntimeSocket(),
+  // Where the engine keeps its state (memory, sessions, usage): the configured
+  // home, or the engine's own legacy state directory when none is configured.
+  runtimeHome: resolveRuntimeHome(),
+  // What child CLI processes get: only an operator-configured home, so the engine
+  // resolves its own layout (state directory *and* XDG credential directory)
+  // exactly as it does when a human runs it.
+  runtimeCliHome: configuredRuntimeHome(),
   outDir: path.join(REPO_ROOT, 'out'),
   workspaceDir: '',
-  jcodeBin: process.env.JCODE_BIN || 'jcode',
+  runtimeBin: runtimeCli.bin,
+  runtimeCliKind: runtimeCli.kind,
 };
 config.workspaceDir = path.join(config.home, 'workspace');
 
@@ -306,10 +326,11 @@ async function main() {
   await fs.mkdir(config.workspaceDir, { recursive: true });
 
   const store = createStore(config.home);
-  const jcode = createJcodeManager({
-    socketPath: config.jcodeSocket,
-    jcodeHome: config.jcodeHome,
-    binary: config.jcodeBin,
+  const runtime = createAmiroRuntime({
+    socketPath: config.runtimeSocket,
+    runtimeHome: config.runtimeHome,
+    runtimeCliHome: config.runtimeCliHome,
+    binary: config.runtimeBin,
     log,
   });
   const auth = createAuth({ home: config.home, store, token: config.token, log });
@@ -321,7 +342,7 @@ async function main() {
     config,
     log,
     store,
-    jcode,
+    runtime,
     auth,
     app,
     readJson,
@@ -351,7 +372,7 @@ async function main() {
   const workerRoutesLoaded = true;
 
   // When no static pin is configured, the models of the currently connected
-  // Jcode providers form the allow-list. Compute it once before serving so the
+  // providers form the allow-list. Compute it once before serving so the
   // first request already sees a populated catalog, then refresh in the
   // background (a provider login adds/removes models without a restart).
   const modelsModule = await import('./models.mjs');
@@ -359,11 +380,11 @@ async function main() {
     if ((process.env.AMIRO_PINNED_MODELS || '').trim()) return;
     try {
       const list = await modelsModule.getDynamicModelList(ctx);
-      ctx.jcode.setDynamicModels(list);
+      ctx.runtime.setDynamicModels(list);
       log('info', 'dynamic model catalog loaded', {
         models: list.length,
         catalogDefault: list.defaultModel || null,
-        effectiveDefault: ctx.jcode.activeDefaultModel(),
+        effectiveDefault: ctx.runtime.activeDefaultModel(),
       });
     } catch (err) {
       log('warn', 'dynamic model catalog unavailable', { error: String(err && err.message) });
@@ -378,7 +399,7 @@ async function main() {
   // Connecting or removing a provider must change what the model selector can
   // offer on the very next request, so rebuild the catalog as soon as any route
   // reports an auth change (every provider route funnels through this SDK call).
-  ctx.jcode.setAuthChangedHook(async () => {
+  ctx.runtime.setAuthChangedHook(async () => {
     modelsModule.invalidateCatalog();
     await refreshDynamicModels();
   });
@@ -413,7 +434,9 @@ async function main() {
       port: config.port,
       home: config.home,
       tokenRequired: Boolean(config.token),
-      jcodeSocket: config.jcodeSocket,
+      runtimeSocket: config.runtimeSocket,
+      runtimeCli: config.runtimeBin,
+      runtimeCliKind: config.runtimeCliKind,
       workerRoutesLoaded,
     });
     if (!config.token) log('info', 'standalone web mode: API access is protected by user bearer sessions');
@@ -423,7 +446,7 @@ async function main() {
     log('info', 'shutting down', { signal });
     server.close();
     try {
-      await jcode.close();
+      await runtime.close();
     } catch {
       /* ignore */
     }
@@ -509,7 +532,8 @@ async function handle(req, res, url, app, ctx) {
   }
 
   // The public preview does not expose root execution or pretend that legacy
-  // integrations were connected to Jcode. These need a dedicated policy layer.
+  // integrations were connected to the Amiro runtime. These need a dedicated
+  // policy layer.
   const unsupported = (
     (pathname === '/api/background-jobs' && req.method === 'POST') ||
     pathname === '/api/skills/generate' ||
@@ -519,7 +543,7 @@ async function handle(req, res, url, app, ctx) {
     pathname.startsWith('/api/search/')
   );
   if (unsupported) {
-    sendError(res, 501, 'This integration is not enabled in the restricted Jcode preview');
+    sendError(res, 501, 'This integration is not enabled in the restricted Amiro preview');
     return;
   }
 

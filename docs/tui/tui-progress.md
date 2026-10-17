@@ -593,3 +593,29 @@ Phase 6 is the last phase this plan's Part 4 names. Nothing forward-looking is o
 
 ### What Phase N+1 can now assume
 ```
+
+---
+
+## 2026-10-17: Go harness retired, Rust-only native surface and desktop review
+
+### Summary
+The legacy Go test harness (tests/cmd/amirotest, tests/harness/, tests/suites/) and the last remaining Go fixture (tests/fixtures/mcp/server/main.go) have been retired. Amiro native surfaces are now Rust-only:
+* Desktop shell: Tauri and Rust (src-tauri/) with lib renamed to `amiro_desktop` and license set to `MIT`
+* Native testkit: std-only offline Rust test harness (tests/rust/, package `amiro-testkit`) with real file and binary checks
+* Backend: Node adapter runtime (adapter/src/server.mjs) bridging to the external engine daemon
+* Web and E2E: Vitest and Playwright
+
+### Verification
+* `cargo test --offline` in tests/rust: 16 passed, 0 failed.
+  - Real CLI tests for bin/amiro (branding, --version, --help, engine delegation via AMIRO_RUNTIME_BIN, missing engine exit 127).
+  - Real sidecar launcher script generation test (src-tauri/build-sidecar.sh staging binaries/backend-<triple>).
+  - Real MCP JSON-RPC protocol test against tests/fixtures/mcp/server/server.mjs via child process pipes.
+  - Real file and license checks asserting zero own Go files, adapter route structure, and Tauri configuration.
+* `cargo check --offline` in src-tauri: executed offline, blocked by missing system package `pkg-config` (and GTK/WebKit headers) on this Linux host.
+
+### Tauri Packaging Plan for Review
+1. Current phase: The Tauri launcher script (src-tauri/build-sidecar.sh) execs node against adapter/src/server.mjs during local preview.
+2. In-progress backend: Native backend (backend/) and runtime (runtime/) are being actively implemented.
+3. Target distribution packaging: Once native backend achieves parity, build-sidecar will compile and stage the native backend binary directly into src-tauri/binaries/ without any Node or shell launcher dependency.
+
+

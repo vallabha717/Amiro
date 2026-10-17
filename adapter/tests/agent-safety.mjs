@@ -1,5 +1,5 @@
 // adapter/tests/agent-safety.mjs -- focused safety tests for agent.mjs hardening
-// Covers: auth (401/403 + admin gate), traversal/allowlist/realpath, validation, native memory read-only
+// Covers: auth (401/403 + admin gate), traversal/allowlist/realpath, validation, runtime memory read-only
 // Run: node tests/agent-safety.mjs  (exit 0 = all pass)
 
 import { spawn } from 'node:child_process';
@@ -13,7 +13,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ADAPTER = path.resolve(__dirname, '..');
 const PORT = Number(process.env.AMIRO_TEST_PORT || 8796);
 const BASE = `http://127.0.0.1:${PORT}`;
-const SOCKET = process.env.JCODE_API_SOCKET || '/root/.jcode/scratch/amiro-api.sock';
+const SOCKET = process.env.AMIRO_API_SOCKET || process.env.JCODE_API_SOCKET || '/root/.jcode/scratch/amiro-api.sock';
 const PINNED = 'opencode-go:deepseek-v4.1-flash';
 
 const results = [];
@@ -60,7 +60,7 @@ async function main() {
         AMIRO_TOKEN: '',
         AMIRO_ALLOW_REGISTRATION: '1',
         AMIRO_PINNED_MODELS: PINNED,
-        JCODE_API_SOCKET: SOCKET,
+        AMIRO_API_SOCKET: SOCKET,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -111,15 +111,15 @@ async function main() {
     step('unauthenticated GET /api/agent/identity -> 401', unauthIdentity.status === 401, `status=${unauthIdentity.status}`);
     const unauthMemory = await fetch(`${BASE}/api/agent/memory`);
     step('unauthenticated GET /api/agent/memory -> 401', unauthMemory.status === 401, `status=${unauthMemory.status}`);
-    const unauthWs = await fetch(`${BASE}/api/agent/workspace?root=jcode&path=`);
+    const unauthWs = await fetch(`${BASE}/api/agent/workspace?root=runtime&path=`);
     step('unauthenticated GET /api/agent/workspace -> 401', unauthWs.status === 401, `status=${unauthWs.status}`);
 
-    // Create temp jcode home structure for memory read tests
-    // Use isolated JCODE_HOME under temp to avoid touching real ~/.jcode
-    const jcodeHome = path.join(home, 'jcode-home');
-    const memDir = path.join(jcodeHome, 'memory', 'projects');
+    // Create temp runtime-home structure for memory read tests, isolated from the
+    // engine's real on-disk state directory.
+    const runtimeHomeFixture = path.join(home, 'runtime-home');
+    const memDir = path.join(runtimeHomeFixture, 'memory', 'projects');
     await fs.mkdir(memDir, { recursive: true });
-    const globalPath = path.join(jcodeHome, 'memory', 'global.json');
+    const globalPath = path.join(runtimeHomeFixture, 'memory', 'global.json');
     // Write a minimal global.json with one memory (read-only check will not leak secrets)
     const beforeGlobal = {
       graph_version: 2,
@@ -147,14 +147,13 @@ async function main() {
       metadata: {},
     };
     await fs.writeFile(globalPath, JSON.stringify(beforeGlobal, null, 2), 'utf8');
-    // Spawn a child adapter already uses env JCODE_HOME? Need to set for this server: we set AMIRO_JCODE_HOME
-    // But running server already started with SOCKET; we can set env for memory dir via process.env.JCODE_HOME inside server?
-    // Instead, write to the real resolve path: server resolves via ctx.config.jcodeHome || process.env.JCODE_HOME || ~/.jcode
-    // So we also write to ~/.jcode if needed? For isolation, set process.env.JCODE_HOME before spawn - we already spawned.
-    // Workaround: write to both the temp jcodeHome and the actual resolved home the server uses.
-    // Determine server's jcodeHome: process.env.JCODE_HOME or ~/.jcode
-    const realJcodeHome = process.env.JCODE_HOME || path.join(os.homedir(), '.jcode');
-    const realGlobalPath = path.join(realJcodeHome, 'memory', 'global.json');
+    // The already-running server resolves its runtime home from AMIRO_RUNTIME_HOME,
+    // the pre-rename variables, or finally the engine's own legacy on-disk
+    // directory. Since the spawn above passed no runtime home, snapshot that real
+    // directory here: the point of this section is that the mutation routes never
+    // touch it.
+    const legacyRuntimeHome = process.env.AMIRO_RUNTIME_HOME || process.env.JCODE_HOME || path.join(os.homedir(), '.jcode');
+    const realGlobalPath = path.join(legacyRuntimeHome, 'memory', 'global.json');
     let realGlobalBackup = null;
     let realGlobalExisted = false;
     try {
@@ -162,7 +161,7 @@ async function main() {
       realGlobalExisted = true;
     } catch {}
     // For test, use the real path as well if temp not used: ensure we can test read-only without corrupting real data
-    // We'll set server's jcodeHome via env and restart? Simpler: just ensure realGlobal not mutated by mutation routes.
+    // Simpler: just ensure the real global graph is not mutated by mutation routes.
     const snapshotBefore = realGlobalExisted ? realGlobalBackup : null;
 
     // 2. NATIVE MEMORY READ-ONLY: admin can read, non-admin 403, mutations 501, and file not mutated
@@ -212,48 +211,48 @@ async function main() {
     }
 
     // 3. WORKSPACE GATING + ALLOWLIST + REALPATH + TRAVERSAL
-    const bobWs = await jsonFetch(`${BASE}/api/agent/workspace?root=jcode&path=`, { headers: hdrBob });
+    const bobWs = await jsonFetch(`${BASE}/api/agent/workspace?root=runtime&path=`, { headers: hdrBob });
     step('non-admin GET /api/agent/workspace -> 403', bobWs.res.status === 403, `status=${bobWs.res.status}`);
 
-    const adminWs = await jsonFetch(`${BASE}/api/agent/workspace?root=jcode&path=`, { headers: hdrAdmin });
-    step('admin GET /api/agent/workspace jcode -> 200', adminWs.res.ok && Array.isArray(adminWs.body?.entries), `status=${adminWs.res.status}`);
+    const adminWs = await jsonFetch(`${BASE}/api/agent/workspace?root=runtime&path=`, { headers: hdrAdmin });
+    step('admin GET /api/agent/workspace runtime -> 200', adminWs.res.ok && Array.isArray(adminWs.body?.entries), `status=${adminWs.res.status}`);
 
     // Traversal attempts
-    const trav1 = await jsonFetch(`${BASE}/api/agent/workspace?root=jcode&path=${encodeURIComponent('../../etc')}`, { headers: hdrAdmin });
+    const trav1 = await jsonFetch(`${BASE}/api/agent/workspace?root=runtime&path=${encodeURIComponent('../../etc')}`, { headers: hdrAdmin });
     step('workspace traversal ../../etc -> 403', trav1.res.status === 403, `status=${trav1.res.status}`);
     const trav2 = await jsonFetch(`${BASE}/api/agent/workspace?root=amiro&path=${encodeURIComponent('../.jcode/memory/global.json')}`, { headers: hdrAdmin });
-    step('workspace traversal to .jcode -> 403', trav2.res.status === 403, `status=${trav2.res.status}`);
+    step('workspace traversal into engine state (.jcode) -> 403', trav2.res.status === 403, `status=${trav2.res.status}`);
 
     // Blocked names / secrets
-    const blocked1 = await jsonFetch(`${BASE}/api/agent/workspace/file?root=jcode&path=${encodeURIComponent('.env')}`, { headers: hdrAdmin });
+    const blocked1 = await jsonFetch(`${BASE}/api/agent/workspace/file?root=runtime&path=${encodeURIComponent('.env')}`, { headers: hdrAdmin });
     step('workspace blocked .env -> 403', blocked1.res.status === 403, `status=${blocked1.res.status}`);
-    const blocked2 = await jsonFetch(`${BASE}/api/agent/workspace/file?root=jcode&path=${encodeURIComponent('auth.json')}`, { headers: hdrAdmin });
+    const blocked2 = await jsonFetch(`${BASE}/api/agent/workspace/file?root=runtime&path=${encodeURIComponent('auth.json')}`, { headers: hdrAdmin });
     step('workspace blocked auth.json -> 403', blocked2.res.status === 403, `status=${blocked2.res.status}`);
-    const blocked3 = await jsonFetch(`${BASE}/api/agent/workspace/file?root=jcode&path=${encodeURIComponent('credentials.json')}`, { headers: hdrAdmin });
+    const blocked3 = await jsonFetch(`${BASE}/api/agent/workspace/file?root=runtime&path=${encodeURIComponent('credentials.json')}`, { headers: hdrAdmin });
     step('workspace blocked credentials.json -> 403', blocked3.res.status === 403, `status=${blocked3.res.status}`);
 
-    // Arbitrary ~/.jcode file not allowlisted should be 403
-    // jcode root allowlist only permits memory/, skills/, prompt-overlay.md, config.toml
-    const arbitrary = await jsonFetch(`${BASE}/api/agent/workspace/file?root=jcode&path=${encodeURIComponent('openai-auth.json')}`, { headers: hdrAdmin });
+    // Arbitrary engine-state file not allowlisted should be 403
+    // The runtime root allowlist only permits memory/, skills/, prompt-overlay.md, config.toml
+    const arbitrary = await jsonFetch(`${BASE}/api/agent/workspace/file?root=runtime&path=${encodeURIComponent('openai-auth.json')}`, { headers: hdrAdmin });
     step('workspace arbitrary openai-auth.json not allowlisted -> 403', arbitrary.res.status === 403, `status=${arbitrary.res.status}`);
 
-    // Symlink containment: create a symlink inside the REAL jcode home's allowed dir pointing outside
-    const realJcodeHomeForLink = process.env.JCODE_HOME || path.join(os.homedir(), '.jcode');
-    const symlinkDir = path.join(realJcodeHomeForLink, 'memory', 'linktest');
+    // Symlink containment: create a symlink inside the REAL engine state directory's allowed dir pointing outside
+    const legacyRuntimeHomeForLink = process.env.AMIRO_RUNTIME_HOME || process.env.JCODE_HOME || path.join(os.homedir(), '.jcode');
+    const symlinkDir = path.join(legacyRuntimeHomeForLink, 'memory', 'linktest');
     await fs.mkdir(symlinkDir, { recursive: true }).catch(() => {});
     const symlinkPath = path.join(symlinkDir, 'evil-link');
     try { await fs.unlink(symlinkPath); } catch {}
     try { await fs.symlink('/etc', symlinkPath); } catch {}
-    const symlinkTrav = await jsonFetch(`${BASE}/api/agent/workspace/file?root=jcode&path=${encodeURIComponent('memory/linktest/evil-link/passwd')}`, { headers: hdrAdmin });
+    const symlinkTrav = await jsonFetch(`${BASE}/api/agent/workspace/file?root=runtime&path=${encodeURIComponent('memory/linktest/evil-link/passwd')}`, { headers: hdrAdmin });
     step('workspace symlink escape -> 403', symlinkTrav.res.status === 403, `status=${symlinkTrav.res.status}`);
     // cleanup real link immediately (final cleanup also)
     await fs.unlink(symlinkPath).catch(() => {});
 
     // Writable: workspace is now fully read-only (mirrors display-only) -> all PUTs 501
     const writableBad = await jsonFetch(`${BASE}/api/agent/workspace/file`, {
-      method: 'PUT', headers: hdrAdmin, body: JSON.stringify({ root: 'jcode', path: 'prompt-overlay.md', content: 'hacked' }),
+      method: 'PUT', headers: hdrAdmin, body: JSON.stringify({ root: 'runtime', path: 'prompt-overlay.md', content: 'hacked' }),
     });
-    step('PUT jcode prompt-overlay.md via workspace -> 501 read-only', writableBad.res.status === 501, `status=${writableBad.res.status}`);
+    step('PUT runtime prompt-overlay.md via workspace -> 501 read-only', writableBad.res.status === 501, `status=${writableBad.res.status}`);
 
     // Per-user write via workspace must also be 501 (edit via identity/personality)
     const validPath = `users/${adminId}/IDENTITY.md`;
@@ -325,8 +324,8 @@ async function main() {
     step('per-user isolation: alice persists', aliceGet.body?.name === 'Alice', `alice=${aliceGet.body?.name}`);
 
     // Verify native category normalization: inject Rust tagged category into global.json and ensure no [object Object]
-    const realJcodeHomeCat = process.env.JCODE_HOME || path.join(os.homedir(), '.jcode');
-    const realGlobalCatPath = path.join(realJcodeHomeCat, 'memory', 'global.json');
+    const legacyRuntimeHomeCat = process.env.AMIRO_RUNTIME_HOME || process.env.JCODE_HOME || path.join(os.homedir(), '.jcode');
+    const realGlobalCatPath = path.join(legacyRuntimeHomeCat, 'memory', 'global.json');
     let catBackup = null;
     try {
       catBackup = await fs.readFile(realGlobalCatPath, 'utf8');
@@ -409,11 +408,11 @@ async function main() {
       if (!server.killed) server.kill('SIGKILL');
     }
     await fs.rm(home, { recursive: true, force: true }).catch(() => {});
-    // cleanup real jcode symlink used for containment test
+    // cleanup the engine-state symlink used for the containment test
     try {
-      const realJcodeHome = process.env.JCODE_HOME || path.join(os.homedir(), '.jcode');
-      await fs.unlink(path.join(realJcodeHome, 'memory', 'linktest', 'evil-link')).catch(() => {});
-      await fs.rm(path.join(realJcodeHome, 'memory', 'linktest'), { recursive: true, force: true }).catch(() => {});
+      const legacyRuntimeHome = process.env.AMIRO_RUNTIME_HOME || process.env.JCODE_HOME || path.join(os.homedir(), '.jcode');
+      await fs.unlink(path.join(legacyRuntimeHome, 'memory', 'linktest', 'evil-link')).catch(() => {});
+      await fs.rm(path.join(legacyRuntimeHome, 'memory', 'linktest'), { recursive: true, force: true }).catch(() => {});
     } catch {}
   }
 

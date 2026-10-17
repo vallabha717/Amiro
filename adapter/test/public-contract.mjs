@@ -1,4 +1,4 @@
-// Supplemental acceptance checks against real public HTTP and Jcode data.
+// Supplemental acceptance checks against real public HTTP and runtime data.
 // Does not change provider credentials, application users or conversations.
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -35,7 +35,10 @@ try {
   const statsResponse = await request(`/api/admin/users/${account.user.id}/stats?days=30`);
   assert.equal(statsResponse.status, 200);
   const { stats } = await statsResponse.json();
-  const data = JSON.parse(await readFile(path.join(process.env.JCODE_HOME || path.join(os.homedir(), '.jcode'), 'openai_oauth_usage.json'), 'utf8'));
+  // The engine's real state directory: AMIRO_RUNTIME_HOME first, then the
+  // pre-rename variable, then its own legacy on-disk directory.
+  const runtimeHome = process.env.AMIRO_RUNTIME_HOME || process.env.JCODE_HOME || path.join(os.homedir(), '.jcode');
+  const data = JSON.parse(await readFile(path.join(runtimeHome, 'openai_oauth_usage.json'), 'utf8'));
   const start = new Date(Date.now() - 30 * 86400000);
   start.setUTCHours(0, 0, 0, 0);
   const expected = { prompt: 0, completion: 0, cost: 0 };
@@ -55,7 +58,7 @@ try {
   assert.equal(stats.perUserAttributionAvailable, false);
   assert.equal(stats.perModelBillingAvailable, false);
   assert.deepEqual(stats.modelStats, []);
-  pass('usage exactness and scope', 'API prompt/completion/total tokens and known cost equal real Jcode daily buckets, without per-user/model allocation');
+  pass('usage exactness and scope', 'API prompt/completion/total tokens and known cost equal the real runtime daily buckets, without per-user/model allocation');
   for (const query of ['days=0', 'days=not-a-number', 'from=not-a-date', 'from=2026-10-14&to=2026-10-01']) {
     assert.equal((await request(`/api/admin/users/${account.user.id}/stats?${query}`)).status, 400);
   }

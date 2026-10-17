@@ -1,7 +1,7 @@
 // adapter/src/models.mjs -- /api/chat/models + all /api/ai/* routes.
 //
-// Dynamic model catalog backed by `jcode auth status --json` (connected providers)
-// and `jcode model list -p <id> --json` (models per provider), cached for ~60s.
+// Dynamic model catalog backed by `amiro auth status --json` (connected providers)
+// and `amiro model list -p <id> --json` (models per provider), cached for ~60s.
 // When AMIRO_PINNED_MODELS is explicitly set, it acts as a hard restriction.
 // When unset, all connected provider models are available.
 
@@ -10,6 +10,7 @@ import { promisify } from 'node:util';
 import os from 'node:os';
 import path from 'node:path';
 import { toolsOption, applyToolProfile } from './chat.mjs';
+import { buildRuntimeCliEnv, resolveRuntimeBin } from './runtime.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -45,10 +46,13 @@ async function mapConcurrent(items, limit, fn) {
   return results;
 }
 
-async function runJcodeJson(ctx, args) {
-  const bin = ctx?.config?.jcodeBin || process.env.JCODE_BIN || 'jcode';
-  const env = { ...process.env };
-  if (ctx?.config?.jcodeHome) env.JCODE_HOME = ctx.config.jcodeHome;
+// The model catalog is read through the Amiro runtime CLI (`bin/amiro`, which
+// delegates every command to the engine). buildRuntimeCliEnv carries the runtime
+// home for the child process; resolveRuntimeBin applies the same engine
+// resolution order as the CLI itself.
+async function runRuntimeJson(ctx, args) {
+  const bin = resolveRuntimeBin(ctx?.config?.runtimeBin);
+  const env = buildRuntimeCliEnv(ctx?.config);
   const { stdout } = await execFileAsync(bin, args, {
     env,
     timeout: 15000,
@@ -59,10 +63,9 @@ async function runJcodeJson(ctx, args) {
   return JSON.parse(text);
 }
 
-function runJcodeJsonSync(ctx, args) {
-  const bin = ctx?.config?.jcodeBin || process.env.JCODE_BIN || 'jcode';
-  const env = { ...process.env };
-  if (ctx?.config?.jcodeHome) env.JCODE_HOME = ctx.config.jcodeHome;
+function runRuntimeJsonSync(ctx, args) {
+  const bin = resolveRuntimeBin(ctx?.config?.runtimeBin);
+  const env = buildRuntimeCliEnv(ctx?.config);
   const stdout = execFileSync(bin, args, {
     env,
     timeout: 15000,
@@ -96,9 +99,9 @@ export async function buildCatalog(ctx, { force = false } = {}) {
   const p = (async () => {
     let auth = {};
     try {
-      auth = await runJcodeJson(ctx, ['auth', 'status', '--json']);
+      auth = await runRuntimeJson(ctx, ['auth', 'status', '--json']);
     } catch (err) {
-      ctx?.log?.('warn', 'jcode auth status failed', { error: String(err && err.message) });
+      ctx?.log?.('warn', 'amiro runtime auth status failed', { error: String(err && err.message) });
       auth = { providers: [] };
     }
 
@@ -108,7 +111,7 @@ export async function buildCatalog(ctx, { force = false } = {}) {
 
     const providerResults = await mapConcurrent(available, 4, async (p) => {
       try {
-        const res = await runJcodeJson(ctx, ['model', 'list', '-p', p.id, '--json']);
+        const res = await runRuntimeJson(ctx, ['model', 'list', '-p', p.id, '--json']);
         return {
           id: p.id,
           name: p.display_name || res.provider || p.id,
@@ -126,8 +129,8 @@ export async function buildCatalog(ctx, { force = false } = {}) {
     catalogCache = { at: Date.now(), data, promise: null };
 
     const allRefs = providers.flatMap((p) => p.models.map((m) => `${p.id}:${m}`));
-    if (typeof ctx?.jcode?.setDynamicModels === 'function') {
-      ctx.jcode.setDynamicModels(allRefs);
+    if (typeof ctx?.runtime?.setDynamicModels === 'function') {
+      ctx.runtime.setDynamicModels(allRefs);
     }
 
     return data;
@@ -149,9 +152,9 @@ function syncBuildCatalog(ctx) {
   }
   let auth = {};
   try {
-    auth = runJcodeJsonSync(ctx, ['auth', 'status', '--json']);
+    auth = runRuntimeJsonSync(ctx, ['auth', 'status', '--json']);
   } catch (err) {
-    ctx?.log?.('warn', 'sync jcode auth status failed', { error: String(err && err.message) });
+    ctx?.log?.('warn', 'sync amiro runtime auth status failed', { error: String(err && err.message) });
     auth = { providers: [] };
   }
 
@@ -162,7 +165,7 @@ function syncBuildCatalog(ctx) {
   const providers = [];
   for (const p of available) {
     try {
-      const res = runJcodeJsonSync(ctx, ['model', 'list', '-p', p.id, '--json']);
+      const res = runRuntimeJsonSync(ctx, ['model', 'list', '-p', p.id, '--json']);
       providers.push({
         id: p.id,
         name: p.display_name || res.provider || p.id,
@@ -178,8 +181,8 @@ function syncBuildCatalog(ctx) {
   catalogCache = { at: Date.now(), data, promise: null };
 
   const allRefs = providers.flatMap((p) => p.models.map((m) => `${p.id}:${m}`));
-  if (typeof ctx?.jcode?.setDynamicModels === 'function') {
-    ctx.jcode.setDynamicModels(allRefs);
+  if (typeof ctx?.runtime?.setDynamicModels === 'function') {
+    ctx.runtime.setDynamicModels(allRefs);
   }
 
   return data;
@@ -400,8 +403,8 @@ export function register(app, ctx) {
     const id = body.id || body.provider || slug(body.name);
     if (body.apiKey) {
       try {
-        await ctx.jcode.api.setApiKey(id, body.apiKey);
-        await ctx.jcode.api.notifyAuthChanged(id);
+        await ctx.runtime.api.setApiKey(id, body.apiKey);
+        await ctx.runtime.api.notifyAuthChanged(id);
         invalidateCatalog();
       } catch (err) {
         ctx.log('warn', 'setApiKey failed', { provider: id, error: String(err && err.message) });
@@ -427,7 +430,7 @@ export function register(app, ctx) {
   app.delete('/api/ai/providers/:id', async (req, res, params) => {
     if (!requireAdmin(req, res)) return;
     try {
-      await ctx.jcode.api.clearApiKey(params.id);
+      await ctx.runtime.api.clearApiKey(params.id);
       invalidateCatalog();
     } catch (err) {
       ctx.log('warn', 'clearApiKey failed', { provider: params.id, error: String(err && err.message) });
@@ -447,8 +450,8 @@ export function register(app, ctx) {
     const id = body.id || body.provider;
     if (body.apiKey && id) {
       try {
-        await ctx.jcode.api.setApiKey(id, body.apiKey);
-        await ctx.jcode.api.notifyAuthChanged(id);
+        await ctx.runtime.api.setApiKey(id, body.apiKey);
+        await ctx.runtime.api.notifyAuthChanged(id);
         invalidateCatalog();
       } catch (err) {
         ctx.log('warn', 'setApiKey during model fetch failed', { error: String(err && err.message) });
@@ -470,17 +473,17 @@ export function register(app, ctx) {
   app.post('/api/ai/providers/:id/test', async (req, res, params) => {
     const body = await ctx.readJson(req);
     ctx.requireUser(req);
-    const model = ctx.jcode.resolveModel(params.id, body.model);
+    const model = ctx.runtime.resolveModel(params.id, body.model);
     const started = Date.now();
     try {
-      const result = await ctx.jcode.withIsolated(async (client) => {
-        const session = await ctx.jcode.createSession(client, {
+      const result = await ctx.runtime.withIsolated(async (client) => {
+        const session = await ctx.runtime.createSession(client, {
           workingDir: ctx.config.workspaceDir,
           tools: toolsOption(),
         });
         try {
           if (!ctx.auth.isAdmin(req)) await applyToolProfile(client, session.session_id);
-          if (model) await ctx.jcode.setModelPinned(client, session.session_id, model);
+          if (model) await ctx.runtime.setModelPinned(client, session.session_id, model);
           const turn = await client.run(session.session_id, 'Reply with exactly OK');
           return turn;
         } finally {
@@ -525,17 +528,17 @@ export function register(app, ctx) {
     if (!schema) return ctx.error(res, 400, 'schema is required');
     const promptObj = body.prompt || {};
     const content = [promptObj.system, promptObj.user].filter(Boolean).join('\n\n');
-    const requestedModel = ctx.jcode.resolveModel(body.model && body.model.provider, body.model && body.model.model);
+    const requestedModel = ctx.runtime.resolveModel(body.model && body.model.provider, body.model && body.model.model);
     try {
-      const data = await ctx.jcode.withIsolated(async (client) => {
-        const session = await ctx.jcode.createSession(client, {
+      const data = await ctx.runtime.withIsolated(async (client) => {
+        const session = await ctx.runtime.createSession(client, {
           workingDir: ctx.config.workspaceDir,
           tools: toolsOption(),
         });
         try {
           if (!ctx.auth.isAdmin(req)) await applyToolProfile(client, session.session_id);
           if (requestedModel) {
-            await ctx.jcode.setModelPinned(client, session.session_id, requestedModel);
+            await ctx.runtime.setModelPinned(client, session.session_id, requestedModel);
           }
           const result = await client.runStructured(session.session_id, content, { schema });
           return result.data;
@@ -566,19 +569,19 @@ export function register(app, ctx) {
         toolInfo.inputSchema || {},
       )}`;
     try {
-      const text = await ctx.jcode.withIsolated(async (client) => {
-        const session = await ctx.jcode.createSession(client, {
+      const text = await ctx.runtime.withIsolated(async (client) => {
+        const session = await ctx.runtime.createSession(client, {
           workingDir: ctx.config.workspaceDir,
           tools: toolsOption(),
         });
         try {
           if (!ctx.auth.isAdmin(req)) await applyToolProfile(client, session.session_id);
-          const requestedModel = ctx.jcode.resolveModel(
+          const requestedModel = ctx.runtime.resolveModel(
             body.model && body.model.provider,
             body.model && body.model.model,
           );
           if (requestedModel) {
-            await ctx.jcode.setModelPinned(client, session.session_id, requestedModel);
+            await ctx.runtime.setModelPinned(client, session.session_id, requestedModel);
           }
           const turn = await client.run(session.session_id, prompt);
           return turn.text || '';
@@ -601,7 +604,7 @@ export function register(app, ctx) {
   // --- Login panel support --------------------------------------------------
 
   app.get('/api/providers/login-status', async (req, res) => {
-    const status = await ctx.jcode.authStatus();
+    const status = await ctx.runtime.authStatus();
     ctx.json(res, 200, Array.isArray(status.providers) ? status.providers : []);
   });
 }

@@ -19,7 +19,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ADAPTER = path.resolve(__dirname, '..');
 const PORT = Number(process.env.AMIRO_TEST_PORT || 8794);
 const BASE = `http://127.0.0.1:${PORT}`;
-const SOCKET = process.env.JCODE_API_SOCKET || '/run/user/0/amiro-preview-api.sock';
+const SOCKET = process.env.AMIRO_API_SOCKET || process.env.JCODE_API_SOCKET || '/run/user/0/amiro-preview-api.sock';
 const PINNED = 'opencode-go:deepseek-v4.1-flash,antigravity:gemini-3.8-flash-tiered';
 
 const results = [];
@@ -57,7 +57,7 @@ async function main() {
         AMIRO_TOKEN: '',
         AMIRO_ALLOW_REGISTRATION: '1',
         AMIRO_PINNED_MODELS: PINNED,
-        JCODE_API_SOCKET: SOCKET,
+        AMIRO_API_SOCKET: SOCKET,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });

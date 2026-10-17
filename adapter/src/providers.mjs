@@ -1,7 +1,7 @@
 // adapter/src/providers.mjs -- full provider catalog with real auth mechanisms.
 //
-// Merges `jcode provider list --json` (the SKU catalog) with
-// `jcode auth status --json` (connection state), normalizes auth_kind into a
+// Merges `amiro provider list --json` (the SKU catalog) with
+// `amiro auth status --json` (connection state), normalizes auth_kind into a
 // machine `mechanism`, and exposes a cached `providerCatalog(ctx)`.
 //
 // Cache: 60s, fixed argv, no shell injection (execFile with argv array).
@@ -9,6 +9,7 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { buildRuntimeCliEnv, resolveRuntimeBin } from './runtime.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -74,25 +75,24 @@ async function execJson(bin, args, env) {
   return JSON.parse(text);
 }
 
-// Build the catalog. ctx carries jcodeHome/binary via ctx.config + ctx.jcode.
+// Build the catalog. ctx carries the runtime home/binary via ctx.config +
+// ctx.runtime.
 export async function providerCatalog(ctx, { force = false } = {}) {
   const now = Date.now();
   if (!force && cache.data && now - cache.at < CACHE_TTL_MS) return cache.data;
 
-  const bin = ctx.config.jcodeBin || 'jcode';
-  const env = { ...process.env };
-  if (ctx.config.jcodeHome) env.JCODE_HOME = ctx.config.jcodeHome;
-  env.JCODE_NO_TELEMETRY = '1';
+  const bin = resolveRuntimeBin(ctx.config.runtimeBin);
+  const env = buildRuntimeCliEnv(ctx.config);
 
   // Run both commands with fixed argv — no shell, no injection.
   const [providerListRaw, authStatusRaw] = await Promise.all([
     execJson(bin, ['provider', 'list', '--json'], env).catch((err) => {
-      ctx.log('warn', 'jcode provider list failed', { error: String(err && err.message) });
+      ctx.log('warn', 'amiro runtime provider list failed', { error: String(err && err.message) });
       return { providers: [] };
     }),
-    // Use ctx.jcode.authStatus when available (already cached), but we need fresh for the combined catalog.
+    // Use ctx.runtime.authStatus when available (already cached), but we need fresh for the combined catalog.
     execJson(bin, ['auth', 'status', '--json'], env).catch((err) => {
-      ctx.log('warn', 'jcode auth status failed', { error: String(err && err.message) });
+      ctx.log('warn', 'amiro runtime auth status failed', { error: String(err && err.message) });
       return { providers: [] };
     }),
   ]);

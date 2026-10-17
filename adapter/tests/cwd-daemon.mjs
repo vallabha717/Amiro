@@ -2,7 +2,7 @@
 //
 // The adapter stores the chosen folder on its own thread mapping, but the user's
 // requirement is that the session actually works in that folder. This test asks
-// the Jcode daemon directly (SDK getRuntimeInfo) instead of trusting the map.
+// the Amiro runtime directly (SDK getRuntimeInfo) instead of trusting the map.
 //
 // Spawns the adapter on a fresh temp AMIRO_HOME (port 8796) against the real
 // bridge, creates a thread in an allowed directory, then:
@@ -21,13 +21,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 
-import { JcodeClient } from '@1jehuang/jcode-sdk';
+import { JcodeClient as AmiroRuntimeClient } from '@1jehuang/jcode-sdk';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ADAPTER = path.resolve(__dirname, '..');
 const PORT = Number(process.env.AMIRO_TEST_PORT || 8796);
 const BASE = `http://127.0.0.1:${PORT}`;
-const SOCKET = process.env.JCODE_API_SOCKET || '/run/user/0/amiro-preview-api.sock';
+const SOCKET = process.env.AMIRO_API_SOCKET || process.env.JCODE_API_SOCKET || '/run/user/0/amiro-preview-api.sock';
 const MODEL = 'opencode-go:deepseek-v4.1-flash';
 
 const results = [];
@@ -94,8 +94,8 @@ async function turn(auth, threadId, workingDir, word) {
 
 async function main() {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'amiro-cwd-'));
-  // /tmp is inside the default browse roots; os.tmpdir() may resolve under
-  // /root/.jcode, which the folder API denies.
+  // /tmp is inside the default browse roots; os.tmpdir() may resolve under the
+  // engine's real state directory (/root/.jcode), which the folder API denies.
   const dirA = `/tmp/amiro-cwd-a-${Date.now()}-${process.pid}`;
   const dirB = `/tmp/amiro-cwd-b-${Date.now()}-${process.pid}`;
   let server;
@@ -113,7 +113,7 @@ async function main() {
         AMIRO_HOST: '127.0.0.1',
         AMIRO_TOKEN: '',
         AMIRO_PINNED_MODELS: MODEL,
-        JCODE_API_SOCKET: SOCKET,
+        AMIRO_API_SOCKET: SOCKET,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -138,7 +138,7 @@ async function main() {
     const mappingA = await readMapping(home, threadId);
     step('thread mapping stores the picked folder', mappingA?.workingDir === dirA, `stored=${mappingA?.workingDir}`);
 
-    client = await JcodeClient.connect({ socketPath: SOCKET, clientName: 'amiro-cwd-test/1' });
+    client = await AmiroRuntimeClient.connect({ socketPath: SOCKET, clientName: 'amiro-cwd-test/1' });
     const reportedA = await daemonSessionDir(client, mappingA.sessionId);
     step(
       'daemon session really runs in the picked folder',

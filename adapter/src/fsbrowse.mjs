@@ -13,16 +13,35 @@
 //   - No file contents are ever read or returned.
 
 import { promises as fs } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 const DEFAULT_ROOTS = ['/root', '/home', '/srv', '/opt', '/var/www', '/tmp'];
 
+// Deny list. The two runtime entries are real on-disk directories of the
+// runtime engine (`~/.jcode` and its config subtree, including the pre-rename
+// credential layout). They stay denied so no Amiro surface can ever list or
+// enter engine state; Amiro itself never needs to browse them.
+// The runtime home actually in use is appended as well, so the deny list still
+// covers the engine when AMIRO_RUNTIME_HOME points somewhere else.
+const ENGINE_STATE_DENY = ['/root/.jcode', '/root/.config/jcode'];
+
+function runtimeHomeDenyEntries() {
+  const home =
+    process.env.AMIRO_RUNTIME_HOME ||
+    process.env.AMIRO_JCODE_HOME ||
+    process.env.JCODE_HOME ||
+    path.join(os.homedir(), '.jcode');
+  const configDir = process.env.JCODE_CONFIG_HOME || path.join(os.homedir(), '.config', 'jcode');
+  return [path.resolve(home), path.resolve(configDir)];
+}
+
 const DENY_EXACT = new Set([
-  '/root/.jcode',
+  ...ENGINE_STATE_DENY,
+  ...runtimeHomeDenyEntries(),
   '/root/.amiro-preview',
   '/root/.ssh',
   '/root/.aws',
-  '/root/.config/jcode',
   '/root/.gnupg',
   '/etc/letsencrypt',
   '/etc/ssl/private',
@@ -31,11 +50,11 @@ const DENY_EXACT = new Set([
 
 // Deny prefixes: anything at or under these paths is denied.
 const DENY_PREFIXES = [
-  '/root/.jcode',
+  ...ENGINE_STATE_DENY,
+  ...runtimeHomeDenyEntries(),
   '/root/.amiro-preview',
   '/root/.ssh',
   '/root/.aws',
-  '/root/.config/jcode',
   '/root/.gnupg',
   '/etc/letsencrypt',
   '/etc/ssl/private',

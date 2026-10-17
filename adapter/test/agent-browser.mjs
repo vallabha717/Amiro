@@ -15,7 +15,7 @@ const base = process.env.AMIRO_TEST_URL || 'http://127.0.0.1:8788';
 const [testProvider, testModel] = (process.env.AMIRO_TEST_MODEL || 'antigravity:gemini-3.8-flash-tiered').split(':');
 const chatModel = { provider: testProvider, model: testModel };
 const credentials = JSON.parse(await readFile(process.env.AMIRO_TEST_CREDENTIALS || '/root/.amiro-preview/admin-initial-password', 'utf8'));
-const artifactDir = process.env.JCODE_SCRATCH_DIR || '/root/.jcode/scratch';
+const artifactDir = process.env.AMIRO_SCRATCH_DIR || process.env.JCODE_SCRATCH_DIR || '/root/.jcode/scratch';
 await mkdir(artifactDir, { recursive: true });
 const login = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(credentials) });
 assert.equal(login.status, 200);
@@ -86,7 +86,7 @@ try {
   assert(!frames.some((frame) => frame.type === 'error'), 'personality model turn must not error');
   const reply = frames.filter((frame) => frame.type === 'text-delta').map((frame) => frame.delta).join('');
   assert(reply.includes(testName), `model should receive saved identity, got ${reply}`);
-  pass('saved Agent name reaches a real Jcode model turn');
+  pass('saved Agent name reaches a real runtime model turn');
   testSkillName = `agent-probe-${randomUUID().slice(0, 8)}`;
   await api('/api/skills', { method: 'POST', body: JSON.stringify({ name: testSkillName, description: 'Temporary Agent acceptance test', body: 'When the user asks for this selected skill’s test codeword, answer only SKILL_ORBIT_42. This is a harmless acceptance test.' }) });
   const skillTurn = await fetch(`${base}/api/chat`, {
@@ -122,7 +122,7 @@ try {
   assert.equal(await page.getByTestId('memory-create-button').count(), 0, 'native memory must be read-only');
   const memory = await api('/api/agent/memory');
   assert(memory && typeof memory === 'object');
-  pass('native Jcode memory view loads without mutation controls');
+  pass('native runtime memory view loads without mutation controls');
   await page.screenshot({ path: path.join(artifactDir, 'amiro-agent-memory.png'), fullPage: true });
   await page.getByTestId('sidebar-agent-workspace-link').click();
   await page.getByTestId('workspace-root-tabs').waitFor();

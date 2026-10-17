@@ -1,29 +1,222 @@
 #!/usr/bin/env sh
-# Amiro CLI
-# ---------
-# A thin wrapper around the upstream Jcode CLI. Amiro does not fork, vendor,
-# patch, or rebrand Jcode: every argument is forwarded unchanged to the
-# installed `jcode` binary, so Jcode's own authorship, licensing, and command
-# surface are retained exactly as upstream ships them. Amiro only supplies the
-# name and the desktop/dashboard around it.
+# Amiro runtime CLI
+# -----------------
+# This is a delegation shim, not a runtime implementation. It locates a runtime
+# engine binary and execs it with the caller's arguments unchanged: nothing is
+# added, nothing is removed, and no engine output is ever rewritten or filtered.
+# The engine keeps its own command surface, authorship and licensing exactly as
+# shipped.
 #
-# This matters for delegation: any operation Amiro is allowed to perform in
-# its UI is performed by Jcode under the hood, and this entry point is the
-# same delegation from a shell. There is deliberately no Amiro-specific
-# command implementation here -- adding one would be the first step of a fork.
+# Engine resolution order (first usable hit wins):
+#   1. AMIRO_RUNTIME_BIN                    explicit override, must be usable
+#   2. <this dir>/amiro-runtime             packaged runtime beside this CLI
+#   3. <repo>/runtime/target/release/amiro-runtime   owned native build
+#   4. <repo>/runtime/target/debug/amiro-runtime     owned native build (debug)
+#   5. AMIRO_JCODE_BIN, JCODE_BIN, jcode    compatibility fallback: a separately
+#      installed engine on PATH. That engine is NOT bundled with Amiro, and
+#      --help/--version say so explicitly rather than implying otherwise.
 #
-# Override the underlying binary with AMIRO_JCODE_BIN (e.g. an absolute path or
-# a specific jcode build) when it is not `jcode` on PATH.
+# Only --help and --version are answered locally so the CLI presents itself as
+# Amiro; both report which engine is actually being delegated to.
+#
+# A packaged Amiro install stages the owned runtime as the real native `amiro`
+# binary, so this shim is not shipped in that stage.
 set -eu
 
-JCODE_BIN="${AMIRO_JCODE_BIN:-jcode}"
+AMIRO_CLI_DEPTH="${AMIRO_CLI_DEPTH:-0}"
 
-if ! command -v "$JCODE_BIN" >/dev/null 2>&1; then
-  echo "amiro: the Jcode CLI ('$JCODE_BIN') was not found on PATH." >&2
-  echo "       amiro is a thin wrapper over Jcode; install Jcode first," >&2
-  echo "       or set AMIRO_JCODE_BIN to its path. No Amiro command is" >&2
-  echo "       implemented locally -- everything delegates to Jcode." >&2
+# A candidate engine that somehow resolves back to this shim would recurse
+# forever; the re-entrant invocation refuses instead (belt and braces alongside
+# the identity checks in resolve_candidate).
+if [ "$AMIRO_CLI_DEPTH" -gt 0 ] 2>/dev/null; then
+  echo "amiro: refusing to re-enter the Amiro CLI shim ($0)." >&2
+  echo "       Set AMIRO_RUNTIME_BIN to a real runtime engine binary." >&2
   exit 127
 fi
 
-exec "$JCODE_BIN" "$@"
+SELF_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+SELF="$SELF_DIR/$(basename -- "$0")"
+REPO_ROOT=$(CDPATH= cd -- "$SELF_DIR/.." && pwd -P)
+
+# Do two paths name the same file? Uses device:inode when the platform's stat
+# supports it, then readlink -f, then plain text. This is what keeps a symlink
+# to this shim on PATH from being picked up as the engine.
+same_file() {
+  if stat --version >/dev/null 2>&1; then
+    a=$(stat -c '%d:%i' -- "$1" 2>/dev/null || true)
+    b=$(stat -c '%d:%i' -- "$2" 2>/dev/null || true)
+  else
+    a=$(stat -f '%d:%i' -- "$1" 2>/dev/null || true)
+    b=$(stat -f '%d:%i' -- "$2" 2>/dev/null || true)
+  fi
+  [ -n "$a" ] && [ "$a" = "$b" ] && return 0
+  [ "$1" = "$2" ] && return 0
+  ra=$(readlink -f -- "$1" 2>/dev/null || true)
+  rb=$(readlink -f -- "$2" 2>/dev/null || true)
+  [ -n "$ra" ] && [ "$ra" = "$rb" ] && return 0
+  return 1
+}
+
+# Print the executable a candidate names, or nothing when it is unusable.
+resolve_candidate() {
+  candidate=${1:-}
+  [ -n "$candidate" ] || return 1
+  case "$candidate" in
+    */*) resolved_candidate="$candidate" ;;
+    *) resolved_candidate=$(command -v "$candidate" 2>/dev/null || true) ;;
+  esac
+  [ -n "$resolved_candidate" ] || return 1
+  [ -f "$resolved_candidate" ] || return 1
+  [ -x "$resolved_candidate" ] || return 1
+  same_file "$resolved_candidate" "$SELF" && return 1
+  printf '%s\n' "$resolved_candidate"
+}
+
+ENGINE_PATH=""
+ENGINE_KIND=""
+
+# Sets ENGINE_PATH/ENGINE_KIND for the first usable candidate.
+try_engine() {
+  found=$(resolve_candidate "${2:-}") || return 1
+  ENGINE_PATH="$found"
+  ENGINE_KIND="$1"
+  return 0
+}
+
+# 0 = found, 1 = nothing usable anywhere, 2 = AMIRO_RUNTIME_BIN set but unusable.
+find_engine() {
+  if [ -n "${AMIRO_RUNTIME_BIN:-}" ]; then
+    found=$(resolve_candidate "$AMIRO_RUNTIME_BIN") || return 2
+    ENGINE_PATH="$found"
+    ENGINE_KIND="explicit"
+    return 0
+  fi
+  try_engine packaged "$SELF_DIR/amiro-runtime" && return 0
+  try_engine owned "$REPO_ROOT/runtime/target/release/amiro-runtime" && return 0
+  try_engine owned-debug "$REPO_ROOT/runtime/target/debug/amiro-runtime" && return 0
+  try_engine compatibility "${AMIRO_JCODE_BIN:-}" && return 0
+  try_engine compatibility "${JCODE_BIN:-}" && return 0
+  try_engine compatibility jcode && return 0
+  return 1
+}
+
+engine_source_label() {
+  case "$1" in
+    explicit) echo "explicit override (AMIRO_RUNTIME_BIN)" ;;
+    packaged) echo "packaged runtime installed beside this CLI" ;;
+    owned) echo "Amiro-owned native build (runtime/target/release)" ;;
+    owned-debug) echo "Amiro-owned native build (runtime/target/debug)" ;;
+    compatibility)
+      echo "compatibility fallback: a separately installed engine on PATH, not bundled with Amiro"
+      ;;
+    *) echo "$1" ;;
+  esac
+}
+
+print_help() {
+  find_engine && engine_status=0 || engine_status=$?
+  cat <<'EOF'
+amiro — Amiro runtime CLI
+
+Usage: amiro <command> [options]
+
+This CLI is a delegation shim: it runs a separate runtime engine binary and
+passes your command to it unchanged, so the engine's own command surface is
+available here as-is. Common commands:
+
+  auth status --json           connected providers and credential state
+  provider list --json         full provider catalog
+  model list -p <id> --json    models available for one provider
+  usage --json                 quota and usage buckets
+  login <provider>             connect a provider
+  run [--json] <prompt>        run a headless turn
+
+  --version, -V                print the version of the engine being delegated to
+  --help, -h                   show this help
+
+Set AMIRO_RUNTIME_BIN to use a specific runtime engine binary. Build the
+Amiro-owned engine with scripts/build-native.sh.
+
+Note: the engine treats AMIRO_HOME as a runtime home, but Amiro uses it for its
+application data. Set AMIRO_RUNTIME_HOME to choose the runtime home explicitly.
+EOF
+  case "$engine_status" in
+    0)
+      echo ""
+      echo "Engine in use: $ENGINE_PATH"
+      echo "Engine source: $(engine_source_label "$ENGINE_KIND")"
+      ;;
+    2)
+      echo ""
+      echo "AMIRO_RUNTIME_BIN is set to '$AMIRO_RUNTIME_BIN', which is not a usable" >&2
+      echo "executable file. No engine is selected." >&2
+      ;;
+    *)
+      echo ""
+      echo "No runtime engine was found, so only --help and --version work here." >&2
+      echo "Run scripts/build-native.sh, or set AMIRO_RUNTIME_BIN to an installed" >&2
+      echo "engine binary." >&2
+      ;;
+  esac
+}
+
+print_version() {
+  find_engine && engine_status=0 || engine_status=$?
+  case "$engine_status" in
+    2)
+      echo "amiro: AMIRO_RUNTIME_BIN='$AMIRO_RUNTIME_BIN' is not a usable executable file." >&2
+      exit 127
+      ;;
+    0) : ;;
+    *)
+      echo "amiro: no runtime engine found, so there is no runtime version to report." >&2
+      echo "       This CLI is a delegation shim and has no version of its own." >&2
+      echo "       Run scripts/build-native.sh, or set AMIRO_RUNTIME_BIN." >&2
+      exit 127
+      ;;
+  esac
+
+  echo "amiro: delegation shim over the Amiro runtime engine (no engine of its own)"
+  echo "engine: $ENGINE_PATH"
+  echo "engine source: $(engine_source_label "$ENGINE_KIND")"
+  echo "--- output of the engine's own --version ---"
+  # Relayed verbatim; the engine's exit status is this command's exit status.
+  AMIRO_CLI_DEPTH=1 "$ENGINE_PATH" --version
+}
+
+case "${1:-}" in
+  --help|-h)
+    print_help
+    exit 0
+    ;;
+  --version|-V)
+    print_version
+    exit 0
+    ;;
+esac
+
+find_engine && engine_status=0 || engine_status=$?
+case "$engine_status" in
+  0) : ;;
+  2)
+    echo "amiro: AMIRO_RUNTIME_BIN='$AMIRO_RUNTIME_BIN' is not a usable executable file." >&2
+    echo "       Refusing to fall back to a different engine while an override is set." >&2
+    exit 127
+    ;;
+  *)
+    echo "amiro: no runtime engine found." >&2
+    echo "       amiro delegates to a separate runtime engine binary and has none" >&2
+    echo "       of its own. Looked for, in order:" >&2
+    echo "         - AMIRO_RUNTIME_BIN" >&2
+    echo "         - $SELF_DIR/amiro-runtime" >&2
+    echo "         - $REPO_ROOT/runtime/target/release/amiro-runtime" >&2
+    echo "         - $REPO_ROOT/runtime/target/debug/amiro-runtime" >&2
+    echo "         - AMIRO_JCODE_BIN, JCODE_BIN, or jcode on PATH (compatibility)" >&2
+    echo "       Build the Amiro-owned engine with scripts/build-native.sh, or set" >&2
+    echo "       AMIRO_RUNTIME_BIN to an installed engine binary." >&2
+    exit 127
+    ;;
+esac
+
+export AMIRO_CLI_DEPTH=1
+exec "$ENGINE_PATH" "$@"

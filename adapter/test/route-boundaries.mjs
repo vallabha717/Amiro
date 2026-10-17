@@ -53,7 +53,7 @@ try {
 } finally {
   await fetch(`${base}/api/auth/logout`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
 }
-const artifactDir = process.env.JCODE_SCRATCH_DIR || '/root/.jcode/scratch';
+const artifactDir = process.env.AMIRO_SCRATCH_DIR || process.env.JCODE_SCRATCH_DIR || '/root/.jcode/scratch';
 await mkdir(artifactDir, { recursive: true });
 await writeFile(path.join(artifactDir, 'amiro-route-acceptance.json'), JSON.stringify({ base, date: new Date().toISOString(), scope: 'Auth boundary for each literal registered route and authenticated read smoke only. Not full mutation acceptance.', routes: rows }, null, 2));
 console.log(JSON.stringify({ routes: rows.length, artifact: `${artifactDir}/amiro-route-acceptance.json` }));

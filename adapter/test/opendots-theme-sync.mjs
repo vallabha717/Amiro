@@ -10,12 +10,14 @@ const credentials = JSON.parse(
 const artifactDir = process.env.JCODE_SCRATCH_DIR || '/root/.jcode/scratch';
 await mkdir(artifactDir, { recursive: true });
 
-const ALL_19_THEMES = [
+const ALL_20_THEMES = [
   'default', 'zinc', 'slate', 'stone', 'gray', 'blue', 'orange', 'pink',
   'bubblegum-pop', 'cyberpunk-neon', 'retro-arcade', 'tropical-paradise',
   'steampunk-cogs', 'neon-synthwave', 'pastel-kawaii', 'space-odyssey',
-  'vintage-vinyl', 'misty-harbor', 'zen-garden',
+  'vintage-vinyl', 'misty-harbor', 'zen-garden', 'midnight',
 ];
+// Back-compat alias for older assertions that still reference ALL_19_THEMES in copy
+const ALL_19_THEMES = ALL_20_THEMES;
 
 const OPENDOTS_SPRITES = ['blue', 'mint', 'orange', 'purple'];
 
@@ -123,18 +125,31 @@ try {
   assert.equal(observedSpriteUrls.size, 4, `All 4 distinct plush characters must cycle, found ${observedSpriteUrls.size}: ${[...observedSpriteUrls]}`);
   console.log(`PASS: All 4 plush sprites cycled and rendered: ${[...observedSpriteUrls].join(', ')}`);
 
-  // 5. Test cancel preserves theme
-  console.log('4. Verifying Customizer Cancel preserves theme...');
+  // 5. Test cancel preserves theme – use visible TraitCycleRow arrows, not hidden controls
+  console.log('4. Verifying Customizer Cancel preserves theme via visible arrows...');
   const themeBeforeCancel = await page.evaluate(() => document.body.getAttribute('data-theme') || 'default');
   const targetTheme = themeBeforeCancel === 'zinc' ? 'orange' : 'zinc';
-  const themeBtn = page.getByTestId(`agent-theme-${targetTheme}`);
-  await themeBtn.scrollIntoViewIfNeeded();
-  await themeBtn.click();
+  const formatLabel = (id) => id.split('-').map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+  const targetLabel = formatLabel(targetTheme);
+  const themeValue = page.getByTestId('agent-theme-value');
+  const nextThemeBtn = page.getByTestId('agent-next-theme');
+  // Bounded loop: click Next Theme until modal draft matches target, reading visible center value
+  for (let i = 0; i < 25; i++) {
+    const draft = await modal.getAttribute('data-theme');
+    if (draft === targetTheme) break;
+    const visible = (await themeValue.textContent())?.trim();
+    if (visible === targetLabel && draft === targetTheme) break;
+    await nextThemeBtn.click();
+    await page.waitForTimeout(140);
+  }
   await page.waitForTimeout(150);
 
   // Modal draft changes
   const modalDraft = await modal.getAttribute('data-theme');
   assert.equal(modalDraft, targetTheme, `Customizer modal data-theme should reflect draft ${targetTheme}`);
+  // Visible center value must match the target label
+  const visibleThemeLabel = (await themeValue.textContent())?.trim();
+  assert.equal(visibleThemeLabel, targetLabel, `Visible theme value must show ${targetLabel}`);
 
   // But document.body should still have themeBeforeCancel
   const bodyDuringDraft = await page.evaluate(() => document.body.getAttribute('data-theme') || 'default');
@@ -145,16 +160,26 @@ try {
   await modal.waitFor({ state: 'hidden' });
   const bodyAfterCancel = await page.evaluate(() => document.body.getAttribute('data-theme') || 'default');
   assert.equal(bodyAfterCancel, themeBeforeCancel, 'Body theme must stay preserved after Cancel');
-  console.log('PASS: Customizer Cancel preserves active theme.');
+  console.log('PASS: Customizer Cancel preserves active theme via visible arrows.');
 
-  // 6. Test save applies theme immediately to sidebar and agent
-  console.log('5. Verifying Customizer Save applies theme immediately...');
+  // 6. Test save applies theme immediately to sidebar and agent – visible arrows
+  console.log('5. Verifying Customizer Save applies theme via visible arrows...');
   await heroButton.click();
   await modal.waitFor();
   const saveTheme = 'tropical-paradise';
-  const saveThemeBtn = page.getByTestId(`agent-theme-${saveTheme}`);
-  await saveThemeBtn.scrollIntoViewIfNeeded();
-  await saveThemeBtn.click();
+  const saveLabel = formatLabel(saveTheme);
+  // Cycle visible Theme row until saveTheme is the draft
+  for (let i = 0; i < 25; i++) {
+    const draft = await modal.getAttribute('data-theme');
+    if (draft === saveTheme) break;
+    await page.getByTestId('agent-next-theme').click();
+    await page.waitForTimeout(140);
+  }
+  const saveVisible = (await page.getByTestId('agent-theme-value').textContent())?.trim();
+  assert.equal(saveVisible, saveLabel, `Visible theme value must be ${saveLabel} before Save`);
+  // Midnight tint check: SVG tint attribute reflects preview – when saveTheme is not midnight, should be accent
+  const tintBeforeSave = await modal.locator('svg[data-testid="agent-avatar"]').getAttribute('data-agent-tint');
+  assert(tintBeforeSave === 'accent' || tintBeforeSave === 'black', `Preview tint attribute must be present, got ${tintBeforeSave}`);
   await page.getByTestId('agent-customizer-save').click();
   await modal.waitFor({ state: 'hidden' });
 
@@ -162,10 +187,10 @@ try {
   await page.waitForFunction((expected) => document.body.getAttribute('data-theme') === expected, saveTheme);
   const bodyAfterSave = await page.evaluate(() => document.body.getAttribute('data-theme'));
   assert.equal(bodyAfterSave, saveTheme, `Body theme must update immediately to ${saveTheme}`);
-  console.log('PASS: Customizer Save applies theme immediately without reload.');
+  console.log('PASS: Customizer Save applies theme via visible arrows without reload.');
 
-  // 7. Test all 19 themes in both light and dark modes with real computed DOM colors
-  console.log('6. Verifying all 19 themes in light and dark modes with computed DOM colors and sRGB resolution...');
+  // 7. Test all 20 themes in both light and dark modes with real computed DOM colors
+  console.log('6. Verifying all 20 themes in light and dark modes with computed DOM colors and sRGB resolution...');
   for (const mode of ['light', 'dark']) {
     await page.evaluate((m) => {
       document.documentElement.classList.remove('light', 'dark');

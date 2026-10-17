@@ -1,53 +1,46 @@
-# Amiro Backend Sidecar Launcher: Packaging Limitations
+# Amiro Sidecars: Packaging Status
 
-The desktop backend is `adapter/src/server.mjs` (a Node >=22 HTTP server that
-serves the Next static export and bridges to the Amiro runtime daemon).
+The desktop backend is now the **owned Rust backend** (`backend/`, binary
+`amiro-backend`) and the engine is the **owned Rust runtime** (`runtime/`,
+binary `amiro-runtime`). Both are real executables, so Tauri's
+`bundle.externalBin` contract is satisfied directly:
 
-Tauri's `bundle.externalBin` slot (`"binaries/backend"`, read at runtime via
-`app.shell().sidecar("backend")`) requires a native executable. A Node script
-is not one, so `src-tauri/build-sidecar.sh` writes a small executable launcher
-into that slot:
-
-```sh
-#!/usr/bin/env bash
-exec "<absolute node path>" "<absolute repo>/adapter/src/server.mjs" "$@"
+```json
+"externalBin": ["binaries/backend", "binaries/runtime"]
 ```
 
-`src-tauri/src/lib.rs` spawns that sidecar, sets `AMIRO_PORT` to an ephemeral
-`127.0.0.1:0` reservation and `AMIRO_TOKEN` to a per-launch random secret, then
-injects the same port/token into the webview (`__BACKEND_PORT__` /
-`__BACKEND_TOKEN__`).
+`src-tauri/build-sidecar.sh` (Linux/macOS) and `build-sidecar.ps1` (Windows)
+stage both binaries for the host target triple. `src-tauri/src/lib.rs` spawns
+the backend sidecar, sets `AMIRO_PORT` to an ephemeral `127.0.0.1:0` reservation
+and `AMIRO_TOKEN` to a per-launch random secret, injects the same port/token
+into the webview (`__BACKEND_PORT__` / `__BACKEND_TOKEN__`), and passes
+`AMIRO_RUNTIME_BIN` when the bundled runtime is found next to the app.
 
-## What works
+The backend starts the runtime on demand
+(`amiro-runtime --no-update api-bridge --api-socket <home>/runtime/amiro-api.sock`),
+keeps it alive with protocol pings (the daemon otherwise exits after five idle
+minutes) and restarts it if it dies. Runtime state defaults to `~/.amiro`
+(`AMIRO_HOME`, with `AMIRO_RUNTIME_HOME`/`AMIRO_RUNTIME_DIR` overrides).
 
-- `tauri dev` and running a built app **from inside this checkout**, on
-  Linux/macOS, with `node` on `PATH` and `adapter/node_modules` installed
-  (`pnpm --dir adapter install`).
-- The adapter itself, standalone, via `pnpm start` / `scripts/dev-backend.sh`.
+## Native mode (default)
 
-## What does not (honest limitations, not TODOs)
+`AMIRO_SIDECAR_MODE` defaults to `native`. Both staging scripts require:
 
-1. **The launcher bakes in absolute paths** to the local `node` binary and to
-   `adapter/src/server.mjs`. Those paths exist on the machine that generated
-   the launcher; they do not exist on an end user's machine.
-2. **`node` must be on `PATH` at launch.** There is no bundled Node runtime.
-3. **Windows is unsupported by `build-sidecar.sh`.** Tauri's `externalBin`
-   needs a real `.exe` there, and a batch file cannot occupy that slot.
-   `build-sidecar.ps1` therefore fails with an explicit message instead of
-   writing an `.exe` that cannot run.
-4. **Self-contained distribution story** for the backend: distributing a desktop
-   package requires bundling the runtime or single-executable packaging.
+- `backend/target/{release,debug}/amiro-backend` (`cargo build --manifest-path backend/Cargo.toml --bin amiro-backend --release`)
+- `runtime/target/{release,debug}/amiro-runtime` (`cargo build --manifest-path runtime/Cargo.toml --bin amiro-runtime --release`)
 
-## What a distributable build needs (follow-up)
+and fail with that build hint when one is missing, rather than producing a
+bundle with no engine.
 
-Any one of:
+## What remains
 
-- Package the adapter as a **Node SEA / single executable** and ship that as
-  the sidecar.
-- Bundle a Node runtime and add it to `externalBin`.
-- Ship a tiny native launcher (Rust/C) that locates a bundled Node and the
-  adapter resources.
-
-Until then, desktop packaging is a development-only capability. This is the
-honest status of the Node adapter packaging and is recorded here rather than
-silently degraded.
+1. **Release builds and code signing.** Development builds work; producing
+   signed installers is a release-pipeline task (icons, notarization, update
+   feed). Nothing here pretends that is done.
+2. **Node adapter fallback.** `AMIRO_SIDECAR_MODE=adapter` still stages the old
+   Node launcher for one release of comparison. Its absolute-path limitation is
+   documented in the script header; it is not a distributable option and is not
+   the default.
+3. **First-run state.** `~/.amiro` is created on first launch. Migrating an
+   existing `~/.jcode` login into it is left to the runtime's own credential
+   inheritance; the backend never copies credentials itself.

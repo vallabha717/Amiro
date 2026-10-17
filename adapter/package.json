@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Node HTTP adapter that replaces backend-go, serving the Next static export and bridging to the live jcode daemon.",
+  "description": "Amiro Node HTTP adapter that replaces backend-go, serving the Next static export and bridging to the live Amiro runtime engine.",
   "engines": {
     "node": ">=22"
   },
