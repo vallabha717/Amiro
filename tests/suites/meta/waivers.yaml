@@ -1,5 +1,0 @@
-# Waivers for route-coverage guard.
-# Every entry must correspond to a real route in backend-go/internal/httpserver/router.go
-# and specify an owner phase and a clear technical rationale.
-
-waivers: []

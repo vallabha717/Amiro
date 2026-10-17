@@ -1,0 +1,9 @@
+[package]
+name = "amiro-testkit"
+version = "0.1.0"
+edition = "2021"
+description = "Std-only test harness and contract mirror for Amiro"
+authors = ["Amiro"]
+
+[dependencies]
+# Zero external crates: pure std for offline builds

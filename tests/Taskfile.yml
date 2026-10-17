@@ -1,78 +1,71 @@
 # =============================================================================
-# RETIRED (compatibility harness for the removed Go backend)
+# Amiro Test Suite
 # =============================================================================
-# `tests/` was the Go end-to-end harness for `backend-go` (driven by
-# `cmd/amirotest`). `backend-go` has been removed and replaced by the Node
-# adapter (`adapter/src/server.mjs`). Nothing in the `go run ./cmd/amirotest`
-# surface below can run any more, because there is no Go backend for it to
-# build, start, or query.
+# The legacy Go backend and Go test harness (cmd/amirotest) have been retired.
+# Amiro is now Rust-only on native surfaces (Tauri desktop shell, std-only tests/rust)
+# with the Node adapter as the backend runtime.
 #
-# The fixtures, cassettes, and suite/test code are kept as historical
-# reference (do not delete them), but the `go run ...` tasks are dead. The
-# current test entry points are the `adapter:*` tasks below, run from the
-# repository root.
+# Current test surfaces:
+# - adapter unit tests: node --test adapter/test/usage.test.mjs
+# - cargo tests: tests/rust (std-only Rust testkit), src-tauri
+# - vitest: frontend unit and integration tests (pnpm test)
+# - playwright: end-to-end browser tests (pnpm test:e2e or cd tests && pnpm test)
 #
-# Install: https://taskfile.dev  (or just run the commands in `cmds:`)
+# Install Task runner: https://taskfile.dev (or execute commands directly)
 version: "3"
 
 tasks:
   default:
-    desc: The current tests (Node adapter unit tests)
-    cmds: ["node --test adapter/test/usage.test.mjs"]
+    desc: Run standard tests (adapter unit tests and Rust testkit)
+    cmds:
+      - task: adapter:unit
+      - task: cargo:test
 
   adapter:unit:
     desc: Node adapter unit tests
-    cmds: ["node --test adapter/test/usage.test.mjs"]
+    cmds:
+      - "node --test adapter/test/usage.test.mjs"
 
   adapter:live:
-    desc: "Adapter live smoke against a RUNNING, AUTHENTICATED preview (needs credentials + a live bridge)"
-    cmds: ["node adapter/test/live-smoke.mjs"]
+    desc: "Adapter live smoke against a running preview (needs credentials and live bridge)"
+    cmds:
+      - "node adapter/test/live-smoke.mjs"
+
+  cargo:test:
+    desc: Run std-only Rust testkit tests
+    dir: tests/rust
+    cmds:
+      - "cargo test --offline"
+
+  cargo:check:
+    desc: Check Rust packages (tests/rust and src-tauri)
+    cmds:
+      - "cd tests/rust && cargo test --offline"
+      - "cd src-tauri && cargo check --offline"
+
+  vitest:
+    desc: Run frontend unit tests via vitest
+    cmds:
+      - "pnpm test"
+
+  playwright:
+    desc: Run Playwright end-to-end browser tests
+    dir: tests
+    cmds:
+      - "pnpm playwright test"
+
+  playwright:headed:
+    desc: Run Playwright tests with headed browser
+    dir: tests
+    cmds:
+      - "pnpm playwright test --headed"
 
   # ---------------------------------------------------------------------------
-  # Everything below is RETIRED. It targeted backend-go and will not run.
-  # Kept only so the historical commands are still discoverable.
+  # LEGACY / RETIRED: Go harness tasks (cmd/amirotest) are dropped.
+  # The Go toolchain is no longer required or supported in Amiro.
+  # Historical reference only:
+  # - legacy:doctor was: go run ./cmd/amirotest doctor
+  # - legacy:list was: go run ./cmd/amirotest list
+  # - legacy:run was: go run ./cmd/amirotest run
+  # - legacy:smoke was: go run ./cmd/amirotest run --tag smoke
   # ---------------------------------------------------------------------------
-
-  legacy:doctor:
-    desc: "[RETIRED] Was: is the Go toolchain complete?"
-    cmds: ["go run ./cmd/amirotest doctor"]
-
-  legacy:list:
-    desc: "[RETIRED] Was: every discovered surface/feature/test address"
-    cmds: ["go run ./cmd/amirotest list"]
-
-  legacy:run:
-    desc: "[RETIRED] Was: everything config.yaml selected"
-    cmds: ["go run ./cmd/amirotest run"]
-
-  legacy:smoke:
-    desc: "[RETIRED] Was: the minimal per-surface liveness path"
-    cmds: ["go run ./cmd/amirotest run --tag smoke"]
-
-  legacy:backend:
-    desc: "[RETIRED] Was: the Go backend surface"
-    cmds: ["go run ./cmd/amirotest run --surface backend {{if .FEATURE}}--feature {{.FEATURE}}{{end}}"]
-
-  legacy:tui:
-    desc: "[RETIRED] Was: the TUI surface"
-    cmds: ["go run ./cmd/amirotest run --surface tui {{if .FEATURE}}--feature {{.FEATURE}}{{end}}"]
-
-  legacy:ui:
-    desc: "[RETIRED] Was: the web dashboard surface (Playwright)"
-    cmds: ["go run ./cmd/amirotest run --surface ui {{if .FEATURE}}--feature {{.FEATURE}}{{end}}"]
-
-  legacy:desktop:
-    desc: "[RETIRED] Was: the Tauri surface"
-    cmds: ["go run ./cmd/amirotest run --surface desktop"]
-
-  legacy:meta:
-    desc: "[RETIRED] Was: guards -- tests of the test system itself"
-    cmds: ["go run ./cmd/amirotest run --surface meta"]
-
-  legacy:unit:
-    desc: "[RETIRED] Was: the Go harness's own unit tests"
-    cmds: ["go test ./harness/... ./cmd/..."]
-
-  legacy:report:
-    desc: "[RETIRED] Was: re-render the newest run's summary"
-    cmds: ["go run ./cmd/amirotest report"]
