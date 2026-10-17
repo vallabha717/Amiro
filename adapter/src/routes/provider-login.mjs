@@ -10,7 +10,11 @@
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { buildRuntimeCliEnv, resolveRuntimeBin } from '../runtime.mjs';
+import { providerCatalog } from '../providers.mjs';
 
+// Fallback only: used when the live catalog cannot be read (engine CLI down).
+// The live check below consults providerCatalog() so new engine OAuth
+// providers work without editing this file.
 const SUPPORTED_OAUTH_PROVIDERS = new Set([
   'claude',
   'openai',
@@ -19,6 +23,22 @@ const SUPPORTED_OAUTH_PROVIDERS = new Set([
   'copilot',
   'google',
 ]);
+
+// True when the provider's live catalog entry can start an OAuth/device flow.
+// Unknown ids return false; when the catalog itself is unreadable we fall back
+// to the static set above so a transient CLI failure cannot lock out logins.
+async function canStartOauthFlow(ctx, provider) {
+  try {
+    const catalog = await providerCatalog(ctx);
+    const entry = (catalog.providers || []).find(
+      (p) => String(p.id || '').toLowerCase() === provider,
+    );
+    if (entry) return Boolean(entry.canStartOauth);
+  } catch {
+    // fall through to the static set
+  }
+  return SUPPORTED_OAUTH_PROVIDERS.has(provider);
+}
 
 const MAX_OUTPUT_BYTES = 1024 * 1024;
 const CLI_TIMEOUT_MS = 30000;
@@ -147,7 +167,7 @@ export function register(app, ctx) {
     if (!user) return;
 
     const provider = String(params.id || '').trim().toLowerCase();
-    if (!SUPPORTED_OAUTH_PROVIDERS.has(provider)) {
+    if (!(await canStartOauthFlow(ctx, provider))) {
       ctx.error(
         res,
         400,

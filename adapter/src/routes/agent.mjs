@@ -636,9 +636,9 @@ function getWorkspaceRoots(ctx) {
   return [
     {
       id: 'runtime',
-      label: 'Amiro Memory & Skills',
+      label: 'Runtime',
       basePath: runtimeHome,
-      description: 'Live runtime memory graph JSONs, installed skills, and prompt overlays (read-only)',
+      description: 'Runtime files (read-only)',
     },
     {
       id: 'amiro',
@@ -795,7 +795,7 @@ export function redactSensitiveConfig(fileName, text) {
   return { text: out, redactions };
 }
 
-function isWritableWorkspaceRel(rootId, relPosix, userId) {
+function isWritableWorkspaceRel(_rootId, _relPosix, _userId) {
   // Workspace is display-only; persona mirrors under users/<uid>/ are
   // regenerated from JSON (PUT /api/agent/identity|personality) and not
   // consumed by chat. Allow no writes via workspace to avoid fake-edit UX.

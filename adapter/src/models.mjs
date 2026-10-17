@@ -297,7 +297,7 @@ export function register(app, ctx) {
 
   // --- Chat models (PUBLIC) -------------------------------------------------
 
-  app.get('/api/chat/models', async (req, res) => {
+  app.get('/api/chat/models', async (_req, res) => {
     let catalog;
     try {
       catalog = await buildCatalog(ctx);
@@ -355,7 +355,7 @@ export function register(app, ctx) {
 
   // --- AI providers ---------------------------------------------------------
 
-  app.get('/api/ai/providers', async (req, res) => {
+  app.get('/api/ai/providers', async (_req, res) => {
     let catalog;
     try {
       catalog = await buildCatalog(ctx);
@@ -603,7 +603,7 @@ export function register(app, ctx) {
 
   // --- Login panel support --------------------------------------------------
 
-  app.get('/api/providers/login-status', async (req, res) => {
+  app.get('/api/providers/login-status', async (_req, res) => {
     const status = await ctx.runtime.authStatus();
     ctx.json(res, 200, Array.isArray(status.providers) ? status.providers : []);
   });

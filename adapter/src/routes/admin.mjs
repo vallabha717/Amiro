@@ -55,9 +55,22 @@ export function register(app, ctx) {
 
   // GET /api/admin/users/:id/stats -- user stats
   app.get('/api/admin/users/:id/stats', async (req, res, params) => {
-    if (!requireAdmin(req, res, ctx)) return;
+    const sessionUser = requireAdmin(req, res, ctx);
+    if (!sessionUser) return;
     const users = await loadUsers();
-    const targetUser = users.find((u) => u.id === params.id);
+    // Self-view must never 404: a signed-in admin whose id is absent from
+    // users.json (fresh install, OAuth user never persisted) falls back to
+    // the session identity. Other unknown ids still 404.
+    const targetUser = users.find((u) => u.id === params.id) ||
+      (params.id === sessionUser.id ? {
+        id: sessionUser.id,
+        name: sessionUser.name || sessionUser.email || sessionUser.id,
+        email: sessionUser.email || '',
+        image: sessionUser.image || null,
+        role: sessionUser.role,
+        createdAt: sessionUser.createdAt || ctx.nowIso(),
+        lastLogin: sessionUser.lastLogin || null,
+      } : null);
     if (!targetUser) {
       ctx.error(res, 404, 'user not found');
       return;

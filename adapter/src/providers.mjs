@@ -100,13 +100,21 @@ export async function providerCatalog(ctx, { force = false } = {}) {
   const listProviders = Array.isArray(providerListRaw.providers) ? providerListRaw.providers : [];
   const authProviders = Array.isArray(authStatusRaw.providers) ? authStatusRaw.providers : [];
 
-  // Index auth status by id for O(1) join.
-  const byId = new Map();
-  for (const p of authProviders) {
-    if (p && p.id) byId.set(String(p.id).toLowerCase(), p);
-  }
-  // Also index by alias-ish lowercased id for provider list entries that may differ.
-  // provider list ids already match auth ids for overlap; auth has superset (53 vs 28).
+  const out = joinCatalog(listProviders, authProviders);
+
+  const result = { providers: out, generatedAt: new Date().toISOString() };
+  cache = { at: now, data: result };
+  return result;
+}
+
+// Pure union of the engine's two provider sources. Exported for unit tests.
+// `authProviders` (`auth status --json`) is the superset carrying connection
+// state; `listProviders` (`provider list --json`) contributes SKU-only entries
+// (e.g. `auto`, `google`) plus display detail/aliases. Neither source alone is
+// the full jcode-supported list, so dropping either side regresses the catalog.
+export function joinCatalog(listProviders, authProviders) {
+  const list = Array.isArray(listProviders) ? listProviders : [];
+  const auth = Array.isArray(authProviders) ? authProviders : [];
 
   // Union: start from authProviders (superset, ~53), then add any provider-list-only entries.
   const seen = new Set();
@@ -197,8 +205,8 @@ export async function providerCatalog(ctx, { force = false } = {}) {
     });
   }
 
-  for (const a of authProviders) pushFromAuth(a);
-  for (const e of listProviders) pushFromList(e);
+  for (const a of auth) pushFromAuth(a);
+  for (const e of list) pushFromList(e);
 
   // Deterministic sort: recommended first, then connected, then alpha by displayName.
   out.sort((a, b) => {
@@ -207,17 +215,15 @@ export async function providerCatalog(ctx, { force = false } = {}) {
     return String(a.displayName).localeCompare(String(b.displayName));
   });
 
-  const result = { providers: out, generatedAt: new Date().toISOString() };
-  cache = { at: now, data: result };
-  return result;
+  return out;
 }
 
 export function invalidateCatalog() {
   cache = { at: 0, data: null };
 }
 
-export function _normalizeMechanismForTest(v) {
-  return normalizeMechanism(v);
+export function _normalizeMechanismForTest(authKind, providerId) {
+  return normalizeMechanism(authKind, providerId);
 }
 
 export function _redactForTest(v) {
