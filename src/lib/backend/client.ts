@@ -93,7 +93,9 @@ export const fetcher = async (path: string, options?: RequestInit) => {
       errorPayload = { message: `Request failed with status ${res.status}` };
     }
     throw new ApiError(
-      errorPayload.error || errorPayload.message || "An error occurred while fetching the data.",
+      errorPayload.error ||
+        errorPayload.message ||
+        "An error occurred while fetching the data.",
       res.status,
       errorPayload,
     );
@@ -108,7 +110,18 @@ export async function apiJson<T = unknown>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  const res = await apiFetch(path, init);
+  // The native backend rejects a JSON body that arrives without a JSON content
+  // type (415), unlike the previous Go server. Set it here so every JSON call
+  // site gets it from one place instead of each caller remembering.
+  const headers = new Headers(init?.headers);
+  if (
+    typeof init?.body === "string" &&
+    !headers.has("Content-Type") &&
+    /^\s*[\[{]/.test(init.body)
+  ) {
+    headers.set("Content-Type", "application/json");
+  }
+  const res = await apiFetch(path, { ...init, headers });
   if (!res.ok) {
     let errorPayload: any;
     try {
@@ -117,7 +130,9 @@ export async function apiJson<T = unknown>(
       errorPayload = { message: `Request failed with status ${res.status}` };
     }
     throw new ApiError(
-      errorPayload.error || errorPayload.message || "An error occurred while fetching the data.",
+      errorPayload.error ||
+        errorPayload.message ||
+        "An error occurred while fetching the data.",
       res.status,
       errorPayload,
     );

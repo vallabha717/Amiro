@@ -3,7 +3,7 @@
 #
 # History: this used to also stage out/ into backend-go/internal/web/dist so a
 # `go build -tags embedui` binary could serve the dashboard from one listener.
-# backend-go is gone; the Node adapter (adapter/src/server.mjs) serves out/
+# backend-go is gone; the Amiro adapter (adapter/src/server.mjs) serves out/
 # directly from the repo root, so the staging step is no longer needed and out/
 # is the single source of truth for both the adapter and src-tauri's
 # frontendDist.
@@ -36,5 +36,5 @@ FILES=$(find "$OUT" -type f | wc -l | tr -d ' ')
 SIZE=$(du -sh "$OUT" | cut -f1)
 echo "==> export ready: $FILES files ($SIZE) at $OUT"
 echo
-echo "the Node adapter serves this directly; to run it standalone:"
+echo "the Amiro adapter serves this directly; to run it standalone:"
 echo "  ./scripts/dev-backend.sh"

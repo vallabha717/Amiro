@@ -1,0 +1,44 @@
+[package]
+name = "amiro-backend"
+version = "0.1.0"
+edition = "2021"
+description = "Amiro native Rust backend (axum) replacing adapter HTTP server"
+license = "MIT"
+
+[lib]
+name = "backend"
+path = "src/lib.rs"
+
+[[bin]]
+name = "amiro-backend"
+path = "src/main.rs"
+
+[dependencies]
+axum = { version = "0.8", features = ["macros"] }
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+async-stream = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+rand = "0.8"
+scrypt = { version = "0.11", features = [] }
+subtle = "2"
+chrono = { version = "0.4", features = ["serde"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "fs", "set-header"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+sha2 = "0.10"
+hex = "0.4"
+tower = { version = "0.5", features = ["util"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+url = "2"
+futures = "0.3"
+bytes = "1"
+http-body-util = "0.1"
+mime_guess = "2"
+# Owned Amiro runtime client: the real harness protocol (protocol v1 NDJSON,
+# Hello negotiation, sessions, streamed turns). Path dep on the runtime
+# workspace so the backend can never drift onto an invented wire format.
+amiro-sdk = { path = "../runtime/crates/amiro-sdk" }

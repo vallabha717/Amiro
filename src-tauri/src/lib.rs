@@ -5,16 +5,15 @@ use std::time::{Duration, Instant};
 use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_shell::{process::CommandChild, process::CommandEvent, ShellExt};
 
-/// Reserves an ephemeral loopback port for the adapter by binding
+/// Reserves an ephemeral loopback port for the backend sidecar by binding
 /// `127.0.0.1:0`, reading the OS-assigned port, then dropping the listener
-/// immediately. The chosen port is injected into the adapter (`AMIRO_PORT`)
+/// immediately. The chosen port is injected into the backend (`AMIRO_PORT`)
 /// and the webview (`__BACKEND_PORT__`) so both agree up front.
 ///
-/// Why ephemeral instead of the fixed 8787 the Go sidecar's dev flow used: a
-/// desktop HTTP listener and a host service (e.g. the coordinator's public
-/// nginx terminating TLS) can both want 8787, and a collision would silently
-/// hand the webview the wrong server. `127.0.0.1:0` cannot collide with
-/// anything already listening.
+/// Why ephemeral instead of a fixed port: a desktop HTTP listener and a host
+/// service (e.g. public reverse proxy terminating TLS) can both want a default
+/// port, and a collision would silently hand the webview the wrong server.
+/// `127.0.0.1:0` cannot collide with anything already listening.
 ///
 /// The drop-then-rebind window is a deliberate, accepted TOCTOU: another
 /// process could grab the port in that instant. In practice the window is
@@ -24,7 +23,7 @@ use tauri_plugin_shell::{process::CommandChild, process::CommandEvent, ShellExt}
 /// panicking the app.
 fn reserve_loopback_port() -> u16 {
     let listener = std::net::TcpListener::bind(("127.0.0.1", 0))
-        .expect("failed to reserve a loopback port for the backend adapter");
+        .expect("failed to reserve a loopback port for the backend sidecar");
     let port = listener
         .local_addr()
         .expect("reserved loopback listener has no local address")
@@ -48,20 +47,47 @@ fn reserve_loopback_port() -> u16 {
 /// still orphans the sidecar.
 struct SidecarChild(Mutex<Option<CommandChild>>);
 
-/// Generates a random 32-byte hex shared-secret token, passed to the adapter
+/// Generates a random 32-byte hex shared-secret token, passed to the backend
 /// as `AMIRO_TOKEN` and injected into the webview as `__BACKEND_TOKEN__`.
-/// The adapter checks it on the `X-Amiro-Token` / `X-BetterChatbot-Token`
-/// headers (adapter/src/auth.mjs) on every non-public route.
+/// The backend checks it on the `X-Amiro-Token` / `Authorization` headers
+/// on every non-public route.
 fn generate_token() -> String {
     let mut bytes = [0u8; 32];
     rand::thread_rng().fill_bytes(&mut bytes);
     bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
-/// Polls the loopback port until the adapter accepts a connection or the
-/// deadline passes. Replaces the old stdout `PORT=` handshake's implicit
-/// "the server is up" guarantee: the adapter prints structured JSON logs, not
-/// a machine-readable readiness line, so readiness is observed at the socket.
+
+/// Locate the bundled owned runtime next to this executable.
+///
+/// Tauri places `bundle.externalBin` entries beside the app binary; the shell
+/// plugin can spawn a sidecar by slot name but does not expose its path, and the
+/// backend needs the path to start `runtime --no-update api-bridge` itself.
+/// Exact names win over suffixed ones (dev builds keep the target triple).
+fn find_runtime_binary() -> Option<std::path::PathBuf> {
+    let current = std::env::current_exe().ok()?;
+    let dir = current.parent()?;
+    let exe_suffix = if cfg!(windows) { ".exe" } else { "" };
+    for name in ["runtime", "amiro-runtime", "amiro"] {
+        let exact = dir.join(format!("{name}{exe_suffix}"));
+        if exact.is_file() {
+            return Some(exact);
+        }
+    }
+    let prefix = "runtime-";
+    let mut fallback = None;
+    for entry in std::fs::read_dir(dir).ok()? {
+        let entry = entry.ok()?;
+        let file_name = entry.file_name().to_string_lossy().to_string();
+        if file_name.starts_with(prefix) && entry.path().is_file() {
+            fallback = Some(entry.path());
+        }
+    }
+    fallback
+}
+
+/// Polls the loopback port until the backend accepts a connection or the
+/// deadline passes. Readiness is observed at the socket.
 fn wait_for_backend(port: u16, timeout: Duration) -> bool {
     let deadline = Instant::now() + timeout;
     let addr = match format!("127.0.0.1:{port}").parse() {
@@ -102,17 +128,12 @@ pub fn run() {
                 "http://tauri.localhost"
             };
 
-            // Choose the adapter's loopback port before spawning it, so the
+            // Choose the backend's loopback port before spawning it, so the
             // same value goes to the child (AMIRO_PORT) and the webview.
             let backend_port = reserve_loopback_port();
 
-            // The sidecar slot (bundle.externalBin: ["binaries/backend"]) is
-            // filled by src-tauri/build-sidecar.sh, which writes a launcher
-            // that execs the Node adapter (adapter/src/server.mjs) -- there is
-            // no compiled backend binary any more. See that script's header
-            // comment for the packaging limitation (a distributed build needs
-            // a Node runtime on the target, or the adapter packaged as a Node
-            // SEA; the Go binary used to be self-contained).
+            // The sidecar slots (bundle.externalBin: ["binaries/backend",
+            // "binaries/runtime"]) are filled by src-tauri/build-sidecar.sh.
             let mut sidecar = app
                 .shell()
                 .sidecar("backend")
@@ -120,15 +141,18 @@ pub fn run() {
                 .env("AMIRO_PORT", backend_port.to_string())
                 .env("AMIRO_TOKEN", &shared_secret)
                 .env("AMIRO_ALLOWED_ORIGIN", allowed_origin)
-                // Legacy header names the old Go config also honoured; the
-                // adapter reads AMIRO_TOKEN, these are harmless belt-and-braces.
-                .env("AMIRO_AUTH_TOKEN", &shared_secret)
-                .env("BETTERCHATBOT_AUTH_TOKEN", &shared_secret)
-                .env("BETTERCHATBOT_ALLOWED_ORIGIN", allowed_origin);
+                .env("AMIRO_AUTH_TOKEN", &shared_secret);
 
             // Pass environment variables to backend sidecar
             if let Ok(openai_compat_data) = std::env::var("OPENAI_COMPATIBLE_DATA") {
                 sidecar = sidecar.env("OPENAI_COMPATIBLE_DATA", openai_compat_data);
+            }
+
+            // The backend supervises the owned runtime (bridge + keepalive).
+            // Hand it the bundled path when one is present; in a checkout it
+            // falls back to the runtime workspace's own build output.
+            if let Some(runtime) = find_runtime_binary() {
+                sidecar = sidecar.env("AMIRO_RUNTIME_BIN", runtime);
             }
 
             let (mut rx, child) = sidecar.spawn().expect("failed to spawn backend sidecar");
@@ -152,8 +176,8 @@ pub fn run() {
                 });
             }
 
-            // Drain the sidecar's stdout/stderr into the log so adapter
-            // startup failures are visible. Nothing here is required for the
+            // Drain the sidecar's stdout/stderr into the log so backend
+            // startup issues are visible. Nothing here is required for the
             // window to come up -- readiness is polled at the socket below.
             tauri::async_runtime::spawn(async move {
                 while let Some(event) = rx.recv().await {
@@ -176,13 +200,13 @@ pub fn run() {
                 }
             });
 
-            // Wait (bounded) for the adapter to accept connections before the
-            // window loads, so the frontend's first /api/auth/session read does
-            // not race adapter startup. A miss is logged, not fatal: the
+            // Wait (bounded) for the backend to accept connections before the
+            // window loads, so the frontend's first requests do
+            // not race backend startup. A miss is logged, not fatal: the
             // window still opens and the frontend retries.
             if !wait_for_backend(backend_port, Duration::from_secs(15)) {
                 log::warn!(
-                    "backend adapter did not accept connections on 127.0.0.1:{backend_port} within 15s -- opening the window anyway"
+                    "backend sidecar did not accept connections on 127.0.0.1:{backend_port} within 15s -- opening the window anyway"
                 );
             }
 
@@ -191,9 +215,8 @@ pub fn run() {
             // module load, so injection order relative to React hydration
             // doesn't matter -- only that it happens before the first
             // /api/... call, which initialization_script guarantees.
-            // __BACKEND_SESSION_TOKEN__ is intentionally not set: it was the
-            // Go sqlite driver's auto-login token; the adapter seeds an admin
-            // user with a generated password instead (adapter/src/auth.mjs).
+            // __BACKEND_SESSION_TOKEN__ is intentionally not set: the Amiro
+            // backend seeds authentication credentials directly.
             let init_script = format!(
                 "window.__BACKEND_PORT__ = {port};\nwindow.__BACKEND_TOKEN__ = {token};\n",
                 port = backend_port,

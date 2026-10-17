@@ -5,7 +5,12 @@
 $env:AMIRO_PORT = "8787"
 if (-not $env:AMIRO_HOME) { $env:AMIRO_HOME = "$env:USERPROFILE\.amiro-dev" }
 if (-not $env:AMIRO_TOKEN) { $env:AMIRO_TOKEN = "" }
-if (-not $env:JCODE_API_SOCKET) { $env:JCODE_API_SOCKET = "$env:USERPROFILE\.jcode\scratch\amiro-api.sock" }
+# Amiro runtime socket the adapter talks to. The legacy (pre-rename) variable is
+# still honoured; the default is the runtime engine's real on-disk socket path.
+$amiroSocket = $env:AMIRO_API_SOCKET
+if (-not $amiroSocket) { $amiroSocket = $env:JCODE_API_SOCKET }
+if (-not $amiroSocket) { $amiroSocket = "$env:USERPROFILE\.jcode\scratch\amiro-api.sock" }
+$env:AMIRO_API_SOCKET = $amiroSocket
 
 $desktopDir = Split-Path -Parent $PSScriptRoot
 $adapterEntry = Join-Path $desktopDir "adapter\src\server.mjs"
