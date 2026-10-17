@@ -62,7 +62,7 @@ type UsageStatsResponse = {
 
 /**
  * Optional quota rows. The adapter's stats payload may surface the rate-limit
- * windows from `jcode usage --json` (`name`, `usage_percent`, `resets_at`,
+ * windows from `amiro usage --json` (`name`, `usage_percent`, `resets_at`,
  * `reset_in`). That field is not part of the required stats contract, so it is
  * typed optional here and the section below renders only when it is present.
  */

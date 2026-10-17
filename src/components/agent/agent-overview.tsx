@@ -50,7 +50,7 @@ import {
 const CARD_HOVER_LINES: Record<string, string> = {
   personality: "Go ahead, tweak my soul",
   superpowers: "Everything I know how to do",
-  memory: "Everything I remember in Jcode",
+  memory: "Everything I remember",
   workspace: "All the files that power me",
 };
 
@@ -213,7 +213,7 @@ export function AgentOverview() {
   const identity = identityData ?? {
     name: "Amiro",
     handle: "@amiro",
-    tagline: "Your Personal Intelligence powered by Jcode",
+    tagline: "Your Personal Intelligence powered by Amiro",
     traits: DEFAULT_CHARACTER_TRAITS,
     accentHex: "#E9642F",
     customImageUrl: null,
@@ -243,7 +243,7 @@ export function AgentOverview() {
   const skillsLoaded = Boolean(skillsData);
   const totalSuperpowers = skillItems.length;
   const customSuperpowers = skillItems.filter((s) => s.writable).length;
-  const jcodeSuperpowers = totalSuperpowers - customSuperpowers;
+  const runtimeSuperpowers = totalSuperpowers - customSuperpowers;
 
   const totalMemories = memoryStats?.total ?? 0;
 
@@ -357,12 +357,12 @@ export function AgentOverview() {
     {
       key: "superpowers",
       label: "Superpowers",
-      subtitle: "Jcode & custom skills I can add to a chat",
+      subtitle: "Built-in & custom skills I can add to a chat",
       statValue: skillsLoaded ? `${totalSuperpowers} skills` : "—",
       statSub: skillsFailed
         ? "Could not load"
         : skillsLoaded
-          ? `${jcodeSuperpowers} Jcode · ${customSuperpowers} mine`
+          ? `${runtimeSuperpowers} Built-in · ${customSuperpowers} mine`
           : "Loading…",
       href: "/agent/superpowers",
       icon: Zap,
@@ -371,7 +371,7 @@ export function AgentOverview() {
     {
       key: "memory",
       label: "Memory",
-      subtitle: "Persistent Jcode knowledge graph",
+      subtitle: "Persistent Amiro knowledge graph",
       statValue: memoryUnavailable ? "—" : `${totalMemories} memories`,
       statSub: memorySub,
       href: "/agent/memory",
@@ -381,9 +381,9 @@ export function AgentOverview() {
     {
       key: "workspace",
       label: "Workspace",
-      subtitle: "IDENTITY.md, SOUL.md & Jcode files",
+      subtitle: "IDENTITY.md, SOUL.md & runtime files",
       statValue: "3 roots",
-      statSub: "~/.jcode · ~/.amiro · project",
+      statSub: "Runtime · Agent · Project",
       href: "/agent/workspace",
       icon: FolderOpen,
       radiusClass: "rounded-[1.25rem_2.25rem_1.15rem_2.35rem]",
@@ -411,7 +411,7 @@ export function AgentOverview() {
               aria-hidden="true"
             />
             <span className="text-xs font-medium tracking-tight text-muted-foreground">
-              Personal Intelligence · Jcode Runtime
+              Personal Intelligence · Amiro Runtime
             </span>
           </div>
 
@@ -665,7 +665,7 @@ export function AgentOverview() {
           </div>
         </div>
 
-        {/* BOTTOM STRIP: Superpowers (Skills) · Memory (Jcode Graph) · Workspace (Jcode Files) */}
+        {/* BOTTOM STRIP: Superpowers (Skills) · Memory (Runtime Graph) · Workspace (Runtime Files) */}
         <div
           data-testid="agent-bottom-strip"
           className="relative z-10 grid grid-cols-1 gap-4 md:grid-cols-3"

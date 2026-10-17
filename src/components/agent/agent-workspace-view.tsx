@@ -753,8 +753,6 @@ export function AgentWorkspaceView() {
 
   const roots = listing?.roots ?? [];
   const entries = listing?.entries ?? [];
-  const activeRootInfo =
-    roots.find((r) => r.id === activeRoot) ?? roots[0] ?? null;
 
   // Filter + sort entries
   const filteredEntries = React.useMemo(() => {
@@ -911,11 +909,11 @@ export function AgentWorkspaceView() {
         fontFamily:
           "var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif",
       }}
-      className="flex min-h-[calc(100vh-2rem)] flex-col bg-background"
+      className="flex min-h-0 flex-1 flex-col gap-4 bg-background p-4 sm:p-6"
     >
-      {/* Header */}
-      <div className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/70">
-        <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 lg:px-8">
+      {/* Compact Header Card — title + one-line Amiro description + segmented root tabs + quick-jump pills */}
+      <div className="rounded-xl border bg-card px-4 py-4 shadow-sm sm:px-5 sm:py-5">
+        <div className="mx-auto w-full max-w-[1600px]">
           <Link
             href="/agent"
             className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
@@ -927,15 +925,14 @@ export function AgentWorkspaceView() {
           <div className="mt-3 flex flex-col gap-4">
             <div>
               <h1
-                className="font-brand text-[28px] font-semibold leading-none tracking-[-0.02em] sm:text-[32px]"
+                className="font-brand text-[22px] font-semibold tracking-[-0.02em] sm:text-[24px]"
                 style={{ fontFamily: "var(--font-fraunces)" }}
               >
                 Agent Workspace
               </h1>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-                These are the live files powering your Jcode agent (prompt-overlay.md,
-                memory/*.json, skills/*/SKILL.md, and active project files). Browse,
-                inspect, and safely edit allowlisted configuration.
+              <p className="mt-1 max-w-3xl truncate text-sm leading-5 text-muted-foreground">
+                Browse Amiro’s memory, persona, and project files in one
+                read-only workspace.
               </p>
             </div>
 
@@ -977,21 +974,18 @@ export function AgentWorkspaceView() {
                             : "text-muted-foreground hover:text-foreground",
                         )}
                       >
-                        {root.label}
+                        {root.id === "runtime" || root.id === "jcode"
+                          ? "Runtime"
+                          : root.id === "amiro"
+                            ? "Persona"
+                            : root.id === "project"
+                              ? "Project"
+                              : root.label}
                       </button>
                     );
                   })
                 )}
               </div>
-
-              {activeRootInfo ? (
-                <span className="hidden items-center gap-1.5 text-xs text-muted-foreground sm:inline-flex">
-                  <HardDrive className="size-3.5" />
-                  <span className="font-mono tabular-nums">
-                    {activeRootInfo.basePath}
-                  </span>
-                </span>
-              ) : null}
             </div>
 
             {/* Quick jump pills */}
@@ -1012,26 +1006,23 @@ export function AgentWorkspaceView() {
                   {f.label}
                 </button>
               ))}
-              {activeRootInfo?.description ? (
-                <span className="hidden text-xs text-muted-foreground lg:inline">
-                  {activeRootInfo.description}
-                </span>
-              ) : null}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Split layout */}
-      <div className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col lg:flex-row">
+      {/* Main two-pane grid — 320px tree card + viewer card, rounded-xl bordered cards */}
+      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[320px_1fr]">
         {/* Mobile toolbar */}
-        <div className="flex items-center gap-2 border-b bg-card px-4 py-2 lg:hidden">
+        <div className="flex items-center gap-2 rounded-xl border bg-card px-3 py-2 shadow-sm lg:hidden">
           <Button
             type="button"
             variant="outline"
             size="sm"
             onClick={() => setSidebarOpen((v) => !v)}
-            aria-label={sidebarOpen ? "Hide workspace files" : "Show workspace files"}
+            aria-label={
+              sidebarOpen ? "Hide workspace files" : "Show workspace files"
+            }
           >
             {sidebarOpen ? (
               <PanelLeftClose className="size-4" />
@@ -1055,7 +1046,7 @@ export function AgentWorkspaceView() {
               initial={false}
               animate={{ opacity: 1, x: 0 }}
               className={cn(
-                "flex w-full shrink-0 flex-col border-r bg-card lg:w-[320px]",
+                "flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border bg-card shadow-sm lg:w-[320px]",
                 !sidebarOpen && "hidden lg:flex",
               )}
             >
@@ -1196,10 +1187,7 @@ export function AgentWorkspaceView() {
                     </div>
                   </div>
                 ) : listingError ? (
-                  <div
-                    role="alert"
-                    className="p-6 text-sm text-destructive"
-                  >
+                  <div role="alert" className="p-6 text-sm text-destructive">
                     Failed to load workspace:{" "}
                     {(listingError as Error).message ?? "Unknown error"}
                   </div>
@@ -1316,36 +1304,15 @@ export function AgentWorkspaceView() {
                 )}
               </div>
 
-              {/* Root meta footer */}
-              {activeRootInfo ? (
-                <div className="border-t bg-muted/20 px-3 py-3">
-                  <div className="rounded-lg border bg-card px-3 py-2.5">
-                    <div className="flex items-center justify-between gap-1">
-                      <div className="text-xs font-semibold">
-                        {activeRootInfo.label}
-                      </div>
-                      <Badge
-                        variant="outline"
-                        className="text-[10px] font-normal text-muted-foreground"
-                      >
-                        allowlisted
-                      </Badge>
-                    </div>
-                    <div className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                      {activeRootInfo.description}
-                    </div>
-                    <div className="mt-2 font-mono text-[11px] tabular-nums text-muted-foreground">
-                      {activeRootInfo.basePath}
-                    </div>
-                  </div>
-                </div>
-              ) : null}
+              <div className="border-t bg-muted/20 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
+                Read-only preview. Change your agent’s persona in Personality.
+              </div>
             </motion.aside>
           )}
         </AnimatePresence>
 
-        {/* Right pane */}
-        <section className="flex min-h-[420px] flex-1 flex-col bg-background">
+        {/* Right pane — viewer card */}
+        <section className="flex min-h-[420px] min-w-0 flex-col overflow-hidden rounded-xl border bg-card shadow-sm">
           {isListingForbidden ? (
             <div
               role="alert"
@@ -1359,8 +1326,8 @@ export function AgentWorkspaceView() {
               </h3>
               <p className="mt-1 max-w-md text-sm leading-relaxed text-muted-foreground">
                 To protect system and machine files, the agent workspace browser
-                requires administrator privileges. Sign in as an administrator to
-                inspect and configure agent files.
+                requires administrator privileges. Sign in as an administrator
+                to inspect and configure agent files.
               </p>
             </div>
           ) : !selectedPath ? (
@@ -1372,10 +1339,9 @@ export function AgentWorkspaceView() {
                 Select an allowlisted file to inspect
               </h3>
               <p className="mt-1 max-w-md text-sm leading-relaxed text-muted-foreground">
-                Choose a file from the list on the left to preview its contents.
-                Markdown renders as formatted typography, JSON memory files show a
-                structured summary, and writable persona files can be edited in
-                place.
+                Choose a file on the left to preview its contents. Read
+                formatted Markdown and structured memory without changing the
+                files that power your agent.
               </p>
               <div className="mt-6 flex flex-wrap justify-center gap-2">
                 {QUICK_JUMP_FILES.slice(0, 3).map((f) => (
@@ -1399,7 +1365,9 @@ export function AgentWorkspaceView() {
               <div className="flex size-12 items-center justify-center rounded-xl bg-destructive/10 text-destructive">
                 <ShieldAlert className="size-6" />
               </div>
-              <div className="mt-3 text-sm font-semibold">Access Restricted</div>
+              <div className="mt-3 text-sm font-semibold">
+                Access Restricted
+              </div>
               <div className="mt-1 max-w-md text-sm text-muted-foreground">
                 {(fileError as Error).message ??
                   "This file is outside the safe workspace allowlist or requires administrator access."}
@@ -1422,7 +1390,9 @@ export function AgentWorkspaceView() {
               <div className="flex size-12 items-center justify-center rounded-xl bg-destructive/10 text-destructive">
                 <X className="size-6" />
               </div>
-              <div className="mt-3 text-sm font-semibold">Could not open file</div>
+              <div className="mt-3 text-sm font-semibold">
+                Could not open file
+              </div>
               <div className="mt-1 max-w-md text-sm text-muted-foreground">
                 {(fileError as Error).message ??
                   "The file may not exist in this root or is not readable."}
@@ -1489,7 +1459,7 @@ export function AgentWorkspaceView() {
                       </div>
                       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                         <span className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 font-mono tabular-nums">
-                          {file.absPath || `${activeRoot}:${file.path}`}
+                          {file.path}
                         </span>
                         <span className="inline-flex items-center gap-1 tabular-nums">
                           <HardDrive className="size-3" />
@@ -1645,10 +1615,7 @@ export function AgentWorkspaceView() {
                   </div>
                 ) : showMemoryCard ? (
                   <div className="space-y-4 p-4 sm:p-6">
-                    <MemorySummaryCard
-                      parsed={jsonParsed}
-                      raw={file.content}
-                    />
+                    <MemorySummaryCard parsed={jsonParsed} raw={file.content} />
                     <div className="rounded-xl border bg-muted/30 p-4">
                       <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
                         <FileJson className="size-3.5" />

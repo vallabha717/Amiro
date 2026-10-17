@@ -74,6 +74,39 @@ const PRESET_PERSONAS: Array<{
       politeUnfiltered: 50,
     },
   },
+  {
+    id: "midnight-strategist",
+    label: "Midnight Strategist",
+    values: {
+      companionCoworker: 78,
+      genzBoomer: 55,
+      executeCollaborate: 22,
+      playfulSerious: 78,
+      politeUnfiltered: 70,
+    },
+  },
+  {
+    id: "studio-dreamer",
+    label: "Studio Dreamer",
+    values: {
+      companionCoworker: 25,
+      genzBoomer: 30,
+      executeCollaborate: 65,
+      playfulSerious: 25,
+      politeUnfiltered: 35,
+    },
+  },
+  {
+    id: "field-engineer",
+    label: "Field Engineer",
+    values: {
+      companionCoworker: 60,
+      genzBoomer: 62,
+      executeCollaborate: 30,
+      playfulSerious: 60,
+      politeUnfiltered: 72,
+    },
+  },
 ];
 
 // A deterministic illustration of the dial settings, written here in the page

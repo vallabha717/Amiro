@@ -141,7 +141,7 @@ const CATEGORY_META: Record<string, { label: string; color: string }> = {
 };
 
 const CLUSTER_ORDER = ["fact", "preference", "entity", "correction", "other"];
-const LOCAL_MEMORY_DIR = "~/.jcode/memory";
+const LOCAL_MEMORY_DIR = "~/.amiro/memory";
 
 function categoryMeta(category: string) {
   return CATEGORY_META[category] ?? CATEGORY_META.other;
@@ -536,7 +536,7 @@ export function AgentMemoryView({ className }: { className?: string }) {
   const stats = data?.stats;
   const scopes = data?.scopes ?? [];
   const allMemories = data?.memories ?? [];
-  // Native Jcode memory is retained by the Jcode engine; direct creation/deletion/reinforcement is read-only
+  // Native Amiro memory is retained by the Amiro engine; direct creation/deletion/reinforcement is read-only
   const isReadOnly = data?.readOnly !== false;
 
   const [viewMode, setViewMode] = useState<ViewMode>("split");
@@ -1185,7 +1185,7 @@ export function AgentMemoryView({ className }: { className?: string }) {
   const handleReinforce = useCallback(
     async (memory: AgentMemoryNode) => {
       if (isReadOnly) {
-        toast.info("Native Jcode memory is read-only.");
+        toast.info("Native Amiro memory is read-only.");
         return;
       }
       if (reinforcingRef.current.has(memory.id)) return;
@@ -1225,7 +1225,7 @@ export function AgentMemoryView({ className }: { className?: string }) {
   const handleForget = useCallback(
     async (memory: AgentMemoryNode) => {
       if (isReadOnly) {
-        toast.info("Native Jcode memory is read-only.");
+        toast.info("Native Amiro memory is read-only.");
         return;
       }
       try {
@@ -1336,7 +1336,7 @@ export function AgentMemoryView({ className }: { className?: string }) {
                     Memory Palace
                   </h1>
                   <p className="text-[11px] text-muted-foreground">
-                    Native Jcode memory graph · Retained natively
+                    Native Amiro memory graph · Retained natively
                   </p>
                 </div>
               </div>
@@ -2201,15 +2201,12 @@ function MemoryInspector({
               <div className="rounded-xl border border-border/60 bg-muted/30 p-3.5 text-xs leading-relaxed text-muted-foreground">
                 <div className="flex items-center gap-1.5 font-medium text-foreground">
                   <ShieldCheck className="size-3.5 text-primary" />
-                  Native Jcode memory retained
+                  Native Amiro memory retained
                 </div>
                 <p className="mt-1">
-                  Memories are stored directly in Jcode&apos;s native memory graph (
-                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px] text-foreground">
-                    ~/.jcode/memory
-                  </code>
-                  ) and updated natively by Jcode during chat sessions. Direct mutation
-                  controls are disabled because Jcode retains memories natively without
+                  Memories are stored directly in Amiro&apos;s native runtime memory graph
+                  and updated natively by Amiro during chat sessions. Direct mutation
+                  controls are disabled because Amiro retains memories natively without
                   running a secondary engine.
                 </p>
               </div>
@@ -2380,7 +2377,7 @@ function CreateMemoryDialog({
             Remember a new fact
           </DialogTitle>
           <DialogDescription>
-            Writes into Jcode&apos;s memory graph. Matching content reinforces
+            Writes into Amiro&apos;s memory graph. Matching content reinforces
             an existing memory instead of duplicating it.
           </DialogDescription>
         </DialogHeader>

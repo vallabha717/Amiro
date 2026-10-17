@@ -5,8 +5,14 @@ import type { CharacterTraits } from "@/lib/agent/character-catalog";
 import { motion } from "framer-motion";
 import { ArrowUpRight, Pause, Play, Sparkles } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { AgentCharacterAvatar } from "./avatar-primitives";
+
+function normalizeShape(shape: string): "blob" | "sprout" | "star" | "cloud" {
+  if (shape === "ghost" || shape === "urchin") return "blob";
+  if (shape === "sprout" || shape === "star" || shape === "cloud" || shape === "blob") return shape;
+  return "blob";
+}
 
 /** A little habitat, not an activity indicator. All movement is decorative. */
 export function AgentSidebarHabitat({
@@ -24,6 +30,109 @@ export function AgentSidebarHabitat({
   const [paused, setPaused] = useState(false);
   const reduceMotion = prefersReducedMotion || paused;
   const [greeting, setGreeting] = useState(false);
+
+  const shape = normalizeShape(traits.bodyShape);
+
+  const avatarAnim = useMemo(() => {
+    if (reduceMotion) return { x: 0, y: 0, rotate: 0 };
+    if (greeting) return { x: 0, y: -8, rotate: [-7, 7, -7, 0] as unknown as number };
+    switch (shape) {
+      case "blob":
+        return {
+          y: [0, -10, 0, -6, 0],
+          x: [0, -6, 6, -4, 0],
+          rotate: [-1.5, 2, -1.5, 2.5, -1.5],
+        };
+      case "sprout":
+        return {
+          rotate: [-5, 5, -5],
+          y: [0, -3, 0],
+          x: 0,
+        };
+      case "star":
+        return {
+          y: [0, -14, 0, -8, 0],
+          rotate: [-6, 6, -4, 4, -6],
+          x: [0, 2, -2, 1, 0],
+        };
+      case "cloud":
+        return {
+          x: [-30, 30, -30],
+          y: [0, -5, 0, 4, 0],
+          rotate: [-1.5, 1.5, -1, 1, -1.5],
+        };
+      default:
+        return { x: 0, y: 0, rotate: 0 };
+    }
+  }, [reduceMotion, greeting, shape]);
+
+  const avatarTransition = useMemo(() => {
+    if (reduceMotion) return { duration: 0 };
+    if (greeting) return { duration: 0.7 } as const;
+    switch (shape) {
+      case "blob":
+        return { duration: 1.6, repeat: Infinity, ease: "easeInOut" } as const;
+      case "sprout":
+        return { duration: 3, repeat: Infinity, ease: "easeInOut" } as const;
+      case "star":
+        return { duration: 2.2, repeat: Infinity, ease: "easeInOut" } as const;
+      case "cloud":
+        return { duration: 6, repeat: Infinity, ease: "easeInOut" } as const;
+      default:
+        return { duration: 13, repeat: Infinity, ease: "easeInOut" } as const;
+    }
+  }, [reduceMotion, greeting, shape]);
+
+  const cubeAnim = useMemo(() => {
+    if (reduceMotion) return { rotate: 0, y: 0, x: 0, scale: 1 };
+    if (greeting) return { rotate: [-4, 4, -4, 0] as unknown as number, y: -6, x: 0 };
+    switch (shape) {
+      case "blob":
+        return {
+          y: [0, -6, 0, -4, 0],
+          rotate: [0, 12, -10, 6, 0],
+          scale: [1, 1.06, 1, 1.04, 1],
+        };
+      case "sprout":
+        return {
+          rotate: [-4, 4, -4],
+          y: [0, -2, 0],
+          x: 0,
+        };
+      case "star":
+        return {
+          y: [0, -10, 0, -6, 0],
+          rotate: [0, 18, -12, 8, 0],
+          x: [0, 1, -1, 0],
+        };
+      case "cloud":
+        return {
+          x: [-10, 10, -10],
+          y: [0, -4, 0, 3, 0],
+          rotate: [-6, 6, -6],
+        };
+      default:
+        return { rotate: 0, y: 0 };
+    }
+  }, [reduceMotion, greeting, shape]);
+
+  const cubeTransition = useMemo(() => {
+    if (reduceMotion) return { duration: 0 };
+    if (greeting) return { duration: 0.7 } as const;
+    switch (shape) {
+      case "blob":
+        return { duration: 1.6, repeat: Infinity, ease: "easeInOut" } as const;
+      case "sprout":
+        return { duration: 3, repeat: Infinity, ease: "easeInOut" } as const;
+      case "star":
+        return { duration: 2.2, repeat: Infinity, ease: "easeInOut" } as const;
+      case "cloud":
+        return { duration: 6, repeat: Infinity, ease: "easeInOut" } as const;
+      default:
+        return { duration: 13, repeat: Infinity, ease: "easeInOut" } as const;
+    }
+  }, [reduceMotion, greeting, shape]);
+
   return (
     <div className="relative">
       <Link
@@ -63,24 +172,8 @@ export function AgentSidebarHabitat({
         <motion.div
           aria-hidden="true"
           className="absolute top-[34%] left-[33%]"
-          animate={
-            reduceMotion
-              ? { x: 0, y: 0, rotate: 0 }
-              : greeting
-                ? { x: 0, y: -8, rotate: [-7, 7, -7, 0] }
-                : {
-                    x: [-35, 24, 36, -12, -35],
-                    y: [0, -9, 1, -4, 0],
-                    rotate: [-8, 7, 0, -6, -8],
-                  }
-          }
-          transition={
-            reduceMotion
-              ? { duration: 0 }
-              : greeting
-                ? { duration: 0.7 }
-                : { duration: 13, repeat: Infinity, ease: "easeInOut" }
-          }
+          animate={avatarAnim}
+          transition={avatarTransition}
         >
           <AgentCharacterAvatar
             traits={traits}
@@ -97,19 +190,8 @@ export function AgentSidebarHabitat({
             borderColor: accent,
             backgroundColor: `color-mix(in srgb, ${accent} 14%, transparent)`,
           }}
-          animate={
-            reduceMotion
-              ? { rotate: 0, y: 0 }
-              : {
-                  rotate: [0, 0, 90, 180, 180, 270, 360],
-                  y: [0, 0, -14, 0, 0, -8, 0],
-                }
-          }
-          transition={
-            reduceMotion
-              ? { duration: 0 }
-              : { duration: 13, repeat: Infinity, ease: "easeInOut" }
-          }
+          animate={cubeAnim}
+          transition={cubeTransition}
         />
         <div className="absolute inset-x-4 bottom-3 flex items-center justify-between gap-2 pr-6">
           <span className="truncate text-[10px] text-muted-foreground">

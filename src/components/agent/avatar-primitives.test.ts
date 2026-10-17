@@ -67,4 +67,28 @@ describe("Agent avatar rendering", () => {
     expect(html).toContain('data-testid="agent-avatar"');
     expect(html).toContain("data:image/png;base64,");
   });
+
+  it("applies dark tint gamma remap for midnight while preserving sprite geometry", () => {
+    const midnightHtml = render({ animated: false, darkTint: true } as any);
+    expect(midnightHtml).toContain('data-agent-tint="black"');
+    expect(midnightHtml).toContain("feComponentTransfer");
+    expect(midnightHtml).toContain('type="gamma"');
+    expect(midnightHtml).toContain('exponent="4"');
+    expect(midnightHtml).toContain('mask-type="alpha"');
+    expect(midnightHtml).toContain("mix-blend-mode:color");
+
+    const accentHtml = render({ animated: false, darkTint: false } as any);
+    expect(accentHtml).toContain('data-agent-tint="accent"');
+    expect(accentHtml).not.toContain("feComponentTransfer");
+  });
+
+  it("does not apply tint filter to custom uploaded image", () => {
+    const html = render({
+      customImageUrl: "data:image/png;base64,aGVsbG8=",
+      darkTint: true,
+    } as any);
+    expect(html).not.toContain("feComponentTransfer");
+    expect(html).not.toContain("data-agent-tint");
+  });
+
 });

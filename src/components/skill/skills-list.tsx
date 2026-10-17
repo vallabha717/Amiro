@@ -32,22 +32,24 @@ import { Button } from "ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "ui/card";
 import { Input } from "ui/input";
 
-type SuperpowerFilter = "all" | "jcode" | "custom" | "project";
+type SuperpowerFilter = "all" | "builtin" | "custom" | "project";
 type SuperpowerViewMode = "split" | "constellation" | "grid";
 
 const SOURCE_META: Record<
   string,
   { label: string; color: string; bg: string }
 > = {
-  ".jcode": {
-    label: "Jcode Skill",
+  ".amiro": {
+    label: "Built-in Skill",
     color: "#E9642F",
     bg: "rgba(233, 100, 47, 0.14)",
   },
-  ".amiro": {
-    label: "Custom Skill",
-    color: "#007AFF",
-    bg: "rgba(0, 122, 255, 0.14)",
+  ".jcode": {
+    // Legacy: old adapter builds still emit ".jcode" until the new build ships
+    // everywhere. Same visual as Built-in so the count and ring stay correct.
+    label: "Built-in Skill",
+    color: "#E9642F",
+    bg: "rgba(233, 100, 47, 0.14)",
   },
   ".agents": {
     label: "Project Agent",
@@ -60,6 +62,12 @@ const SOURCE_META: Record<
     bg: "rgba(166, 101, 201, 0.14)",
   },
 };
+
+// Engine-owned built-in roots are now canonically ".amiro"; ".jcode" is
+// accepted during a rolling deploy where old adapter builds still emit it.
+function isEngineOwnedSource(source: string): boolean {
+  return source === ".amiro" || source === ".jcode";
+}
 
 function SuperpowersConstellation({
   skills,
@@ -82,7 +90,7 @@ function SuperpowersConstellation({
   // Compute radial orbit positions grouped by source
   const nodes = useMemo(() => {
     return skills.map((s, idx) => {
-      const ring = s.writable ? 1 : s.source === ".jcode" ? 1.45 : 1.9;
+      const ring = s.writable ? 1 : isEngineOwnedSource(s.source) ? 1.45 : 1.9;
       const angle = (idx / Math.max(1, skills.length)) * Math.PI * 2;
       const meta = SOURCE_META[s.source] ?? {
         label: s.source,
@@ -309,7 +317,7 @@ export function SkillsList() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return items.filter((s) => {
-      if (filter === "jcode" && s.source !== ".jcode") return false;
+      if (filter === "builtin" && !isEngineOwnedSource(s.source)) return false;
       if (filter === "custom" && !s.writable) return false;
       if (filter === "project" && s.scope !== "project") return false;
       if (!q) return true;
@@ -418,7 +426,7 @@ export function SkillsList() {
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground">
-              Skills and capabilities powering {agentName} across Jcode and your
+              Skills and capabilities powering {agentName} across Amiro and your
               workspace
             </p>
           </div>
@@ -469,7 +477,7 @@ export function SkillsList() {
       {/* Search & Source Filters */}
       <p className="text-xs leading-relaxed text-muted-foreground">
         Skills shape your agent’s instructions, not its permissions. Actions
-        still depend on the tools enabled in Jcode.
+        still depend on the tools enabled in Amiro.
       </p>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="relative min-w-[240px] flex-1 max-w-md">
@@ -492,8 +500,8 @@ export function SkillsList() {
             [
               ["all", `All (${items.length})`],
               [
-                "jcode",
-                `Jcode (${items.filter((s) => s.source === ".jcode").length})`,
+                "builtin",
+                `Built-in (${items.filter((s) => isEngineOwnedSource(s.source)).length})`,
               ],
               [
                 "custom",
@@ -602,7 +610,7 @@ export function SkillsList() {
                 aria-hidden="true"
               />
               <h2 className="text-lg font-semibold">
-                Jcode & Workspace Superpowers
+                Runtime & Workspace Superpowers
               </h2>
               <span className="text-xs text-muted-foreground tabular-nums">
                 ({discovered.length})

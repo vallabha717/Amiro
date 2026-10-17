@@ -21,7 +21,7 @@ import { CheckCircle2, ChevronRight, ServerCog } from "lucide-react";
  * The provider step is the same `LoginPanel` the chat `/login` command opens,
  * so onboarding and the chat surface can never drift apart. The old bespoke
  * list of hardcoded providers (and its "stored in your OS Keychain, never
- * leaves your device" claim) is gone: on the hosted/shared Jcode runtime the
+ * leaves your device" claim) is gone: on the hosted/shared Amiro runtime the
  * credentials live server-side and are shared at the runtime level, which the
  * notice below states plainly instead of overpromising per-user isolation.
  */
@@ -52,7 +52,7 @@ export default function OnboardingWizard() {
                 <ServerCog />
                 <AlertTitle>Shared runtime credentials</AlertTitle>
                 <AlertDescription>
-                  Amiro runs on a shared Jcode runtime. Provider credentials are
+                  Amiro runs on a shared Amiro runtime. Provider credentials are
                   stored server-side on this host and used by every user of this
                   instance. They are not kept in an OS keychain and are not
                   isolated per user. Credentials are managed by an

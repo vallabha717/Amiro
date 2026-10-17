@@ -1,6 +1,7 @@
 "use client";
 
 import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
+import { useThemeStyle } from "@/hooks/use-theme-style";
 import { animate, motion } from "framer-motion";
 import {
   type CSSProperties,
@@ -67,6 +68,7 @@ export interface AgentCharacterAvatarProps {
    * a pending theme before it is committed.
    */
   accentColor?: string;
+  darkTint?: boolean;
   className?: string;
   style?: CSSProperties;
 }
@@ -78,10 +80,13 @@ export function AgentCharacterAvatar({
   interactive = false,
   animated = true,
   accentColor = OPENDOTS_DEFAULT_TINT,
+  darkTint,
   className,
   style,
 }: AgentCharacterAvatarProps) {
   const prefersReducedMotion = usePrefersReducedMotion();
+  const { themeStyle } = useThemeStyle();
+  const useDarkTint = darkTint ?? themeStyle === "midnight";
   const reduce = prefersReducedMotion || !animated;
 
   const variant = useMemo(() => openDotVariantForTraits(traits), [traits]);
@@ -158,6 +163,7 @@ export function AgentCharacterAvatar({
         role="img"
         aria-label="Agent avatar"
         data-testid="agent-avatar"
+        data-agent-tint={useDarkTint ? "black" : "accent"}
         style={{ display: "block" }}
       >
         <defs>
@@ -165,6 +171,13 @@ export function AgentCharacterAvatar({
               dragging the sprite's own hue along. */}
           <filter id={grayId} colorInterpolationFilters="sRGB">
             <feColorMatrix type="saturate" values="0" />
+            {useDarkTint ? (
+              <feComponentTransfer>
+                <feFuncR type="gamma" amplitude="1" exponent="4" offset="0" />
+                <feFuncG type="gamma" amplitude="1" exponent="4" offset="0" />
+                <feFuncB type="gamma" amplitude="1" exponent="4" offset="0" />
+              </feComponentTransfer>
+            ) : null}
           </filter>
           {/* Alpha mask keeps the plush cut-out: transparent corners stay
               transparent instead of taking the tint colour. */}

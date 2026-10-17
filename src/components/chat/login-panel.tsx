@@ -9,7 +9,7 @@
 // a toast body, or the console.
 //
 // Provider listing: the adapter's `GET /api/providers/catalog` (merged
-// `jcode provider list --json` + `jcode auth status --json`) with a fallback
+// `amiro provider list --json` + `amiro auth status --json`) with a fallback
 // to the older `GET /api/providers/login-status` + `GET /api/ai/providers`.
 //
 // OAuth / device-code providers keep the interactive flow:
@@ -1049,7 +1049,7 @@ export function LoginPanel({
                   </summary>
                   <div className="mt-2 space-y-1.5">
                     <code className="block rounded bg-muted px-2 py-1 font-mono text-[11px] select-all">
-                      jcode login {selected.id}
+                      amiro login {selected.id}
                     </code>
                     {oauthUnsupported && (
                       <p className="text-[11px]">
@@ -1157,12 +1157,12 @@ export function LoginPanel({
                   <AlertDescription className="text-xs">
                     {providerLabel(selected)} ({MECHANISM_LABEL[selectedMechanism] ?? selectedMechanism}) cannot be configured with an API key or browser OAuth here.
                     {selected.detail ? ` ${selected.detail}` : ""}
-                    {selectedMechanism === "cli" && " Install its CLI and run jcode login in a terminal."}
+                    {selectedMechanism === "cli" && " Install its CLI and run amiro login in a terminal."}
                     {selectedMechanism === "local-endpoint" && " Make sure the local endpoint is running."}
                   </AlertDescription>
                 </Alert>
                 <code className="block rounded bg-muted px-2 py-1 font-mono text-[11px] select-all">
-                  jcode login {selected.id}
+                  amiro login {selected.id}
                 </code>
               </div>
             ) : null}

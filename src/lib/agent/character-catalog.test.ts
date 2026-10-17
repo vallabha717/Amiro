@@ -246,11 +246,15 @@ describe("aura swatch save path", () => {
     }
   });
 
-  it("labels every theme option in the customizer with its own theme id", () => {
-    // The customizer offers the unified sidebar themes instead of separate color swatches.
-    expect(customizerSource).toMatch(
-      /data-testid={`agent-theme-\$\{t\}`}/,
-    );
-    expect(customizerSource).toMatch(/setThemeDraft\(t\)/);
+  it("offers visible Theme and Form arrow controls with no hidden theme buttons", () => {
+    // The customizer uses TraitCycleRow arrows with explicit value/prev/next testids.
+    expect(customizerSource).toMatch(/valueTestId="agent-theme-value"/);
+    expect(customizerSource).toMatch(/prevTestId="agent-prev-theme"/);
+    expect(customizerSource).toMatch(/nextTestId="agent-next-theme"/);
+    expect(customizerSource).toMatch(/valueTestId="agent-form-value"/);
+    expect(customizerSource).toMatch(/prevTestId="agent-prev-body-shape"/);
+    expect(customizerSource).toMatch(/nextTestId="agent-next-body-shape"/);
+    expect(customizerSource).not.toMatch(/agent-theme-\$\{t\}/);
+    expect(customizerSource).not.toMatch(/sr-only[\s\S]*agent-theme/);
   });
 });

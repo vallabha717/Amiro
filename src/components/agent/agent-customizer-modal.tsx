@@ -11,18 +11,16 @@ import type { CharacterTraits } from "@/lib/agent/character-catalog";
 import { AGENT_ACCENT } from "@/lib/agent/theme-colors";
 import { motion } from "framer-motion";
 import { BASE_THEMES } from "lib/const";
-import { capitalizeFirstLetter, cn } from "lib/utils";
+import { capitalizeFirstLetter } from "lib/utils";
 import {
   AlertCircle,
-  Check,
-  ChevronLeft,
-  ChevronRight,
   Dices,
   ImagePlus,
   RotateCcw,
   Sparkles,
   Trash2,
 } from "lucide-react";
+import { TraitCycleRow } from "./trait-cycle-row";
 import {
   type CSSProperties,
   useCallback,
@@ -251,7 +249,7 @@ export function AgentCustomizerModal({
       await updateAgentIdentity({
         name: trimmedName,
         tagline:
-          tagline.trim() || "Your Personal Intelligence powered by Jcode",
+          tagline.trim() || "Your Personal Intelligence powered by Amiro",
         traits,
         customImageUrl,
       });
@@ -335,6 +333,7 @@ export function AgentCustomizerModal({
                 size={148}
                 interactive
                 accentColor={AGENT_ACCENT}
+                darkTint={themeDraft === "midnight"}
               />
             </motion.div>
 
@@ -389,203 +388,152 @@ export function AgentCustomizerModal({
             </div>
           </div>
 
-        {validationError ? (
-          <div
-            role="alert"
-            aria-live="assertive"
-            className="mx-6 mt-3 flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"
-          >
-            <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
-            <span>{validationError}</span>
-          </div>
-        ) : null}
-
-        <div className="flex flex-col gap-5 px-6 pt-4 pb-6">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="agent-name-input" className="text-xs font-medium">
-                Agent Name
-              </Label>
-              <Input
-                id="agent-name-input"
-                data-testid="agent-name-input"
-                value={name}
-                maxLength={32}
-                aria-required="true"
-                aria-invalid={!name.trim()}
-                onChange={(e) => {
-                  setName(e.target.value);
-                  if (validationError) setValidationError(null);
-                }}
-                placeholder="Amiro…"
-                autoComplete="off"
-                className="h-9 rounded-xl"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label
-                htmlFor="agent-tagline-input"
-                className="text-xs font-medium"
-              >
-                Role & Signature Line
-              </Label>
-              <Input
-                id="agent-tagline-input"
-                data-testid="agent-tagline-input"
-                value={tagline}
-                maxLength={120}
-                onChange={(e) => setTagline(e.target.value)}
-                placeholder="Your Personal Intelligence…"
-                autoComplete="off"
-                className="h-9 rounded-xl"
-              />
-            </div>
-          </div>
-
-          {/* Single Form cycler — four plush variants */}
-          <div className="flex items-center justify-between rounded-2xl border border-border/60 bg-muted/30 px-3.5 py-2.5">
-            <div className="min-w-0">
-              <p className="text-[11px] font-medium text-muted-foreground">
-                Form
-              </p>
-              <p className="truncate text-sm font-semibold capitalize">
-                {previewLabel}
-              </p>
-              <p className="truncate text-[11px] text-muted-foreground">
-                {FORM_OPTIONS.find((o) => o.id === bodyShape)?.desc ?? ""}
-              </p>
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                aria-label="Previous form"
-                onClick={() => {
-                  setCustomImageUrl(null);
-                  setBodyShape(cycleTrait(FORM_OPTIONS, bodyShape, -1));
-                }}
-                className="flex size-7 items-center justify-center rounded-full border border-border/60 bg-background/80 text-foreground transition-transform hover:bg-accent active:scale-95 focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <ChevronLeft className="size-4" aria-hidden="true" />
-              </button>
-              <button
-                type="button"
-                aria-label="Next form"
-                data-testid="agent-next-body-shape"
-                onClick={() => {
-                  setCustomImageUrl(null);
-                  setBodyShape(cycleTrait(FORM_OPTIONS, bodyShape, 1));
-                }}
-                className="flex size-7 items-center justify-center rounded-full border border-border/60 bg-background/80 text-foreground transition-transform hover:bg-accent active:scale-95 focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <ChevronRight className="size-4" aria-hidden="true" />
-              </button>
-            </div>
-          </div>
-
-          {/* Theme picker — 19 sidebar themes, same names as sidebar */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium">
-                Theme · Sidebar & Agent tint
-              </span>
-              <span className="font-mono text-[11px] text-muted-foreground">
-                {formatThemeLabel(themeDraft)}
-              </span>
-            </div>
+          {validationError ? (
             <div
-              role="group"
-              aria-label="Select theme for sidebar and agent"
-              className="grid max-h-48 grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3"
+              role="alert"
+              aria-live="assertive"
+              className="mx-6 mt-3 flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"
             >
-              {BASE_THEMES.map((t) => {
-                const selected = themeDraft === t;
-                return (
-                  <button
-                    key={t}
-                    type="button"
-                    aria-pressed={selected}
-                    aria-label={`Select ${formatThemeLabel(t)} theme`}
-                    data-testid={`agent-theme-${t}`}
-                    data-theme={t}
-                    title={formatThemeLabel(t)}
-                    style={t === "default" ? defaultThemeStyle : undefined}
-                    onClick={() => setThemeDraft(t)}
-                    className={cn(
-                      "relative flex h-auto min-h-9 items-center justify-start rounded-xl border px-2 py-1 text-left text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                      selected
-                        ? "border-foreground bg-foreground text-background"
-                        : "border-border/60 bg-muted/30 text-foreground hover:bg-accent",
-                    )}
-                  >
-                    <span
-                      aria-hidden="true"
-                      className="mr-1.5 size-3 shrink-0 rounded-full border border-border"
-                      style={{ backgroundColor: AGENT_ACCENT }}
-                    />
-                    {selected && (
-                      <Check
-                        className="mr-1 size-3.5 shrink-0"
-                        aria-hidden="true"
-                      />
-                    )}
-                    <span className="min-w-0 flex-1 leading-tight break-words">{formatThemeLabel(t)}</span>
-                  </button>
-                );
-              })}
+              <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
+              <span>{validationError}</span>
             </div>
+          ) : null}
+
+          <div className="flex flex-col gap-5 px-6 pt-4 pb-6">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label
+                  htmlFor="agent-name-input"
+                  className="text-xs font-medium"
+                >
+                  Agent Name
+                </Label>
+                <Input
+                  id="agent-name-input"
+                  data-testid="agent-name-input"
+                  value={name}
+                  maxLength={32}
+                  aria-required="true"
+                  aria-invalid={!name.trim()}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    if (validationError) setValidationError(null);
+                  }}
+                  placeholder="Amiro…"
+                  autoComplete="off"
+                  className="h-9 rounded-xl"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label
+                  htmlFor="agent-tagline-input"
+                  className="text-xs font-medium"
+                >
+                  Role & Signature Line
+                </Label>
+                <Input
+                  id="agent-tagline-input"
+                  data-testid="agent-tagline-input"
+                  value={tagline}
+                  maxLength={120}
+                  onChange={(e) => setTagline(e.target.value)}
+                  placeholder="Your Personal Intelligence…"
+                  autoComplete="off"
+                  className="h-9 rounded-xl"
+                />
+              </div>
+            </div>
+
+            <TraitCycleRow
+              label="Theme"
+              valueTestId="agent-theme-value"
+              prevTestId="agent-prev-theme"
+              nextTestId="agent-next-theme"
+              value={formatThemeLabel(themeDraft)}
+              colorHex="var(--sidebar-primary)"
+              onPrev={() => {
+                const idx = BASE_THEMES.indexOf(themeDraft);
+                const prev =
+                  BASE_THEMES[
+                    (idx - 1 + BASE_THEMES.length) % BASE_THEMES.length
+                  ] ?? themeDraft;
+                setThemeDraft(prev);
+              }}
+              onNext={() => {
+                const idx = BASE_THEMES.indexOf(themeDraft);
+                const next =
+                  BASE_THEMES[(idx + 1) % BASE_THEMES.length] ?? themeDraft;
+                setThemeDraft(next);
+              }}
+            />
+
+            <TraitCycleRow
+              label="Form"
+              valueTestId="agent-form-value"
+              prevTestId="agent-prev-body-shape"
+              value={previewLabel}
+              onPrev={() => {
+                setCustomImageUrl(null);
+                setBodyShape(cycleTrait(FORM_OPTIONS, bodyShape, -1));
+              }}
+              onNext={() => {
+                setCustomImageUrl(null);
+                setBodyShape(cycleTrait(FORM_OPTIONS, bodyShape, 1));
+              }}
+              nextTestId="agent-next-body-shape"
+            />
             <p className="text-[11px] text-muted-foreground">
               Save Identity applies this theme to your Agent and sidebar. Cancel
               keeps your current theme.
             </p>
           </div>
         </div>
-        </div>
 
-          {/* Sticky footer: reset, cancel, and save stay visible */}
-          <div className="flex shrink-0 items-center justify-between border-t border-border/60 bg-background/95 px-6 py-4">
+        {/* Sticky footer: reset, cancel, and save stay visible */}
+        <div className="flex shrink-0 items-center justify-between border-t border-border/60 bg-background/95 px-6 py-4">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setName(identity.name);
+              setTagline(identity.tagline);
+              setBodyShape(normalizeBodyShape(identity.traits.bodyShape));
+              setCustomImageUrl(identity.customImageUrl);
+              setThemeDraft(themeStyle);
+              setValidationError(null);
+            }}
+            className="gap-1.5 rounded-full text-xs text-muted-foreground"
+          >
+            <RotateCcw className="size-3.5" aria-hidden="true" />
+            Reset
+          </Button>
+          <div className="flex items-center gap-2">
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               size="sm"
-              onClick={() => {
-                setName(identity.name);
-                setTagline(identity.tagline);
-                setBodyShape(normalizeBodyShape(identity.traits.bodyShape));
-                setCustomImageUrl(identity.customImageUrl);
-                setThemeDraft(themeStyle);
-                setValidationError(null);
-              }}
-              className="gap-1.5 rounded-full text-xs text-muted-foreground"
+              onClick={handleCancel}
+              data-testid="agent-customizer-cancel"
+              className="rounded-full px-4"
             >
-              <RotateCcw className="size-3.5" aria-hidden="true" />
-              Reset
+              Cancel
             </Button>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleCancel}
-                data-testid="agent-customizer-cancel"
-                className="rounded-full px-4"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                disabled={saving}
-                onClick={handleSave}
-                data-testid="agent-customizer-save"
-                aria-label="Save agent identity"
-                className="gap-1.5 rounded-full px-5 font-medium text-primary-foreground shadow-sm"
-                style={{ backgroundColor: AGENT_ACCENT }}
-              >
-                <Sparkles className="size-3.5" aria-hidden="true" />
-                {saving ? "Saving…" : "Save Identity"}
-              </Button>
-            </div>
+            <Button
+              type="button"
+              size="sm"
+              disabled={saving}
+              onClick={handleSave}
+              data-testid="agent-customizer-save"
+              aria-label="Save agent identity"
+              className="gap-1.5 rounded-full px-5 font-medium text-primary-foreground shadow-sm"
+              style={{ backgroundColor: AGENT_ACCENT }}
+            >
+              <Sparkles className="size-3.5" aria-hidden="true" />
+              {saving ? "Saving…" : "Save Identity"}
+            </Button>
           </div>
+        </div>
       </DialogContent>
     </Dialog>
   );
