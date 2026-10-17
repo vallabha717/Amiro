@@ -46,7 +46,10 @@ async fn native_bridge_creates_reads_renames_and_archives_a_real_session() {
     let session = runtime::create_session(&state, &workspace.to_string_lossy(), false)
         .await
         .expect("create_session must reach the real runtime");
-    assert!(!session.session_id.is_empty(), "runtime must return a session id");
+    assert!(
+        !session.session_id.is_empty(),
+        "runtime must return a session id"
+    );
     assert!(session.created);
     if let Some(applied) = session.working_dir.as_deref() {
         assert_eq!(

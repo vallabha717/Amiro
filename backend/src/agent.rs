@@ -44,11 +44,11 @@ const TEAL_HEX: &str = "#0E9B8B";
 const YELLOW_HEX: &str = "#E9C91A";
 const INDIGO_HEX: &str = "#5856D6";
 const COBALT_HEX: &str = "#007AFF";
+const BLACK_HEX: &str = "#17171C";
 
-/// Accent palette keyed by color id. Kept byte-identical to the adapter map (and
-/// to `AVATAR_COLORS` in the UI catalog). Sidebar themes are CSS-token driven and
-/// are NOT part of this palette; there is no `black` entry in the adapter contract,
-/// so none is invented here.
+/// Accent palette keyed by color id. Kept byte-identical to `AVATAR_COLORS`
+/// in the UI catalog. Sidebar themes are CSS-token driven and are NOT part
+/// of this palette. `black` is the plush near-black the customizer offers.
 fn accent_palette(color: &str) -> Option<&'static str> {
     match color {
         "green" => Some(GREEN_HEX),
@@ -59,6 +59,7 @@ fn accent_palette(color: &str) -> Option<&'static str> {
         "yellow" => Some(YELLOW_HEX),
         "indigo" => Some(INDIGO_HEX),
         "cobalt" => Some(COBALT_HEX),
+        "black" => Some(BLACK_HEX),
         _ => None,
     }
 }
@@ -67,8 +68,8 @@ const VALID_BODY_SHAPES: [&str; 6] = ["blob", "cloud", "sprout", "star", "ghost"
 const VALID_EYE_STYLES: [&str; 9] = [
     "grumpy", "angry", "curious", "goofy", "surprised", "bashful", "gentle", "quirky", "dazed",
 ];
-const VALID_COLORS: [&str; 8] = [
-    "green", "orange", "pink", "purple", "teal", "yellow", "indigo", "cobalt",
+const VALID_COLORS: [&str; 9] = [
+    "green", "orange", "pink", "purple", "teal", "yellow", "indigo", "cobalt", "black",
 ];
 
 const DEFAULT_SLIDER_KEYS: [&str; 5] = [
@@ -1315,22 +1316,21 @@ fn workspace_roots(state: &AppState, user_id: &str) -> Vec<WorkspaceRoot> {
     vec![
         WorkspaceRoot {
             id: "runtime",
-            label: "Amiro Memory & Skills",
+            label: "Runtime",
             base_path: state.runtime_home.clone(),
-            description:
-                "Live runtime memory graph JSONs, installed skills, and prompt overlays (read-only)",
+            description: "Runtime files (read-only)",
         },
         WorkspaceRoot {
             id: "amiro",
-            label: "Agent Identity (IDENTITY.md & SOUL.md)",
+            label: "Persona",
             base_path: persona_base,
-            description: "Your agent persona files, SOUL.md calibration, and workspace scratchpad",
+            description: "Your agent identity and personality files (read-only)",
         },
         WorkspaceRoot {
             id: "project",
-            label: "Active Project (Amiro)",
+            label: "Project",
             base_path: repo_root(state),
-            description: "Current repository source tree and documentation",
+            description: "Files in the current project (read-only)",
         },
     ]
 }
@@ -2082,13 +2082,14 @@ async fn get_workspace(
         an.cmp(&bn)
     });
 
+    // The workspace is a read-only preview everywhere. Host paths stay on
+    // the server: the UI only needs the id, label and description.
     let roots_out: Vec<Value> = roots
         .iter()
         .map(|r| {
             json!({
                 "id": r.id,
                 "label": r.label,
-                "basePath": r.base_path.to_string_lossy(),
                 "description": r.description,
                 "allowlisted": true,
             })
@@ -2106,7 +2107,7 @@ async fn get_workspace(
         "activeRoot": active.id,
         "currentPath": current_path,
         "entries": entries,
-        "readOnly": active.id == "runtime",
+        "readOnly": true,
     })))
 }
 
@@ -2134,7 +2135,6 @@ async fn get_workspace_file(
         return Ok(Json(json!({
             "root": active.id,
             "path": "",
-            "absPath": active.base_path.to_string_lossy(),
             "name": "",
             "size": 0,
             "updatedAt": now_iso(),
@@ -2198,7 +2198,6 @@ async fn get_workspace_file(
     Ok(Json(json!({
         "root": active.id,
         "path": posix_rel,
-        "absPath": contained.resolved_target.to_string_lossy(),
         "name": name,
         "size": md.len(),
         "updatedAt": updated_at,

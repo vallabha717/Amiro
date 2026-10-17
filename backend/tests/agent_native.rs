@@ -186,7 +186,14 @@ async fn every_agent_route_is_registered_and_bearer_guarded() {
 async fn unknown_bearer_token_is_rejected() {
     let fixture = fixture();
     let app = fixture.app();
-    let (status, _) = call(&app, Method::GET, "/api/agent/identity", Some("bogus"), None).await;
+    let (status, _) = call(
+        &app,
+        Method::GET,
+        "/api/agent/identity",
+        Some("bogus"),
+        None,
+    )
+    .await;
     assert!(status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN);
 }
 
@@ -199,11 +206,21 @@ async fn identity_defaults_then_roundtrips_for_admin() {
     let fixture = fixture();
     let app = fixture.app();
 
-    let (status, identity) = call(&app, Method::GET, "/api/agent/identity", Some(ADMIN_TOKEN), None).await;
+    let (status, identity) = call(
+        &app,
+        Method::GET,
+        "/api/agent/identity",
+        Some(ADMIN_TOKEN),
+        None,
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(identity["name"], "Amiro");
     assert_eq!(identity["handle"], "@amiro");
-    assert_eq!(identity["tagline"], "Your Personal Intelligence powered by Amiro");
+    assert_eq!(
+        identity["tagline"],
+        "Your Personal Intelligence powered by Amiro"
+    );
     assert_eq!(identity["traits"]["color"], "orange");
     assert_eq!(identity["accentHex"], "#E9642F");
     assert_eq!(identity["customImageUrl"], Value::Null);
@@ -231,7 +248,14 @@ async fn identity_defaults_then_roundtrips_for_admin() {
     // Accent follows the new color when no explicit accentHex is supplied.
     assert_eq!(updated["accentHex"], "#A665C9");
 
-    let (_, reread) = call(&app, Method::GET, "/api/agent/identity", Some(ADMIN_TOKEN), None).await;
+    let (_, reread) = call(
+        &app,
+        Method::GET,
+        "/api/agent/identity",
+        Some(ADMIN_TOKEN),
+        None,
+    )
+    .await;
     assert_eq!(reread["name"], "Amiro Studio");
     assert_eq!(reread["tagline"], "Native acceptance");
     assert_eq!(reread["traits"]["color"], "purple");
@@ -285,7 +309,14 @@ async fn identity_validation_rejects_unsafe_input() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
 
     // Nothing above may have mutated the stored persona.
-    let (_, identity) = call(&app, Method::GET, "/api/agent/identity", Some(ADMIN_TOKEN), None).await;
+    let (_, identity) = call(
+        &app,
+        Method::GET,
+        "/api/agent/identity",
+        Some(ADMIN_TOKEN),
+        None,
+    )
+    .await;
     assert_eq!(identity["name"], "Amiro");
 }
 
@@ -304,10 +335,24 @@ async fn personas_are_per_user() {
     .await;
     assert_eq!(status, StatusCode::OK);
 
-    let (_, admin_identity) = call(&app, Method::GET, "/api/agent/identity", Some(ADMIN_TOKEN), None).await;
+    let (_, admin_identity) = call(
+        &app,
+        Method::GET,
+        "/api/agent/identity",
+        Some(ADMIN_TOKEN),
+        None,
+    )
+    .await;
     assert_ne!(admin_identity["name"], "Member Persona");
 
-    let (_, member_identity) = call(&app, Method::GET, "/api/agent/identity", Some(MEMBER_TOKEN), None).await;
+    let (_, member_identity) = call(
+        &app,
+        Method::GET,
+        "/api/agent/identity",
+        Some(MEMBER_TOKEN),
+        None,
+    )
+    .await;
     assert_eq!(member_identity["name"], "Member Persona");
     assert!(
         member_identity.get("memoryStats").is_none(),
@@ -336,7 +381,14 @@ async fn personality_reads_and_writes_sliders() {
     let fixture = fixture();
     let app = fixture.app();
 
-    let (status, body) = call(&app, Method::GET, "/api/agent/personality", Some(MEMBER_TOKEN), None).await;
+    let (status, body) = call(
+        &app,
+        Method::GET,
+        "/api/agent/personality",
+        Some(MEMBER_TOKEN),
+        None,
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["name"], "Amiro");
     assert!(body["sliders"]["genzBoomer"].is_number());
@@ -380,7 +432,12 @@ async fn personality_reads_and_writes_sliders() {
     assert_eq!(updated["name"], "Nova");
 
     // The runtime's own memory graph JSON is never written by a persona update.
-    assert!(!fixture.state.runtime_home.join("memory").join("global.json").exists());
+    assert!(!fixture
+        .state
+        .runtime_home
+        .join("memory")
+        .join("global.json")
+        .exists());
 }
 
 #[tokio::test]
@@ -398,11 +455,7 @@ async fn persona_mirrors_are_written_under_the_user_directory_only() {
     .await;
     assert_eq!(status, StatusCode::OK);
 
-    let dir = fixture
-        .state
-        .workspace
-        .join("users")
-        .join(ADMIN_ID);
+    let dir = fixture.state.workspace.join("users").join(ADMIN_ID);
     let identity_md = std::fs::read_to_string(dir.join("IDENTITY.md")).unwrap();
     assert!(identity_md.contains("**Name:** Nova"));
     let soul_md = std::fs::read_to_string(dir.join("SOUL.md")).unwrap();
@@ -424,7 +477,11 @@ async fn memory_is_admin_only_and_read_only() {
     let fixture = fixture();
     // A small real graph so the response shape is meaningful.
     seed(
-        &fixture.state.runtime_home.join("memory").join("global.json"),
+        &fixture
+            .state
+            .runtime_home
+            .join("memory")
+            .join("global.json"),
         &json!({
             "graph_version": 2,
             "memories": {
@@ -441,7 +498,14 @@ async fn memory_is_admin_only_and_read_only() {
     );
     let app = fixture.app();
 
-    let (status, graph) = call(&app, Method::GET, "/api/agent/memory", Some(ADMIN_TOKEN), None).await;
+    let (status, graph) = call(
+        &app,
+        Method::GET,
+        "/api/agent/memory",
+        Some(ADMIN_TOKEN),
+        None,
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(graph["readOnly"], true);
     assert_eq!(
@@ -470,7 +534,14 @@ async fn memory_is_admin_only_and_read_only() {
     assert!(graph["edges"].is_array());
 
     // Mutations stay refused.
-    let (status, body) = call(&app, Method::POST, "/api/agent/memory", Some(ADMIN_TOKEN), Some(json!({}))).await;
+    let (status, body) = call(
+        &app,
+        Method::POST,
+        "/api/agent/memory",
+        Some(ADMIN_TOKEN),
+        Some(json!({})),
+    )
+    .await;
     assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
     assert!(body["error"].as_str().unwrap().contains("read-only"));
 
@@ -484,11 +555,25 @@ async fn memory_is_admin_only_and_read_only() {
     .await;
     assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
 
-    let (status, _) = call(&app, Method::DELETE, "/api/agent/memory/m1", Some(ADMIN_TOKEN), None).await;
+    let (status, _) = call(
+        &app,
+        Method::DELETE,
+        "/api/agent/memory/m1",
+        Some(ADMIN_TOKEN),
+        None,
+    )
+    .await;
     assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
 
     // Non-admin is refused outright on reads.
-    let (status, _) = call(&app, Method::GET, "/api/agent/memory", Some(MEMBER_TOKEN), None).await;
+    let (status, _) = call(
+        &app,
+        Method::GET,
+        "/api/agent/memory",
+        Some(MEMBER_TOKEN),
+        None,
+    )
+    .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
 
     // Writes are refused for any authenticated user (read-only, not role-gated),
@@ -513,7 +598,14 @@ async fn memory_is_admin_only_and_read_only() {
     assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
 
     // The graph file is byte-identical after all of the above.
-    let raw = std::fs::read_to_string(fixture.state.runtime_home.join("memory").join("global.json")).unwrap();
+    let raw = std::fs::read_to_string(
+        fixture
+            .state
+            .runtime_home
+            .join("memory")
+            .join("global.json"),
+    )
+    .unwrap();
     assert!(raw.contains("prefers concise answers"));
 }
 
@@ -539,14 +631,37 @@ async fn workspace_is_admin_only() {
 #[tokio::test]
 async fn workspace_lists_allowlisted_roots_and_entries() {
     let fixture = fixture();
-    std::fs::write(fixture.state.runtime_home.join("memory").join("global.json"), "{}").unwrap();
+    std::fs::write(
+        fixture
+            .state
+            .runtime_home
+            .join("memory")
+            .join("global.json"),
+        "{}",
+    )
+    .unwrap();
     std::fs::create_dir_all(fixture.state.runtime_home.join("skills").join("demo")).unwrap();
-    std::fs::write(fixture.state.runtime_home.join("prompt-overlay.md"), "# overlay").unwrap();
-    std::fs::write(fixture.state.runtime_home.join("config.toml"), "model = \"x\"\n").unwrap();
+    std::fs::write(
+        fixture.state.runtime_home.join("prompt-overlay.md"),
+        "# overlay",
+    )
+    .unwrap();
+    std::fs::write(
+        fixture.state.runtime_home.join("config.toml"),
+        "model = \"x\"\n",
+    )
+    .unwrap();
     std::fs::write(fixture.state.runtime_home.join("sessions.json"), "{}").unwrap();
     let app = fixture.app();
 
-    let (status, listing) = call(&app, Method::GET, "/api/agent/workspace", Some(ADMIN_TOKEN), None).await;
+    let (status, listing) = call(
+        &app,
+        Method::GET,
+        "/api/agent/workspace",
+        Some(ADMIN_TOKEN),
+        None,
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
 
     let roots = listing["roots"].as_array().unwrap();
@@ -556,7 +671,10 @@ async fn workspace_lists_allowlisted_roots_and_entries() {
         assert_eq!(root["allowlisted"], true);
         assert!(root["label"].is_string());
         // Host paths never leave the server; the UI renders id/label only.
-        assert!(root.get("basePath").is_none(), "roots must not expose host paths");
+        assert!(
+            root.get("basePath").is_none(),
+            "roots must not expose host paths"
+        );
         assert!(root["description"].is_string());
     }
     assert_eq!(roots[0]["label"], "Runtime");
@@ -571,15 +689,24 @@ async fn workspace_lists_allowlisted_roots_and_entries() {
         .iter()
         .map(|e| e["name"].as_str().unwrap())
         .collect();
-    assert!(names.contains(&"memory"), "directory nodes must be listable");
-    assert!(names.contains(&"skills"), "directory nodes must be listable");
+    assert!(
+        names.contains(&"memory"),
+        "directory nodes must be listable"
+    );
+    assert!(
+        names.contains(&"skills"),
+        "directory nodes must be listable"
+    );
     assert!(names.contains(&"prompt-overlay.md"));
     assert!(names.contains(&"config.toml"));
     assert!(!names.contains(&"sessions.json"), "secrets stay hidden");
 
     // Directories sort before files; the shape carries the documented fields.
     let entries = listing["entries"].as_array().unwrap();
-    let kinds: Vec<&str> = entries.iter().map(|e| e["kind"].as_str().unwrap()).collect();
+    let kinds: Vec<&str> = entries
+        .iter()
+        .map(|e| e["kind"].as_str().unwrap())
+        .collect();
     let first_file = kinds.iter().position(|k| *k == "file").unwrap();
     assert!(kinds[..first_file].iter().all(|k| *k == "dir"));
     let memory = entries.iter().find(|e| e["name"] == "memory").unwrap();
@@ -593,10 +720,26 @@ async fn workspace_lists_allowlisted_roots_and_entries() {
 #[tokio::test]
 async fn workspace_descends_into_allowlisted_directories() {
     let fixture = fixture();
-    std::fs::write(fixture.state.runtime_home.join("memory").join("global.json"), "{}").unwrap();
-    std::fs::write(fixture.state.runtime_home.join("memory").join("notes.txt"), "x").unwrap();
+    std::fs::write(
+        fixture
+            .state
+            .runtime_home
+            .join("memory")
+            .join("global.json"),
+        "{}",
+    )
+    .unwrap();
+    std::fs::write(
+        fixture.state.runtime_home.join("memory").join("notes.txt"),
+        "x",
+    )
+    .unwrap();
     // A blocked name is still blocked even beneath an allowlisted directory.
-    std::fs::write(fixture.state.runtime_home.join("memory").join("users.json"), "{}").unwrap();
+    std::fs::write(
+        fixture.state.runtime_home.join("memory").join("users.json"),
+        "{}",
+    )
+    .unwrap();
     let app = fixture.app();
 
     let (status, listing) = call(
@@ -617,7 +760,10 @@ async fn workspace_descends_into_allowlisted_directories() {
         .collect();
     assert!(names.contains(&"global.json"));
     assert!(names.contains(&"notes.txt"));
-    assert!(!names.contains(&"users.json"), "blocklisted names stay hidden");
+    assert!(
+        !names.contains(&"users.json"),
+        "blocklisted names stay hidden"
+    );
     let global = listing["entries"]
         .as_array()
         .unwrap()
@@ -631,7 +777,11 @@ async fn workspace_descends_into_allowlisted_directories() {
 async fn workspace_file_reads_allowlisted_files_and_denies_the_rest() {
     let fixture = fixture();
     std::fs::write(
-        fixture.state.runtime_home.join("memory").join("global.json"),
+        fixture
+            .state
+            .runtime_home
+            .join("memory")
+            .join("global.json"),
         "{\"ok\":true}",
     )
     .unwrap();
@@ -661,7 +811,10 @@ async fn workspace_file_reads_allowlisted_files_and_denies_the_rest() {
     assert_eq!(file["truncated"], false);
     assert_eq!(file["content"], "{\"ok\":true}");
     // No absolute host path in the response; relative path only.
-    assert!(file.get("absPath").is_none(), "file responses must not expose host paths");
+    assert!(
+        file.get("absPath").is_none(),
+        "file responses must not expose host paths"
+    );
     assert!(file["size"].as_u64().unwrap() > 0);
     assert!(file["updatedAt"].is_string());
 
@@ -675,7 +828,10 @@ async fn workspace_file_reads_allowlisted_files_and_denies_the_rest() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert!(config["content"].as_str().unwrap().contains("model = \"fast\""));
+    assert!(config["content"]
+        .as_str()
+        .unwrap()
+        .contains("model = \"fast\""));
     assert!(!config["content"]
         .as_str()
         .unwrap()
@@ -747,7 +903,11 @@ async fn workspace_symlink_escape_is_denied() {
     let fixture = fixture();
     let outside = fixture.root.join("outside.json");
     std::fs::write(&outside, "{\"secret\":\"outside\"}").unwrap();
-    let link = fixture.state.runtime_home.join("memory").join("escape.json");
+    let link = fixture
+        .state
+        .runtime_home
+        .join("memory")
+        .join("escape.json");
     std::os::unix::fs::symlink(&outside, &link).unwrap();
     let app = fixture.app();
 
@@ -834,7 +994,12 @@ async fn workspace_persona_root_exposes_the_users_own_mirrors() {
 
     // Arbitrary siblings are still refused.
     std::fs::write(
-        fixture.state.workspace.join("users").join(ADMIN_ID).join("notes.txt"),
+        fixture
+            .state
+            .workspace
+            .join("users")
+            .join(ADMIN_ID)
+            .join("notes.txt"),
         "x",
     )
     .unwrap();
@@ -864,5 +1029,9 @@ async fn workspace_file_puts_are_refused_and_write_nothing() {
     .await;
     assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
     assert!(body["error"].as_str().unwrap().contains("read-only"));
-    assert!(!fixture.state.runtime_home.join("prompt-overlay.md").exists());
+    assert!(!fixture
+        .state
+        .runtime_home
+        .join("prompt-overlay.md")
+        .exists());
 }

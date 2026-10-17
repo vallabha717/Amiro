@@ -246,8 +246,9 @@ fn discover_skills(
         .join(".codex");
 
     let roots = [
-        (state.runtime_home.join("skills"), "user", ".jcode"),
-        (repo_root.join(".jcode").join("skills"), "project", ".jcode"),
+        (state.runtime_home.join("skills"), "user", ".amiro"),
+        (repo_root.join(".amiro").join("skills"), "project", ".amiro"),
+        (repo_root.join(".jcode").join("skills"), "project", ".amiro"),
         (repo_root.join(".agents").join("skills"), "project", ".agents"),
         (codex_home.join("skills"), "user", ".codex"),
     ];
