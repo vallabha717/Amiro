@@ -121,7 +121,7 @@ impl Target {
             .clone()
             .or_else(|| std::env::var("AMIRO_CLOUD_REMOTE_BINARY").ok())
             .filter(|s| !s.trim().is_empty())
-            .unwrap_or_else(|| "jcode".to_string())
+            .unwrap_or_else(|| "amiro".to_string())
     }
 
     /// Fail fast, with an actionable message, when the cloud host's amiro is

@@ -1086,7 +1086,7 @@ fn try_acquire_spawn_lock(path: &std::path::Path) -> Result<Option<SpawnLockGuar
     {
         std::fs::create_dir_all(parent).with_context(|| {
             format!(
-                "Failed to create JCode runtime directory {}",
+                "Failed to create Amiro runtime directory {}",
                 parent.display()
             )
         })?;

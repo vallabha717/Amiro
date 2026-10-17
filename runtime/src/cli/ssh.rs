@@ -61,7 +61,7 @@ pub(crate) async fn run(args: Args) -> Result<()> {
 #[cfg(unix)]
 async fn run_unix(args: Args) -> Result<()> {
     let host = args.ssh.as_deref().expect("SSH dispatch requires a host");
-    let binary = args.ssh_binary.as_deref().unwrap_or("jcode");
+    let binary = args.ssh_binary.as_deref().unwrap_or("amiro");
     super::output::stderr_info(format!("Connecting local Amiro UI to {host} over SSH..."));
     let mut connection = super::ssh_transport::NativeSsh::connect_with_workspace(
         host,
@@ -131,7 +131,7 @@ fn quote(value: &str) -> String {
 /// Return a remote-aware resume command, never a local session lookup.
 pub(crate) fn resume_hint(session_id: &str) -> Option<String> {
     let host = std::env::var("AMIRO_SSH_REMOTE").ok()?;
-    let mut args = vec!["jcode".to_string(), "--ssh".to_string(), quote(&host)];
+    let mut args = vec!["amiro".to_string(), "--ssh".to_string(), quote(&host)];
     for (flag, variable) in [
         ("--ssh-binary", "AMIRO_SSH_BINARY"),
         ("--ssh-server-socket", "AMIRO_SSH_SERVER_SOCKET"),

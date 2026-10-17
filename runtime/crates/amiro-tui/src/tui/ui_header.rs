@@ -771,7 +771,7 @@ fn build_persistent_header_with_auth(
     } else if server_name.is_none() {
         lines.push(
             Line::from(Span::styled(
-                "JCode".to_string(),
+                "Amiro".to_string(),
                 Style::default().fg(header_name_color()),
             ))
             .alignment(align),
