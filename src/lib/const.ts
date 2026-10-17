@@ -52,6 +52,8 @@ export const BASE_THEMES = [
   "misty-harbor",
   "zen-garden",
   "midnight",
+  "ultraviolet",
+  "honey",
 ];
 
 export const OAUTH_REQUIRED_CODE = "OAUTH_REQUIRED";

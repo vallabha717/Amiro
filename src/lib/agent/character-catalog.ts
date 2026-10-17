@@ -166,6 +166,7 @@ export const AVATAR_COLORS: ColorDefinition[] = [
   { id: "yellow", hex: "#E9C91A" },
   { id: "indigo", hex: "#5856D6" },
   { id: "cobalt", hex: "#007AFF" },
+  { id: "black", hex: "#17171C" },
 ];
 
 export function accentHexForColorId(
@@ -176,6 +177,35 @@ export function accentHexForColorId(
   }
   return AVATAR_COLORS.find((c) => c.id === colorId)?.hex ?? null;
 }
+
+/** Display label for a color id, e.g. "cobalt" -> "Cobalt", "black" -> "Black". */
+export function colorLabelForId(colorId: string | null | undefined): string {
+  if (!colorId) return "Orange";
+  const found = AVATAR_COLORS.find((c) => c.id === colorId);
+  const id = found?.id ?? colorId;
+  return id.charAt(0).toUpperCase() + id.slice(1);
+}
+
+/**
+ * Agent-colour to sidebar-theme sync. The sidebar theme is the single source
+ * of truth; cycling the agent colour also drafts the matching sidebar theme.
+ */
+export const COLOR_TO_SIDEBAR_THEME: Record<string, string> = {
+  green: "zen-garden",
+  orange: "orange",
+  pink: "pink",
+  purple: "ultraviolet",
+  teal: "misty-harbor",
+  yellow: "honey",
+  indigo: "space-odyssey",
+  cobalt: "blue",
+  black: "midnight",
+};
+
+/** Reverse lookup: sidebar theme back to agent colour. */
+export const SIDEBAR_THEME_TO_COLOR: Record<string, string> = Object.fromEntries(
+  Object.entries(COLOR_TO_SIDEBAR_THEME).map(([color, theme]) => [theme, color]),
+);
 
 /* -------------------------------------------------------------------------
    2. Field maths

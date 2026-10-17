@@ -8,10 +8,27 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { AgentCharacterAvatar } from "./avatar-primitives";
 
-function normalizeShape(shape: string): "blob" | "sprout" | "star" | "cloud" {
+export type HabitatShape = "blob" | "sprout" | "star" | "cloud";
+export type MascotMotion = "dance" | "swim" | "sway" | "drift" | "none";
+
+function normalizeShape(shape: string): HabitatShape {
   if (shape === "ghost" || shape === "urchin") return "blob";
   if (shape === "sprout" || shape === "star" || shape === "cloud" || shape === "blob") return shape;
   return "blob";
+}
+
+export function getMascotMotion(shape: string): "dance" | "swim" | "sway" | "drift" {
+  const normalized = normalizeShape(shape);
+  switch (normalized) {
+    case "blob":
+      return "dance";
+    case "star":
+      return "swim";
+    case "sprout":
+      return "sway";
+    case "cloud":
+      return "drift";
+  }
 }
 
 /** A little habitat, not an activity indicator. All movement is decorative. */
@@ -20,28 +37,41 @@ export function AgentSidebarHabitat({
   traits,
   customImageUrl,
   accent,
+  paused: controlledPaused,
+  prefersReducedMotion: forcedReducedMotion,
 }: {
   name: string;
   traits: CharacterTraits;
   customImageUrl?: string | null;
   accent: string;
+  paused?: boolean;
+  prefersReducedMotion?: boolean;
 }) {
-  const prefersReducedMotion = usePrefersReducedMotion();
-  const [paused, setPaused] = useState(false);
+  const systemPrefersReducedMotion = usePrefersReducedMotion();
+  const prefersReducedMotion =
+    forcedReducedMotion !== undefined
+      ? forcedReducedMotion
+      : systemPrefersReducedMotion;
+  const [internalPaused, setInternalPaused] = useState(false);
+  const paused =
+    controlledPaused !== undefined ? controlledPaused : internalPaused;
   const reduceMotion = prefersReducedMotion || paused;
   const [greeting, setGreeting] = useState(false);
 
   const shape = normalizeShape(traits.bodyShape);
+  const mascotMotion: MascotMotion = reduceMotion ? "none" : getMascotMotion(shape);
 
   const avatarAnim = useMemo(() => {
-    if (reduceMotion) return { x: 0, y: 0, rotate: 0 };
-    if (greeting) return { x: 0, y: -8, rotate: [-7, 7, -7, 0] as unknown as number };
+    if (reduceMotion) return { x: 0, y: 0, rotate: 0, scaleX: 1, scaleY: 1 };
+    if (greeting) return { x: 0, y: -8, rotate: [-7, 7, -7, 0] as unknown as number, scaleX: 1, scaleY: 1 };
     switch (shape) {
       case "blob":
         return {
           y: [0, -10, 0, -6, 0],
-          x: [0, -6, 6, -4, 0],
-          rotate: [-1.5, 2, -1.5, 2.5, -1.5],
+          x: [0, -8, 8, -4, 0],
+          rotate: [-2.5, 2.5, -2, 2.5, -2.5],
+          scaleX: [1.08, 0.94, 1.08, 0.96, 1.08],
+          scaleY: [0.92, 1.06, 0.92, 1.04, 0.92],
         };
       case "sprout":
         return {
@@ -51,9 +81,9 @@ export function AgentSidebarHabitat({
         };
       case "star":
         return {
-          y: [0, -14, 0, -8, 0],
-          rotate: [-6, 6, -4, 4, -6],
-          x: [0, 2, -2, 1, 0],
+          x: [-24, 24, -24],
+          y: [0, -4, 0, -4, 0],
+          rotate: [-6, 6, -6],
         };
       case "cloud":
         return {
@@ -73,9 +103,9 @@ export function AgentSidebarHabitat({
       case "blob":
         return { duration: 1.6, repeat: Infinity, ease: "easeInOut" } as const;
       case "sprout":
-        return { duration: 3, repeat: Infinity, ease: "easeInOut" } as const;
+        return { duration: 3.5, repeat: Infinity, ease: "easeInOut" } as const;
       case "star":
-        return { duration: 2.2, repeat: Infinity, ease: "easeInOut" } as const;
+        return { duration: 4, repeat: Infinity, ease: "easeInOut" } as const;
       case "cloud":
         return { duration: 6, repeat: Infinity, ease: "easeInOut" } as const;
       default:
@@ -101,9 +131,9 @@ export function AgentSidebarHabitat({
         };
       case "star":
         return {
-          y: [0, -10, 0, -6, 0],
-          rotate: [0, 18, -12, 8, 0],
-          x: [0, 1, -1, 0],
+          x: [-12, 12, -12],
+          y: [0, -3, 0, -3, 0],
+          rotate: [-8, 8, -8],
         };
       case "cloud":
         return {
@@ -123,9 +153,9 @@ export function AgentSidebarHabitat({
       case "blob":
         return { duration: 1.6, repeat: Infinity, ease: "easeInOut" } as const;
       case "sprout":
-        return { duration: 3, repeat: Infinity, ease: "easeInOut" } as const;
+        return { duration: 3.5, repeat: Infinity, ease: "easeInOut" } as const;
       case "star":
-        return { duration: 2.2, repeat: Infinity, ease: "easeInOut" } as const;
+        return { duration: 4, repeat: Infinity, ease: "easeInOut" } as const;
       case "cloud":
         return { duration: 6, repeat: Infinity, ease: "easeInOut" } as const;
       default:
@@ -172,6 +202,7 @@ export function AgentSidebarHabitat({
         <motion.div
           aria-hidden="true"
           className="absolute top-[34%] left-[33%]"
+          data-motion={mascotMotion}
           animate={avatarAnim}
           transition={avatarTransition}
         >
@@ -181,6 +212,7 @@ export function AgentSidebarHabitat({
             size={82}
             interactive={false}
             animated={!reduceMotion}
+            accentColor={accent}
           />
         </motion.div>
         <motion.span
@@ -204,7 +236,7 @@ export function AgentSidebarHabitat({
           type="button"
           aria-label={paused ? "Play agent animation" : "Pause agent animation"}
           aria-pressed={paused}
-          onClick={() => setPaused((value) => !value)}
+          onClick={() => setInternalPaused((value) => !value)}
           className="absolute right-5 bottom-4 flex size-7 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           {paused ? (

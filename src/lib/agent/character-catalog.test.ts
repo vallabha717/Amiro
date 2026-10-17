@@ -25,8 +25,8 @@ const catalog = getCharacterComponents();
  * find `agent-color-cobalt` at all. These read the real sources instead of a
  * copy so the alias cannot reappear unnoticed on either side.
  */
-const adapterSource = readFileSync(
-  path.join(import.meta.dirname, "../../../adapter/src/routes/agent.mjs"),
+const backendSource = readFileSync(
+  path.join(import.meta.dirname, "../../../backend/src/agent.rs"),
   "utf8",
 );
 const customizerSource = readFileSync(
@@ -38,10 +38,8 @@ const customizerSource = readFileSync(
 );
 
 function adapterValidColors(): string[] {
-  const match = adapterSource.match(
-    /const VALID_COLORS = new Set\(\[([^\]]*)\]\)/,
-  );
-  expect(match, "adapter must declare VALID_COLORS").not.toBeNull();
+  const match = backendSource.match(/const VALID_COLORS: \[&str; \d+\] = \[([^\]]*)\]/);
+  expect(match, "backend must declare VALID_COLORS").not.toBeNull();
   return (match?.[1] ?? "")
     .split(",")
     .map((entry) => entry.trim().replace(/^['"]|['"]$/g, ""))
@@ -212,13 +210,16 @@ describe("aura swatch save path", () => {
   });
 
   it("sends the catalog id rather than an alias the server rejects", () => {
-    // The save payload preserves the legacy trait through the resolver.
+    // The save payload sends the color chosen with the arrow row.
     expect(customizerSource).toMatch(
-      /const traits: CharacterTraits = \{\s*bodyShape,\s*eyeStyle,\s*color: legacyColor,?\s*\};/,
+      /const traits: CharacterTraits = \{\s*bodyShape,\s*eyeStyle,\s*color: colorId,?\s*\};/,
     );
     expect(customizerSource).toMatch(
-      /const legacyColor = resolveColorId\(identity\.traits\.color\)/,
+      /const \[colorId, setColorId\] = useState/,
     );
+    expect(customizerSource).toMatch(/valueTestId="agent-color-value"/);
+    expect(customizerSource).toMatch(/prevTestId="agent-prev-color"/);
+    expect(customizerSource).toMatch(/nextTestId="agent-next-color"/);
     // ...and the resolver must map any alias to a catalog id.
     const resolver = customizerSource.match(
       /function resolveColorId\(colorId: string\): string \{\s*return ([^;]+);/,
@@ -239,21 +240,28 @@ describe("aura swatch save path", () => {
     expect(aliases.length).toBeGreaterThan(0);
     expect(targets.length).toBeGreaterThan(0);
     for (const alias of aliases) {
-      expect(valid, `${alias} must not reach the adapter`).not.toContain(alias);
+      expect(valid, `${alias} must not reach the backend`).not.toContain(alias);
     }
     for (const target of targets) {
       expect(valid, `${target} must be an accepted trait`).toContain(target);
     }
   });
 
-  it("offers visible Theme and Form arrow controls with no hidden theme buttons", () => {
-    // The customizer uses TraitCycleRow arrows with explicit value/prev/next testids.
-    expect(customizerSource).toMatch(/valueTestId="agent-theme-value"/);
-    expect(customizerSource).toMatch(/prevTestId="agent-prev-theme"/);
-    expect(customizerSource).toMatch(/nextTestId="agent-next-theme"/);
+  it("offers visible Color then Form arrow controls with no Theme row", () => {
+    // Color owns the theme: the customizer shows Color first, then Form, and
+    // the sidebar theme is drafted automatically from the color choice.
+    const colorAt = customizerSource.indexOf('label="Color"');
+    const formAt = customizerSource.indexOf('label="Form"');
+    expect(colorAt).toBeGreaterThanOrEqual(0);
+    expect(formAt).toBeGreaterThan(colorAt);
+    expect(customizerSource).toMatch(/valueTestId="agent-color-value"/);
+    expect(customizerSource).toMatch(/prevTestId="agent-prev-color"/);
+    expect(customizerSource).toMatch(/nextTestId="agent-next-color"/);
     expect(customizerSource).toMatch(/valueTestId="agent-form-value"/);
     expect(customizerSource).toMatch(/prevTestId="agent-prev-body-shape"/);
     expect(customizerSource).toMatch(/nextTestId="agent-next-body-shape"/);
+    expect(customizerSource).not.toMatch(/label="Theme"/);
+    expect(customizerSource).not.toMatch(/agent-theme-value/);
     expect(customizerSource).not.toMatch(/agent-theme-\$\{t\}/);
     expect(customizerSource).not.toMatch(/sr-only[\s\S]*agent-theme/);
   });

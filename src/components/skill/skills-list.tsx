@@ -44,13 +44,6 @@ const SOURCE_META: Record<
     color: "#E9642F",
     bg: "rgba(233, 100, 47, 0.14)",
   },
-  ".jcode": {
-    // Legacy: old adapter builds still emit ".jcode" until the new build ships
-    // everywhere. Same visual as Built-in so the count and ring stay correct.
-    label: "Built-in Skill",
-    color: "#E9642F",
-    bg: "rgba(233, 100, 47, 0.14)",
-  },
   ".agents": {
     label: "Project Agent",
     color: "#0E9B8B",
@@ -63,10 +56,8 @@ const SOURCE_META: Record<
   },
 };
 
-// Engine-owned built-in roots are now canonically ".amiro"; ".jcode" is
-// accepted during a rolling deploy where old adapter builds still emit it.
 function isEngineOwnedSource(source: string): boolean {
-  return source === ".amiro" || source === ".jcode";
+  return source === ".amiro";
 }
 
 function SuperpowersConstellation({

@@ -6,12 +6,8 @@ import {
   Shortcuts,
 } from "lib/keyboard-shortcuts";
 
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from "ui/dialog";
+import { Dialog, DialogContent } from "ui/dialog";
+import { PopupShell } from "ui/popup-shell";
 import { useTranslations } from "next-intl";
 import { useShallow } from "zustand/shallow";
 import { appStore } from "@/app/store";
@@ -44,10 +40,9 @@ export function KeyboardShortcutsPopup({}) {
         appStoreMutate({ openShortcutsPopup: !openShortcutsPopup })
       }
     >
-      <DialogContent className="md:max-w-3xl">
-        <DialogTitle>{t("title")}</DialogTitle>
-        <DialogDescription />
-        <div className="grid grid-cols-2 gap-5">
+      <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden p-0 md:max-w-3xl">
+        <PopupShell title={t("title")} bodyClassName="px-6">
+          <div className="grid grid-cols-2 gap-5">
           {Object.entries(Shortcuts).map(([key, shortcut]) => (
             <div
               key={key}
@@ -67,7 +62,8 @@ export function KeyboardShortcutsPopup({}) {
               })}
             </div>
           ))}
-        </div>
+          </div>
+        </PopupShell>
       </DialogContent>
     </Dialog>
   );

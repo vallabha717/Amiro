@@ -8,6 +8,7 @@ import { AgentCharacterAvatar } from "@/components/agent/avatar-primitives";
 import { useAgentIdentity } from "@/hooks/queries/use-agent-identity";
 import { useSkills } from "@/hooks/queries/use-skills";
 import { DEFAULT_CHARACTER_TRAITS } from "@/lib/agent/character-catalog";
+import { agentWash } from "@/lib/agent/theme-colors";
 import { cn } from "lib/utils";
 import { Brain, FolderOpen, Sparkles, Zap } from "lucide-react";
 import Link from "next/link";
@@ -33,6 +34,14 @@ export function AppSidebarSkills() {
   const agentName = identity?.name || "Amiro";
   const traits = identity?.traits ?? DEFAULT_CHARACTER_TRAITS;
   const memoryTotal = identity?.memoryStats?.total ?? 0;
+  // Selected pills wear the Amiro theme color (single source of truth), so
+  // the active Personality / Superpowers / Memory / Workspace pill always
+  // matches the agent look instead of a generic gray accent.
+  const activePillStyle = {
+    borderColor:
+      "color-mix(in srgb, var(--sidebar-primary) 45%, transparent)",
+    background: agentWash(14),
+  } as const;
 
   return (
     <SidebarGroup
@@ -92,9 +101,14 @@ export function AppSidebarSkills() {
               className={cn(
                 "flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-[11px] font-medium transition-colors",
                 pathname.startsWith("/agent/personality")
-                  ? "border-foreground/30 bg-accent text-foreground"
+                  ? "text-foreground"
                   : "border-border/50 bg-input/25 text-muted-foreground hover:bg-input/60 hover:text-foreground",
               )}
+              style={
+                pathname.startsWith("/agent/personality")
+                  ? activePillStyle
+                  : undefined
+              }
             >
               <Sparkles
                 className="size-3 shrink-0"
@@ -111,9 +125,15 @@ export function AppSidebarSkills() {
                 "flex items-center justify-between gap-1 rounded-lg border px-2 py-1.5 text-[11px] font-medium transition-colors",
                 pathname.startsWith("/agent/superpowers") ||
                   pathname.startsWith("/skills")
-                  ? "border-foreground/30 bg-accent text-foreground"
+                  ? "text-foreground"
                   : "border-border/50 bg-input/25 text-muted-foreground hover:bg-input/60 hover:text-foreground",
               )}
+              style={
+                pathname.startsWith("/agent/superpowers") ||
+                pathname.startsWith("/skills")
+                  ? activePillStyle
+                  : undefined
+              }
             >
               <span className="flex min-w-0 items-center gap-1.5">
                 <Zap
@@ -134,9 +154,14 @@ export function AppSidebarSkills() {
               className={cn(
                 "flex items-center justify-between gap-1 rounded-lg border px-2 py-1.5 text-[11px] font-medium transition-colors",
                 pathname.startsWith("/agent/memory")
-                  ? "border-foreground/30 bg-accent text-foreground"
+                  ? "text-foreground"
                   : "border-border/50 bg-input/25 text-muted-foreground hover:bg-input/60 hover:text-foreground",
               )}
+              style={
+                pathname.startsWith("/agent/memory")
+                  ? activePillStyle
+                  : undefined
+              }
             >
               <span className="flex min-w-0 items-center gap-1.5">
                 <Brain
@@ -157,9 +182,14 @@ export function AppSidebarSkills() {
               className={cn(
                 "flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-[11px] font-medium transition-colors",
                 pathname.startsWith("/agent/workspace")
-                  ? "border-foreground/30 bg-accent text-foreground"
+                  ? "text-foreground"
                   : "border-border/50 bg-input/25 text-muted-foreground hover:bg-input/60 hover:text-foreground",
               )}
+              style={
+                pathname.startsWith("/agent/workspace")
+                  ? activePillStyle
+                  : undefined
+              }
             >
               <FolderOpen
                 className="size-3 shrink-0"

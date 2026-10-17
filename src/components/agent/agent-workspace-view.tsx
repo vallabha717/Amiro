@@ -9,7 +9,6 @@ import {
   AlertCircle,
   ArrowLeft,
   ArrowUpDown,
-  Braces,
   ChevronRight,
   Clock3,
   Code2,
@@ -50,7 +49,6 @@ import { apiFetch } from "@/lib/backend/client";
 interface WorkspaceRootInfo {
   id: string;
   label: string;
-  basePath: string;
   description: string;
   allowlisted?: boolean;
 }
@@ -75,7 +73,6 @@ interface WorkspaceListingResponse {
 interface WorkspaceFileResponse {
   root: string;
   path: string;
-  absPath: string;
   name: string;
   size: number;
   updatedAt: string;
@@ -171,21 +168,15 @@ function isJsonLike(path: string, language: string): boolean {
   return lower.endsWith(".json") || language.toLowerCase() === "json";
 }
 
-function isMemoryFile(path: string): boolean {
-  const lower = path.toLowerCase();
-  return (
-    lower === "memory/global.json" ||
-    lower.startsWith("memory/") ||
-    (lower.includes("projects/") && lower.endsWith(".json"))
-  );
-}
+{}
 
-// Restricted to safe allowlisted files only
+// Workspace is files only. Memory has its own view at /agent/memory and is
+// never rendered inside the workspace browser.
 const QUICK_JUMP_FILES: Array<{ path: string; label: string }> = [
   { path: "IDENTITY.md", label: "IDENTITY.md" },
   { path: "SOUL.md", label: "SOUL.md" },
   { path: "prompt-overlay.md", label: "prompt-overlay.md" },
-  { path: "memory/global.json", label: "memory/global.json" },
+  { path: "config.toml", label: "config.toml" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -460,7 +451,7 @@ function MarkdownFormattedView({ content }: { content: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// JSON memory summary
+// JSON parsing
 // ---------------------------------------------------------------------------
 
 function tryParseJson(content: string): unknown | null {
@@ -469,193 +460,6 @@ function tryParseJson(content: string): unknown | null {
   } catch {
     return null;
   }
-}
-
-function MemorySummaryCard({
-  parsed,
-  raw,
-}: {
-  parsed: unknown;
-  raw: string;
-}) {
-  let memories: Array<Record<string, unknown>> = [];
-  let tags: string[] = [];
-  let extra: Record<string, unknown> | null = null;
-
-  if (Array.isArray(parsed)) {
-    memories = parsed as Array<Record<string, unknown>>;
-  } else if (parsed && typeof parsed === "object") {
-    const obj = parsed as Record<string, unknown>;
-    if (Array.isArray(obj.memories))
-      memories = obj.memories as Array<Record<string, unknown>>;
-    else if (Array.isArray(obj.entries))
-      memories = obj.entries as Array<Record<string, unknown>>;
-    else if (Array.isArray(obj.items))
-      memories = obj.items as Array<Record<string, unknown>>;
-    else if (obj.data && Array.isArray(obj.data))
-      memories = obj.data as Array<Record<string, unknown>>;
-    else {
-      extra = obj;
-      if (Array.isArray(obj.tags)) tags = obj.tags as string[];
-    }
-    const tagSet = new Set<string>(tags);
-    for (const m of memories) {
-      const t = (m as Record<string, unknown>).tags;
-      if (Array.isArray(t))
-        for (const tag of t) if (typeof tag === "string") tagSet.add(tag);
-      const tag2 = (m as Record<string, unknown>).tag;
-      if (typeof tag2 === "string") tagSet.add(tag2);
-    }
-    if (tags.length === 0 && tagSet.size > 0) tags = Array.from(tagSet);
-  }
-
-  const total = memories.length;
-  const lineCount = raw.split("\n").length;
-
-  return (
-    <div className="rounded-xl border bg-card p-5 shadow-sm">
-      <div className="mb-3 flex items-center gap-2">
-        <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <Braces className="size-4" />
-        </div>
-        <div>
-          <div className="text-sm font-semibold">Memory snapshot</div>
-          <div className="text-xs text-muted-foreground tabular-nums">
-            {total > 0
-              ? `${total} ${total === 1 ? "entry" : "entries"}`
-              : "Structured JSON"}{" "}
-            · {lineCount} lines
-          </div>
-        </div>
-        {tags.length > 0 ? (
-          <div className="ml-auto hidden items-center gap-1 sm:flex">
-            {tags.slice(0, 6).map((tag) => (
-              <Badge
-                key={tag}
-                variant="secondary"
-                className="text-[11px] font-normal"
-              >
-                {tag}
-              </Badge>
-            ))}
-            {tags.length > 6 ? (
-              <span className="text-xs text-muted-foreground">
-                +{tags.length - 6}
-              </span>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-
-      {memories.length > 0 ? (
-        <>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="rounded-lg border bg-muted/40 px-3 py-3">
-              <div className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-                Entries
-              </div>
-              <div className="mt-1 text-xl font-semibold tabular-nums">
-                {total}
-              </div>
-            </div>
-            <div className="rounded-lg border bg-muted/40 px-3 py-3">
-              <div className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-                Tags
-              </div>
-              <div className="mt-1 text-xl font-semibold tabular-nums">
-                {tags.length}
-              </div>
-            </div>
-            <div className="rounded-lg border bg-muted/40 px-3 py-3">
-              <div className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-                Size
-              </div>
-              <div className="mt-1 text-xl font-semibold tabular-nums">
-                {formatBytes(BufferByteLength(raw))}
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-4 space-y-2">
-            <div className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-              Recent entries
-            </div>
-            <div className="grid gap-2">
-              {memories.slice(0, 4).map((mem, i) => {
-                const title =
-                  (mem.title as string) ||
-                  (mem.key as string) ||
-                  (mem.id as string) ||
-                  (mem.name as string) ||
-                  `Entry ${i + 1}`;
-                const preview =
-                  (mem.content as string) ||
-                  (mem.value as string) ||
-                  (mem.text as string) ||
-                  (mem.summary as string) ||
-                  JSON.stringify(mem).slice(0, 160);
-                const memTags = Array.isArray(mem.tags)
-                  ? (mem.tags as string[])
-                  : [];
-                return (
-                  <div
-                    key={i}
-                    className="rounded-lg border bg-background px-3 py-2.5"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-medium">
-                          {String(title).slice(0, 80)}
-                        </div>
-                        <div className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
-                          {String(preview).slice(0, 220)}
-                        </div>
-                      </div>
-                      {memTags.length > 0 ? (
-                        <div className="hidden shrink-0 flex-wrap gap-1 sm:flex">
-                          {memTags.slice(0, 3).map((t) => (
-                            <span
-                              key={t}
-                              className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium"
-                            >
-                              {t}
-                            </span>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </>
-      ) : extra ? (
-        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {Object.entries(extra)
-            .slice(0, 9)
-            .map(([k, v]) => (
-              <div key={k} className="rounded-lg border bg-muted/30 px-3 py-2">
-                <div className="truncate text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-                  {k}
-                </div>
-                <div className="mt-1 truncate font-mono text-xs tabular-nums">
-                  {Array.isArray(v)
-                    ? `${(v as unknown[]).length} items`
-                    : typeof v === "object"
-                      ? JSON.stringify(v).slice(0, 48)
-                      : String(v).slice(0, 48)}
-                </div>
-              </div>
-            ))}
-        </div>
-      ) : (
-        <div className="mt-2 text-xs text-muted-foreground">
-          No memory entries yet. Raw JSON is shown below.
-        </div>
-      )}
-    </div>
-  );
 }
 
 function BufferByteLength(s: string): number {
@@ -874,9 +678,6 @@ export function AgentWorkspaceView() {
   const fileIsJson = file ? isJsonLike(file.path, file.language) : false;
   const showFormattedToggle = fileIsMarkdown || fileIsJson;
   const jsonParsed = fileIsJson && file ? tryParseJson(file.content) : null;
-  const showMemoryCard = file
-    ? isMemoryFile(file.path) && jsonParsed !== null && viewMode === "formatted"
-    : false;
 
   const isListingForbidden =
     listingError &&
@@ -931,8 +732,7 @@ export function AgentWorkspaceView() {
                 Agent Workspace
               </h1>
               <p className="mt-1 max-w-3xl truncate text-sm leading-5 text-muted-foreground">
-                Browse Amiro’s memory, persona, and project files in one
-                read-only workspace.
+                Browse your agent files. Memory lives in its own view.
               </p>
             </div>
 
@@ -948,7 +748,7 @@ export function AgentWorkspaceView() {
                   <span className="px-3 py-1.5 text-xs text-muted-foreground">
                     {isListingForbidden
                       ? "Admin required"
-                      : "No allowlisted roots"}
+                      : "Nothing to show here"}
                   </span>
                 ) : listingLoading && roots.length === 0 ? (
                   <>
@@ -974,13 +774,7 @@ export function AgentWorkspaceView() {
                             : "text-muted-foreground hover:text-foreground",
                         )}
                       >
-                        {root.id === "runtime" || root.id === "jcode"
-                          ? "Runtime"
-                          : root.id === "amiro"
-                            ? "Persona"
-                            : root.id === "project"
-                              ? "Project"
-                              : root.label}
+                        {root.label}
                       </button>
                     );
                   })
@@ -1058,8 +852,8 @@ export function AgentWorkspaceView() {
                     data-testid="workspace-search-input"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Filter allowlisted files"
-                    aria-label="Filter allowlisted files and folders"
+                    placeholder="Filter files"
+                    aria-label="Filter files and folders"
                     className="h-8 bg-background pl-8 text-sm"
                   />
                   {search ? (
@@ -1216,8 +1010,8 @@ export function AgentWorkspaceView() {
                     </div>
                     <div className="mt-1 max-w-[22ch] text-xs leading-relaxed text-muted-foreground">
                       {search
-                        ? "No allowlisted files match your search filter."
-                        : "This directory has no visible allowlisted entries."}
+                        ? "No files match your search."
+                        : "This folder is empty."}
                     </div>
                     {currentPath ? (
                       <Button
@@ -1336,12 +1130,10 @@ export function AgentWorkspaceView() {
                 <Eye className="size-6 text-muted-foreground" />
               </div>
               <h3 className="mt-4 text-sm font-semibold">
-                Select an allowlisted file to inspect
+                Select a file to preview
               </h3>
               <p className="mt-1 max-w-md text-sm leading-relaxed text-muted-foreground">
-                Choose a file on the left to preview its contents. Read
-                formatted Markdown and structured memory without changing the
-                files that power your agent.
+                Choose a file on the left to preview its contents.
               </p>
               <div className="mt-6 flex flex-wrap justify-center gap-2">
                 {QUICK_JUMP_FILES.slice(0, 3).map((f) => (
@@ -1611,19 +1403,6 @@ export function AgentWorkspaceView() {
                       <span className="text-xs text-muted-foreground">
                         Save to update the live file on disk
                       </span>
-                    </div>
-                  </div>
-                ) : showMemoryCard ? (
-                  <div className="space-y-4 p-4 sm:p-6">
-                    <MemorySummaryCard parsed={jsonParsed} raw={file.content} />
-                    <div className="rounded-xl border bg-muted/30 p-4">
-                      <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                        <FileJson className="size-3.5" />
-                        JSON source
-                      </div>
-                      <pre className="overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed">
-                        {JSON.stringify(jsonParsed, null, 2)}
-                      </pre>
                     </div>
                   </div>
                 ) : fileIsMarkdown && viewMode === "formatted" ? (

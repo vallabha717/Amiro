@@ -10,7 +10,9 @@
 //
 // Provider listing: the adapter's `GET /api/providers/catalog` (merged
 // `amiro provider list --json` + `amiro auth status --json`) with a fallback
-// to the older `GET /api/providers/login-status` + `GET /api/ai/providers`.
+// to the older `GET /api/providers/login-status`. The connected-only
+// `GET /api/ai/providers` is intentionally NOT a fallback: it lists only
+// configured providers, not the full jcode-supported catalog.
 //
 // OAuth / device-code providers keep the interactive flow:
 //   POST /api/providers/:id/oauth/start     -> authorization URL and/or device code
@@ -64,10 +66,7 @@ import {
   SelectValue,
 } from "ui/select";
 import { ApiError, apiJson, fetcher } from "@/lib/backend/client";
-import {
-  PROVIDERS_KEY,
-  type ProviderConfig,
-} from "@/lib/backend/provider-api";
+import { PROVIDERS_KEY } from "@/lib/backend/provider-api";
 
 /**
  * One entry in the catalog listing. Mirrors the shape produced by
@@ -199,19 +198,6 @@ function fromLegacy(provider: LegacyLoginProvider): CatalogProvider {
   };
 }
 
-function fromProviderConfig(provider: ProviderConfig): CatalogProvider {
-  return {
-    id: provider.provider || provider.id,
-    displayName: provider.name || provider.provider,
-    authKind: "API key",
-    mechanism: "api-key",
-    connected: Boolean(provider.configured),
-    status: provider.configured ? "available" : "not_configured",
-    canStartOauth: false,
-    canAcceptApiKey: true,
-  };
-}
-
 function normalizeCatalog(data: unknown): CatalogProvider[] | null {
   if (!data || typeof data !== "object") return null;
   const obj = data as Record<string, unknown>;
@@ -245,6 +231,10 @@ function normalizeLoginStatus(data: unknown): CatalogProvider[] | null {
 }
 
 export async function loadCatalogProviders(): Promise<CatalogProvider[]> {
+  // The full jcode-supported list comes only from the catalog routes above.
+  // The connected-only `/api/ai/providers` endpoint must NOT be used here:
+  // mapping it as a catalog silently shrinks the list to configured
+  // providers and mislabels OAuth entries as API-key-only.
   try {
     const catalog = normalizeCatalog(await fetcher(CATALOG_KEY));
     if (catalog && catalog.length) return catalog;
@@ -254,14 +244,6 @@ export async function loadCatalogProviders(): Promise<CatalogProvider[]> {
   try {
     const legacy = normalizeLoginStatus(await fetcher(LOGIN_STATUS_KEY));
     if (legacy && legacy.length) return legacy;
-  } catch {
-    // fallback next
-  }
-  try {
-    const providers = await fetcher(PROVIDERS_KEY);
-    if (Array.isArray(providers)) {
-      return (providers as ProviderConfig[]).map(fromProviderConfig);
-    }
   } catch {
     // Both endpoints failed; the panel renders its own empty state.
   }

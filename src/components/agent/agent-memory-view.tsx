@@ -141,7 +141,9 @@ const CATEGORY_META: Record<string, { label: string; color: string }> = {
 };
 
 const CLUSTER_ORDER = ["fact", "preference", "entity", "correction", "other"];
-const LOCAL_MEMORY_DIR = "~/.amiro/memory";
+// On-disk source: the runtime memory directory (runtime_home/memory, which
+// is ~/.jcode/memory on an unconfigured install) served by /api/agent/memory.
+const LOCAL_MEMORY_DIR = "~/.jcode/memory";
 
 function categoryMeta(category: string) {
   return CATEGORY_META[category] ?? CATEGORY_META.other;
@@ -539,6 +541,9 @@ export function AgentMemoryView({ className }: { className?: string }) {
   // Native Amiro memory is retained by the Amiro engine; direct creation/deletion/reinforcement is read-only
   const isReadOnly = data?.readOnly !== false;
 
+  // Creative first, like a memory map: the constellation ("Map", shown here
+  // as Split with its detail inspector beside it) is the default view.
+  // The clean Cards list stays one click away in the view switcher.
   const [viewMode, setViewMode] = useState<ViewMode>("split");
   const [scopeFilter, setScopeFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -1167,7 +1172,10 @@ export function AgentMemoryView({ className }: { className?: string }) {
       canvas.removeEventListener("pointerleave", onPointerLeave);
       canvas.removeEventListener("wheel", onWheel);
     };
-  }, []);
+    // Re-run when the view changes or data arrives: in Cards mode, and while
+    // the first load shows skeletons, the canvas is not mounted yet, so a
+    // mount-only effect would return early and the Map would stay blank.
+  }, [viewMode, data]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -1333,10 +1341,10 @@ export function AgentMemoryView({ className }: { className?: string }) {
                 </span>
                 <div className="leading-tight">
                   <h1 className="font-brand text-xl font-semibold tracking-tight">
-                    Memory Palace
+                    Memory
                   </h1>
                   <p className="text-[11px] text-muted-foreground">
-                    Native Amiro memory graph · Retained natively
+                    What Amiro remembers · From runtime memory
                   </p>
                 </div>
               </div>

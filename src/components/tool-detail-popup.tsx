@@ -4,13 +4,10 @@ import { PropsWithChildren, ReactNode, useState } from "react";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogHeader,
   DialogPortal,
-  DialogTitle,
   DialogTrigger,
 } from "ui/dialog";
-import { Separator } from "ui/separator";
+import { PopupShell } from "ui/popup-shell";
 import JsonView from "ui/json-view";
 import { Textarea } from "ui/textarea";
 import { Button } from "ui/button";
@@ -47,12 +44,14 @@ export const ToolDetailPopup = ({
     <Dialog>
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogPortal>
-        <DialogContent className="sm:max-w-[800px] fixed p-10 overflow-hidden">
-          <ToolDetailPopupContent
-            onUpdate={onUpdate}
-            tool={tool}
-            serverId={serverId}
-          />
+        <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden p-0 sm:max-w-[800px]">
+          <PopupShell title={tool.name} description={tool.description}>
+            <ToolDetailPopupContent
+              onUpdate={onUpdate}
+              tool={tool}
+              serverId={serverId}
+            />
+          </PopupShell>
         </DialogContent>
       </DialogPortal>
     </Dialog>
@@ -64,7 +63,6 @@ const createApiUrl = (serverId: string, toolName: string) =>
 
 export function ToolDetailPopupContent({
   tool,
-  title,
   serverId,
   onUpdate,
 }: {
@@ -136,14 +134,7 @@ export function ToolDetailPopupContent({
       });
   };
   return (
-    <div className="flex flex-col overflow-y-auto h-[70vh]">
-      <DialogHeader>
-        <DialogTitle>{title || tool.name}</DialogTitle>
-        <DialogDescription className="text-xs text-muted-foreground mt-4">
-          {tool.description}
-        </DialogDescription>
-      </DialogHeader>
-      <Separator className="my-4" />
+    <>
       <div>
         <div className="flex items-center mb-1">
           <h5 className="mr-auto">
@@ -252,7 +243,6 @@ export function ToolDetailPopupContent({
         </p>
       )}
 
-      <div className="absolute left-0 right-0 bottom-0 h-12 bg-gradient-to-t from-background to-transparent pointer-events-none z-10" />
-    </div>
+    </>
   );
 }

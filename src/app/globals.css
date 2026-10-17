@@ -246,6 +246,10 @@
   }
 
   [data-theme="blue"] {
+    /* Ocean / ice */
+    --agent-hue: 211;
+    --agent-chroma: 64%;
+    --agent-wash: 74%;
     --background: hsl(0 0% 100%);
     --foreground: hsl(222.2 84% 4.9%);
     --card: hsl(0 0% 100%);
@@ -282,6 +286,10 @@
   }
 
   [data-theme="orange"] {
+    /* Terracotta / peach */
+    --agent-hue: 22;
+    --agent-chroma: 58%;
+    --agent-wash: 76%;
     --background: hsl(0 0% 100%);
     --foreground: hsl(20 14.3% 4.1%);
     --card: hsl(0 0% 100%);
@@ -606,6 +614,10 @@
   }
 
   [data-theme="space-odyssey"] {
+    /* Twilight / periwinkle */
+    --agent-hue: 239;
+    --agent-chroma: 42%;
+    --agent-wash: 66%;
     --background: hsl(220 20% 97%);
     --foreground: hsl(220 20% 10%);
     --card: hsl(220 20% 98%);
@@ -678,6 +690,10 @@
   }
 
   [data-theme="zen-garden"] {
+    /* Forest / mint */
+    --agent-hue: 151;
+    --agent-chroma: 36%;
+    --agent-wash: 48%;
     --background: hsl(90 10% 98%);
     --foreground: hsl(90 10% 10%);
     --card: hsl(90 10% 99%);
@@ -714,6 +730,10 @@
   }
 
   [data-theme="misty-harbor"] {
+    /* Lagoon / seafoam */
+    --agent-hue: 177;
+    --agent-chroma: 46%;
+    --agent-wash: 52%;
     --background: hsl(210 15% 98%);
     --foreground: hsl(210 15% 10%);
     --card: hsl(210 15% 99%);
@@ -786,6 +806,10 @@
   }
 
   [data-theme="midnight"] {
+    /* Graphite / silver */
+    --agent-hue: 220;
+    --agent-chroma: 8%;
+    --agent-wash: 12%;
     --background: hsl(0 0% 100%);
     --foreground: hsl(240 10% 3.9%);
     --card: hsl(0 0% 100%);
@@ -819,6 +843,86 @@
     --sidebar-accent-foreground: hsl(240 5.9% 10%);
     --sidebar-border: hsl(240 5.9% 90%);
     --sidebar-ring: hsl(0 0% 4%);
+  }
+
+  [data-theme="ultraviolet"] {
+    /* Orchid / lilac */
+    --agent-hue: 283;
+    --agent-chroma: 42%;
+    --agent-wash: 62%;
+    --background: hsl(276 60% 99%);
+    --foreground: hsl(276 10% 10%);
+    --card: hsl(276 60% 98%);
+    --card-foreground: hsl(276 10% 10%);
+    --popover: hsl(276 60% 98%);
+    --popover-foreground: hsl(276 10% 10%);
+    --primary: hsl(276 50% 59%);
+    --primary-foreground: hsl(0 0% 98%);
+    --secondary: hsl(276 60% 88%);
+    --secondary-foreground: hsl(276 10% 10%);
+    --muted: hsl(276 20% 90%);
+    --muted-foreground: hsl(276 10% 40%);
+    --accent: hsl(210 40% 96.1%);
+    --accent-foreground: hsl(276 10% 10%);
+    --destructive: hsl(0 84.2% 60.2%);
+    --destructive-foreground: hsl(0 0% 98%);
+    --border: hsl(276 40% 90%);
+    --input: hsl(276 40% 90%);
+    --ring: hsl(276 50% 59%);
+    --radius: 0.75rem;
+    --chart-1: hsl(276 50% 59%);
+    --chart-2: hsl(246 60% 70%);
+    --chart-3: hsl(30 90% 70%);
+    --chart-4: hsl(200 70% 60%);
+    --chart-5: hsl(180 60% 65%);
+    --sidebar: hsl(276 60% 95%);
+    --sidebar-foreground: hsl(276 10% 10%);
+    --sidebar-primary: hsl(276 50% 59%);
+    --sidebar-primary-foreground: hsl(0 0% 98%);
+    --sidebar-accent: hsl(276 60% 88%);
+    --sidebar-accent-foreground: hsl(276 10% 10%);
+    --sidebar-border: hsl(276 40% 85%);
+    --sidebar-ring: hsl(276 50% 59%);
+  }
+
+  [data-theme="honey"] {
+    /* Honey / butter */
+    --agent-hue: 44;
+    --agent-chroma: 70%;
+    --agent-wash: 82%;
+    --background: hsl(48 60% 99%);
+    --foreground: hsl(48 10% 10%);
+    --card: hsl(48 60% 98%);
+    --card-foreground: hsl(48 10% 10%);
+    --popover: hsl(48 60% 98%);
+    --popover-foreground: hsl(48 10% 10%);
+    --primary: hsl(48 82% 51%);
+    --primary-foreground: hsl(48 20% 10%);
+    --secondary: hsl(48 70% 85%);
+    --secondary-foreground: hsl(48 10% 10%);
+    --muted: hsl(48 20% 90%);
+    --muted-foreground: hsl(48 10% 40%);
+    --accent: hsl(210 40% 96.1%);
+    --accent-foreground: hsl(48 10% 10%);
+    --destructive: hsl(0 84.2% 60.2%);
+    --destructive-foreground: hsl(0 0% 98%);
+    --border: hsl(48 40% 88%);
+    --input: hsl(48 40% 88%);
+    --ring: hsl(48 82% 51%);
+    --radius: 0.75rem;
+    --chart-1: hsl(48 82% 51%);
+    --chart-2: hsl(30 80% 55%);
+    --chart-3: hsl(150 60% 45%);
+    --chart-4: hsl(210 70% 60%);
+    --chart-5: hsl(340 70% 65%);
+    --sidebar: hsl(48 70% 94%);
+    --sidebar-foreground: hsl(48 10% 10%);
+    --sidebar-primary: hsl(48 82% 51%);
+    --sidebar-primary-foreground: hsl(48 20% 10%);
+    --sidebar-accent: hsl(48 70% 85%);
+    --sidebar-accent-foreground: hsl(48 10% 10%);
+    --sidebar-border: hsl(48 40% 85%);
+    --sidebar-ring: hsl(48 82% 51%);
   }
 }
 
@@ -991,6 +1095,10 @@
   }
 
   [data-theme="blue"] {
+    /* Ocean / ice */
+    --agent-hue: 211;
+    --agent-chroma: 64%;
+    --agent-wash: 74%;
     --background: hsl(222.2 84% 4.9%);
     --foreground: hsl(210 40% 98%);
     --card: hsl(222.2 84% 4.9%);
@@ -1026,6 +1134,10 @@
   }
 
   [data-theme="orange"] {
+    /* Terracotta / peach */
+    --agent-hue: 22;
+    --agent-chroma: 58%;
+    --agent-wash: 76%;
     --background: hsl(20 14.3% 4.1%);
     --foreground: hsl(60 9.1% 97.8%);
     --card: hsl(20 14.3% 4.1%);
@@ -1313,6 +1425,10 @@
   }
 
   [data-theme="space-odyssey"] {
+    /* Twilight / periwinkle */
+    --agent-hue: 239;
+    --agent-chroma: 42%;
+    --agent-wash: 66%;
     --background: hsl(230 50% 3%);
     --foreground: hsl(220 20% 97%);
     --card: hsl(230 50% 5%);
@@ -1385,6 +1501,10 @@
   }
 
   [data-theme="zen-garden"] {
+    /* Forest / mint */
+    --agent-hue: 151;
+    --agent-chroma: 36%;
+    --agent-wash: 48%;
     --background: hsl(90 15% 10%);
     --foreground: hsl(90 10% 98%);
     --card: hsl(90 15% 12%);
@@ -1421,6 +1541,10 @@
   }
 
   [data-theme="misty-harbor"] {
+    /* Lagoon / seafoam */
+    --agent-hue: 177;
+    --agent-chroma: 46%;
+    --agent-wash: 52%;
     --background: hsl(210 20% 10%);
     --foreground: hsl(210 15% 98%);
     --card: hsl(210 20% 12%);
@@ -1493,6 +1617,10 @@
   }
 
   [data-theme="midnight"] {
+    /* Graphite / silver */
+    --agent-hue: 220;
+    --agent-chroma: 8%;
+    --agent-wash: 12%;
     --background: hsl(0 0% 4%);
     --foreground: hsl(0 0% 98%);
     --card: hsl(0 0% 6%);
@@ -1526,6 +1654,145 @@
     --sidebar-border: hsl(240 3.7% 12%);
     --sidebar-ring: hsl(0 0% 98%);
   }
+
+  [data-theme="ultraviolet"] {
+    /* Orchid / lilac */
+    --agent-hue: 283;
+    --agent-chroma: 42%;
+    --agent-wash: 62%;
+    --background: hsl(276 40% 8%);
+    --foreground: hsl(276 10% 95%);
+    --card: hsl(276 40% 10%);
+    --card-foreground: hsl(276 10% 95%);
+    --popover: hsl(276 40% 10%);
+    --popover-foreground: hsl(276 10% 95%);
+    --primary: hsl(276 50% 59%);
+    --primary-foreground: hsl(0 0% 98%);
+    --secondary: hsl(276 40% 30%);
+    --secondary-foreground: hsl(276 10% 95%);
+    --muted: hsl(276 30% 18%);
+    --muted-foreground: hsl(276 10% 70%);
+    --accent: hsl(276 30% 25%);
+    --accent-foreground: hsl(276 10% 95%);
+    --destructive: hsl(0 72.2% 50.6%);
+    --destructive-foreground: hsl(0 0% 98%);
+    --border: hsl(276 40% 22%);
+    --input: hsl(276 40% 22%);
+    --ring: hsl(276 50% 59%);
+    --radius: 0.75rem;
+    --chart-1: hsl(276 50% 59%);
+    --chart-2: hsl(246 60% 65%);
+    --chart-3: hsl(30 90% 55%);
+    --chart-4: hsl(200 70% 55%);
+    --chart-5: hsl(180 60% 50%);
+    --sidebar: hsl(276 40% 12%);
+    --sidebar-foreground: hsl(276 10% 95%);
+    --sidebar-primary: hsl(276 50% 59%);
+    --sidebar-primary-foreground: hsl(0 0% 98%);
+    --sidebar-accent: hsl(276 40% 30%);
+    --sidebar-accent-foreground: hsl(276 10% 95%);
+    --sidebar-border: hsl(276 40% 25%);
+    --sidebar-ring: hsl(276 50% 59%);
+  }
+
+  [data-theme="honey"] {
+    /* Honey / butter */
+    --agent-hue: 44;
+    --agent-chroma: 70%;
+    --agent-wash: 82%;
+    --background: hsl(48 30% 8%);
+    --foreground: hsl(48 15% 95%);
+    --card: hsl(48 30% 10%);
+    --card-foreground: hsl(48 15% 95%);
+    --popover: hsl(48 30% 10%);
+    --popover-foreground: hsl(48 15% 95%);
+    --primary: hsl(48 82% 51%);
+    --primary-foreground: hsl(48 20% 10%);
+    --secondary: hsl(48 30% 25%);
+    --secondary-foreground: hsl(48 15% 95%);
+    --muted: hsl(48 25% 18%);
+    --muted-foreground: hsl(48 15% 70%);
+    --accent: hsl(48 25% 22%);
+    --accent-foreground: hsl(48 15% 95%);
+    --destructive: hsl(0 72.2% 50.6%);
+    --destructive-foreground: hsl(0 0% 98%);
+    --border: hsl(48 30% 22%);
+    --input: hsl(48 30% 22%);
+    --ring: hsl(48 82% 51%);
+    --radius: 0.75rem;
+    --chart-1: hsl(48 82% 51%);
+    --chart-2: hsl(30 80% 55%);
+    --chart-3: hsl(150 60% 50%);
+    --chart-4: hsl(210 70% 60%);
+    --chart-5: hsl(340 70% 60%);
+    --sidebar: hsl(48 30% 12%);
+    --sidebar-foreground: hsl(48 15% 95%);
+    --sidebar-primary: hsl(48 82% 51%);
+    --sidebar-primary-foreground: hsl(48 20% 10%);
+    --sidebar-accent: hsl(48 30% 25%);
+    --sidebar-accent-foreground: hsl(48 15% 95%);
+    --sidebar-border: hsl(48 30% 25%);
+    --sidebar-ring: hsl(48 82% 51%);
+  }
+}
+
+/* Agent palettes share a tonal rhythm, not a color. Keep pink's established
+   palette and every non-agent theme outside this opt-in selector. The wash
+   is intentionally identical on secondary actions and selected sidebar pills. */
+:root :is([data-theme="zen-garden"], [data-theme="orange"], [data-theme="ultraviolet"], [data-theme="misty-harbor"], [data-theme="honey"], [data-theme="space-odyssey"], [data-theme="blue"], [data-theme="midnight"]) {
+  --background: hsl(var(--agent-hue) var(--agent-chroma) 98%);
+  --foreground: hsl(var(--agent-hue) 24% 14%);
+  --card: hsl(var(--agent-hue) var(--agent-chroma) 99%);
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --primary: hsl(var(--agent-hue) var(--agent-chroma) 32%);
+  --primary-foreground: hsl(var(--agent-hue) 20% 98%);
+  --secondary: hsl(var(--agent-hue) var(--agent-wash) 87%);
+  --secondary-foreground: hsl(var(--agent-hue) 32% 20%);
+  --muted: hsl(var(--agent-hue) 22% 93%);
+  --muted-foreground: hsl(var(--agent-hue) 18% 36%);
+  --accent: hsl(var(--agent-hue) var(--agent-wash) 92%);
+  --accent-foreground: var(--secondary-foreground);
+  --border: hsl(var(--agent-hue) 24% 85%);
+  --input: var(--border);
+  --ring: var(--primary);
+  --sidebar: hsl(var(--agent-hue) var(--agent-chroma) 95%);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--secondary);
+  --sidebar-accent-foreground: var(--secondary-foreground);
+  --sidebar-border: hsl(var(--agent-hue) 26% 82%);
+  --sidebar-ring: var(--ring);
+}
+
+.dark :is([data-theme="zen-garden"], [data-theme="orange"], [data-theme="ultraviolet"], [data-theme="misty-harbor"], [data-theme="honey"], [data-theme="space-odyssey"], [data-theme="blue"], [data-theme="midnight"]) {
+  --background: hsl(var(--agent-hue) var(--agent-chroma) 8%);
+  --foreground: hsl(var(--agent-hue) 24% 95%);
+  --card: hsl(var(--agent-hue) var(--agent-chroma) 11%);
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --primary: hsl(var(--agent-hue) var(--agent-wash) 74%);
+  --primary-foreground: hsl(var(--agent-hue) 30% 12%);
+  --secondary: hsl(var(--agent-hue) var(--agent-chroma) 26%);
+  --secondary-foreground: hsl(var(--agent-hue) 35% 95%);
+  --muted: hsl(var(--agent-hue) 22% 17%);
+  --muted-foreground: hsl(var(--agent-hue) 22% 75%);
+  --accent: hsl(var(--agent-hue) var(--agent-chroma) 21%);
+  --accent-foreground: var(--secondary-foreground);
+  --border: hsl(var(--agent-hue) 24% 24%);
+  --input: var(--border);
+  --ring: var(--primary);
+  --sidebar: hsl(var(--agent-hue) var(--agent-chroma) 12%);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--secondary);
+  --sidebar-accent-foreground: var(--secondary-foreground);
+  --sidebar-border: hsl(var(--agent-hue) 26% 28%);
+  --sidebar-ring: var(--ring);
 }
 
 @layer base {

@@ -75,8 +75,8 @@ describe("OpenDots catalog and assets", () => {
 });
 
 describe("Theme synchronization contract", () => {
-  it("declares all 20 base themes in const.ts", () => {
-    expect(BASE_THEMES).toHaveLength(20);
+  it("declares all 22 base themes in const.ts", () => {
+    expect(BASE_THEMES).toHaveLength(22);
     expect(BASE_THEMES).toContain("default");
     expect(BASE_THEMES).toContain("blue");
     expect(BASE_THEMES).toContain("orange");
@@ -84,6 +84,8 @@ describe("Theme synchronization contract", () => {
     expect(BASE_THEMES).toContain("cyberpunk-neon");
     expect(BASE_THEMES).toContain("tropical-paradise");
     expect(BASE_THEMES).toContain("midnight");
+    expect(BASE_THEMES).toContain("ultraviolet");
+    expect(BASE_THEMES).toContain("honey");
   });
 
   it("defines --sidebar-primary in globals.css for light and dark themes", () => {

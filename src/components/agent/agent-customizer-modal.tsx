@@ -8,10 +8,15 @@ import {
 import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
 import { useThemeStyle } from "@/hooks/use-theme-style";
 import type { CharacterTraits } from "@/lib/agent/character-catalog";
+import {
+  accentHexForColorId,
+  AVATAR_COLORS,
+  colorLabelForId,
+  COLOR_TO_SIDEBAR_THEME,
+  toneForBg,
+} from "@/lib/agent/character-catalog";
 import { AGENT_ACCENT } from "@/lib/agent/theme-colors";
 import { motion } from "framer-motion";
-import { BASE_THEMES } from "lib/const";
-import { capitalizeFirstLetter } from "lib/utils";
 import {
   AlertCircle,
   Dices,
@@ -45,25 +50,18 @@ import { AgentCharacterAvatar } from "./avatar-primitives";
 const FORM_OPTIONS: Array<{ id: string; label: string; desc: string }> = [
   { id: "blob", label: "Headphones", desc: "Your listening companion" },
   { id: "sprout", label: "Sprout", desc: "A bright little sprout" },
-  { id: "star", label: "Sunbeam", desc: "Always up for adventure" },
+  { id: "star", label: "Starfish", desc: "Swims through the day" },
   { id: "cloud", label: "Dreamer", desc: "A cozy little star" },
 ];
 
 const BODY_LABELS: Record<string, string> = {
   blob: "Headphones",
   sprout: "Sprout",
-  star: "Sunbeam",
+  star: "Starfish",
   cloud: "Dreamer",
   ghost: "Headphones",
   urchin: "Headphones",
 };
-
-function formatThemeLabel(themeId: string): string {
-  return themeId
-    .split("-")
-    .map((part) => capitalizeFirstLetter(part))
-    .join(" ");
-}
 
 const ALLOWED_IMAGE_MIME_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
@@ -104,9 +102,11 @@ export function AgentCustomizerModal({
   const [bodyShape, setBodyShape] = useState(() =>
     normalizeBodyShape(identity.traits.bodyShape),
   );
-  // Eye style is fixed on plush PNGs — keep stored value for API compat, no UI.
+  // Eye style is fixed on plush PNGs, keep stored value for API compat, no UI.
   const eyeStyle = identity.traits.eyeStyle;
-  const legacyColor = resolveColorId(identity.traits.color);
+  const [colorId, setColorId] = useState(() =>
+    resolveColorId(identity.traits.color),
+  );
   const [customImageUrl, setCustomImageUrl] = useState<string | null>(
     identity.customImageUrl,
   );
@@ -119,8 +119,12 @@ export function AgentCustomizerModal({
       setName(identity.name);
       setTagline(identity.tagline);
       setBodyShape(normalizeBodyShape(identity.traits.bodyShape));
+      const savedColor = resolveColorId(identity.traits.color);
+      setColorId(savedColor);
       setCustomImageUrl(identity.customImageUrl);
-      setThemeDraft(themeStyle);
+      // Heal previously saved mismatches: the colour owns its theme, so a
+      // saved colour always drafts its matching sidebar theme.
+      setThemeDraft(COLOR_TO_SIDEBAR_THEME[savedColor] ?? themeStyle);
       setValidationError(null);
     }
   }, [open, identity, themeStyle]);
@@ -143,12 +147,14 @@ export function AgentCustomizerModal({
     const b =
       FORM_OPTIONS[Math.floor(Math.random() * FORM_OPTIONS.length)]?.id ??
       bodyShape;
-    const t =
-      BASE_THEMES[Math.floor(Math.random() * BASE_THEMES.length)] ?? themeDraft;
     setCustomImageUrl(null);
     setBodyShape(b);
-    setThemeDraft(t);
-  }, [bodyShape, themeDraft]);
+    const c =
+      AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]?.id ??
+      colorId;
+    setColorId(c);
+    setThemeDraft(COLOR_TO_SIDEBAR_THEME[c]);
+  }, [bodyShape, colorId]);
 
   const handleImageUpload = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -244,7 +250,7 @@ export function AgentCustomizerModal({
       const traits: CharacterTraits = {
         bodyShape,
         eyeStyle,
-        color: legacyColor,
+        color: colorId,
       };
       await updateAgentIdentity({
         name: trimmedName,
@@ -277,6 +283,9 @@ export function AgentCustomizerModal({
 
   // Keep preview body label stable for legacy ids
   const previewLabel = BODY_LABELS[bodyShape] ?? bodyShape;
+  // The whole preview header follows the draft colour, not the saved theme:
+  // the avatar tint, glow and backdrop all read this one value.
+  const previewAccent = accentHexForColorId(colorId) ?? AGENT_ACCENT;
 
   return (
     <Dialog
@@ -294,25 +303,29 @@ export function AgentCustomizerModal({
           fontFamily:
             "var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif",
         }}
-        className="flex max-h-[85vh] max-w-xl flex-col overflow-hidden rounded-3xl border border-border/70 bg-background/95 p-0 shadow-2xl backdrop-blur-2xl"
+        className="flex max-h-[92vh] max-w-2xl flex-col overflow-hidden rounded-3xl border border-border/70 bg-background/95 p-0 shadow-2xl backdrop-blur-2xl"
       >
-        {/* Scrollable body: preview, fields, and theme picker */}
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        {/* Fixed header: title never scrolls away */}
+        <DialogHeader className="shrink-0 border-b border-border/60 px-6 pt-3 pb-3 text-center">
+          <DialogTitle className="font-brand text-2xl font-semibold tracking-tight">
+            Customize Your Agent
+          </DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground">
+            Shape their look, sidebar-synced tint, and name
+          </DialogDescription>
+        </DialogHeader>
+
+        {/* Scrollable middle only: preview, fields, and color picker */}
+        <div
+          className="min-h-0 flex-1 overflow-y-auto"
+          data-testid="agent-customizer-scroll"
+        >
           <div
-            className="relative flex flex-col items-center justify-center overflow-hidden px-6 pt-8 pb-6 transition-colors duration-300"
+            className="relative flex flex-col items-center justify-center overflow-hidden px-6 pt-6 pb-6 transition-colors duration-300"
             style={{
-              background: `radial-gradient(120% 95% at 50% 0%, color-mix(in srgb, ${AGENT_ACCENT} 28%, transparent) 0%, transparent 78%)`,
+              background: `radial-gradient(120% 95% at 50% 0%, color-mix(in srgb, ${previewAccent} 28%, transparent) 0%, transparent 78%)`,
             }}
           >
-            <DialogHeader className="z-10 mb-3 text-center">
-              <DialogTitle className="font-brand text-2xl font-semibold tracking-tight">
-                Customize Your Agent
-              </DialogTitle>
-              <DialogDescription className="text-xs text-muted-foreground">
-                Shape their look, sidebar-synced tint, and name
-              </DialogDescription>
-            </DialogHeader>
-
             <motion.div
               key={`${bodyShape}-${Boolean(customImageUrl)}-${themeDraft}`}
               initial={reduceMotion ? false : { scale: 0.92, opacity: 0.6 }}
@@ -324,15 +337,14 @@ export function AgentCustomizerModal({
             >
               <div
                 className="pointer-events-none absolute -inset-6 rounded-full opacity-35 blur-2xl transition-colors duration-300"
-                style={{ backgroundColor: AGENT_ACCENT }}
+                style={{ backgroundColor: previewAccent }}
               />
-              {/* accentColor defaults to var(--sidebar-primary); draft var resolves via data-theme wrapper */}
               <AgentCharacterAvatar
-                traits={{ bodyShape, eyeStyle, color: legacyColor }}
+                traits={{ bodyShape, eyeStyle, color: colorId }}
                 customImageUrl={customImageUrl}
                 size={148}
                 interactive
-                accentColor={AGENT_ACCENT}
+                accentColor={previewAccent}
                 darkTint={themeDraft === "midnight"}
               />
             </motion.div>
@@ -445,25 +457,21 @@ export function AgentCustomizerModal({
             </div>
 
             <TraitCycleRow
-              label="Theme"
-              valueTestId="agent-theme-value"
-              prevTestId="agent-prev-theme"
-              nextTestId="agent-next-theme"
-              value={formatThemeLabel(themeDraft)}
-              colorHex="var(--sidebar-primary)"
+              label="Color"
+              valueTestId="agent-color-value"
+              prevTestId="agent-prev-color"
+              nextTestId="agent-next-color"
+              value={colorLabelForId(colorId)}
+              colorHex={accentHexForColorId(colorId) ?? undefined}
               onPrev={() => {
-                const idx = BASE_THEMES.indexOf(themeDraft);
-                const prev =
-                  BASE_THEMES[
-                    (idx - 1 + BASE_THEMES.length) % BASE_THEMES.length
-                  ] ?? themeDraft;
-                setThemeDraft(prev);
+                const next = cycleTrait(AVATAR_COLORS, colorId, -1);
+                setColorId(next);
+                setThemeDraft(COLOR_TO_SIDEBAR_THEME[next]);
               }}
               onNext={() => {
-                const idx = BASE_THEMES.indexOf(themeDraft);
-                const next =
-                  BASE_THEMES[(idx + 1) % BASE_THEMES.length] ?? themeDraft;
-                setThemeDraft(next);
+                const next = cycleTrait(AVATAR_COLORS, colorId, 1);
+                setColorId(next);
+                setThemeDraft(COLOR_TO_SIDEBAR_THEME[next]);
               }}
             />
 
@@ -482,9 +490,10 @@ export function AgentCustomizerModal({
               }}
               nextTestId="agent-next-body-shape"
             />
+
             <p className="text-[11px] text-muted-foreground">
-              Save Identity applies this theme to your Agent and sidebar. Cancel
-              keeps your current theme.
+              Save Identity applies this color and its matching sidebar theme
+              to your Agent. Cancel keeps your current look.
             </p>
           </div>
         </div>
@@ -499,6 +508,7 @@ export function AgentCustomizerModal({
               setName(identity.name);
               setTagline(identity.tagline);
               setBodyShape(normalizeBodyShape(identity.traits.bodyShape));
+              setColorId(resolveColorId(identity.traits.color));
               setCustomImageUrl(identity.customImageUrl);
               setThemeDraft(themeStyle);
               setValidationError(null);
@@ -527,7 +537,10 @@ export function AgentCustomizerModal({
               data-testid="agent-customizer-save"
               aria-label="Save agent identity"
               className="gap-1.5 rounded-full px-5 font-medium text-primary-foreground shadow-sm"
-              style={{ backgroundColor: AGENT_ACCENT }}
+              style={{
+                backgroundColor: previewAccent,
+                color: toneForBg(previewAccent).fg,
+              }}
             >
               <Sparkles className="size-3.5" aria-hidden="true" />
               {saving ? "Saving…" : "Save Identity"}

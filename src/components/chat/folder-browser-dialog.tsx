@@ -2,14 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { fetchFsBrowse, fetchFsRoots, type FsBrowseResponse } from "@/lib/backend/fs-browse-api";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "ui/dialog";
+import { Dialog, DialogContent } from "ui/dialog";
+import { PopupShell } from "ui/popup-shell";
 import { Button } from "ui/button";
 import { ArrowUp, Folder, FolderGit2, Loader2, Home, AlertCircle } from "lucide-react";
 
@@ -74,13 +68,34 @@ export function FolderBrowserDialog({ open, onOpenChange, onSelect, initialPath 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[80vh] flex flex-col" data-testid="folder-browser-dialog">
-        <DialogHeader>
-          <DialogTitle>Browse server folders</DialogTitle>
-          <DialogDescription>Select a folder on the server to use as your project directory.</DialogDescription>
-        </DialogHeader>
-
-        {/* Current path + breadcrumb */}
+      <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden p-0 sm:max-w-2xl" data-testid="folder-browser-dialog">
+        <PopupShell
+          title="Browse server folders"
+          description="Select a folder on the server to use as your project directory."
+          className="flex gap-2 sm:justify-between w-full"
+          footer={
+            <>
+              <div className="text-xs text-muted-foreground self-center hidden sm:block">
+                Hidden entries included per spec (dirs first). Never reads file contents.
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => onOpenChange(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (currentPath) onSelect(currentPath);
+                  }}
+                  disabled={!currentPath || !!error}
+                  data-testid="folder-browser-use-this-folder"
+                >
+                  Use this folder
+                </Button>
+              </div>
+            </>
+          }
+        >
+          {/* Current path + breadcrumb */}
         <div className="space-y-2 min-w-0">
           <div className="text-xs font-mono bg-muted rounded px-2 py-1 truncate" data-testid="folder-browser-current-path">
             {currentPath || "—"}
@@ -171,25 +186,7 @@ export function FolderBrowserDialog({ open, onOpenChange, onSelect, initialPath 
           )}
         </div>
 
-        <DialogFooter className="flex gap-2 sm:justify-between w-full">
-          <div className="text-xs text-muted-foreground self-center hidden sm:block">
-            Hidden entries included per spec (dirs first). Never reads file contents.
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                if (currentPath) onSelect(currentPath);
-              }}
-              disabled={!currentPath || !!error}
-              data-testid="folder-browser-use-this-folder"
-            >
-              Use this folder
-            </Button>
-          </div>
-        </DialogFooter>
+        </PopupShell>
       </DialogContent>
     </Dialog>
   );

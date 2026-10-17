@@ -86,7 +86,6 @@ export default function PromptInput({
   setInput,
   onStop,
   isLoading,
-  toolDisabled,
   voiceDisabled,
   threadId,
   disabledMention,

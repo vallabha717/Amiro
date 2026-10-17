@@ -35,6 +35,7 @@ import { Skeleton } from "ui/skeleton";
 import { Button } from "ui/button";
 import { Textarea } from "ui/textarea";
 import JsonView from "@/components/ui/json-view";
+import { PopupShell } from "ui/popup-shell";
 import { Alert, AlertDescription, AlertTitle } from "ui/alert";
 import { safeJSONParse, isNull, isString } from "lib/utils";
 import {
@@ -599,19 +600,13 @@ function TestPageContent() {
                                 </Button>
                               </DialogTrigger>
                               <DialogPortal>
-                                <DialogContent className="sm:max-w-[800px] fixed p-10 overflow-hidden">
-                                  <DialogHeader>
-                                    <DialogTitle>
-                                      Input Schema: {selectedTool.name}
-                                    </DialogTitle>
-                                  </DialogHeader>
-                                  <div className="overflow-y-auto max-h-[70vh]">
+                                <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden p-0 sm:max-w-[800px]">
+                                  <PopupShell title={`Input Schema: ${selectedTool.name}`}>
                                     <JsonView
                                       data={selectedTool.inputSchema}
                                       initialExpandDepth={3}
                                     />
-                                  </div>
-                                  <div className="absolute left-0 right-0 bottom-0 h-12 bg-gradient-to-t from-background to-transparent pointer-events-none z-10" />
+                                  </PopupShell>
                                 </DialogContent>
                               </DialogPortal>
                             </Dialog>

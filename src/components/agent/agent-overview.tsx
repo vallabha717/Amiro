@@ -651,6 +651,7 @@ export function AgentOverview() {
                   customImageUrl={identity.customImageUrl}
                   size={236}
                   interactive
+                  accentColor={accentHex}
                 />
                 <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/85 px-3.5 py-1 text-xs font-medium text-muted-foreground shadow-xs backdrop-blur-md transition-colors group-hover/avatar:border-foreground/30 group-hover/avatar:text-foreground">
                   <Sparkles

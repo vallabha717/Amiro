@@ -5,14 +5,8 @@ import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { safe } from "ts-safe";
 import { Button } from "ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "ui/dialog";
+import { Dialog, DialogContent, DialogTrigger } from "ui/dialog";
+import { PopupShell } from "ui/popup-shell";
 import { useTranslations } from "next-intl";
 
 type Props = {
@@ -52,14 +46,12 @@ export function ChatExportPopup(props: Props) {
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <DialogTrigger asChild>{props.children}</DialogTrigger>
-      <DialogContent className="flex flex-col gap-4">
-        <DialogHeader className="mb-4">
-          <DialogTitle>{t("Chat.Thread.sharePublicLink")}</DialogTitle>
-          <DialogDescription>
-            {t("Chat.Thread.sharePublicLinkDescription")}
-          </DialogDescription>
-        </DialogHeader>
-        <div className="flex items-center gap-2 p-6 rounded-full border">
+      <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden p-0">
+        <PopupShell
+          title={t("Chat.Thread.sharePublicLink")}
+          description={t("Chat.Thread.sharePublicLinkDescription")}
+        >
+          <div className="flex items-center gap-2 p-6 rounded-full border">
           <span className="mr-auto truncate min-w-0">{`${window.location.origin}/export/...`}</span>
           <Button
             className="rounded-full"
@@ -76,7 +68,8 @@ export function ChatExportPopup(props: Props) {
               ? t("Chat.Thread.creatingLink")
               : t("Chat.Thread.createLink")}
           </Button>
-        </div>
+          </div>
+        </PopupShell>
       </DialogContent>
     </Dialog>
   );

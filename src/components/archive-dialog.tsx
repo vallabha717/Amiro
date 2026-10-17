@@ -6,12 +6,9 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
   DialogTrigger,
 } from "ui/dialog";
+import { PopupShell } from "ui/popup-shell";
 import { Input } from "ui/input";
 import { Textarea } from "ui/textarea";
 import { Label } from "ui/label";
@@ -107,19 +104,31 @@ export function ArchiveDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent hideClose className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>
-            {isEdit ? t("Archive.editArchive") : t("Archive.addArchive")}
-          </DialogTitle>
-          <DialogDescription>
-            {isEdit
+      <DialogContent hideClose className="flex max-h-[85vh] flex-col overflow-hidden p-0 sm:max-w-md">
+        <PopupShell
+          title={isEdit ? t("Archive.editArchive") : t("Archive.addArchive")}
+          description={
+            isEdit
               ? t("Archive.editArchiveDescription")
-              : t("Archive.archiveDescriptionPlaceholder")}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="flex flex-col gap-4">
+              : t("Archive.archiveDescriptionPlaceholder")
+          }
+          className="flex items-center justify-end gap-2"
+          footer={
+            <>
+              <DialogClose asChild>
+                <Button variant="ghost">{t("Common.cancel")}</Button>
+              </DialogClose>
+              <Button
+                onClick={handleSubmit}
+                disabled={loading || !config.name.trim()}
+              >
+                {t("Common.save")}
+                {loading && <Loader className="size-3.5 animate-spin" />}
+              </Button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="archive-name">{t("Archive.archiveName")}</Label>
             <Input
@@ -147,20 +156,8 @@ export function ArchiveDialog({
               className="resize-none min-h-[100px] bg-input border-transparent"
             />
           </div>
-        </div>
-
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="ghost">{t("Common.cancel")}</Button>
-          </DialogClose>
-          <Button
-            onClick={handleSubmit}
-            disabled={loading || !config.name.trim()}
-          >
-            {t("Common.save")}
-            {loading && <Loader className="size-3.5 animate-spin" />}
-          </Button>
-        </DialogFooter>
+          </div>
+        </PopupShell>
       </DialogContent>
     </Dialog>
   );

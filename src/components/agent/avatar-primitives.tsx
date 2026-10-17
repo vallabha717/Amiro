@@ -86,7 +86,10 @@ export function AgentCharacterAvatar({
 }: AgentCharacterAvatarProps) {
   const prefersReducedMotion = usePrefersReducedMotion();
   const { themeStyle } = useThemeStyle();
-  const useDarkTint = darkTint ?? themeStyle === "midnight";
+  // The Black color choice darkens the plush the same way the Midnight theme
+  // does, independent of the app theme. Either source gives the black tint.
+  const isBlackColor = traits?.color === "black";
+  const useDarkTint = (darkTint ?? themeStyle === "midnight") || isBlackColor;
   const reduce = prefersReducedMotion || !animated;
 
   const variant = useMemo(() => openDotVariantForTraits(traits), [traits]);
@@ -164,6 +167,7 @@ export function AgentCharacterAvatar({
         aria-label="Agent avatar"
         data-testid="agent-avatar"
         data-agent-tint={useDarkTint ? "black" : "accent"}
+        data-agent-color={traits?.color ?? "orange"}
         style={{ display: "block" }}
       >
         <defs>

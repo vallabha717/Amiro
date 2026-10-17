@@ -1,13 +1,8 @@
 "use client";
 
 import { ReactNode, useMemo, useState } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "ui/dialog";
+import { Dialog, DialogContent } from "ui/dialog";
+import { PopupShell } from "ui/popup-shell";
 
 import useSWR from "swr";
 import { cn, fetcher } from "lib/utils";
@@ -55,11 +50,20 @@ export function McpCustomizationPopup() {
         }
       }}
     >
-      <DialogContent className="sm:max-w-[800px] fixed p-10 overflow-hidden">
+      <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden p-0 sm:max-w-[800px]">
         {mcpCustomizationPopup ? (
-          <McpServerCustomizationContent
-            mcpServerInfo={mcpCustomizationPopup}
-          />
+          <PopupShell
+            title={mcpCustomizationPopup.name}
+            description={
+              mcpCustomizationPopup.error ? (
+                <span className="text-xs text-destructive">error</span>
+              ) : undefined
+            }
+          >
+            <McpServerCustomizationContent
+              mcpServerInfo={mcpCustomizationPopup}
+            />
+          </PopupShell>
         ) : null}
       </DialogContent>
     </Dialog>
@@ -67,8 +71,7 @@ export function McpCustomizationPopup() {
 }
 
 export function McpServerCustomizationContent({
-  mcpServerInfo: { id, name, toolInfo, error },
-  title,
+  mcpServerInfo: { id, toolInfo },
 }: {
   mcpServerInfo: MCPServerInfo & { id: string };
   title?: ReactNode;
@@ -186,14 +189,7 @@ export function McpServerCustomizationContent({
   }
 
   return (
-    <div className="flex flex-col overflow-y-auto h-[70vh]">
-      <DialogHeader>
-        <DialogTitle className="flex items-center gap-2 mb-2">
-          {title || name}{" "}
-          {error ? <p className="text-xs text-destructive">error</p> : null}
-        </DialogTitle>
-        <DialogDescription>{/*  */}</DialogDescription>
-      </DialogHeader>
+    <>
       <div className="flex items-center">
         <h5 className="mr-auto flex items-center py-2">
           <Tooltip>
@@ -324,6 +320,6 @@ export function McpServerCustomizationContent({
           </div>
         )}
       </div>
-    </div>
+    </>
   );
 }

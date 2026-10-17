@@ -7,13 +7,8 @@ import { ChatModel } from "app-types/chat";
 import { SkillGenerateSchema } from "app-types/skill";
 import { handleErrorWithToast } from "ui/shared-toast";
 import { CommandIcon, CornerRightUpIcon } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "ui/dialog";
+import { Dialog, DialogContent } from "ui/dialog";
+import { PopupShell } from "ui/popup-shell";
 import { Button } from "ui/button";
 import { Textarea } from "ui/textarea";
 import { MessageLoading } from "ui/message-loading";
@@ -78,14 +73,12 @@ export function GenerateSkillDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="xl:max-w-[40vw] w-full max-w-full">
-        <DialogHeader>
-          <DialogTitle>{t("Skill.generateSkill")}</DialogTitle>
-          <DialogDescription className="sr-only">
-            {t("Skill.generateSkill")}
-          </DialogDescription>
-        </DialogHeader>
-        <div className="flex flex-col gap-6 w-full">
+      <DialogContent className="flex max-h-[85vh] w-full max-w-full flex-col overflow-hidden p-0 xl:max-w-[40vw]">
+        <PopupShell
+          title={t("Skill.generateSkill")}
+          description={t("Skill.generateSkill")}
+        >
+          <div className="flex flex-col gap-6 w-full">
           <div className="px-4">
             <p className="bg-secondary rounded-lg max-w-2/3 p-4">
               {t("Skill.generateSkillDetailedGreeting")}
@@ -144,7 +137,8 @@ export function GenerateSkillDialog({
               </Button>
             </div>
           </div>
-        </div>
+          </div>
+        </PopupShell>
       </DialogContent>
     </Dialog>
   );

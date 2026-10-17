@@ -4,14 +4,9 @@ import { cn, isString } from "lib/utils";
 import { Check, Copy } from "lucide-react";
 import { ReactNode } from "react";
 import { Button } from "ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "ui/dialog";
+import { Dialog, DialogContent, DialogTrigger } from "ui/dialog";
 import JsonView from "ui/json-view";
+import { PopupShell } from "ui/popup-shell";
 
 export function JsonViewPopup({
   data,
@@ -38,22 +33,23 @@ export function JsonViewPopup({
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="max-w-[70vw] min-w-[40vw]">
-        <DialogHeader>
-          <DialogTitle>JSON</DialogTitle>
-        </DialogHeader>
-
-        <div className="max-h-[70vh] w-full  overflow-y-auto p-6 pt-0 flex flex-col">
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn("size-3! p-4! ml-auto")}
-            onClick={() => copy(isString(data) ? data : JSON.stringify(data))}
-          >
-            {copied ? <Check /> : <Copy />}
-          </Button>
+      <DialogContent className="flex max-h-[85vh] min-w-[40vw] max-w-[70vw] flex-col overflow-hidden p-0">
+        <PopupShell
+          title="JSON"
+          headerExtra={
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn("size-3! p-4! absolute top-4 right-12")}
+              onClick={() => copy(isString(data) ? data : JSON.stringify(data))}
+              aria-label="Copy JSON"
+            >
+              {copied ? <Check /> : <Copy />}
+            </Button>
+          }
+        >
           <JsonView data={data} />
-        </div>
+        </PopupShell>
       </DialogContent>
     </Dialog>
   );

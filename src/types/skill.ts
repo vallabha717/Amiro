@@ -6,8 +6,7 @@ export type SkillSource =
   | ".agents"
   | ".amiro"
   | ".claude"
-  | ".codex"
-  | ".jcode";
+  | ".codex";
 
 export interface ShadowedSkill {
   name: string;
