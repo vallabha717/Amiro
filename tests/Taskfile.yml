@@ -6,7 +6,7 @@
 # with the Node adapter as the backend runtime.
 #
 # Current test surfaces:
-# - adapter unit tests: node --test adapter/test/usage.test.mjs
+# - adapter unit tests: node --test adapter/test/*.test.mjs
 # - cargo tests: tests/rust (std-only Rust testkit), src-tauri
 # - vitest: frontend unit and integration tests (pnpm test)
 # - playwright: end-to-end browser tests (pnpm test:e2e or cd tests && pnpm test)
@@ -24,7 +24,7 @@ tasks:
   adapter:unit:
     desc: Node adapter unit tests
     cmds:
-      - "node --test adapter/test/usage.test.mjs"
+      - "node --test adapter/test/*.test.mjs"
 
   adapter:live:
     desc: "Adapter live smoke against a running preview (needs credentials and live bridge)"

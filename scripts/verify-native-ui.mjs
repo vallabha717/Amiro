@@ -54,8 +54,8 @@ const modal = page.locator('[data-testid="agent-customizer-modal"]');
 await modal.waitFor({ state: "visible", timeout: 30000 });
 
 for (const id of [
-  "agent-prev-theme",
-  "agent-next-theme",
+  "agent-prev-color",
+  "agent-next-color",
   "agent-prev-body-shape",
 ]) {
   const button = page.locator(`[data-testid="${id}"]`);
@@ -68,35 +68,68 @@ for (const id of [
   );
 }
 
-const themeBefore = (
-  await page.locator('[data-testid="agent-theme-value"]').innerText()
+check(
+  "no theme row in the customizer (color owns the theme)",
+  (await page.locator('[data-testid="agent-theme-value"]').count()) === 0,
+  "agent-theme-value absent",
+);
+
+// --- Color: Vellum-style arrow row, Black reachable --------------------------
+for (const id of ["agent-prev-color", "agent-next-color"]) {
+  const button = page.locator(`[data-testid="${id}"]`);
+  const box = await button.boundingBox();
+  const visible = await button.isVisible();
+  check(
+    `visible arrow control ${id}`,
+    visible && !!box && box.width >= 24 && box.height >= 24,
+    box ? `${Math.round(box.width)}x${Math.round(box.height)}` : "no box",
+  );
+}
+const colorBefore = (
+  await page.locator('[data-testid="agent-color-value"]').innerText()
 ).trim();
-await page.locator('[data-testid="agent-next-theme"]').click();
+await page.locator('[data-testid="agent-next-color"]').click();
 await page.waitForTimeout(300);
-const themeAfter = (
-  await page.locator('[data-testid="agent-theme-value"]').innerText()
+const colorAfter = (
+  await page.locator('[data-testid="agent-color-value"]').innerText()
 ).trim();
 check(
-  "next arrow changes the theme",
-  themeBefore !== themeAfter,
-  `${themeBefore} -> ${themeAfter}`,
+  "next arrow changes the color",
+  colorBefore !== colorAfter,
+  `${colorBefore} -> ${colorAfter}`,
+);
+let colorNow = colorAfter;
+for (let i = 0; i < 12 && colorNow.toLowerCase() !== "black"; i += 1) {
+  await page.locator('[data-testid="agent-next-color"]').click();
+  await page.waitForTimeout(120);
+  colorNow = (
+    await page.locator('[data-testid="agent-color-value"]').innerText()
+  ).trim();
+}
+check("black color reachable with the arrow", colorNow.toLowerCase() === "black", colorNow);
+const previewColor = await page
+  .locator('[data-testid="agent-customizer-modal"] svg[data-testid="agent-avatar"]')
+  .first()
+  .evaluate((node) => ({
+    color: node.getAttribute("data-agent-color"),
+    tint: node.getAttribute("data-agent-tint"),
+  }));
+check(
+  "black color choice darkens the preview plush",
+  previewColor.color === "black" && previewColor.tint === "black",
+  JSON.stringify(previewColor),
 );
 
 // --- Black plush mascot on Midnight ----------------------------------------
-let themeNow = (
-  await page.locator('[data-testid="agent-theme-value"]').innerText()
-).trim();
-for (let i = 0; i < 24 && themeNow.toLowerCase() !== "midnight"; i += 1) {
-  await page.locator('[data-testid="agent-next-theme"]').click();
-  await page.waitForTimeout(120);
-  themeNow = (
-    await page.locator('[data-testid="agent-theme-value"]').innerText()
-  ).trim();
-}
+// The theme row is gone: Black color drafts the midnight theme automatically.
 check(
-  "midnight theme reachable with the arrow",
-  themeNow.toLowerCase() === "midnight",
-  themeNow,
+  "color row shows black before saving",
+  (
+    await page.locator('[data-testid="agent-color-value"]').innerText()
+  )
+    .trim()
+    .toLowerCase() === "black",
+  "agent-color-value=black",
 );
 check(
   "mascot carries the black plush tint",
@@ -167,6 +200,21 @@ check(
   "black mascot tint survives a reload",
   (await page.locator('[data-agent-tint="black"]').count()) > 0,
 );
+check(
+  "saved Black color survives a reload",
+  (await page.locator('svg[data-agent-color="black"]').count()) > 0,
+);
+
+// --- Sidebar mascot motion: named per form ---------------------------------
+const sidebarMotion = await page
+  .locator("[data-motion]")
+  .first()
+  .getAttribute("data-motion");
+check(
+  "sidebar mascot has a named motion",
+  ["dance", "swim", "sway", "drift"].includes(sidebarMotion ?? ""),
+  String(sidebarMotion),
+);
 
 // --- Workspace: read-only, no absolute host paths --------------------------
 await page.goto(`${BASE}/agent/workspace/`, { waitUntil: "domcontentloaded" });
@@ -184,6 +232,31 @@ check(
   /read[- ]only|view[- ]only/i.test(workspaceText),
 );
 check("workspace view uses Amiro branding", !/jcode/i.test(workspaceText));
+const rootTabLabels = await page
+  .locator('[data-testid="workspace-root-tabs"] button')
+  .allInnerTexts();
+check(
+  "workspace roots are Memory, Persona, Project",
+  JSON.stringify(rootTabLabels.map((t) => t.trim())) ===
+    JSON.stringify(["Memory", "Persona", "Project"]),
+  rootTabLabels.join(" | "),
+);
+
+// --- Personality presets -----------------------------------------------------
+await page.goto(`${BASE}/agent/personality/`, { waitUntil: "domcontentloaded" });
+await page.waitForTimeout(1200);
+const personalityText = await page.locator("body").innerText();
+const presetNames = [
+  "Midnight Strategist",
+  "Studio Dreamer",
+  "Field Engineer",
+];
+check(
+  "3 new personality presets are visible",
+  presetNames.every((name) => personalityText.includes(name)),
+  presetNames.filter((name) => !personalityText.includes(name)).join(", ") ||
+    "all present",
+);
 
 // --- Narrow viewport -------------------------------------------------------
 await page.setViewportSize({ width: 390, height: 844 });
