@@ -24,7 +24,7 @@
 //!   (never retried); overdue one-shots fire once on the first tick;
 //!   recurring schedules recompute forward from now (no catch-up storms).
 //! - Execution never bypasses safety: `execute` runs through
-//!   `runtime::run_once`, which forces the no-tools profile via
+//!   `runtime::start_turn`, which forces the no-tools profile via
 //!   `configure_tools`. There is no raw CLI spawn path here.
 //! - Every firing persists a normal Amiro thread (`threads.json` with
 //!   `userId`, title, and server-authored `localMessages`, readable even
@@ -257,7 +257,7 @@ fn parse_once_at(raw: &str, tz: Tz) -> Result<DateTime<Utc>, ApiError> {
         if let Ok(naive) = NaiveDateTime::parse_from_str(s, fmt) {
             match tz.from_local_datetime(&naive) {
                 LocalResult::Single(dt) => return Ok(dt.with_timezone(&Utc)),
-                LocalResult::Ambiguous(earliest, _) => return Ok(earliest.with_timezone(&Utc)),
+                LocalResult::Ambiguous(_, _) => return Err(bad(format!("schedule.at is ambiguous in {tz}; use RFC3339 with an explicit UTC offset"))),
                 LocalResult::None => {
                     return Err(bad(format!(
                         "schedule.at \"{s}\" does not exist in {tz} (DST spring-forward gap); pick another time"
@@ -659,15 +659,10 @@ pub async fn update_schedule(
     if let Some(mode) = patch.get("mode").and_then(|v| v.as_str()) {
         validate_mode(mode)?;
         schedule.mode = mode.to_string();
-        schedule.model = pin_model(patch, mode)?.or_else(|| {
-            if mode == "execute" {
-                schedule.model.clone()
-            } else {
-                None
-            }
-        });
         if mode == "notify" {
             schedule.model = None;
+        } else if patch.get("model").is_some() || schedule.model.is_none() {
+            schedule.model = pin_model(patch, mode)?;
         }
     } else if patch.get("model").is_some() && schedule.mode == "execute" {
         schedule.model = pin_model(patch, "execute")?;
@@ -843,7 +838,7 @@ async fn persist_result_thread(
 ) -> Option<String> {
     let thread_id = uuid::Uuid::new_v4().to_string();
     let message = json!({
-        "id": format!("schedmsg_{}", &thread_id[..8.min(thread_id.len())]),
+        "id": format!("schedmsg_{thread_id}"),
         "threadId": thread_id,
         "role": "assistant",
         "parts": [{"type": "text", "text": truncate_chars(text, MAX_THREAD_TEXT_CHARS)}],
@@ -852,9 +847,9 @@ async fn persist_result_thread(
     let _guard = state.store.lock().await;
     let path = state.home.join("threads.json");
     let mut doc = read_json(&path, json!({})).await.ok()?;
-    if !doc.is_object() {
-        doc = json!({});
-    }
+    if !doc.is_object() { return None; }
+    let users = read_json(&state.home.join("users.json"), json!({"users":[]})).await.ok()?;
+    if !users.get("users").and_then(Value::as_array)?.iter().any(|user| user["id"].as_str() == Some(uid)) { return None; }
     let entry = json!({
         "sessionId": "",
         "userId": uid,
@@ -882,67 +877,92 @@ async fn execute_notify(state: &AppState, schedule: &Schedule, now: &str) -> Exe
     let thread_id =
         persist_result_thread(state, &schedule.user_id, &schedule.name, &schedule.prompt, now)
             .await;
+    let delivered = thread_id.is_some();
     ExecOutcome {
-        status: "ok".to_string(),
-        preview: truncate_chars(&schedule.prompt, MAX_OUTPUT_PREVIEW_CHARS),
+        status: if delivered { "ok" } else { "failed" }.to_string(),
+        preview: if delivered { truncate_chars(&schedule.prompt, MAX_OUTPUT_PREVIEW_CHARS) } else { "Could not persist the in-app reminder. Check storage and account availability.".to_string() },
         thread_id,
     }
 }
 
-async fn execute_execute(state: &AppState, schedule: &Schedule, now: &str) -> ExecOutcome {
-    let working_dir = state.workspace.to_string_lossy().to_string();
-    let prompt = format!(
-        "[Scheduled task \"{}\" (schedule {})]\n\n{}",
-        schedule.name, schedule.id, schedule.prompt
-    );
-    let run = crate::runtime::run_once(state, &working_dir, &prompt);
-    match tokio::time::timeout(Duration::from_secs(EXECUTE_TIMEOUT_SECS), run).await {
-        Ok(Ok(text)) => {
-            let body = if text.trim().is_empty() {
-                "(the scheduled run produced no output)".to_string()
-            } else {
-                text
-            };
-            let thread_id =
-                persist_result_thread(state, &schedule.user_id, &schedule.name, &body, now)
-                    .await;
-            ExecOutcome {
-                status: "ok".to_string(),
-                preview: truncate_chars(&body, MAX_OUTPUT_PREVIEW_CHARS),
-                thread_id,
-            }
-        }
-        Ok(Err(error)) => {
-            let note = format!("Scheduled task \"{}\" failed: {}", schedule.name, error.1);
-            let thread_id =
-                persist_result_thread(state, &schedule.user_id, &schedule.name, &note, now)
-                    .await;
-            ExecOutcome {
-                status: "failed".to_string(),
-                preview: truncate_chars(&note, MAX_OUTPUT_PREVIEW_CHARS),
-                thread_id,
-            }
-        }
-        Err(_) => {
-            let note = format!(
-                "Scheduled task \"{}\" timed out after {} minutes",
-                schedule.name,
-                EXECUTE_TIMEOUT_SECS / 60
-            );
-            let thread_id =
-                persist_result_thread(state, &schedule.user_id, &schedule.name, &note, now)
-                    .await;
-            ExecOutcome {
-                status: "failed".to_string(),
-                preview: truncate_chars(&note, MAX_OUTPUT_PREVIEW_CHARS),
-                thread_id,
-            }
+struct ScheduledTurnGuard {
+    state: AppState,
+    session_id: String,
+    completed: bool,
+}
+impl Drop for ScheduledTurnGuard {
+    fn drop(&mut self) {
+        if !self.completed {
+            crate::runtime::cancel_and_detach(self.state.clone(), self.session_id.clone());
         }
     }
 }
 
+/// Collect an explicit model-aware, no-tools turn. Dropping this future on its
+/// deadline cancels the actual runtime session, not just the HTTP waiter.
+async fn scheduled_model_turn(state: &AppState, schedule: &Schedule) -> Result<String, ApiError> {
+    use amiro_sdk::ApiEvent;
+    use crate::runtime::{TurnPlan, TurnUpdate};
+    let model = schedule.model.as_deref().ok_or_else(|| bad("schedule has no pinned model; edit it and select a model"))?;
+    validate_pinned_model(model)?;
+    let mut turn = crate::runtime::start_turn(state.clone(), TurnPlan {
+        session_id: None,
+        working_dir: state.workspace.to_string_lossy().to_string(),
+        expose_tools: false,
+        model: Some(model.to_string()),
+        prompt: schedule.prompt.clone(),
+        images: Vec::new(),
+        tool_results: Vec::new(),
+        system_reminder: None,
+    }).await?;
+    let session = turn.session.await.map_err(|_| ApiError(StatusCode::BAD_GATEWAY, "runtime closed before creating the scheduled session".into()))?
+        .map_err(|message| ApiError(StatusCode::BAD_GATEWAY, message))?;
+    let mut guard = ScheduledTurnGuard { state: state.clone(), session_id: session.session_id, completed: false };
+    let mut text = String::new();
+    while let Some(update) = turn.updates.recv().await {
+        match update {
+            TurnUpdate::Event(ApiEvent::TextDelta { text: delta, .. }) => {
+                let remaining = MAX_THREAD_TEXT_CHARS.saturating_sub(text.chars().count());
+                text.extend(delta.chars().take(remaining));
+            }
+            TurnUpdate::Event(ApiEvent::TextReplace { text: replacement, .. }) => {
+                text = truncate_chars(&replacement, MAX_THREAD_TEXT_CHARS);
+            }
+            TurnUpdate::Error(message) => return Err(ApiError(StatusCode::BAD_GATEWAY, message)),
+            TurnUpdate::Done(_) => {
+                guard.completed = true;
+                let _ = crate::runtime::archive_session(state, &guard.session_id).await;
+                return Ok(text);
+            }
+            _ => {}
+        }
+    }
+    Err(ApiError(StatusCode::BAD_GATEWAY, "runtime ended without a completed scheduled turn".into()))
+}
+
+async fn execute_execute(state: &AppState, schedule: &Schedule, now: &str) -> ExecOutcome {
+    let result = tokio::time::timeout(Duration::from_secs(EXECUTE_TIMEOUT_SECS), scheduled_model_turn(state, schedule)).await;
+    let (mut status, body) = match result {
+        Ok(Ok(text)) => ("ok", if text.trim().is_empty() { "(the scheduled run produced no output)".to_string() } else { text }),
+        Ok(Err(error)) => ("failed", format!("Scheduled task failed: {}", error.1)),
+        Err(_) => ("failed", format!("Scheduled task timed out after {} minutes and was cancelled", EXECUTE_TIMEOUT_SECS / 60)),
+    };
+    let thread_id = persist_result_thread(state, &schedule.user_id, &schedule.name, &body, now).await;
+    let preview = if thread_id.is_none() {
+        status = "failed";
+        "Could not persist the scheduled result. Check storage and account availability.".to_string()
+    } else { truncate_chars(&body, MAX_OUTPUT_PREVIEW_CHARS) };
+    ExecOutcome { status: status.to_string(), preview, thread_id }
+}
+
 async fn run_execution(state: &AppState, schedule: Schedule) -> ExecOutcome {
     let now = crate::state::now_iso();
+    let owner_exists = read_json(&state.home.join("users.json"), json!({"users":[]})).await.ok()
+        .and_then(|doc| doc.get("users").and_then(Value::as_array).map(|users| users.iter().any(|user| user["id"].as_str() == Some(schedule.user_id.as_str()))))
+        .unwrap_or(false);
+    if !owner_exists {
+        return ExecOutcome { status: "failed".to_string(), preview: "Schedule owner is unavailable. No task was executed.".to_string(), thread_id: None };
+    }
     if !schedule.enabled {
         return ExecOutcome {
             status: "skipped".to_string(),
@@ -1576,11 +1596,19 @@ mod tests {
     }
 
     #[test]
-    fn once_resolves_ambiguous_fold_to_earliest_and_rejects_gap() {
+    fn once_rejects_ambiguous_fold_and_gap() {
         let tz: Tz = "America/New_York".parse().unwrap();
-        // 2026-11-01 01:30 happens twice (fall-back fold): resolves to the
-        // earliest instant, 01:30 EDT (05:30Z).
-        let dt = parse_once_at("2026-11-01T01:30", tz).unwrap();
+        // 2026-11-01 01:30 happens twice (fall-back fold): ambiguous wall time,
+        // locked contract is 400 with an explicit-offset hint.
+        let err = parse_once_at("2026-11-01T01:30", tz).unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+        assert!(
+            err.1.contains("ambiguous"),
+            "fold rejection must say why: {}",
+            err.1
+        );
+        // The same instant with an explicit offset is unambiguous.
+        let dt = parse_once_at("2026-11-01T01:30:00-04:00", tz).unwrap();
         assert_eq!(fmt_utc(&dt), "2026-11-01T05:30:00.000Z");
         // 2026-03-08 02:30 never happens (spring-forward gap): rejected.
         assert!(parse_once_at("2026-03-08T02:30", tz).is_err());
