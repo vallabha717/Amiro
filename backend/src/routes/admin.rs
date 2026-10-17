@@ -2,7 +2,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing::{get, put};
 use axum::{Json, Router};
-use chrono::Utc;
+use chrono::{DateTime, Duration, NaiveDate, Utc};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -113,7 +113,7 @@ async fn get_admin_user_stats(
     State(state): State<AppState>,
     user: AuthUser,
     Path(id): Path<String>,
-    Query(_query): Query<UserStatsQuery>,
+    Query(query): Query<UserStatsQuery>,
 ) -> Result<Json<Value>, ApiError> {
     require_admin(&user)?;
 
@@ -122,10 +122,25 @@ async fn get_admin_user_stats(
     let empty_vec = Vec::new();
     let all_users = doc.get("users").and_then(|u| u.as_array()).unwrap_or(&empty_vec);
 
-    let target_user = all_users
+    // Self-view must never 404: a signed-in admin whose id is absent from
+    // users.json (fresh install, OAuth user never persisted) falls back to
+    // the session identity. Other unknown ids still 404.
+    let session_id = user.0.get("id").and_then(|i| i.as_str()).unwrap_or("");
+    let target_user;
+    let fallback;
+    match all_users
         .iter()
         .find(|u| u.get("id").and_then(|i| i.as_str()) == Some(&id))
-        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "user not found".to_string()))?;
+    {
+        Some(found) => target_user = found,
+        None if id == session_id && !session_id.is_empty() => {
+            fallback = user.0.clone();
+            target_user = &fallback;
+        }
+        None => {
+            return Err(ApiError(StatusCode::NOT_FOUND, "user not found".to_string()));
+        }
+    }
 
     let now = now_iso();
     let user_detail = format_user_detail(target_user, &now);
@@ -142,18 +157,163 @@ async fn get_admin_user_stats(
         }
     }
 
+    let (start_opt, end_opt, period) = if let Some(ref from) = query.from {
+        let s = DateTime::parse_from_rfc3339(from)
+            .map(|dt| dt.with_timezone(&Utc))
+            .ok();
+        let e = query.to.as_ref().and_then(|to| {
+            DateTime::parse_from_rfc3339(to)
+                .map(|dt| dt.with_timezone(&Utc))
+                .ok()
+        });
+        let label = match (&s, &e) {
+            (Some(s_dt), Some(e_dt)) => format!(
+                "{} - {}",
+                s_dt.format("%b %d, %Y"),
+                e_dt.format("%b %d, %Y")
+            ),
+            (Some(s_dt), None) => format!("From {}", s_dt.format("%b %d, %Y")),
+            _ => "Custom Range".to_string(),
+        };
+        (s, e, label)
+    } else if let Some(ref days_str) = query.days {
+        let d: i64 = days_str.parse().unwrap_or(30).clamp(1, 3650);
+        if d <= 1 {
+            let now = Utc::now();
+            let start = now
+                .date_naive()
+                .and_hms_opt(0, 0, 0)
+                .map(|naive| DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc));
+            (start, None, "Today".to_string())
+        } else {
+            let start = Utc::now() - Duration::days(d);
+            (Some(start), None, format!("Last {} Days", d))
+        }
+    } else {
+        let start = Utc::now() - Duration::days(30);
+        (Some(start), None, "Last 30 Days".to_string())
+    };
+
+    let oauth_file = state.runtime_home.join("openai_oauth_usage.json");
+    let oauth_doc = read_json(&oauth_file, json!({})).await.unwrap_or(json!({}));
+
+    let mut daily_map: std::collections::BTreeMap<String, Value> = std::collections::BTreeMap::new();
+    let mut total_prompt_tokens: u64 = 0;
+    let mut total_completion_tokens: u64 = 0;
+    let mut total_tokens: u64 = 0;
+    let mut total_cost: f64 = 0.0;
+    let mut message_count: u64 = 0;
+
+    if let Some(accounts) = oauth_doc.get("accounts").and_then(|a| a.as_object()) {
+        for acc in accounts.values() {
+            if let Some(days) = acc.get("days").and_then(|d| d.as_object()) {
+                for (date_str, day_data) in days {
+                    let in_range = if let Ok(naive) = NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
+                        if let (Some(day_start), Some(day_end)) = (
+                            naive.and_hms_opt(0, 0, 0).map(|n| DateTime::<Utc>::from_naive_utc_and_offset(n, Utc)),
+                            naive.and_hms_opt(23, 59, 59).map(|n| DateTime::<Utc>::from_naive_utc_and_offset(n, Utc)),
+                        ) {
+                            let after_start = match start_opt {
+                                Some(s) => day_end >= s,
+                                None => true,
+                            };
+                            let before_end = match end_opt {
+                                Some(e) => day_start <= e,
+                                None => true,
+                            };
+                            after_start && before_end
+                        } else {
+                            true
+                        }
+                    } else {
+                        true
+                    };
+
+                    if in_range {
+                        let inp = day_data.get("input").and_then(|v| v.as_u64()).unwrap_or(0);
+                        let out = day_data.get("output").and_then(|v| v.as_u64()).unwrap_or(0);
+                        let cost = day_data.get("known_usd").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                        let reqs = day_data.get("requests").and_then(|v| v.as_u64()).unwrap_or(0);
+
+                        total_prompt_tokens += inp;
+                        total_completion_tokens += out;
+                        total_tokens += inp + out;
+                        total_cost += cost;
+                        message_count += reqs;
+
+                        let entry = daily_map.entry(date_str.clone()).or_insert_with(|| {
+                            json!({
+                                "date": date_str,
+                                "totalTokens": 0,
+                                "promptTokens": 0,
+                                "completionTokens": 0,
+                                "totalCost": 0.0,
+                                "messageCount": 0
+                            })
+                        });
+
+                        if let Some(obj) = entry.as_object_mut() {
+                            let curr_inp = obj.get("promptTokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                            let curr_out = obj.get("completionTokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                            let curr_cost = obj.get("totalCost").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                            let curr_reqs = obj.get("messageCount").and_then(|v| v.as_u64()).unwrap_or(0);
+
+                            obj.insert("promptTokens".to_string(), json!(curr_inp + inp));
+                            obj.insert("completionTokens".to_string(), json!(curr_out + out));
+                            obj.insert("totalTokens".to_string(), json!(curr_inp + inp + curr_out + out));
+                            obj.insert("totalCost".to_string(), json!((curr_cost + cost * 10000.0).round() / 10000.0));
+                            obj.insert("messageCount".to_string(), json!(curr_reqs + reqs));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let daily_usage: Vec<Value> = daily_map.into_values().collect();
+
+    let mut limits = Vec::new();
+    if let Ok(output) = tokio::process::Command::new("jcode")
+        .args(["usage", "--json"])
+        .output()
+        .await
+    {
+        if output.status.success() {
+            if let Ok(parsed) = serde_json::from_slice::<Value>(&output.stdout) {
+                if let Some(providers) = parsed.get("providers").and_then(|p| p.as_array()) {
+                    for prov in providers {
+                        let prov_name = prov.get("provider_name").and_then(|s| s.as_str()).unwrap_or("");
+                        if let Some(lim_arr) = prov.get("limits").and_then(|l| l.as_array()) {
+                            for lim in lim_arr {
+                                limits.push(json!({
+                                    "name": lim.get("name").cloned().unwrap_or(json!("")),
+                                    "usage_percent": lim.get("usage_percent").cloned().unwrap_or(json!(0)),
+                                    "resets_at": lim.get("resets_at").cloned().unwrap_or(Value::Null),
+                                    "reset_in": lim.get("reset_in").cloned().unwrap_or(Value::Null),
+                                    "provider": prov_name,
+                                }));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     let stats = json!({
         "threadCount": thread_count,
-        "messageCount": 0,
+        "messageCount": message_count,
         "modelStats": [],
-        "totalTokens": 0,
-        "promptTokens": 0,
-        "completionTokens": 0,
-        "totalCost": 0.0,
+        "totalTokens": total_tokens,
+        "promptTokens": total_prompt_tokens,
+        "completionTokens": total_completion_tokens,
+        "totalCost": (total_cost * 10000.0).round() / 10000.0,
         "promptCost": 0,
         "completionCost": 0,
-        "dailyUsage": [],
-        "limits": []
+        "dailyUsage": daily_usage,
+        "period": period,
+        "limits": limits,
+        "usageNotice": "Usage is shared Amiro runtime provider-account data, not per-user billing. Token and known-cost totals cover OpenAI OAuth only. Per-model token attribution is unavailable."
     });
 
     Ok(Json(json!({

@@ -86,7 +86,7 @@ export interface UserStatsData {
     completionCost?: number;
     messageCount: number;
   }>;
-  period: string;
+  period?: string;
   /** Optional backend note about how trustworthy/attributable the numbers
    * are (e.g. shared provider-account totals). Rendered verbatim when set. */
   usageNotice?: string;
@@ -182,6 +182,7 @@ export function UserStatisticsCard({ stats, view = "admin" }: UserStatisticsCard
   const [selectedModel, setSelectedModel] = useState<string>("all");
   const [selectedProvider, setSelectedProvider] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const periodText = stats.period || "Last 30 Days";
 
   // Popover open states
   const [modelFilterOpen, setModelFilterOpen] = useState(false);
@@ -324,8 +325,8 @@ export function UserStatisticsCard({ stats, view = "admin" }: UserStatisticsCard
       if (!targetEntry) {
         for (const entry of entriesMap.values()) {
           if (
-            entry.provider.toLowerCase() === rawProvider.toLowerCase() ||
-            entry.name.toLowerCase() === rawProvider.toLowerCase()
+            (entry.provider || "").toLowerCase() === rawProvider.toLowerCase() ||
+            (entry.name || "").toLowerCase() === rawProvider.toLowerCase()
           ) {
             targetEntry = entry;
             break;
@@ -336,7 +337,7 @@ export function UserStatisticsCard({ stats, view = "admin" }: UserStatisticsCard
       if (!targetEntry) {
         const inferred = inferProviderFromModel(ms.model);
         for (const entry of entriesMap.values()) {
-          if (entry.provider.toLowerCase() === inferred.providerType.toLowerCase()) {
+          if ((entry.provider || "").toLowerCase() === (inferred.providerType || "").toLowerCase()) {
             targetEntry = entry;
             break;
           }
@@ -382,7 +383,7 @@ export function UserStatisticsCard({ stats, view = "admin" }: UserStatisticsCard
       if (b.totalCost !== a.totalCost) return b.totalCost - a.totalCost;
       if (b.totalTokens !== a.totalTokens) return b.totalTokens - a.totalTokens;
       if (b.configured !== a.configured) return (b.configured ? 1 : 0) - (a.configured ? 1 : 0);
-      return a.name.localeCompare(b.name);
+      return (a.name || "").localeCompare(b.name || "");
     });
 
     return list;
@@ -397,8 +398,8 @@ export function UserStatisticsCard({ stats, view = "admin" }: UserStatisticsCard
       }
       // 2. Provider combobox filter
       if (selectedProvider !== "all") {
-        const matchesProvKey = m.providerKey.toLowerCase() === selectedProvider.toLowerCase();
-        const matchesProvRaw = (m.provider || "").toLowerCase() === selectedProvider.toLowerCase();
+        const matchesProvKey = (m.providerKey || "").toLowerCase() === (selectedProvider || "").toLowerCase();
+        const matchesProvRaw = (m.provider || "").toLowerCase() === (selectedProvider || "").toLowerCase();
         if (!matchesProvKey && !matchesProvRaw) {
           return false;
         }
@@ -406,8 +407,8 @@ export function UserStatisticsCard({ stats, view = "admin" }: UserStatisticsCard
       // 3. Search text filter
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
-        const matchesName = m.model.toLowerCase().includes(q);
-        const matchesProvider = m.providerName.toLowerCase().includes(q) || (m.provider || "").toLowerCase().includes(q);
+        const matchesName = (m.model || "").toLowerCase().includes(q);
+        const matchesProvider = (m.providerName || "").toLowerCase().includes(q) || (m.provider || "").toLowerCase().includes(q);
         if (!matchesName && !matchesProvider) return false;
       }
       return true;
@@ -424,7 +425,7 @@ export function UserStatisticsCard({ stats, view = "admin" }: UserStatisticsCard
       // 2. Search text filter
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
-        if (!p.name.toLowerCase().includes(q) && !p.provider.toLowerCase().includes(q)) {
+        if (!(p.name || "").toLowerCase().includes(q) && !(p.provider || "").toLowerCase().includes(q)) {
           return false;
         }
       }
@@ -508,7 +509,7 @@ export function UserStatisticsCard({ stats, view = "admin" }: UserStatisticsCard
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `amiro-usage-report-${stats.period.replace(/\s+/g, "_")}.csv`);
+    link.setAttribute("download", `amiro-usage-report-${periodText.replace(/\s+/g, "_")}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -516,7 +517,7 @@ export function UserStatisticsCard({ stats, view = "admin" }: UserStatisticsCard
 
   const handleExportJSON = () => {
     const dataToExport = {
-      period: stats.period,
+      period: periodText,
       summary: {
         totalCost: totalCost,
         promptCost: totalPromptCost,
@@ -537,7 +538,7 @@ export function UserStatisticsCard({ stats, view = "admin" }: UserStatisticsCard
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `amiro-usage-${stats.period.replace(/\s+/g, "_")}.json`);
+    link.setAttribute("download", `amiro-usage-${periodText.replace(/\s+/g, "_")}.json`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -680,7 +681,7 @@ export function UserStatisticsCard({ stats, view = "admin" }: UserStatisticsCard
       {dailyUsagePoints.length > 0 && (
         <UsageTimeSeriesChart
           data={dailyUsagePoints}
-          periodLabel={stats.period}
+          periodLabel={periodText}
           totalTokens={stats.totalTokens}
           totalCost={totalCost}
         />
@@ -696,7 +697,7 @@ export function UserStatisticsCard({ stats, view = "admin" }: UserStatisticsCard
                 Cost & Usage Attribution
               </CardTitle>
               <CardDescription className="text-xs mt-0.5">
-                Model-wise and provider-wise cost and token breakdown for {stats.period.toLowerCase()}
+                Model-wise and provider-wise cost and token breakdown for {periodText.toLowerCase()}
               </CardDescription>
             </div>
 

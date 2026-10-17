@@ -555,10 +555,11 @@ async fn workspace_lists_allowlisted_roots_and_entries() {
     for root in roots {
         assert_eq!(root["allowlisted"], true);
         assert!(root["label"].is_string());
-        assert!(root["basePath"].is_string());
+        // Host paths never leave the server; the UI renders id/label only.
+        assert!(root.get("basePath").is_none(), "roots must not expose host paths");
         assert!(root["description"].is_string());
     }
-    assert_eq!(roots[0]["label"], "Amiro Memory & Skills");
+    assert_eq!(roots[0]["label"], "Runtime");
 
     assert_eq!(listing["activeRoot"], "runtime");
     assert_eq!(listing["currentPath"], "");
@@ -659,7 +660,8 @@ async fn workspace_file_reads_allowlisted_files_and_denies_the_rest() {
     assert_eq!(file["readOnly"], true);
     assert_eq!(file["truncated"], false);
     assert_eq!(file["content"], "{\"ok\":true}");
-    assert!(file["absPath"].as_str().unwrap().ends_with("global.json"));
+    // No absolute host path in the response; relative path only.
+    assert!(file.get("absPath").is_none(), "file responses must not expose host paths");
     assert!(file["size"].as_u64().unwrap() > 0);
     assert!(file["updatedAt"].is_string());
 
@@ -803,7 +805,9 @@ async fn workspace_persona_root_exposes_the_users_own_mirrors() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(listing["activeRoot"], "amiro");
-    assert_eq!(listing["readOnly"], false);
+    // The whole workspace is a read-only preview; identity edits go through
+    // the identity/personality endpoints, not the file browser.
+    assert_eq!(listing["readOnly"], true);
     let names: Vec<&str> = listing["entries"]
         .as_array()
         .unwrap()

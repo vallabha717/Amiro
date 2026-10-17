@@ -94,6 +94,12 @@ function formatResetTime(limit: UsageLimit): string | null {
   return `resets ${format(parsed, "MMM d, HH:mm")}`;
 }
 
+function formatDateSafe(val: string | null | undefined, fmt = "MMM d, yyyy"): string {
+  if (!val) return "—";
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? "—" : format(d, fmt);
+}
+
 type UserListItem = {
   id: string;
   name: string;
@@ -182,15 +188,21 @@ function UsageContent() {
         }
       : null);
 
-  const stats = usageData?.stats ?? {
-    threadCount: 0,
-    messageCount: 0,
-    modelStats: [],
-    totalTokens: 0,
-    promptTokens: 0,
-    completionTokens: 0,
-    dailyUsage: [],
-    period: "Last 30 Days",
+  const stats: StatsWithLimits = {
+    threadCount: usageData?.stats?.threadCount ?? 0,
+    messageCount: usageData?.stats?.messageCount ?? 0,
+    modelStats: usageData?.stats?.modelStats ?? [],
+    totalTokens: usageData?.stats?.totalTokens ?? 0,
+    promptTokens: usageData?.stats?.promptTokens ?? 0,
+    completionTokens: usageData?.stats?.completionTokens ?? 0,
+    totalCost: usageData?.stats?.totalCost ?? 0,
+    promptCost: usageData?.stats?.promptCost ?? 0,
+    completionCost: usageData?.stats?.completionCost ?? 0,
+    dailyUsage: usageData?.stats?.dailyUsage ?? [],
+    period: usageData?.stats?.period || "Last 30 Days",
+    limits: (usageData?.stats as StatsWithLimits | undefined)?.limits,
+    providerLimits: (usageData?.stats as StatsWithLimits | undefined)?.providerLimits,
+    usageNotice: usageData?.stats?.usageNotice,
   };
 
   const limits = selectUsageLimits(stats);
@@ -333,7 +345,7 @@ function UsageContent() {
                 <Avatar className="size-12 rounded-full border shadow-sm">
                   <AvatarImage src={getUserAvatar(user)} />
                   <AvatarFallback className="text-base font-semibold bg-primary/10 text-primary">
-                    {user.name.slice(0, 2).toUpperCase()}
+                    {(user.name || "?").slice(0, 2).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
                 <div>
@@ -370,7 +382,7 @@ function UsageContent() {
                   {tCommon("joined")}
                 </span>
                 <span className="text-foreground font-medium">
-                  {format(new Date(user.createdAt), "MMM d, yyyy")}
+                  {formatDateSafe(user.createdAt)}
                 </span>
               </div>
               {user.lastLogin && (
@@ -379,7 +391,7 @@ function UsageContent() {
                     {tCommon("lastUpdated")}
                   </span>
                   <span className="text-foreground font-medium">
-                    {format(new Date(user.lastLogin), "MMM d, yyyy")}
+                    {formatDateSafe(user.lastLogin)}
                   </span>
                 </div>
               )}
