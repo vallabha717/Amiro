@@ -29,7 +29,8 @@ import {
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { appStore } from "@/app/store";
-import { BASE_THEMES, COOKIE_KEY_LOCALE, SUPPORTED_LOCALES } from "lib/const";
+import { COOKIE_KEY_LOCALE, SUPPORTED_LOCALES } from "lib/const";
+import { COLOR_TO_SIDEBAR_THEME } from "@/lib/agent/character-catalog";
 import { capitalizeFirstLetter, cn, fetcher } from "lib/utils";
 import { authClient } from "auth/client";
 import { useTranslations } from "next-intl";
@@ -38,7 +39,7 @@ import { getLocaleAction } from "@/i18n/get-locale";
 import { Suspense, useCallback } from "react";
 import { GithubIcon } from "ui/github-icon";
 import { DiscordIcon } from "ui/discord-icon";
-import { useThemeStyle } from "@/hooks/use-theme-style";
+import { useSelectAgentTheme } from "@/hooks/use-select-agent-theme";
 import { BasicUser } from "app-types/user";
 import { getUserAvatar } from "lib/user/utils";
 import { Skeleton } from "ui/skeleton";
@@ -183,7 +184,7 @@ function SelectTheme() {
 
   const { theme = "light", setTheme } = useTheme();
 
-  const { themeStyle = "default", setThemeStyle } = useThemeStyle();
+  const { themeStyle = "default", selectTheme, disabled } = useSelectAgentTheme();
 
   return (
     <DropdownMenuSub>
@@ -236,17 +237,18 @@ function SelectTheme() {
             </div>
           </DropdownMenuLabel>
           <div className="max-h-96 overflow-y-auto">
-            {BASE_THEMES.map((t) => (
+            {Object.entries(COLOR_TO_SIDEBAR_THEME).map(([color, t]) => (
               <DropdownMenuCheckboxItem
                 key={t}
                 checked={themeStyle === t}
+                disabled={disabled}
                 onClick={(e) => {
                   e.preventDefault();
-                  setThemeStyle(t);
+                  void selectTheme(t);
                 }}
                 className="text-sm"
               >
-                {capitalizeFirstLetter(t)}
+                {capitalizeFirstLetter(color)}
               </DropdownMenuCheckboxItem>
             ))}
           </div>
