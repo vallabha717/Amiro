@@ -1,4 +1,4 @@
-# 01 — Discovery and precedence
+# 01: Discovery and precedence
 
 Settled here: which directories Amiro scans, in what order, how a
 `SKILL.md` is parsed, how a name collision resolves, and how the same skill
@@ -18,14 +18,14 @@ Codex show up here.
 | 2 | project | `<project>/.amiro/skills/` | no | Amiro-native project location |
 | 3 | project | `<project>/.claude/skills/` | no | Claude Code project skills |
 | 4 | project | `<project>/.codex/skills/` | no | Codex project skills |
-| 5 | user | `~/.agents/skills/` | **yes** | Cross-client convention — the one directory Amiro owns |
+| 5 | user | `~/.agents/skills/` | **yes** | Cross-client convention: the one directory Amiro owns |
 | 6 | user | `~/.amiro/skills/` | no | Amiro-native user location |
 | 7 | user | `~/.claude/skills/` | no | Claude Code personal skills |
 | 8 | user | `~/.codex/skills/` | no | Codex personal skills |
 
 `<project>` is the directory the user selected in the project picker
 (`appStore.projectDirectory` in the dashboard, `--workspace`/cwd in the
-TUI) — the same value that already reaches the backend as
+TUI), the same value that already reaches the backend as
 `workspaceRoot` on a chat request and already scopes the file tools. No
 project selected means scope 1–4 contribute nothing.
 
@@ -40,7 +40,7 @@ Two rules, applied in order:
 1. **Project beats user.** This is the universal convention across existing
    implementations, and it is the one users already expect: a repo's
    `code-review` overrides their personal one.
-2. **Within a scope, lower table row number wins** — `.agents` before
+2. **Within a scope, lower table row number wins**: `.agents` before
    `.amiro` before `.claude` before `.codex`.
 
 `.agents` outranking `.amiro` is deliberate and is the one place Amiro
@@ -64,7 +64,7 @@ list must never repeat.
   it is missing, the directory name is used.
 - **By identity.** Resolve each candidate directory to its real path before
   keying. `~/.agents/skills/foo` symlinked to `~/.claude/skills/foo` is one
-  skill found twice, not two skills — the same-target rule Claude Code
+  skill found twice, not two skills: the same-target rule Claude Code
   applies. A directory reachable from two scan roots loads once.
 - **The API returns one entry per name**, with `source` (which row above it
   came from), `scope`, `path`, and `shadowedBy`/`shadows` populated. The
@@ -93,7 +93,7 @@ as the body. Then:
 
 | Condition | Behaviour |
 |---|---|
-| `description` missing or empty | **Skip the skill**, record the reason — without a description there is nothing to disclose and the model cannot decide to use it |
+| `description` missing or empty | **Skip the skill**, record the reason: without a description there is nothing to disclose and the model cannot decide to use it |
 | YAML unparseable after the quoting retry below | **Skip**, record the reason |
 | `name` missing | Use the directory name, warn |
 | `name` disagrees with the directory name | Load anyway, warn, and keep the directory name as the invocation name |
@@ -108,7 +108,7 @@ On a parse failure, re-attempt once with scalar values quoted before giving
 up.
 
 Diagnostics are values, not log lines: the list endpoint returns them so the
-Skills page can show "3 skills, 1 skipped — reason", and `amirotest`
+Skills page can show "3 skills, 1 skipped: reason", and `amirotest`
 artifacts capture them.
 
 ## Freshness
@@ -116,6 +116,6 @@ artifacts capture them.
 Discovery is a filesystem scan on request, with a short in-process cache
 keyed by `(home, project)` and invalidated by the authoring endpoints. No
 filesystem watcher in v1: the palette fetches on open, and a skill created
-in the UI must appear immediately — which the cache invalidation, not a
+in the UI must appear immediately, which the cache invalidation, not a
 watcher, is what guarantees. A watcher (Claude Code's live change detection)
 is a follow-up.

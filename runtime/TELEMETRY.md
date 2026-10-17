@@ -1,5 +1,7 @@
 # amiro Telemetry
 
+> **Fork policy notice:** In Amiro, upstream telemetry, transcript uploads, and discovery beacons are disabled by default (`runtime/crates/amiro-build-meta/src/fork_policy.rs`). Upstream telemetry cannot run unless `AMIRO_ALLOW_UPSTREAM_TELEMETRY=1` is explicitly set in the environment.
+
 amiro collects **minimal usage statistics** to help understand how many people use amiro, what providers/models are popular, whether onboarding works, which feature families are used, how often sessions succeed, and whether performance/regressions are improving. This data helps prioritize development. Ordinary telemetry does **not** contain prompts, source code, model responses, or conversation transcripts.
 
 Amiro also offers a separate, optional transcript-sharing program. It is off by

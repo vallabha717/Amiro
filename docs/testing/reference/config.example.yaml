@@ -120,7 +120,9 @@ providers:
     #   baseUrl: http://localhost:11434/api
     #   models: [qwen3:8b]
 
-  # Web-search providers. ids match backend-go/internal/search/registry.go:
+  # Web-search providers. ids match the search catalog
+  # (backend/src/routes/search_providers.rs, mirrored in
+  # adapter/src/routes/search-providers.mjs):
   #   exa · tavily · brave · serper
   # default: []
   search:

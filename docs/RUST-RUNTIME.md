@@ -16,9 +16,9 @@ The licence that governs `runtime/` is [`../runtime/LICENSE`](../runtime/LICENSE
   `amiro-runtime`.
 - Compiles: `cargo check --manifest-path runtime/Cargo.toml --no-default-features
   --bin amiro-runtime` passes (see "Verifying the build" below).
-- Not yet done: no Amiro release feed, no Amiro telemetry, no packaging step, and
-  the Node adapter has not yet been repointed at this build. Those are listed
-  under "Open items".
+- Not yet done: no Amiro release feed, no Amiro telemetry, and no packaging
+  step. The Node adapter and native backend have been connected to this build.
+  Remaining items are listed under "Open items".
 
 ## Building
 
@@ -162,9 +162,9 @@ existing `AMIRO_NO_TELEMETRY` / `DO_NOT_TRACK` opt-outs still work and can only
 turn telemetry further off. The gate functions are pure environment reads, and
 `cargo test -p amiro-build-meta` asserts the default-deny and opt-in behaviour.
 
-Anything Amiro ships later — its own update feed, its own telemetry, its own
-account services — needs its own gate. None of these opt-ins may be reused for
-that; they exist only to reach the upstream vendor's real services.
+Anything Amiro ships later, such as its own update feed, its own telemetry, or
+its own account services, needs its own gate. None of these opt-ins may be reused
+for that: they exist only to reach the upstream vendor's real services.
 
 ## Compatibility with the existing adapter
 
@@ -189,10 +189,10 @@ against this vendored tree:
 
 | Command | Result |
 |---|---|
-| `cargo check --manifest-path runtime/Cargo.toml --no-default-features --bin amiro-runtime` | exit 0 — cold run 4m44s including all dependency units, 0 errors, 19 warnings (all pre-existing upstream lints such as `dead_code` and unused `profile` package specs) |
+| `cargo check --manifest-path runtime/Cargo.toml --no-default-features --bin amiro-runtime` | exit 0: cold run 4m44s including all dependency units, 0 errors, 19 warnings (all pre-existing upstream lints such as `dead_code` and unused `profile` package specs) |
 | `cargo build --manifest-path runtime/Cargo.toml --no-default-features --bin amiro-runtime` | exit 0 in 6m21s; produced `runtime/target/debug/amiro-runtime`, an x86-64 ELF executable |
-| `./runtime/target/debug/amiro-runtime --version` | `amiro-runtime v0.98.1-dev (3b038a4, dirty)` — the version string is built by `amiro-build-meta`; the `dirty` marker comes from the enclosing Amiro git checkout, since the vendored tree itself has no `.git` |
-| `cargo test --manifest-path runtime/Cargo.toml -p amiro-build-meta` | 5 passed, 0 failed — includes both fork-policy gate tests |
+| `./runtime/target/debug/amiro-runtime --version` | `amiro-runtime v0.98.1-dev (3b038a4, dirty)` (the version string is built by `amiro-build-meta`; the `dirty` marker comes from the enclosing Amiro git checkout, since the vendored tree itself has no `.git`) |
+| `cargo test --manifest-path runtime/Cargo.toml -p amiro-build-meta` | 5 passed, 0 failed (includes both fork-policy gate tests) |
 
 Both runs used `CARGO_BUILD_JOBS=1` on a machine that was also running other
 builds. `cargo check` is the gate that matters for the source-level rebrand
@@ -211,11 +211,11 @@ cargo build --manifest-path runtime/Cargo.toml --no-default-features --bin amiro
 
 Deliberately not done in this change, in rough priority order:
 
-1. **Adapter repointing.** `adapter/src/runtime.mjs` still names the pre-rename
-   engine binary as its silent fallback (`ENGINE_BIN`) and `bin/amiro` still
-   delegates to whatever `AMIRO_RUNTIME_BIN` names. Point them at the built
-   `amiro-runtime` and the adapter needs no other change; its home, credential
-   and socket handling already work with the preserved identities above.
+1. **Adapter and native backend connection.** Completed. `adapter/src/runtime.mjs`
+   resolves the runtime through Amiro's socket/home variables, `bin/amiro`
+   delegates to `amiro-runtime` via `AMIRO_RUNTIME_BIN`, and the native Rust
+   backend (`backend/`, `amiro-backend`) connects to `amiro-runtime` via
+   `amiro-sdk`.
 2. **Amiro-owned services.** A release feed and telemetry endpoint under Amiro's
    control, behind their own explicit gates, if Amiro wants update or telemetry
    features at all. Until then both stay off.

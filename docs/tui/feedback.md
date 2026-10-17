@@ -1,4 +1,8 @@
-# Amiro TUI Implementation — Audit, Testing & Feedback Report
+# Amiro TUI Implementation - Audit, Testing & Feedback Report
+
+> **Historical Record:** This document records the earlier Go backend and Bubble Tea TUI (`backend-go/cmd/amiro`), which have since been retired and removed. Amiro now uses the native Rust backend (`backend/`, binary `amiro-backend`) and the vendored Rust runtime (`runtime/`, binary `amiro-runtime`), which includes its own Rust TUI (`runtime/crates/amiro-tui`).
+
+
 
 **Date:** 2026-08-18  
 **Scope:** Review and verification of TUI Implementation Plan Phases 0–6 against `backend-go` and `src/`.  

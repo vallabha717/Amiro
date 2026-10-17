@@ -1,4 +1,4 @@
-# 03 — Authoring, generation, and safety
+# 03: Authoring, generation, and safety
 
 Settled here: the API shape, what "writable" means, what a valid skill is,
 how "Generate with AI" works, and the failure modes that matter because a
@@ -17,12 +17,12 @@ literal-then-wildcard at the same position; nesting name-scoped routes under
 | `GET /api/skills` | session | List, deduped, with `source`, `scope`, `path`, `shadows`, diagnostics. Optional `?project=<abs>` adds project scope |
 | `POST /api/skills` | session | Create under `~/.agents/skills/<name>/SKILL.md` |
 | `GET /api/skills/items/{name}` | session | One skill: frontmatter, body, resource listing, `writable` |
-| `PUT /api/skills/items/{name}` | session | Update — **409 unless the resolved skill is the writable one** |
-| `DELETE /api/skills/items/{name}` | session | Delete — same rule |
+| `PUT /api/skills/items/{name}` | session | Update: **409 unless the resolved skill is the writable one** |
+| `DELETE /api/skills/items/{name}` | session | Delete: same rule |
 | `POST /api/skills/generate` | session | Streaming object: a drafted skill. Writes nothing |
 
 All session-guarded, all reached through `src/lib/backend/skills-api.ts` on
-the frontend (never a bare `fetch()` on an `/api/...` path — the static
+the frontend (never a bare `fetch()` on an `/api/...` path; the static
 export has no server to serve one). `GET /api/skills` is the only route the
 `/` palette needs.
 
@@ -34,7 +34,7 @@ letting the UI infer it from the path.
 
 - The editor opens a read-only skill with its source labelled ("managed by
   Claude Code") and a **Duplicate to my skills** action that copies it into
-  `~/.agents/skills/` — the escape hatch, so read-only is not a dead end.
+  `~/.agents/skills/`: the escape hatch, so read-only is not a dead end.
 - Enforcement is a resolved-path check, not a string prefix check: resolve
   the target, resolve the writable root, require containment. A `name` of
   `../../.claude/skills/evil` must fail that check, not merely fail a
@@ -45,7 +45,7 @@ letting the UI infer it from the path.
 
 ## Validation
 
-Enforced on write, per the spec — stricter than the lenient reader in
+Enforced on write, per the spec: stricter than the lenient reader in
 [01](01-discovery-and-precedence.md), because Amiro authors these:
 
 | Field | Rule |
@@ -67,7 +67,7 @@ which is worse than one that does not load.
 
 ## Generate with AI
 
-Mirrors the mechanism `generate-agent-dialog.tsx` already uses — the one
+Mirrors the mechanism `generate-agent-dialog.tsx` already uses: the one
 piece of the Agents UI that transfers almost unchanged. `experimental_useObject`
 against a streaming object endpoint, with the schema shared between
 `src/types/skill.ts` and the Go handler:
@@ -83,7 +83,7 @@ against a streaming object endpoint, with the schema shared between
 - The prompt tells the model the spec: the name charset, the
   "what it does *and* when to use it" requirement for `description`
   (the single field discovery quality depends on), and the progressive-
-  disclosure shape — a body under ~500 lines that pushes exhaustive detail
+  disclosure shape: a body under ~500 lines that pushes exhaustive detail
   into `references/`.
 - Validation runs on the generated object before it reaches the form, so an
   invalid generated name surfaces as a field error rather than a 400 on save.
@@ -100,5 +100,5 @@ and project-scoped ones come from whatever repository is open.
 | **Path traversal on `name`** | Charset validation *and* a resolved-containment check. Both, because either alone has been enough to fail elsewhere |
 | **Symlink escape** | Resolve real paths before the containment check; a symlink out of the writable root fails the write and loads once on read |
 | **Runaway scan** | Depth/count/size bounds from [01](01-discovery-and-precedence.md), every trip reported |
-| **Secrets in a skill body** | Skill text flows into artifacts and logs. It goes through the existing `harness/logging/redact.go` path on the test side and the backend's existing redaction on the product side — a skill body is never written to a log verbatim |
+| **Secrets in a skill body** | Skill text flows into artifacts and logs. It goes through the existing `harness/logging/redact.go` path on the test side and the backend's existing redaction on the product side: a skill body is never written to a log verbatim |
 | **A skill claiming tools it should not have** | `allowed-tools` is parsed and **not honoured** in v1. Recorded as a non-goal, not silently half-implemented: a field that looks like it grants permissions and does nothing is worse than an absent one |

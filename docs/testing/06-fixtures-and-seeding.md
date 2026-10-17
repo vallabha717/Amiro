@@ -1,4 +1,4 @@
-# 06 — Fixtures and seeding
+# 06: Fixtures and seeding
 
 Isolation is the property everything else depends on. Every test in this
 suite gets a fresh database, a fresh workspace, a fresh app-data directory,
@@ -16,7 +16,7 @@ order-dependent, so parallelism is safe.
 | Workspace | A **copy** of a fixture workspace at `<runDir>/backend/<test-id>/workspace/` → `AMIRO_WORKSPACE_ROOT` |
 | Auth token | A fresh random `AMIRO_AUTH_TOKEN` |
 | Port | OS-assigned; never a fixed number |
-| Keyring | An in-memory `secrets.Store`, never the OS keyring — see below |
+| Keyring | An in-memory `secrets.Store`, never the OS keyring: see below |
 | HOME | A temp HOME, so `~/.config/amiro/config.yaml` is the test's, not yours |
 
 That last pair matter more than they look. `internal/secrets` uses
@@ -44,7 +44,7 @@ be.Seed(seed.Workflow("linear-3-node"))
 ```
 
 Seeds compose and are declarative. `seed.Default` is applied automatically
-unless a test opts out with `harness.NoSeed()` — tests about first-run
+unless a test opts out with `harness.NoSeed()`: tests about first-run
 behaviour (the first registered account becoming admin, the onboarding
 flow) need a genuinely empty database.
 
@@ -54,10 +54,10 @@ flow) need a genuinely empty database.
 Seeding therefore always registers `accounts.admin` first, and a test that
 wants to verify that rule uses `harness.NoSeed()` and registers by hand.
 This is exactly the kind of implicit ordering that produces
-order-dependent flakes when a suite shares a database — another reason
+order-dependent flakes when a suite shares a database: another reason
 every test gets its own.
 
-## `fixtures/` — data, not code
+## `fixtures/`: data, not code
 
 ```
 tests/fixtures/
@@ -104,8 +104,8 @@ deterministic tools:
 | `needs_approval` | Marked as requiring permission. Drives the approval-gate tests. |
 
 Building this rather than mocking the MCP client means
-`internal/mcp/manager.go`'s real lifecycle — spawn, initialise, list tools,
-call, reconnect, shut down — is under test. The OAuth flow gets a second
+`internal/mcp/manager.go`'s real lifecycle: spawn, initialise, list tools,
+call, reconnect, shut down: is under test. The OAuth flow gets a second
 fixture: a minimal OAuth authorisation server so
 `internal/mcp/oauth_flow.go` and the `/api/mcp/oauth/callback` route can be
 exercised without a third party.
@@ -114,11 +114,11 @@ exercised without a third party.
 
 Two kinds, both with the same update ergonomics:
 
-- **TUI screens** — `suites/tui/**/testdata/<Test>/<case>.golden`, plain
+- **TUI screens**: `suites/tui/**/testdata/<Test>/<case>.golden`, plain
   rendered text at `tui.terminal` dimensions. Follows the convention
   `backend-go/internal/tui/page` already uses with
   `charmbracelet/x/exp/golden`, so the two are readable side by side.
-- **API responses** — `suites/backend/**/testdata/<Test>.json`, normalised
+- **API responses**: `suites/backend/**/testdata/<Test>.json`, normalised
   (ids, timestamps and durations replaced with stable placeholders) then
   compared structurally.
 

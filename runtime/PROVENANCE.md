@@ -1,4 +1,4 @@
-# Amiro runtime — upstream provenance
+# Amiro runtime: upstream provenance
 
 `runtime/` is a vendored, rebranded fork of an upstream open-source project.
 This file records exactly what it came from and what was changed, so the
@@ -12,7 +12,7 @@ attribution stays auditable.
 | Repository | https://github.com/1jehuang/jcode |
 | Commit vendored | `1952e02ac76fa1c335633e9c6113691c1cf3395` |
 | Version | `0.98.1` (root `Cargo.toml` `[package].version`) |
-| Licence | MIT — Copyright (c) 2025 Jeremy Huang |
+| Licence | MIT: Copyright (c) 2025 Jeremy Huang |
 | Licence text | `runtime/LICENSE`, copied verbatim from the upstream checkout |
 
 The MIT licence and copyright notice are **unmodified**. The vendored tree
@@ -25,39 +25,39 @@ service identity are intact. `runtime/LICENSE` is the licence that governs
 
 Copied from the upstream checkout at the commit above:
 
-- `Cargo.toml`, `Cargo.lock` — workspace root package plus 88 member crates
-- `crates/**` — all workspace crates (Rust sources, manifests, tests, prompt
+- `Cargo.toml`, `Cargo.lock`: workspace root package plus 88 member crates
+- `crates/**`: all workspace crates (Rust sources, manifests, tests, prompt
   assets, fixtures)
-- `src/**` — the root crate: CLI, TUI wiring, `src/bin/*`
-- `tests/**` — the root crate's integration and end-to-end tests
-- `docs/*.md` — top-level documentation. `crates/amiro-app-core/build.rs`
+- `src/**`: the root crate: CLI, TUI wiring, `src/bin/*`
+- `tests/**`: the root crate's integration and end-to-end tests
+- `docs/*.md`: top-level documentation. `crates/amiro-app-core/build.rs`
   compiles this corpus plus `README.md` into the binary, so it is a build input,
   not just prose.
 - `README.md`, `OAUTH.md`, `TELEMETRY.md`, `CONTRIBUTING.md`, `AGENTS.md`,
   `CLAUDE.md`
-- `changelog/**` — release-note data
-- `assets/app-icons/**`, `assets/brand/**` — build/UI assets (the macOS launcher
+- `changelog/**`: release-note data
+- `assets/app-icons/**`, `assets/brand/**`: build/UI assets (the macOS launcher
   icon is an `include_bytes!` input)
 - `scripts/rustc-parallel-frontend`, `scripts/dev_cargo.sh`,
-  `scripts/cargo_exec.sh` — local build tooling
-- `.cargo/config.toml` — each setting is commented with why it exists
+  `scripts/cargo_exec.sh`: local build tooling
+- `.cargo/config.toml`: each setting is commented with why it exists
 
 ## What is deliberately not vendored
 
 Excluded because nothing in `cargo check`/`cargo build` reads it, or because it
 is media rather than source:
 
-- `.git/` — provenance is recorded here instead
+- `.git/`: provenance is recorded here instead
 - `assets/readme/**`, `assets/demos/**`, `assets/niri-screenshot.png`,
-  `docs/images/**`, `docs/*.png` — README and demo media (screenshots/video)
+  `docs/images/**`, `docs/*.png`: README and demo media (screenshots/video)
 - `docs/audits/`, `docs/dev/`, `docs/plans/`, `docs/proposals/`,
-  `docs/sponsors/`, `docs/discovery-baselines/` — internal design notes;
+  `docs/sponsors/`, `docs/discovery-baselines/`: internal design notes;
   `amiro-app-core`'s build script only reads top-level `docs/*.md`
-- `sdk/**` — the TypeScript SDK. Upstream explicitly supports builds without it
+- `sdk/**`: the TypeScript SDK. Upstream explicitly supports builds without it
   (`amiro-sdk/src/sdk_tests/parity.rs` treats a missing `sdk/` tree as a
   vendored build and skips the cross-language parity assertions).
 - `telemetry-worker/`, `ios/`, `packaging/`, `.github/`, `.claude/`,
-  `flake.nix`, `flake.lock` — separate apps, CI, and dev-environment files
+  `flake.nix`, `flake.lock`: separate apps, CI, and dev-environment files
 - `scripts/**` beyond the three build tools listed above (benchmarks,
   screenshots, release helpers)
 - assorted scratch files (`fork-prompt-*.json`, `score_shard.py`,

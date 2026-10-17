@@ -9,11 +9,11 @@ or reading the repo, **[I]** = inferred. We copy nothing; assets stay reference-
 | Name | One-line identity | URL | Tag |
 |---|---|---|---|
 | CopilotKit | Open-source agent/Generative-UI company; org logo mark is a faceted blue/purple **kite**, not a dot or spark | https://github.com/CopilotKit · https://www.copilotkit.ai · mark: https://raw.githubusercontent.com/CopilotKit/CopilotKit/main/examples/integrations/langgraph-python/public/copilotkit-logo-mark.svg | [V] |
-| OpenDots | **Best match:** `CopilotKit/OpenDots`, MIT, ~5.4k★ — always-on AI coworkers in text/calls/Slack; its agent avatars are **plush "Dot" characters**, one per agent | https://github.com/CopilotKit/OpenDots · https://www.copilotkit.ai/opendots | [V] |
-| OpenMuse | **Best match:** `CopilotKit/openmuse`, MIT, ~5.1k★ — personal agent (browser, terminal, files); mascot is an **original warm-tan capybara PNG** | https://github.com/CopilotKit/openmuse · https://www.copilotkit.ai/openmuse | [V] |
+| OpenDots | **Best match:** `CopilotKit/OpenDots`, MIT, ~5.4k★: always-on AI coworkers in text/calls/Slack; its agent avatars are **plush "Dot" characters**, one per agent | https://github.com/CopilotKit/OpenDots · https://www.copilotkit.ai/opendots | [V] |
+| OpenMuse | **Best match:** `CopilotKit/openmuse`, MIT, ~5.1k★: personal agent (browser, terminal, files); mascot is an **original warm-tan capybara PNG** | https://github.com/CopilotKit/openmuse · https://www.copilotkit.ai/openmuse | [V] |
 | Muse | **Ambiguous, 2 candidates:** (a) **Meta Muse**, proprietary personal AI agent (announced 8 Sep 2026; user picks name/avatar; "Realtime Avatar" video model added 23 Sep 2026); (b) CopilotKit **OpenMuse** above. (a) is the stronger read of the owner's single word | (a) https://ai.meta.com/muse/ · https://about.fb.com/news/2026/09/introducing-muse-personal-ai-agent/ · https://en.wikipedia.org/wiki/Muse_(AI_agent) ; (b) https://github.com/CopilotKit/openmuse | [V] for both existing; [I] for which was meant |
 | GitHub Copilot | GitHub's AI coding product (separate company from CopilotKit): glossy blue/indigo **3D visor-head** mascot on dark backgrounds | https://github.com/features/copilot · https://images.ctfassets.net/8aevphvgewt8/4KxWJH8PVVXdqBLs1V3UJ8/8926c7d150a8b8f3bf33c1c8a133724b/github-copilot-social-img.png | [V] |
-| Vellum | `vellum.ai` personal assistant — the look to avoid: default "character avatar" is an **SVG character composed from body shapes + eye styles + colours**, rendered to PNG, swapped via `set_avatar`/`remove_avatar`/`get_avatar` | https://www.vellum.ai/docs/key-concepts/the-workspace.md | [V] |
+| Vellum | `vellum.ai` personal assistant: the look to avoid: default "character avatar" is an **SVG character composed from body shapes + eye styles + colours**, rendered to PNG, swapped via `set_avatar`/`remove_avatar`/`get_avatar` | https://www.vellum.ai/docs/key-concepts/the-workspace.md | [V] |
 
 **Premise correction [V]:** there is no "GitHub Copilot dot/spark motif in CopilotKit". CopilotKit
 ≠ GitHub Copilot; CopilotKit's mark is a kite, and its agent visuals are mascots. The dot/spark
@@ -21,7 +21,7 @@ association is [I]: Copilot Chat shows a sparkle-style affordance in IDE/GitHub 
 verified by fetch).
 
 **Ambiguity, other "opendots" candidates [V, GitHub API]:** https://github.com/Anil-matcha/open-dots
-(5.8k★, description claims MIT but **no LICENSE file exists** — no grant),
+(5.8k★, description claims MIT but **no LICENSE file exists**: no grant),
 https://github.com/Shashankss1205/OpenDots (34★ MIT), https://github.com/diggerhq/opendots (24★ MIT).
 Other "openmuse": https://github.com/nano-muse/nanoMuse (1.2k★ **GPL-3.0-or-later**),
 https://github.com/DominiqueMakowski/OpenMuse (99★, no licence, unrelated EEG headband library).
@@ -31,7 +31,7 @@ https://github.com/icantcodefyi/dot-matrix-animations (87★, no licence found).
 
 ## 2. Visual motif + motion per reference [all V unless noted]
 
-- **OpenDots / Dots.** Four 512×512 RGBA PNGs at `public/dots/{blue,mint,orange,purple}.png` —
+- **OpenDots / Dots.** Four 512×512 RGBA PNGs at `public/dots/{blue,mint,orange,purple}.png`:
   fluffy plush blobs, huge glossy eyes; variants differ by silhouette (blue = round + headphones,
   mint = tall + leaf ears). Which one an agent gets is a hash of its identity string, so identity is
   stable across reloads. `favicon.svg` is a flat vector face in a 64px rounded square (`rx=18`,
@@ -41,7 +41,7 @@ https://github.com/icantcodefyi/dot-matrix-animations (87★, no licence found).
   (3° tilt, floating "sparks", 9px caption), default 180px, small 54px, nav 30px. Both animation
   blocks are disabled under `prefers-reduced-motion: reduce`. The README screenshots show an
   **earlier flat periwinkle blob** (two dark oval eyes, blush cheeks, smile, ground-shadow ellipse
-  at ~44px) beside the agent name in chrome — that flat variant is stale relative to shipped art.
+  at ~44px) beside the agent name in chrome: that flat variant is stale relative to shipped art.
 - **OpenMuse.** One capybara PNG, "original artwork generated for OpenMuse with the built-in
   image-generation tool", provenance + generation prompt documented in `apps/mobile/assets/README.md`,
   MIT. `Mascot` composes a rounded backdrop circle (`size*0.76`, offset 0.15/0.12) behind the image
@@ -57,12 +57,12 @@ https://github.com/icantcodefyi/dot-matrix-animations (87★, no licence found).
 
 | Repo | Verdict |
 |---|---|
-| CopilotKit/OpenDots | **MIT** (LICENSE file + API `spdx_id`) — reusable, but the 4 plush PNGs are implicitly under the same MIT; still do not copy art |
+| CopilotKit/OpenDots | **MIT** (LICENSE file + API `spdx_id`): reusable, but the 4 plush PNGs are implicitly under the same MIT; still do not copy art |
 | CopilotKit/openmuse | **MIT**; `apps/mobile/assets/README.md` states the capybara asset is included under the repo's MIT. Do not reuse: it is their identity |
 | CopilotKit/CopilotKit (org) | **MIT**; logo mark/wordmark = trademark, licence does not grant brand use |
-| GitHub Copilot, Meta Muse, Vellum | **Proprietary — no reuse of any asset or mark** |
-| Anil-matcha/open-dots, DominiqueMakowski/OpenMuse, icantcodefyi/dot-matrix-animations | **No licence found** (GitHub license API: Not Found) — treat as all rights reserved |
-| nano-muse/nanoMuse | **GPL-3.0-or-later** — copyleft; avoid ingesting its code, and its default dragon art is theirs |
+| GitHub Copilot, Meta Muse, Vellum | **Proprietary: no reuse of any asset or mark** |
+| Anil-matcha/open-dots, DominiqueMakowski/OpenMuse, icantcodefyi/dot-matrix-animations | **No licence found** (GitHub license API: Not Found): treat as all rights reserved |
+| nano-muse/nanoMuse | **GPL-3.0-or-later**: copyleft; avoid ingesting its code, and its default dragon art is theirs |
 | zzzzshawn/matrix (dot-matrix loaders) | **Custom proprietary licence**: reuse is allowed in products, but republishing components as a standalone reusable component is prohibited. Using it as a *visual reference only* is safe; do not vendor its SVGs |
 
 ## 4. Design brief: original dot-matrix agent character
@@ -80,7 +80,7 @@ four sides.
 
 **Eyes and gaze.** An eye is always **two adjacent dots (2×1)**, never one dot: single-pixel eyes
 alias away below ~28px. Eyes sit at columns 2–3 and 5–6 on row 3, giving a 2-cell face gap that makes
-gaze legible. Ink: eyes `currentColor` at 100%, body dots at 55–65% opacity — the luminance gap is
+gaze legible. Ink: eyes `currentColor` at 100%, body dots at 55–65% opacity: the luminance gap is
 what reads as "a face" at 20px. Gaze = shifting the eye mask within a ±1 col / ±1 row window, driven
 by a 7–9s random walk plus pointer proximity; never a 0ms jump, never crossing into col 0/6, never
 merging the two clusters.
@@ -133,6 +133,12 @@ plush PNGs from `CopilotKit/OpenDots` (MIT, Copyright (c) Atai Barkai, see
   `star` -> orange, `cloud` -> purple; unknowns -> blue), so saved agents stay stable.
 - `src/components/agent/avatar-primitives.tsx`, one `<svg width={size}>` per instance
   holding an `<image href>` of the sprite plus a per-instance tint.
+- Midnight renders the mascot as black plush: the sprite is desaturated, its
+  luminance is gamma-darkened, and an overlay applies the tint so cut-out, glossy eyes
+  and highlights stay intact.
+- Theme synchronization: selecting an agent theme in the customizer updates the
+  sidebar theme on save, and selecting a theme in the sidebar user menu commits the
+  corresponding color trait to agent identity so both stay in sync across reloads.
 
 **Tint.** The body hue follows `var(--sidebar-primary)` (overridable with the
 `accentColor` prop for theme previews). The sprite is desaturated with an SVG

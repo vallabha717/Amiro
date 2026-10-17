@@ -1,4 +1,4 @@
-# 04 — Artifacts and logs
+# 04: Artifacts and logs
 
 Every run creates one directory. Everything any surface produces goes
 inside it. Nothing is written anywhere else.
@@ -18,7 +18,7 @@ logs/<run-id>/
 ├── run.json                    ← resolved config, selection, git SHA, tool versions
 ├── summary.md                  ← human-readable report, written at the end
 ├── summary.json                ← machine-readable results, one entry per test
-├── events.ndjson               ← THE MERGED TIMELINE — every surface, one clock
+├── events.ndjson               ← THE MERGED TIMELINE: every surface, one clock
 │
 ├── backend/
 │   ├── <test-id>/
@@ -31,7 +31,7 @@ logs/<run-id>/
 │
 ├── tui/
 │   └── <test-id>/
-│       ├── session.cast        ← asciinema v2 — replayable with `asciinema play`
+│       ├── session.cast        ← asciinema v2: replayable with `asciinema play`
 │       ├── frames/
 │       │   ├── 0001-launch.txt         ← plain text screen
 │       │   ├── 0001-launch.ansi        ← with escape sequences intact
@@ -69,7 +69,7 @@ logs/<run-id>/
 `<test-id>` is the slugified test address: `backend-chat-TestStream_EmitsTextDeltas`.
 It is stable across runs, so diffing two runs' artifacts is trivial.
 
-## `events.ndjson` — the merged timeline
+## `events.ndjson`: the merged timeline
 
 The single most useful artifact. One JSON object per line, one monotonic
 clock, every surface interleaved:
@@ -83,8 +83,8 @@ clock, every surface interleaved:
 ```
 
 That trace answers "the browser clicked, the backend got the request, the
-provider replayed, frames came back, the DOM never updated" — a frontend
-bug — without opening five files. `amirotest report --run <id> --timeline
+provider replayed, frames came back, the DOM never updated": a frontend
+bug: without opening five files. `amirotest report --run <id> --timeline
 --test <address>` filters it to one test.
 
 The Playwright fixture and the Go harness both append to this file through
@@ -99,9 +99,9 @@ three are on by default:
 
 | Surface | Artifact | How to view |
 |---|---|---|
-| UI | `trace.zip` | `pnpm exec playwright show-trace logs/latest/ui/<spec>/<test>/trace.zip` — DOM snapshots, network, console, and a timeline scrubber per action |
+| UI | `trace.zip` | `pnpm exec playwright show-trace logs/latest/ui/<spec>/<test>/trace.zip`: DOM snapshots, network, console, and a timeline scrubber per action |
 | UI | `video.webm` | any player; retained on failure by default, `ui.video: on` for always |
-| TUI | `session.cast` | `asciinema play logs/latest/tui/<test>/session.cast` — a real replayable terminal recording, not a screenshot |
+| TUI | `session.cast` | `asciinema play logs/latest/tui/<test>/session.cast`: a real replayable terminal recording, not a screenshot |
 
 Playwright's trace is the important one: it is a full recording *plus* the
 state needed to inspect any moment, which is strictly more useful than
@@ -119,7 +119,7 @@ Written at the end of every run, designed to be readable in a terminal or
 pasted into a PR:
 
 ```markdown
-# Amiro test run a1b2c3 — 2026-08-19 14:32:05 UTC
+# Amiro test run a1b2c3: 2026-08-19 14:32:05 UTC
 
 **FAILED** · 148 passed · 3 failed · 12 skipped · 2m 14s
 Selection: --surface ui --feature chat · providers: replay · git 1e9b78e
@@ -149,7 +149,7 @@ files went.
 ## Redaction
 
 Redaction is applied by `harness/logging` at write time, not as a
-post-processing pass — a secret that reaches disk once has leaked.
+post-processing pass: a secret that reaches disk once has leaked.
 `providers.redact` (see [02](02-config.md)) names the header and JSON
 fields whose values become `<redacted:sha256:8chars>`. The short hash lets
 you assert *"the same key was used in both requests"* without ever storing
@@ -158,7 +158,7 @@ the key.
 This covers `http.ndjson`, `network.har`, cassettes, `run.json`, browser
 console output, and process stdout/stderr. A test in
 `suites/backend/logging/` greps the entire produced log tree for every
-configured secret value and fails if any appears — the redactor is itself
+configured secret value and fails if any appears: the redactor is itself
 under test.
 
 ## Retention
@@ -171,5 +171,4 @@ under test.
 | `on-failure` *(default)* | Heavy artifacts only for failed tests; logs and timeline for all |
 | `never` | Logs, timeline and summaries only |
 
-`run.json`, `summary.*` and `events.ndjson` are **always** kept regardless
-— they are small and they are what makes an old run interpretable.
+`run.json`, `summary.*` and `events.ndjson` are **always** kept regardless: they are small and they are what makes an old run interpretable.

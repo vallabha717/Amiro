@@ -1,4 +1,4 @@
-# 03 — Selection: running exactly what you want
+# 03: Selection: running exactly what you want
 
 The requirement: *run all three (four) surfaces together, or one surface
 alone, or one feature within one surface.* Selection is therefore a
@@ -12,9 +12,9 @@ Every test has a stable address:
 <surface> / <feature> / <test name>
 ```
 
-- **surface** — `backend` · `tui` · `ui` · `desktop` · `cross`
-- **feature** — the directory name under `suites/<surface>/` or `ui/specs/`
-- **test name** — the Go test function name or the Playwright test title
+- **surface**: `backend` · `tui` · `ui` · `desktop` · `cross`
+- **feature**: the directory name under `suites/<surface>/` or `ui/specs/`
+- **test name**: the Go test function name or the Playwright test title
 
 The address is derived from the filesystem. There is no registry file to
 keep in sync, and adding a feature means creating a directory.
@@ -54,7 +54,7 @@ amirotest clean                       # prune logs/ per logging.keepRuns
 ```
 
 Flags always beat `config.yaml`. `amirotest run --surface ui` on a config
-that lists all four surfaces runs only the UI — the flag is an override of
+that lists all four surfaces runs only the UI: the flag is an override of
 `run.surfaces`, not an intersection with it.
 
 ## How selection resolves
@@ -79,8 +79,7 @@ that lists all four surfaces runs only the UI — the flag is an override of
 --browser firefox           → playwright test --project firefox
 ```
 
-**`--feature X` with no `--surface`** runs `X` wherever it exists —
-`suites/backend/chat`, `suites/tui/chat`, `ui/specs/chat`,
+**`--feature X` with no `--surface`** runs `X` wherever it exists: `suites/backend/chat`, `suites/tui/chat`, `ui/specs/chat`,
 `suites/cross/chat`. This is the "prove one feature end to end across every
 surface" mode, and it is the most useful one when you have just changed a
 feature.
@@ -102,7 +101,7 @@ cross-cutting properties:
 | `flaky` | Quarantined. Runs, reports, never fails the build. Must carry a linked issue. |
 | `destructive` | Mutates something outside the run's temp dirs (e.g. the real keyring). Opt-in only. |
 
-In Go, a tag is a harness call at the top of the test — so it participates
+In Go, a tag is a harness call at the top of the test: so it participates
 in the same selection logic rather than needing build tags:
 
 ```go
@@ -139,8 +138,7 @@ Playwright's `amiro` fixture each:
 2. otherwise resolve `config.yaml` themselves and mint a fresh run
    directory.
 
-So a bare `go test` produces the same log tree as a full orchestrated run —
-just with one test in it. This matters most for agents: an agent iterating
+So a bare `go test` produces the same log tree as a full orchestrated run: just with one test in it. This matters most for agents: an agent iterating
 on a single failing test gets the full artifact trail without knowing the
 CLI exists.
 
@@ -148,8 +146,7 @@ CLI exists.
 
 - Surfaces run **in parallel with each other** by default; features within a
   surface run in parallel up to `run.parallel`.
-- `backend`, `tui`, and `ui` each get their own backend instance per test —
-  no shared state, so parallelism is safe by construction.
+- `backend`, `tui`, and `ui` each get their own backend instance per test: no shared state, so parallelism is safe by construction.
 - `desktop` runs **serially and last**. It binds a real window and, in
   `bundled` mode, installs an app; overlapping instances fight.
 - `cross` runs after the single-surface suites. A cross-surface failure
@@ -162,8 +159,8 @@ CLI exists.
 |---|---|
 | 0 | Every selected test passed (or was skipped for a recorded reason) |
 | 1 | At least one test failed |
-| 2 | Configuration or validation error — nothing was run |
-| 3 | Infrastructure failure — a binary would not build, a port would not bind, a browser was missing |
+| 2 | Configuration or validation error: nothing was run |
+| 3 | Infrastructure failure: a binary would not build, a port would not bind, a browser was missing |
 
 3 is distinct from 1 on purpose. "The suite could not run" and "the code is
 broken" demand different responses, and CI should surface them differently.

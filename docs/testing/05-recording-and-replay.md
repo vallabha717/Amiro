@@ -1,4 +1,4 @@
-# 05 — Recording and replay
+# 05: Recording and replay
 
 "Test everything with real values" and "tests must be fast, free and
 deterministic" are both true requirements. The hybrid resolves them:
@@ -35,7 +35,7 @@ database alongside the key. So in `replay`/`record` mode the harness:
 
 Nothing in the backend knows it is under test. The agent loop, streaming
 parser, token accounting, retry logic and error handling all run for real.
-This is the property that makes replayed tests worth trusting — the only
+This is the property that makes replayed tests worth trusting: the only
 substituted component is the remote server.
 
 ```
@@ -103,8 +103,8 @@ otherwise cause spurious misses:
 - the system prompt's dynamic segments (cwd, date, workspace listing)
 - `max_tokens` and other values a test may parameterise
 
-Everything else — the model, the messages, the tool definitions, the
-temperature — is matched exactly. If the agent loop starts sending a
+Everything else: the model, the messages, the tool definitions, the
+temperature: is matched exactly. If the agent loop starts sending a
 different tool schema, the cassette misses, and that is the correct
 outcome: the request changed, so the recording is no longer valid
 evidence.
@@ -140,7 +140,7 @@ amirotest run --live --tag smoke
 
 `record` requires real keys, prints an estimated cost before starting, and
 refuses to run without `--confirm` when it would rewrite more than 20
-cassettes. Recorded cassettes are redacted on write — an API key never
+cassettes. Recorded cassettes are redacted on write: an API key never
 reaches the file.
 
 The nightly CI job runs `--live` on the `smoke`-tagged tests. A `live`
@@ -162,12 +162,12 @@ fake.OnAny().Error(429, `{"error":{"type":"rate_limit_error"}}`)
 
 It exists for three jobs:
 
-1. **The no-keys, no-cassettes path** — a green run from a clean checkout.
-2. **Failure injection** — rate limits, 500s, malformed SSE, a stream that
+1. **The no-keys, no-cassettes path**: a green run from a clean checkout.
+2. **Failure injection**: rate limits, 500s, malformed SSE, a stream that
    dies mid-chunk, a tool call with invalid JSON arguments. These are
    awkward to record and essential to test. `suites/backend/resilience/`
    is built entirely on it.
-3. **Precise assertions** — "the approval gate fires before the tool
+3. **Precise assertions**: "the approval gate fires before the tool
    executes" needs a tool call at an exact point, which is easier to script
    than to elicit from a real model.
 
@@ -186,5 +186,5 @@ It exists for three jobs:
 `providers/cost.json` records per-run spend, computed from token counts
 and `backend-go/internal/pricing`. It is `0.00` for every non-live run.
 The nightly live job posts its cost into the run summary, and CI fails a
-live run that exceeds a configured ceiling — a runaway agent loop that
+live run that exceeds a configured ceiling: a runaway agent loop that
 burns budget should stop the job, not the credit card.

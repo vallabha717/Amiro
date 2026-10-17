@@ -1,8 +1,7 @@
-# 02 — Configuration
+# 02: Configuration
 
 One file, `tests/config.yaml`, configures every surface. The committed
-template is [`reference/config.example.yaml`](reference/config.example.yaml)
-— it is annotated with the default for every single key and is the
+template is [`reference/config.example.yaml`](reference/config.example.yaml): it is annotated with the default for every single key and is the
 authoritative schema reference. This document explains the *rules* around
 it.
 
@@ -11,13 +10,13 @@ it.
 > **Everything is optional. Anything you don't set uses a documented
 > default. A missing `config.yaml` is a valid, passing configuration.**
 
-This is not politeness — it is what makes the suite usable by a new
+This is not politeness: it is what makes the suite usable by a new
 contributor, by CI, and by an AI agent that has no credentials. Concretely:
 
 | You have | You get |
 |---|---|
-| No `config.yaml`, no keys | `fake` providers, sqlite, chromium, all four surfaces (desktop auto-skips) — a green run |
-| No `config.yaml`, cassettes committed | `replay` providers — full-fidelity request/response assertions, still no network |
+| No `config.yaml`, no keys | `fake` providers, sqlite, chromium, all four surfaces (desktop auto-skips): a green run |
+| No `config.yaml`, cassettes committed | `replay` providers: full-fidelity request/response assertions, still no network |
 | `config.yaml` with real keys | `record` or `live` mode available; everything else still defaulted |
 
 `harness/config/defaults.go` holds the complete default tree as a Go value.
@@ -26,7 +25,7 @@ by `amirotest config example`, and a test asserts the two never drift.
 
 ## Precedence
 
-Lowest to highest — later layers overwrite earlier ones, key by key:
+Lowest to highest: later layers overwrite earlier ones, key by key:
 
 ```
 1. built-in defaults        harness/config/defaults.go
@@ -38,7 +37,7 @@ Lowest to highest — later layers overwrite earlier ones, key by key:
 
 Merging is **deep for maps, replace for lists**. Setting
 `providers.llm` in `config.yaml` replaces the default list entirely rather
-than appending to it — a partial list of providers is what you meant, not a
+than appending to it: a partial list of providers is what you meant, not a
 merge you have to reason about.
 
 The env-var mapping is mechanical: dot-path uppercased, dots to
@@ -49,14 +48,13 @@ List values are comma-separated: `AMIRO_TEST_RUN_SURFACES=ui,backend`.
 
 `${VAR}` and `${VAR:-fallback}` are expanded in every string value, from
 the process environment and from `tests/.env` if it exists. This keeps
-secrets out of `config.yaml` even though `config.yaml` is gitignored —
-belt and braces, and it means the same `config.yaml` works in CI where keys
+secrets out of `config.yaml` even though `config.yaml` is gitignored: belt and braces, and it means the same `config.yaml` works in CI where keys
 come from the secret store.
 
 An unset `${VAR}` with no fallback expands to the empty string and is
 treated as "not configured", not as an error. A provider entry with an
 empty `apiKey` is silently dropped from the resolved config and noted in
-`run.json` — so a `config.yaml` listing six providers on a machine with one
+`run.json`: so a `config.yaml` listing six providers on a machine with one
 key configured does the obvious thing.
 
 ## Validation
@@ -71,7 +69,7 @@ readable report rather than one error at a time:
 - **Enums are checked** against their allowed values, with the valid set in
   the message.
 - **Durations and sizes** are parsed (`30m`, `2m`, `65536`, `64KiB`).
-- **Paths are resolved and checked** — `backend.binary`, `ui.distDir`,
+- **Paths are resolved and checked**: `backend.binary`, `ui.distDir`,
   `providers.cassetteDir` must exist if set.
 - **Cross-field rules**: `providers.mode: record` requires at least one
   provider with a non-empty key; `backend.database.driver: postgres`
@@ -116,8 +114,7 @@ tests the real storage. A dedicated suite covers the env path separately.
 
 **Base URLs are rewritten, not intercepted.** In `replay` and `record`
 mode the harness starts the cassette proxy and seeds each provider's
-`baseUrl` pointing at it. No monkey-patching, no HTTP client injection —
-the backend genuinely makes an outbound request and genuinely gets a
+`baseUrl` pointing at it. No monkey-patching, no HTTP client injection: the backend genuinely makes an outbound request and genuinely gets a
 response. See [05](05-recording-and-replay.md).
 
 ## Per-test overrides
@@ -138,8 +135,8 @@ never depends on config you can't see from the artifacts.
 
 These are different files and must not be confused:
 
-- `tests/config.yaml` — **this plan's file.** Configures the test system.
-- `.amiro/config.yaml` / `~/.config/amiro/config.yaml` — **the app's file**,
+- `tests/config.yaml`: **this plan's file.** Configures the test system.
+- `.amiro/config.yaml` / `~/.config/amiro/config.yaml`: **the app's file**,
   read by `backend-go/internal/tui/config`. Today it holds `defaultMode`
   and `defaultModel`.
 

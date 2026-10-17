@@ -13,7 +13,7 @@ The Agent uses four OpenDots plush characters, vendored locally from CopilotKit/
 - **Memory**: an admin-only, read-only inspection of the Amiro runtime's existing global and project memory graphs, with search and constellation/card/list views. There is no second memory engine. Category/tag visual links are presentation relationships, not newly written native memory associations.
 - **Workspace**: an admin-only, allowlisted file browser for runtime memory/skills, Amiro persona mirrors and repository documentation. Credential files, session logs and arbitrary engine-state content are not exposed. Paths are checked after symlink resolution.
 
-Schedules are deferred. Contacts, Channels and Library are not part of this Agent implementation.
+Native schedules are delivered (see `docs/SCHEDULES.md`, `/schedules`). Manual background runs were removed. Contacts, Channels and Library are not part of this Agent implementation.
 
 ## Runtime behavior
 
@@ -33,7 +33,7 @@ Runtime memory mutations through the Agent HTTP surface are intentionally unsupp
 
 The current plush character assets come from `CopilotKit/OpenDots`, with its MIT copyright and permission notice retained in `THIRD-PARTY-NOTICES.md`. The dot-lattice renderer has been replaced in the visible Agent avatar. Legacy saved body identifiers remain compatible, while the picker presents four distinct characters. The characters' existing faces are part of their artwork, so there is no separate eye-style control. The Agent interface combines these characters with an Amiro sidebar habitat and bento navigation. Brand display headings retain Fraunces, while Agent controls use Geist sans.
 
-The sidebar theme is the single source of truth for displayed Agent colors. The customizer offers the same named themes rather than a second independent eight-color palette. Its theme selection is a draft until Save, so canceling does not change the application theme. Saved legacy trait colors remain compatible with the adapter API but do not override the active theme. Native runtime memory and personality instruction delivery are unchanged.
+The sidebar theme and agent color stay synchronized in both directions. The customizer offers the named themes, and saving persists the selection to the agent identity and updates the sidebar. Selecting a theme in the sidebar user menu also commits the color choice to agent identity (`updateAgentIdentity`) before applying the style, so the choice survives reload. Midnight renders the mascot in black plush with preserved shading, glossy eyes, and highlights. Saved legacy trait colors remain compatible with the server API. Native runtime memory and personality instruction delivery are unchanged.
 
 Decorative motion reads `prefers-reduced-motion` through `usePrefersReducedMotion`, which stays subscribed to the media query. framer-motion's own hook samples the query once at mount, so a user who turns the setting on while the page is open would otherwise keep seeing the habitat roam and blink.
 
@@ -46,6 +46,7 @@ pnpm build
 node --test adapter/test/*.test.mjs
 node adapter/tests/agent-safety.mjs
 node adapter/tests/integration.mjs
+node scripts/verify-agent-color-sync.mjs
 # Start/restart the adapter first and wait for GET /health to return 200.
 AMIRO_TEST_URL=http://127.0.0.1:8788 node adapter/test/agent-browser.mjs
 AMIRO_TEST_URL=http://127.0.0.1:8788 node adapter/test/opendots-theme-sync.mjs

@@ -1,11 +1,11 @@
-# 00 — Overview
+# 00: Overview
 
 ## Goal
 
 Amiro learns Agent Skills. A skill is a directory holding a `SKILL.md`
 file: YAML frontmatter (`name`, `description`) plus markdown instructions.
-Amiro will **discover** skills already on the machine — including ones
-Claude Code and Codex installed — **disclose** them cheaply to the model,
+Amiro will **discover** skills already on the machine (including ones
+Claude Code and Codex installed), **disclose** them cheaply to the model,
 **activate** them on demand, let the user **invoke** one by typing `/` in
 the composer, and let the user **author** new ones from the dashboard,
 optionally drafted by a model.
@@ -26,10 +26,10 @@ All four, and the plan says per phase which one it touches:
 
 | Surface | What skills mean there |
 |---|---|
-| **backend** (`backend-go/`) | Discovery, parsing, precedence, the catalog in the system prompt, the activation tool, and the authoring API. Every other surface is a client of this. |
-| **web** (`src/`, via `amiro serve`) | `/` palette in the composer, and the Skills section that replaces the Agents section. |
-| **desktop** (Tauri) | The same exported bundle as web, talking to the sidecar. No Tauri-specific code — but the sidecar resolves `$HOME` inside the packaged app, which is a real difference worth one test. |
-| **terminal** (`backend-go/internal/tui/`) | Skills join the `/` palette that already exists in `internal/tui/component/editor/slash.go`. |
+| **backend** (`backend/`, `amiro-backend`) | Discovery, validation, precedence, and authoring API in native Rust (`backend/src/routes/skills.rs`). |
+| **web** (`src/`) | `/` palette in the composer, and the Superpowers surface inside `/agent` (with `/skills` URL retained for compatibility). |
+| **desktop** (Tauri v2) | The same exported bundle as web, talking to the native sidecar. |
+| **terminal** (`runtime/crates/amiro-tui`) | Skills palette in the terminal client. |
 
 ## Principles
 
@@ -52,12 +52,10 @@ All four, and the plan says per phase which one it touches:
    into the system prompt would defeat the point of the feature.
 5. **Skill text is untrusted input.** A `SKILL.md` is instructions from
    disk that will be handed to a model. Project-scoped skills come from
-   whatever repository the user pointed at. Treated accordingly — see
+   whatever repository the user pointed at. Treated accordingly: see
    [03-authoring-and-safety.md](03-authoring-and-safety.md).
 6. **Surface parity is asserted, not assumed.** The dashboard and the TUI
-   must show the same skill set for the same user and project. That is a
-   `tests/suites/cross/` test, because two green single-surface tests do
-   not prove it.
+   must show the same skill set for the same user and project.
 
 ## Non-goals
 
@@ -81,11 +79,7 @@ All four, and the plan says per phase which one it touches:
 - **Nested and ancestor project directories.** v1 scans the selected
   project directory only, not every ancestor up to the git root and not
   `packages/*/.agents/skills/`. Monorepo support is a follow-up.
-- **Migrating existing agents into skills.** Agents were removed (Phase 6,
-  shipped 2026-08-22), not converted. Anything saved as an agent was lost
-  when that phase landed; that was decided deliberately.
+- **Migrating existing agents into skills.** The old legacy agents were removed,
+  not converted.
 - **A trust dialog.** Was true when this plan shipped; no longer is.
-  `docs/coding-agent-parity/` Phase 0 (shipped 2026-08-23) added the
-  workspace-trust model this line said didn't exist -- see
-  `docs/coding-agent-parity/01-workspace-trust-and-rules.md` for the
-  design and its explicit distinction from a Skill.
+  `docs/coding-agent-parity/` Phase 0 added the workspace-trust model.

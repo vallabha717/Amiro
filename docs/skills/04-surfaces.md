@@ -1,47 +1,50 @@
-# 04 — The surfaces
+# 04: The surfaces
 
-Settled here: what `/` does in each composer, how the Agents UI becomes the
+Settled here: what `/` does in each composer, how the legacy Agents UI became the
 Skills UI, and what parity between surfaces means concretely.
+
+> Current UI layout note: In the shipped application, the sidebar lists the Agent
+> itself (`/agent`), not a list of skills. Skills are integrated into the Agent
+> interface as the Superpowers section (the `/skills` URL remains compatible) and
+> are invoked by typing `/` in the chat composer.
 
 ## Parity matrix
 
 | Capability | backend | web | desktop | terminal |
 |---|---|---|---|---|
 | Discover + dedupe | owns it | consumes | consumes | consumes |
-| Catalog in system prompt | owns it | — | — | — |
+| Catalog in system prompt | owns it | - | - | - |
 | `skill()` activation tool | owns it | sees the event | sees the event | sees the event |
-| `/` palette | — | ✅ Shipped (Phase 2) | ✅ Shipped (Phase 2, same bundle) | ✅ Shipped (Phase 3) |
+| `/` palette | - | ✅ Shipped (Phase 2) | ✅ Shipped (Phase 2, same bundle) | ✅ Shipped (Phase 3) |
 | Create / edit / delete | owns it (Phase 4) | ✅ Shipped (Phase 5) | ✅ Shipped (Phase 5, same bundle) | **no** |
 | Generate with AI | owns it (Phase 5) | ✅ Shipped (Phase 5) | ✅ Shipped (Phase 5) | **no** |
 
-**Answering the open question directly: yes, the TUI gets `/` skills — and
-it is the cheap half.** `internal/tui/component/editor/slash.go` already
-implements a `/` palette with prefix filtering, `Suggest`/`Parse`/
-`RenderSuggestions` and Tab-accept, wired into `page/chat.go`'s
-`composerSuggestions`. Skills become entries in that existing list. The TUI
+**Answering the open question directly: yes, the TUI gets `/` skills, and
+it is the cheap half.** The slash palette with prefix filtering, Tab-accept,
+and suggestions allows skills to become entries in that list. The TUI
 does **not** get authoring: a form with a name, a description and a
-multi-hundred-line markdown body is a bad fit for a Bubble Tea composer, and
+multi-hundred-line markdown body is a bad fit for a terminal composer, and
 `~/.agents/skills/` is a directory the user can open in their editor. The
 TUI reads and invokes; the dashboard authors.
 
-## Web — the `/` palette
+## Web: the `/` palette
 
-The composer is `src/components/prompt-input.tsx` → `chat-mention-input.tsx`
-→ `mention-input.tsx`, a Tiptap editor whose `Mention` extension already
+The composer is `src/components/prompt-input.tsx` -> `chat-mention-input.tsx`
+-> `mention-input.tsx`, a Tiptap editor whose `Mention` extension already
 takes a `suggestionChar` (default `"@"`). Skills need a **second**
 suggestion source, not a replacement.
 
 - A second extension instance (`Mention.extend({ name: "skillMention" })`)
   with `char: "/"` and its own suggestion plugin key. Two `Mention`
-  extensions with the same plugin key silently break one of them — named as
-  a risk in Phase 2.
+  extensions with the same plugin key silently break one of them (named as
+  a risk in Phase 2).
 - **`/` triggers only as the first character of an empty composer.** Mirrors
   `editor.Suggest`, which requires `/` to start the whole input, so the two
   surfaces behave identically and there is no precedence rule to get wrong
   between `/` and `@`. A `/` typed mid-sentence is a slash.
 - The palette lists **name · description · source badge**, grouped
   project-then-user, filtered by prefix, keyboard-navigable, capped with a
-  "+N more" row. It renders exactly what `GET /api/skills` returned — one
+  "+N more" row. It renders exactly what `GET /api/skills` returned: one
   row per name, because the backend already deduped.
 - Selection attaches a chip next to the existing mention chips, removable
   with the same affordance, cleared by Escape with them.
@@ -50,84 +53,52 @@ suggestion source, not a replacement.
 
 > **Shipped in Phase 2 (2026-08-21):** Implemented `src/components/chat/skill-palette.tsx` and custom `skillSuggestion` Tiptap extension in `mention-input.tsx`. Selection directly deletes the `/query` range and calls `addMention({ type: "skill", name, description })` with Lucide `Sparkles` icon chip rendering. Tool stripping bug (Trap 2) resolved so default tools are preserved when only skills are attached. Verified with 9 UI Playwright specs and desktop sidecar coverage (see [`progress/phase-02-web-palette.md`](progress/phase-02-web-palette.md)).
 
-## Web — Skills section (replacing Agents)
+## Web: Skills section and Agent integration
 
 The decision was to keep the UI shape and transpose it, so the mapping is
 one-to-one and the visual language does not change:
 
-| Agents today | Becomes |
+| Agents legacy | Becomes |
 |---|---|
 | `src/app/(chat)/agents/page.tsx` | `src/app/(chat)/skills/page.tsx` |
-| `src/app/(chat)/agent/` (detail) | `src/app/(chat)/skill/` — `?name=` instead of `?id=` |
-| `components/agent/agents-list.tsx` | `components/skill/skills-list.tsx` — same card grid, same create card, plus a source badge and a read-only lock |
-| `components/agent/edit-agent.tsx` | `components/skill/edit-skill.tsx` — name, description, body editor; drops tools/icon/visibility |
-| `components/agent/generate-agent-dialog.tsx` | `components/skill/generate-skill-dialog.tsx` — same `experimental_useObject` flow |
+| `src/app/(chat)/agent/` (detail) | `src/app/(chat)/skill/` (`?name=` instead of `?id=`) |
+| `components/agent/agents-list.tsx` | `components/skill/skills-list.tsx`: same card grid, same create card, plus a source badge and a read-only lock |
+| `components/agent/edit-agent.tsx` | `components/skill/edit-skill.tsx`: name, description, body editor; drops tools/icon/visibility |
+| `components/agent/generate-agent-dialog.tsx` | `components/skill/generate-skill-dialog.tsx`: same `experimental_useObject` flow |
 | `agent-icon-picker`, `agent-tool-selector`, `agent-dropdown` | not used by skills, which have no icon, no tool bindings, no per-card dropdown |
-| `ShareableCard` visibility/bookmark actions | dropped in v1 — a skill is a local file, not a shared record. Non-goal |
-| sidebar `app-sidebar-agents.tsx` | `app-sidebar-skills.tsx` |
+| `ShareableCard` visibility/bookmark actions | dropped in v1: a skill is a local file, not a shared record. Non-goal |
+| sidebar `app-sidebar-agents.tsx` | `app-sidebar-skills.tsx` (later unified into the Agent sidebar habitat) |
 
-Standards that apply without exception (the `ui` skill): tokens not raw
+Standards that apply without exception: tokens not raw
 colours, `cn()`/`cva`, lucide icons, `data-testid` on everything a test
 touches, `next-intl` with `messages/en.json` as source of truth and **all
 seven locales** updated, no route handlers or server actions anywhere near
 this (static export), SWR for reads and `handleErrorWithToast` for failures.
 
-> **Shipped in Phase 5 (2026-08-22):** `src/app/(chat)/skills/` and
-> `src/app/(chat)/skill/` replace `agents/`/`agent/`; `components/skill/`
-> (`skills-list.tsx`, `edit-skill.tsx`, `generate-skill-dialog.tsx`) and
-> `components/layouts/app-sidebar-skills.tsx` replace their agent
-> equivalents. `POST /api/skills/generate` (`internal/api/skills/generate.go`)
-> streams `{name, description, body}` from a `bifrostai.Engine`, prompted by
-> `prompts.BuildSkillGenerationPrompt`. **One divergence from this table's
-> original plan:** `agent-icon-picker.tsx` and `agent-tool-selector.tsx` were
-> **not** deleted — `edit-agent.tsx` (the agent detail view) is still live
-> until Phase 6 and still imports both; only `agent-dropdown.tsx` (used
-> solely by the now-deleted `app-sidebar-agents.tsx`) had zero remaining
-> callers and was removed. The three "Create Agent" entry points named in
-> the phase doc (`create-agent-button`, `create-agent-card`, the sidebar's
-> Agents item) are gone; `agents/page.tsx` itself was deleted along with
-> them since nothing linked to it any longer. `agent/page.tsx` (`?id=`) was
-> unchanged and still reachable directly **at the time this phase shipped**
-> — Phase 6 (below) removed it. See
-> [`progress/phase-05-skills-ui.md`](progress/phase-05-skills-ui.md).
->
-> **Shipped in Phase 6 (2026-08-22):** the agent feature is fully
-> decommissioned, not migrated. `agent-icon-picker.tsx`, `agent-tool-selector.tsx`,
-> `agent-dropdown.tsx`, `edit-agent.tsx`, `generate-agent-dialog.tsx`, and
-> `src/app/(chat)/agent/` (`page.tsx`/`loading.tsx`) are all deleted.
-> `ShareableCard`/`ShareableActions`' `type` union drops `"agent"`;
-> `tool-select-dropdown.tsx`'s `AgentSelector` sub-component and
-> `chat-mention-input.tsx`'s agent mention group are gone; `agentId` is gone
-> from `ChatMetadata`, `voiceChat` state, and `mentionDTO`/`Mention` on both
-> the Go and TUI sides. The backend drops `internal/api/agent/`,
-> `internal/db/{models,repository}/agent.go`, and the `agent` table
-> (migration `0024_drop_agent`); `internal/agent/` (the agentic execution
-> loop — session, permission, workspace, memory, lsp, repomap — a
-> completely different "agent" than the one this phase removes) is
-> untouched. See [`progress/phase-06-decommission-agents.md`](progress/phase-06-decommission-agents.md).
+> Note on subsequent Agent section evolution: After Phase 6 decommissioned the
+> legacy agent database models, the Agent concept was reintroduced not as a
+> list of agent personas, but as the unified Amiro Agent (`/agent`) with
+> OpenDots plush mascot avatars, personality customizer, habitat in the
+> sidebar, read-only memory and workspace inspection, and Superpowers (skills).
+> The sidebar now links directly to the Agent (`/agent`), and skills are managed
+> under Superpowers while remaining invokable via `/` in chat.
 
 ## Desktop
 
 No Tauri-specific code: the desktop app loads the same exported bundle and
-talks to the sidecar. One real difference deserves a test — the sidecar's
-`$HOME` inside the packaged app is what user-scope discovery resolves
-against, and the sidecar is built **without** `-tags embedui`
-(`src-tauri/build-sidecar.sh`), so it must serve `/api/skills` in an
-untagged build.
+talks to the native backend sidecar (`amiro-backend`). The sidecar resolves
+paths within the user environment and serves `/api/skills`.
 
 ## Terminal
 
-- `editor.Commands` stays the static list of seven built-ins. Skills arrive
-  as a separate dynamic list, loaded at startup next to `loadMentionables`
-  in `page/mentions.go` — same degrade-independently pattern, so no skills
-  never breaks `/mode`.
+- Skills arrive as a separate dynamic list, loaded at startup.
 - **Built-in names are reserved.** A skill named `export` cannot shadow
   `/export`; it is listed and invoked as `/skill:export`. Deterministic,
   and it means adding a built-in later can never silently steal a user's
   skill.
 - Palette rendering groups built-ins first, then skills under a heading, so
-  a machine with 40 skills does not bury `/mode`.
-- `/skills` lists everything discovered with source and scope — the TUI's
+  a machine with 40 skills does not bury built-ins.
+- `/skills` lists everything discovered with source and scope: the TUI's
   answer to "what did it find and where".
 - Selection sets a pending skill for the next turn and shows it in the
   status line, alongside how pending mentions already work.

@@ -1,4 +1,4 @@
-# Reference — the Agent Skills standard, as researched
+# Reference: the Agent Skills standard, as researched
 
 Gathered 2026-08-20 from the primary sources listed at the bottom. This is
 the external contract the plan builds on; where Amiro chooses something the
@@ -16,7 +16,7 @@ skill-name/
 └── assets/           # optional: templates, data
 ```
 
-## Frontmatter — the spec's six fields
+## Frontmatter: the spec's six fields
 
 | Field | Required | Constraints |
 |---|---|---|
@@ -75,7 +75,7 @@ many existing skills are installed there".
 - **Lenient reads:** warn on a name/dir mismatch, an over-long name or a bad
   charset and load anyway; **skip** a skill with no description or
   unparseable YAML, and record why.
-- Retry YAML once with values quoted — unquoted colons in `description` are
+- Retry YAML once with values quoted: unquoted colons in `description` are
   the common real-world break.
 - Store `name`, `description`, `location` (absolute path to `SKILL.md`) at
   minimum. Base directory is `location`'s parent.
@@ -88,7 +88,7 @@ many existing skills are installed there".
   enum so the model cannot hallucinate a skill.
 - **Allowlist skill directories** in any permission system, or every bundled
   reference file triggers a confirmation dialog.
-- **Exempt skill content from context compaction** — losing it silently
+- **Exempt skill content from context compaction**: losing it silently
   degrades the agent with no visible error.
 - Deduplicate activations within a session.
 - User-explicit activation via `/name` or `$name` intercepted by the
@@ -100,11 +100,11 @@ many existing skills are installed there".
 
 ## Sources
 
-- [Agent Skills — overview](https://agentskills.io) · the open standard, ~45 client implementations
-- [Agent Skills — specification](https://agentskills.io/specification) · frontmatter fields and constraints
-- [Agent Skills — how to add skills support to your agent](https://agentskills.io/client-implementation/adding-skills-support) · discovery, precedence, disclosure, activation, compaction
-- [Claude Platform — Agent Skills overview](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview) · tiers, `name`/`description` limits, security notes
-- [Claude Code — Extend Claude with skills](https://code.claude.com/docs/en/skills) · `~/.claude/skills` vs `.claude/skills`, precedence, extension frontmatter, live change detection
-- [Codex — slash commands](https://developers.openai.com/codex/guides/slash-commands/) and [custom prompts](https://developers.openai.com/codex/custom-prompts) · `~/.codex/prompts` is deprecated in favour of skills
+- [Agent Skills: overview](https://agentskills.io) · the open standard, ~45 client implementations
+- [Agent Skills: specification](https://agentskills.io/specification) · frontmatter fields and constraints
+- [Agent Skills: how to add skills support to your agent](https://agentskills.io/client-implementation/adding-skills-support) · discovery, precedence, disclosure, activation, compaction
+- [Claude Platform: Agent Skills overview](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview) · tiers, `name`/`description` limits, security notes
+- [Claude Code: Extend Claude with skills](https://code.claude.com/docs/en/skills) · `~/.claude/skills` vs `.claude/skills`, precedence, extension frontmatter, live change detection
+- [Codex: slash commands](https://developers.openai.com/codex/guides/slash-commands/) and [custom prompts](https://developers.openai.com/codex/custom-prompts) · `~/.codex/prompts` is deprecated in favour of skills
 - [Agent Skills storage and distribution across tools](https://www.thedroptimes.com/71574/agent-skills-distribution-conventions) · the `.agents/skills` vs `.claude/skills` split in practice
 - [`.agents` vs `.claude`: where should skills live](https://claw0x.com/blog/agents-vs-claude-folder-skills-guide) · portable vs client-specific
