@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend (types, lint, unit tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      # pnpm 10.2.1 matches the packageManager field in package.json.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.2.1
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check
+        run: pnpm check-types
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Unit tests
+        run: pnpm test
+
+  rust:
+    name: Rust (backend tests, runtime check)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CARGO_TERM_COLOR: always
+      # Mirrors the conservative fallback in runtime/.cargo/config.toml. Cargo
+      # only reads .cargo/config.toml from the working directory upwards, so
+      # that file does not apply when cargo is invoked from the repo root.
+      CARGO_BUILD_JOBS: 2
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            backend
+            runtime
+
+      - name: Backend tests
+        run: cargo test --manifest-path backend/Cargo.toml
+
+      # Same command as the runtime:check script in package.json.
+      - name: Runtime check
+        run: cargo check --manifest-path runtime/Cargo.toml --bin amiro-runtime --no-default-features
