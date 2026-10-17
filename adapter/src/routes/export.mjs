@@ -47,7 +47,7 @@ export function register(app, ctx) {
   });
 
   // GET /api/export/:id -- view a single export (public / optional session)
-  app.get('/api/export/:id', async (req, res, params) => {
+  app.get('/api/export/:id', async (_req, res, params) => {
     const exportsDoc = await getExports();
     const exp = exportsDoc[params.id];
     if (!exp) {

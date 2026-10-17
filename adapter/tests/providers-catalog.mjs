@@ -114,8 +114,8 @@ async function main() {
     // If registration failed (expected 403), we still have a non-admin via direct file write
     if (!bobToken) {
       // Seed a non-admin user directly
-      const usersDoc = JSON.parse(await fs.readFile(path.join(home, 'users.json'), 'utf8'));
-      const bobId = 'bob-test-id';
+      const _usersDoc = JSON.parse(await fs.readFile(path.join(home, 'users.json'), 'utf8'));
+      const _bobId = 'bob-test-id';
       // Create a simple user with known password hash via the adapter's hardenPassword would be complex.
       // Instead, test the 401 path for non-admin by using an invalid/missing token, and test 400 for OAuth below.
       // For the literal "non-admin/api-key-store for OAuth returns 400" requirement, we will test admin + OAuth 400
@@ -212,8 +212,8 @@ async function main() {
       body: JSON.stringify({ apiKey: 'sk-test-openrouter-1234567890-any' }),
     });
     const storeBody = await storeRes.text();
-    let storeJson = {};
-    try { storeJson = JSON.parse(storeBody); } catch {}
+    let _storeJson = {};
+    try { _storeJson = JSON.parse(storeBody); } catch {}
     step('admin stores API key for openrouter succeeds', storeRes.ok, `status=${storeRes.status} body=${storeBody.slice(0, 300)}`);
 
     // Verify via catalog + auth status that it flipped

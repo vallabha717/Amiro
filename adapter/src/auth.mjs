@@ -52,7 +52,7 @@ function publicUser(user) {
   };
 }
 
-export function createAuth({ home, store, token, log }) {
+export function createAuth({ home, store, log }) {
   const usersFile = path.join(home, 'users.json');
   const sessionsFile = path.join(home, 'sessions.json');
   const passwordFile = path.join(home, 'admin-initial-password');
@@ -299,9 +299,9 @@ export function createAuth({ home, store, token, log }) {
   }
 
   function register_routes(app, ctx) {
-    app.get('/health', (req, res) => ctx.json(res, 200, { status: 'ok' }));
+    app.get('/health', (_req, res) => ctx.json(res, 200, { status: 'ok' }));
 
-    app.get('/api/auth/status', (req, res) => {
+    app.get('/api/auth/status', (_req, res) => {
       ctx.json(res, 200, {
         isFirstUser: users.length === 0,
         registrationEnabled: allowRegistration || users.length === 0,

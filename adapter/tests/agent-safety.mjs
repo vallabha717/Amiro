@@ -46,7 +46,7 @@ async function jsonFetch(url, opts = {}) {
 
 async function main() {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'amiro-agent-safety-'));
-  const TMP_BASE = '/tmp';
+  const _TMP_BASE = '/tmp';
   let server;
   let log = '';
   try {
@@ -361,7 +361,7 @@ async function main() {
     // We test syncPersonaFiles symlink guard by planting and then doing PUT identity which triggers sync
     const wsUsersLink = path.join(home, 'workspace', 'users');
     // Create a marker outside workspace to detect escape
-    const escapeMarker = path.join(os.tmpdir(), `amiro-escape-${Date.now()}`);
+    const _escapeMarker = path.join(os.tmpdir(), `amiro-escape-${Date.now()}`);
     try {
       await fs.mkdir(path.join(home, 'workspace'), { recursive: true });
       await fs.rm(wsUsersLink, { recursive: true, force: true });
@@ -384,7 +384,7 @@ async function main() {
 
     // Legacy eyeStyle 'round' should normalize to grumpy on GET
     // Simulate legacy by writing raw store with round eye
-    const legacyKey = `agent-identity/${bobId}.json`;
+    const _legacyKey = `agent-identity/${bobId}.json`;
     // Directly write legacy via store? We can PUT with valid then check GET normalizes invalid if we manually inject
     // Instead test normalize: PUT with grumpy works, but GET with legacy round would normalize - we verify via direct read simulation
     // We'll test that GET normalizes legacy eyeStyle by checking that blob+round would become grumpy (we already tested invalid -> 400)

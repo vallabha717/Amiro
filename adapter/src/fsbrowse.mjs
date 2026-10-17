@@ -170,7 +170,7 @@ export async function assertUsableProjectDirectory(absPath) {
   let st;
   try {
     st = await fs.stat(real);
-  } catch (e) {
+  } catch {
     const err = new Error('path does not exist');
     err.status = 400;
     throw err;
@@ -236,7 +236,7 @@ export async function listDirectory(absPath) {
   let st;
   try {
     st = await fs.stat(real);
-  } catch (e) {
+  } catch {
     const err = new Error('path does not exist');
     err.status = 400;
     throw err;
@@ -250,7 +250,7 @@ export async function listDirectory(absPath) {
   let names;
   try {
     names = await fs.readdir(real);
-  } catch (e) {
+  } catch {
     const err = new Error('unable to read directory');
     err.status = 403;
     throw err;

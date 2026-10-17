@@ -174,7 +174,7 @@ export async function applyToolProfile(client, sessionId) {
 // mapping (observability only). Tool control from the chat payload (mentions,
 // allowedMcpServers, allowedAppDefaultToolkit) is deliberately ignored: a
 // client may not widen its own tool access. Throws on failure (fail-closed).
-async function enforceToolPolicy(ctx, client, threadId, sessionId, entry) {
+async function enforceToolPolicy(ctx, client, threadId, sessionId, _entry) {
   const profile = toolProfile();
   try {
     await applyToolProfile(client, sessionId);
@@ -197,7 +197,7 @@ async function enforceToolPolicy(ctx, client, threadId, sessionId, entry) {
 
 // Stream one runtime turn into the SSE response until `turn_done`/`turn_stopped`
 // or timeout. Returns the collected usage (if any).
-async function streamTurn({ ctx, sse, client, sessionId, allowTools, iterator }) {
+async function streamTurn({ sse, client, sessionId, allowTools, iterator }) {
   const textId = crypto.randomUUID();
   const reasoningId = crypto.randomUUID();
   let textOpen = false;

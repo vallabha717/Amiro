@@ -47,7 +47,7 @@ export function register(app, ctx) {
     ctx.json(res, 200, { success: true, size });
   });
 
-  app.get('/storage/:token', async (req, res, params) => {
+  app.get('/storage/:token', async (_req, res, params) => {
     const info = await tokenInfo(params.token);
     if (!info) return ctx.error(res, 404, 'Unknown or expired upload capability');
     let data;

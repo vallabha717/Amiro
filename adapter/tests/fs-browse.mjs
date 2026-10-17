@@ -292,7 +292,7 @@ async function main() {
         workingDir: switchB,
       }),
     });
-    const switchText2 = await switchRes2.text();
+    const _switchText2 = await switchRes2.text();
     let switchBody2 = null;
     try {
       const r = await fetch(`${BASE}/api/thread/${switchThread}`, { headers: auth });
