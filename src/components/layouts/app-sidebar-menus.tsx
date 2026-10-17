@@ -19,6 +19,7 @@ import { useTranslations } from "next-intl";
 import { MCPIcon } from "ui/mcp-icon";
 import { WriteIcon } from "ui/write-icon";
 import {
+  CalendarClockIcon,
   ChevronRight,
   FolderOpenIcon,
   FolderSearchIcon,
@@ -116,6 +117,23 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
               </Link>
             </SidebarMenuItem>
           </Tooltip>
+        </SidebarMenu>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <Link
+              href="/schedules"
+              data-testid="sidebar-schedules-link"
+              onClick={() => setOpenMobile(false)}
+            >
+              <SidebarMenuButton
+                className="font-semibold"
+                isActive={pathname.startsWith("/schedules")}
+              >
+                <CalendarClockIcon className="size-4" />
+                Schedules
+              </SidebarMenuButton>
+            </Link>
+          </SidebarMenuItem>
         </SidebarMenu>
         {user && <AppSidebarAdmin />}
         <SidebarMenu className="group/archive">
@@ -218,4 +236,3 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
     </SidebarGroup>
   );
 }
-
