@@ -170,14 +170,14 @@ try {
     await page.evaluate((m) => {
       document.documentElement.classList.remove('light', 'dark');
       document.documentElement.classList.add(m);
-      localStorage.setItem('theme', m);
+      localStorage.setItem('app-theme-v2', m);
     }, mode);
 
     for (const theme of ALL_19_THEMES) {
-      await page.evaluate(({ theme, mode }) => {
+      await page.evaluate(({ theme }) => {
         document.body.setAttribute('data-theme', theme);
         localStorage.setItem('ChATBOT-STOREAGE-theme-style', JSON.stringify({ value: theme }));
-      }, { theme, mode });
+      }, { theme });
 
       const colors = await page.evaluate(() => {
         const style = getComputedStyle(document.body);

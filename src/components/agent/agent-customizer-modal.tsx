@@ -60,6 +60,13 @@ const BODY_LABELS: Record<string, string> = {
   urchin: "Headphones",
 };
 
+function formatThemeLabel(themeId: string): string {
+  return themeId
+    .split("-")
+    .map((part) => capitalizeFirstLetter(part))
+    .join(" ");
+}
+
 const ALLOWED_IMAGE_MIME_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
 function resolveColorId(colorId: string): string {
@@ -289,10 +296,10 @@ export function AgentCustomizerModal({
           fontFamily:
             "var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif",
         }}
-        className="max-w-xl max-h-[85vh] overflow-y-auto rounded-3xl border border-border/70 bg-background/95 p-0 shadow-2xl backdrop-blur-2xl"
+        className="flex max-h-[85vh] max-w-xl flex-col overflow-hidden rounded-3xl border border-border/70 bg-background/95 p-0 shadow-2xl backdrop-blur-2xl"
       >
-        {/* Preview stage — wrapped in data-theme={themeDraft} so var(--sidebar-primary) resolves to draft */}
-        <div>
+        {/* Scrollable body: preview, fields, and theme picker */}
+        <div className="min-h-0 flex-1 overflow-y-auto">
           <div
             className="relative flex flex-col items-center justify-center overflow-hidden px-6 pt-8 pb-6 transition-colors duration-300"
             style={{
@@ -381,7 +388,6 @@ export function AgentCustomizerModal({
               )}
             </div>
           </div>
-        </div>
 
         {validationError ? (
           <div
@@ -483,7 +489,7 @@ export function AgentCustomizerModal({
                 Theme · Sidebar & Agent tint
               </span>
               <span className="font-mono text-[11px] text-muted-foreground">
-                {capitalizeFirstLetter(themeDraft)}
+                {formatThemeLabel(themeDraft)}
               </span>
             </div>
             <div
@@ -498,13 +504,14 @@ export function AgentCustomizerModal({
                     key={t}
                     type="button"
                     aria-pressed={selected}
-                    aria-label={`Select ${t} theme`}
+                    aria-label={`Select ${formatThemeLabel(t)} theme`}
                     data-testid={`agent-theme-${t}`}
                     data-theme={t}
+                    title={formatThemeLabel(t)}
                     style={t === "default" ? defaultThemeStyle : undefined}
                     onClick={() => setThemeDraft(t)}
                     className={cn(
-                      "relative flex h-9 items-center justify-center rounded-xl border px-2 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                      "relative flex h-auto min-h-9 items-center justify-start rounded-xl border px-2 py-1 text-left text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                       selected
                         ? "border-foreground bg-foreground text-background"
                         : "border-border/60 bg-muted/30 text-foreground hover:bg-accent",
@@ -521,7 +528,7 @@ export function AgentCustomizerModal({
                         aria-hidden="true"
                       />
                     )}
-                    <span className="truncate">{capitalizeFirstLetter(t)}</span>
+                    <span className="min-w-0 flex-1 leading-tight break-words">{formatThemeLabel(t)}</span>
                   </button>
                 );
               })}
@@ -531,8 +538,11 @@ export function AgentCustomizerModal({
               keeps your current theme.
             </p>
           </div>
+        </div>
+        </div>
 
-          <div className="flex items-center justify-between border-t border-border/60 pt-4">
+          {/* Sticky footer: reset, cancel, and save stay visible */}
+          <div className="flex shrink-0 items-center justify-between border-t border-border/60 bg-background/95 px-6 py-4">
             <Button
               type="button"
               variant="ghost"
@@ -576,7 +586,6 @@ export function AgentCustomizerModal({
               </Button>
             </div>
           </div>
-        </div>
       </DialogContent>
     </Dialog>
   );
