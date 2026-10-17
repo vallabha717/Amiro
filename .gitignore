@@ -7,12 +7,12 @@ out/
 !.env.example
 .DS_Store
 
-# The dashboard bundle staged for go:embed was removed with backend-go
-# (scripts/build-ui.sh no longer stages it). out/ is served directly by the
-# Node adapter and by src-tauri's frontendDist.
+# Static frontend export is served by the backend and Tauri frontendDist.
 
-# Generated sidecar launcher for the Node adapter (src-tauri/build-sidecar.sh)
+# Generated native sidecar binaries
 src-tauri/binaries/
+backend/target/
+runtime/target/
 
 # Tauri
 src-tauri/target/

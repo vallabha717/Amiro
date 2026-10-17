@@ -1,5 +1,24 @@
 # Third-party notices
 
+## Rust agent runtime
+
+`runtime/` contains a modified source fork of the MIT-licensed Jcode project by
+Jeremy Huang, sourced from `1jehuang/jcode` at immutable commit
+`11952e02ac76fa1c335633e9c6113691c1cf3395` (package version 0.98.1).
+The native build targets this source as Amiro's runtime executable. Product names,
+local crate names and application state paths are adapted for Amiro. This does
+not transfer authorship of the upstream work or imply upstream endorsement.
+
+The original MIT copyright and permission notice is retained in
+`runtime/LICENSE`. Include that license with redistributed runtime binaries.
+Vendored dependency license files and notices remain applicable. Details of the
+fork and build verification are recorded in `docs/RUST-RUNTIME.md`.
+
+The compatibility adapter still uses the separately installed
+`@1jehuang/jcode-sdk` package. That package is an upstream dependency, not an
+Amiro-authored library. Compatibility with an installed upstream engine does
+not mean that engine has been bundled into an Amiro build.
+
 ## Agent character art
 
 The Agent avatar rendered by `src/components/agent/avatar-primitives.tsx` uses the
