@@ -5,23 +5,12 @@
 Close the top of the gap list in
 [docs/future-implementation/amiro-vs-coding-agents-comparison.md](../future-implementation/amiro-vs-coding-agents-comparison.md)
 — the Tier 1 and Tier 2 items, which that document frames as "closest to
-'this is a coding agent, not a chat app with tools'" and "the background
-agent story". Five phases:
+'this is a coding agent, not a chat app with tools'". Four phases:
 
 1. Workspace trust consent UI + a plain, always-on project rules file.
 2. Checkpoints and `/rewind`.
 3. Sandboxed shell execution.
 4. Git remote operations (`push`, PR creation), gated.
-5. Background agent runs that outlive the request that started them, with
-   an auto-PR completion action.
-
-Phase 4 is the payoff the other four exist to make safe: an unattended
-agent should not run against an ungranted workspace (Phase 0), should not
-execute shell commands with host-level blast radius (Phase 2), and should
-not be able to push code without an explicit, always-asked gate (Phase 3).
-Phase 1 (rewind) is not a dependency of Phase 4, but it is the safety net a
-user reaches for immediately after trusting an agent to do more — planned
-alongside the others rather than after them.
 
 ## What already exists (read before planning further)
 
@@ -51,11 +40,8 @@ top of both without re-opening them:
   allowlist, not a passthrough.
 - **`task` subagents run synchronously inside one parent turn**, read-only,
   structurally unable to recurse (`internal/api/chat/subagent.go`).
-  Phase 4 does not touch this tool — a background run is a peer concept
-  (unattended, potentially writing), not an extension of it.
 - **`amiro run`** (`cmd/amiro/run.go`) is a one-shot headless turn with no
-  server-side persistence beyond the normal thread. Phase 4 is the first
-  thing in this tree that outlives one HTTP request's lifetime.
+  server-side persistence beyond the normal thread.
 - **The cross-surface test harness** (`tests/`, see the `test` skill) is
   built and in daily use — every deliverable below lands inside it, in the
   existing `tests/suites/<surface>/<feature>/` shape, not a new one.
@@ -71,9 +57,7 @@ one), that is named in the phase, not silently skipped.
 
 ## Principles
 
-1. **Compose existing primitives before adding new ones.** Phase 4's
-   auto-PR action is `git push` (Phase 3) + `create_pr` (Phase 3) +
-   `walkthrough` (already shipped) — not a fourth mechanism. Phase 1's
+1. **Compose existing primitives before adding new ones.** Phase 1's
    checkpoints reuse the existing local blob store
    (`internal/storage`), not a new content store.
 2. **A gate that cannot be seen is not a gate.** Every new consequential
@@ -86,28 +70,19 @@ one), that is named in the phase, not silently skipped.
    the status bar say so plainly, the same rule Phase 5 of the agentic-loop
    plan used for LSP discovery. A missing capability is not hidden by
    pretending the safe case ran.
-4. **Unattended is a stricter mode, not a bigger one.** Phase 4's background
-   runs get *fewer* permissions than an interactive session (External risk
-   always suspends the job rather than asking a screen nobody is watching),
-   never more.
 
 ## Non-goals
 
 - **True multi-agent parallelism at Cursor/Antigravity scale** (5–8
-  concurrent background runs). Phase 4 caps concurrent background runs at
-  2, configurable, and names raising that cap as a follow-up once one
-  concurrent run is proven safe end to end — see Phase 4's Risks section.
+  concurrent background runs). Named in the comparison doc's Tier 3; out
+  of scope here.
 - **Browser automation / a self-testing subagent** (Antigravity's Browser
   Subagent). Named in the comparison doc's Tier 3; out of scope here.
 - **A third-party plugin system.** Also Tier 3; unrelated to what these
-  five phases unlock.
+  four phases unlock.
 - **Windows process sandboxing.** Phase 2 documents Windows as unsandboxed
   for this round (job objects are real work, not a checkbox) rather than
   quietly shipping a weaker guarantee under the same claim as macOS/Linux.
-- **Scheduled/cron automations.** A background run in this plan is always
-  started by an explicit user action (interactively, or via `amiro run
-  --background`), never by a timer. Scheduling is downstream of this work,
-  not part of it.
 - **Rewriting the plan-review / walkthrough artifacts.** Phase 1's
   checkpoints are a new capability alongside them, not a replacement.
 

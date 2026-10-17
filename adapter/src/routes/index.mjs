@@ -2,7 +2,6 @@
 
 import * as admin from './admin.mjs';
 import * as archive from './archive.mjs';
-import * as backgroundJobs from './background-jobs.mjs';
 import * as checkpoint from './checkpoint.mjs';
 import * as exportRoutes from './export.mjs';
 import * as github from './github.mjs';
@@ -20,7 +19,6 @@ import * as agent from './agent.mjs';
 export function registerRoutes(app, ctx) {
   admin.register(app, ctx);
   archive.register(app, ctx);
-  backgroundJobs.register(app, ctx);
   checkpoint.register(app, ctx);
   exportRoutes.register(app, ctx);
   github.register(app, ctx);

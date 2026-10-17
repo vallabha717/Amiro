@@ -14,7 +14,6 @@ record — dated, with real numbers, and honest about what diverged.
 | 1 | Checkpoints & rewind | ⚠️ Complete with gaps (2/6 criteria MET literally; the underlying behavior is proven correct — see the record) | [phase-01](phase-01-checkpoints-and-rewind.md) |
 | 2 | Sandboxed shell execution | ⚠️ Complete with gaps (4/5 criteria MET; verified against a real bubblewrap backend on Linux, `sandbox-exec` on macOS unverified — no macOS host available) | [phase-02](phase-02-sandboxed-execution.md) |
 | 3 | Git push + PR creation | ⬜ Not started — **unblocked** | — |
-| 4 | Background agent runs | ⬜ Not started — blocked on 3 (0's and 1's backend enforcement are done; 2's sandbox mechanism is real and proven, its own open gaps are test-coverage-on-macOS and one unrelated pre-existing TUI test, neither load-bearing for Phase 4) | — |
 
 Each phase's verification log holds the commands used to check it against a
 real running system, with their output, so any claim here can be re-checked
@@ -123,21 +122,17 @@ setup, so no rendered-DOM check exists to run even bypassing the missing
 
 ## What does **not** exist yet
 
-Phases 3–4 in full. Specifically: no `push`/`create_pr` git operations,
-and no background-job concept of any kind — `amiro run` and `task`
-subagents are both still request-scoped, as described in
-`00-overview.md`. Phase 2's own remaining gap: `sandbox-exec` isolation on
+Phase 3 in full. Specifically: no `push`/`create_pr` git operations —
+`amiro run` and `task` subagents are both still request-scoped. Phase 2's
+own remaining gap: `sandbox-exec` isolation on
 macOS has never run against a real macOS host in this project's own
 testing (the code exists, is wired identically to the proven Linux path,
 and cross-compiles clean — it is simply unverified).
 
 ## Next up
 
-Phase 3 is unblocked. `phases/README.md` no longer has a second
-independent phase to sequence it against — Phase 2 shipped this session.
-Phase 4 still needs Phase 3 done (0, 1 and 2's backend enforcement are all
-already in place; Phase 4's `Result.Sandboxed` gate can be built against
-today). Several open items from Phases 0–2 are worth picking up
+Phase 3 is unblocked. Phases 0–2 shipped this session. Several open items
+from Phases 0–2 are worth picking up
 opportunistically by whoever next has a working `pnpm`/browser, a macOS
 host to verify `sandbox-exec` on, or wants to chase the newly-found
 real-PTY duplicate-echo bug (which very likely affects other `tests/suites/

@@ -62,11 +62,10 @@ Reference docs (read these first):
   (NEW endpoint, extra — returns auth-status providers array) + reuse setApiKey/notifyAuthChanged
   via the providers POST route.
 - Everything else (MCP CRUD, archive, export+comments, skills CRUD, workspace-trust,
-  github, checkpoint, background-jobs, storage, user details/password/preferences, search providers):
+  github, checkpoint, storage, user details/password/preferences, search providers):
   implement routes with EXACT recon shapes backed by JSON files under `$AMIRO_HOME/store/*.json`,
   except: `mcp/.../call`, `.../test`, `checkpoint/restore`, `storage/ingest` (implement: fetch URL,
-  strip tags, return text), background-jobs create (run `jcode run --json` detached via child_process,
-  poll completion, store output), skills/generate (jcode `run` short prompt). Storage files under `$AMIRO_HOME/storage/<random-token>` served at `/storage/:token`.
+  strip tags, return text), skills/generate (jcode `run` short prompt). Storage files under `$AMIRO_HOME/storage/<random-token>` served at `/storage/:token`.
   Search-provider routes: static catalog + empty providers store (search is out of scope).
 - Dead endpoints from recon: implement as 404 `{error:"removed"}` (do NOT implement dead routes).
 - Error shape everywhere: `{error: string}` with matching status codes. Mutations the client ignores
@@ -84,7 +83,7 @@ Reference docs (read these first):
   where needed — simplest correct: truncate unsupported -> replay remaining history into new session),
   `adapter/src/models.mjs` (/api/chat/models + all /api/ai/*).
 - Worker 2 (adapter-routes): `adapter/src/routes/*.mjs` (mcp, archive, export, skills,
-  workspace-trust, github, checkpoint, background-jobs, storage, user, admin, search-providers) +
+  workspace-trust, github, checkpoint, storage, user, admin, search-providers) +
   `adapter/src/usage.mjs` + wire-up function `registerRoutes(app, ctx)` imported by server.mjs
   (coordinate the exact export name with worker 1 via a comment at top of server.mjs — worker 1
   creates server.mjs FIRST with a placeholder import, worker 2 matches it).

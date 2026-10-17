@@ -26,6 +26,8 @@ rand = "0.8"
 scrypt = { version = "0.11", features = [] }
 subtle = "2"
 chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
+croner = "4"
 tower-http = { version = "0.6", features = ["cors", "trace", "fs", "set-header"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 sha2 = "0.10"

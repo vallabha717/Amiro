@@ -1,6 +1,6 @@
 # Amiro Agent
 
-The Agent section replaces the Skills sidebar entry. The sidebar heading uses the signed-in user's saved agent name. It no longer lists individual skills or offers a create-skill action: the section is the agent, its square habitat, and the four quick-jump pills (Personality, Superpowers, Memory, Workspace). Selecting a skill happens in the Superpowers surface and the composer's mention picker, not the sidebar. The habitat contains a decorative roaming avatar, playful cube, hover greeting and an explicit pause control. It is not a claim that a background job is running. Reduced-motion preferences stop decorative movement.
+The Agent section replaces the Skills sidebar entry. The sidebar heading uses the signed-in user's saved agent name. It no longer lists individual skills or offers a create-skill action: the section is the agent, its square habitat, and the four quick-jump pills (Personality, Superpowers, Memory, Workspace). Selecting a skill happens in the Superpowers surface and the composer's mention picker, not the sidebar. The habitat contains a decorative roaming avatar, playful cube, hover greeting and an explicit pause control. It is not a live activity indicator. Reduced-motion preferences stop decorative movement.
 
 The Agent uses four OpenDots plush characters, vendored locally from CopilotKit/OpenDots with its MIT licence and attribution retained. Character tint and Agent interface accents follow the active sidebar theme, including light/dark changes. See `THIRD-PARTY-NOTICES.md` for provenance.
 

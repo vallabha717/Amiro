@@ -60,7 +60,7 @@ try {
   assert.match(stats.usageNotice, /shared Amiro runtime/);
   assert.deepEqual(stats.modelStats, []);
   check('real usage source and attribution disclaimer');
-  for (const route of ['/api/background-jobs', '/api/skills/generate', '/api/checkpoint/restore', '/api/mcp']) {
+  for (const route of ['/api/skills/generate', '/api/checkpoint/restore', '/api/mcp']) {
     assert.equal((await request(route, { method: 'POST', body: {} })).status, 501);
   }
   check('unsupported execution rejected honestly');

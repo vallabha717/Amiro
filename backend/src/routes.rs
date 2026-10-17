@@ -1,6 +1,5 @@
 pub mod admin;
 pub mod archive;
-pub mod background_jobs;
 pub mod checkpoint;
 pub mod export;
 pub mod fsbrowse;
@@ -9,6 +8,7 @@ pub mod mcp;
 pub mod provider_login;
 pub mod providers_catalog;
 pub mod search_providers;
+pub mod schedules;
 pub mod skills;
 pub mod storage;
 pub mod user;
@@ -32,7 +32,7 @@ pub fn router() -> Router<AppState> {
         .merge(provider_login::routes())
         .merge(search_providers::routes())
         .merge(github::routes())
-        .merge(background_jobs::routes())
+        .merge(schedules::routes())
         .merge(skills::routes())
 }
 

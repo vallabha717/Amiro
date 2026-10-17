@@ -219,8 +219,14 @@ async fn inject_backend_origin(req: Request, next: Next) -> Response {
         parts.headers.remove(header::CONTENT_LENGTH);
         return Response::from_parts(parts, Body::from(bytes));
     }
+    // Same-origin first: this backend serves both the page and the API on one
+    // listener, so the frontend must call relative /api URLs. Injecting only
+    // __BACKEND_PORT__ made browsers on a public origin fetch
+    // http://127.0.0.1:<public-port>, which Private Network Access blocks.
+    // config.ts checks __BACKEND_ORIGIN__ (typeof string, "" = same origin)
+    // before __BACKEND_PORT__, so the port stays for Tauri/dev readers.
     let bootstrap = format!(
-        "<head><script>window.__BACKEND_PORT__ = {port};\nwindow.__BACKEND_TOKEN__ = {};</script>",
+        "<head><script>window.__BACKEND_ORIGIN__ = \"\";\nwindow.__BACKEND_PORT__ = {port};\nwindow.__BACKEND_TOKEN__ = {};</script>",
         serde_json::Value::String(secret)
     );
     let injected = html.replacen("<head>", &bootstrap, 1);
@@ -329,7 +335,7 @@ async fn main() -> anyhow::Result<()> {
         ))
         .layer(middleware::from_fn(inject_backend_origin))
         .layer(middleware::from_fn(sidecar_and_origin_middleware))
-        .with_state(state);
+        .with_state(state.clone());
 
     let port: u16 = std::env::var("AMIRO_PORT")
         .ok()
@@ -338,7 +344,10 @@ async fn main() -> anyhow::Result<()> {
     let host = std::env::var("AMIRO_HOST").unwrap_or_else(|_| "127.0.0.1".into());
     let addr = format!("{host}:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await?;
+    // A process that cannot bind its listener must never start background work.
+    let scheduler = backend::schedules::spawn_scheduler(state);
     tracing::info!(addr=%addr, "listening");
     axum::serve(listener, app).await?;
+    scheduler.abort();
     Ok(())
 }

@@ -105,6 +105,18 @@ pub fn history_to_messages(thread_id: &str, session_id: &str, history: &[Value])
     }).collect()
 }
 
+/// In-app reminders do not need a model or a runtime session. Keep their
+/// server-authored messages visible if the user later continues the thread.
+fn thread_messages(entry: &Value, thread_id: &str, session_id: &str, history: &[Value]) -> Vec<Value> {
+    let mut messages = entry
+        .get("localMessages")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    messages.extend(history_to_messages(thread_id, session_id, history));
+    messages
+}
+
 async fn list_threads(State(state): State<AppState>, user: AuthUser) -> Result<Json<Value>, ApiError> {
     let uid = user_id(&user);
     let doc = read_json(&threads_path(&state), json!({})).await?;
@@ -145,7 +157,7 @@ async fn get_thread(State(state): State<AppState>, user: AuthUser, Path(id): Pat
                 )
             })?
     };
-    let messages = history_to_messages(&id, session_id, &history);
+    let messages = thread_messages(&entry, &id, session_id, &history);
     Ok(Json(json!({
         "id": id,
         "title": entry.get("title").and_then(|v| v.as_str()).unwrap_or("New Chat"),
@@ -228,9 +240,38 @@ async fn delete_threads(State(state): State<AppState>, user: AuthUser, Query(q):
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Local reminders use durable message ids rather than runtime history offsets.
+async fn edit_local_message(state: &AppState, uid: &str, id: &str, truncate: bool) -> Result<StatusCode, ApiError> {
+    let _guard = state.store.lock().await;
+    let path = threads_path(state);
+    let mut doc = read_json(&path, json!({})).await?;
+    let entries = doc.as_object_mut().ok_or_else(|| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "invalid threads".into()))?;
+    let mut found = false;
+    for entry in entries.values_mut() {
+        if !owns(entry, uid) { continue; }
+        if let Some(messages) = entry.get_mut("localMessages").and_then(Value::as_array_mut) {
+            if let Some(index) = messages.iter().position(|message| message.get("id").and_then(Value::as_str) == Some(id)) {
+                if truncate { messages.truncate(index + 1); } else { messages.remove(index); }
+                if truncate {
+                    if let Some(sid) = entry.get("sessionId").and_then(Value::as_str).filter(|sid| !sid.is_empty()) {
+                        crate::runtime::rewind_session(state, sid, 0).await?;
+                    }
+                }
+                found = true;
+                break;
+            }
+        }
+    }
+    if !found { return Err(ApiError(StatusCode::NOT_FOUND, "message not found".into())); }
+    write_json(&path, &doc).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn delete_msg(State(state): State<AppState>, user: AuthUser, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
-    let (idx, sid) = parse_msg_id(&id).ok_or_else(|| ApiError(StatusCode::BAD_REQUEST, "invalid message id".into()))?;
     let uid = user_id(&user);
+    let Some((idx, sid)) = parse_msg_id(&id) else {
+        return edit_local_message(&state, &uid, &id, false).await;
+    };
     let doc = read_json(&threads_path(&state), json!({})).await?;
     let owns_any = doc.as_object().map(|obj| obj.values().any(|e| e.get("sessionId").and_then(|v| v.as_str()) == Some(&sid) && owns(e, &uid))).unwrap_or(false);
     if !owns_any { return Err(ApiError(StatusCode::NOT_FOUND, "thread not found".into())); }
@@ -239,8 +280,10 @@ async fn delete_msg(State(state): State<AppState>, user: AuthUser, Path(id): Pat
 }
 
 async fn truncate_msg(State(state): State<AppState>, user: AuthUser, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
-    let (idx, sid) = parse_msg_id(&id).ok_or_else(|| ApiError(StatusCode::BAD_REQUEST, "invalid message id".into()))?;
     let uid = user_id(&user);
+    let Some((idx, sid)) = parse_msg_id(&id) else {
+        return edit_local_message(&state, &uid, &id, true).await;
+    };
     let doc = read_json(&threads_path(&state), json!({})).await?;
     let owns_any = doc.as_object().map(|obj| obj.values().any(|e| e.get("sessionId").and_then(|v| v.as_str()) == Some(&sid) && owns(e, &uid))).unwrap_or(false);
     if !owns_any { return Err(ApiError(StatusCode::NOT_FOUND, "thread not found".into())); }
@@ -254,4 +297,59 @@ pub fn router() -> Router<AppState> {
         .route("/api/thread/{id}", get(get_thread).put(put_thread).delete(delete_thread))
         .route("/api/thread/messages/{id}", delete(delete_msg))
         .route("/api/thread/messages/{id}/truncate", post(truncate_msg))
+}
+
+#[cfg(test)]
+mod reminder_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn reminder_message_actions_are_durable_and_owner_scoped() {
+        let home = std::env::temp_dir().join(format!("amiro-reminder-test-{}", uuid::Uuid::new_v4()));
+        let mut state = AppState::from_env();
+        state.home = home.clone();
+        write_json(&threads_path(&state), &json!({"t":{
+            "userId":"owner", "localMessages":[{"id":"first"},{"id":"second"}]
+        }})).await.unwrap();
+        let denied = edit_local_message(&state, "stranger", "first", false).await.unwrap_err();
+        assert_eq!(denied.0, StatusCode::NOT_FOUND);
+        edit_local_message(&state, "owner", "first", true).await.unwrap();
+        let doc = read_threads(&state).await.unwrap();
+        assert_eq!(doc["t"]["localMessages"], json!([{"id":"first"}]));
+        edit_local_message(&state, "owner", "first", false).await.unwrap();
+        assert_eq!(read_threads(&state).await.unwrap()["t"]["localMessages"], json!([]));
+        tokio::fs::remove_dir_all(home).await.unwrap();
+    }
+
+    #[test]
+    fn local_reminder_is_visible_without_a_runtime_session() {
+        let reminder = json!({
+            "id":"reminder-1", "threadId":"thread-1", "role":"assistant",
+            "parts":[{"type":"text","text":"Call the dentist"}]
+        });
+        let entry = json!({"localMessages":[reminder.clone()]});
+        assert_eq!(thread_messages(&entry, "thread-1", "", &[]), vec![reminder]);
+    }
+
+    #[test]
+    fn continuing_a_reminder_thread_preserves_the_original_reminder() {
+        let entry = json!({"localMessages":[{"id":"reminder-1","role":"assistant"}]});
+        let messages = thread_messages(&entry, "thread-1", "session-1", &[
+            json!({"role":"user","content":"Thanks"}),
+            json!({"role":"assistant","content":"You are welcome"}),
+        ]);
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0]["id"], "reminder-1");
+        assert_eq!(messages[1]["role"], "user");
+        assert_eq!(messages[2]["parts"][0]["text"], "You are welcome");
+    }
+
+    #[test]
+    fn ordinary_threads_keep_the_existing_runtime_message_shape() {
+        let history = [json!({"role":"assistant","content":"Hello"})];
+        assert_eq!(
+            thread_messages(&json!({}), "thread-1", "session-1", &history)[0]["id"],
+            "msg_0_session-1"
+        );
+    }
 }

@@ -232,14 +232,6 @@ Exceptions to that:
 | `/api/checkpoint/restore` | POST | `checkpoint/rewind-confirm-dialog.tsx` → `restoreCheckpoint` | `{threadId, turnId}` | `{turnId, files: {path, existedBefore, restored, error?}[]}` | token+session | |
 | `/api/checkpoint/latest` | GET | – | – | – | – | **dead** |
 
-### Background agent runs
-
-| endpoint | method | caller file(s) | request shape | response shape | auth | notes |
-| --- | --- | --- | --- | --- | --- | --- |
-| `/api/background-jobs` | GET | `hooks/queries/use-background-jobs.ts` (SWR, 5s poll) | – | `{jobs: BackgroundJob[]}`; `BackgroundJob = {id,threadId,workspaceRoot,prompt,mode,status:"running"\|"suspended"\|"done"\|"failed"\|"interrupted",autoPr,error?,startedAt,finishedAt?}` | token+session | polling, no push channel |
-| `/api/background-jobs` | POST | `components/background-jobs/background-jobs-list.tsx` → `createBackgroundJob` | `{prompt, mode:"edit"\|"auto", workspaceRoot?, autoPr?}` | `BackgroundJob` | token+session | |
-| `/api/background-jobs/{id}` | GET | – | – | – | – | **dead** (`selectBackgroundJob` unused) |
-
 ### Storage
 
 | endpoint | method | caller file(s) | request shape | response shape | auth | notes |
@@ -263,13 +255,13 @@ Exceptions to that:
 - **Dead from the frontend** (routes exist server-side, zero callers in `src/`): `GET /api/user/stats`,
   `GET /api/user/details/{id}`, all admin user CRUD (`GET /api/admin/users/{id}`, `PUT .../role`,
   `PUT .../ban`, `DELETE .../{id}`), `POST /api/bookmark`, `DELETE /api/bookmark`,
-  `GET /api/sandbox/status`, `GET /api/checkpoint/latest`, `GET /api/background-jobs/{id}`,
+  `GET /api/sandbox/status`, `GET /api/checkpoint/latest`,
   `GET /api/archive/{id}/items`, `DELETE /api/archive/{id}/items/{itemId}`,
   `POST /api/ai/providers/{id}/sync-models`, `POST /api/storage/upload` (multipart).
 - **Wrappers with no call site**: `chat-api.exportChat` *is* used (via popup), but
-  `ai/providers.syncProviderModels`, `mcp-api.saveMcpClient`, `background-jobs-api.selectBackgroundJob`,
+  `ai/providers.syncProviderModels`, `mcp-api.saveMcpClient`,
   `workspace-trust-api.selectWorkspaceTrustGrants`, `checkpoint-api.selectCheckpointFiles`,
-  `archive-api.removeItemFromArchive` are unused — the last four are re-implemented inline as raw SWR
+  `archive-api.removeItemFromArchive` are unused — the last three are re-implemented inline as raw SWR
   keys / raw `fetcher` calls in components.
 - **`GET /api/chat/models` has no session guard** even though it returns per-user provider
   availability; it is the one model-listing route reachable with the shared secret alone.

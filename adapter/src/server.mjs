@@ -535,7 +535,6 @@ async function handle(req, res, url, app, ctx) {
   // integrations were connected to the Amiro runtime. These need a dedicated
   // policy layer.
   const unsupported = (
-    (pathname === '/api/background-jobs' && req.method === 'POST') ||
     pathname === '/api/skills/generate' ||
     pathname === '/api/checkpoint/restore' ||
     (pathname.startsWith('/api/mcp/') && /\/(call|authorize|callback|refresh)$/.test(pathname)) ||

@@ -40,9 +40,6 @@ Run: `NODE_TLS_REJECT_UNAUTHORIZED=0 AMIRO_TEST_URL=https://194.238.18.234:8787 
 | POST /api/archive/:id/items | 401 | Not run |
 | GET /api/archive/:id/items | 401 | 404 |
 | DELETE /api/archive/:id/items/:itemId | 401 | Not run |
-| GET /api/background-jobs | 401 | 200 |
-| POST /api/background-jobs | 401 | Not run |
-| GET /api/background-jobs/:id | 401 | 404 |
 | GET /api/checkpoint/files | 401 | 400 |
 | POST /api/checkpoint/restore | 401 | Not run |
 | GET /api/checkpoint/latest | 401 | 404 |

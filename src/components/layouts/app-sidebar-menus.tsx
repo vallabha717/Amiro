@@ -23,7 +23,6 @@ import {
   ChevronRight,
   FolderOpenIcon,
   FolderSearchIcon,
-  PlayCircleIcon,
   PlusIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -98,21 +97,6 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
                 <SidebarMenuButton className="font-semibold">
                   <MCPIcon className="size-4 fill-accent-foreground" />
                   {t("Layout.mcpConfiguration")}
-                </SidebarMenuButton>
-              </Link>
-            </SidebarMenuItem>
-          </Tooltip>
-        </SidebarMenu>
-        <SidebarMenu>
-          <Tooltip>
-            <SidebarMenuItem>
-              <Link href="/runs" data-testid="sidebar-runs-link">
-                <SidebarMenuButton
-                  className="font-semibold"
-                  isActive={pathname.startsWith("/runs")}
-                >
-                  <PlayCircleIcon className="size-4" />
-                  Agent runs
                 </SidebarMenuButton>
               </Link>
             </SidebarMenuItem>

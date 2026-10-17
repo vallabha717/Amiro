@@ -66,7 +66,7 @@ try {
   const defaultStats = await (await request(`/api/admin/users/${account.user.id}/stats`)).json();
   assert.equal(defaultStats.stats.period, 'Last 30 Days');
   pass('usage default filter', 'omitted range returns Last 30 Days');
-  for (const route of ['/api/background-jobs', '/api/skills/generate', '/api/checkpoint/restore', '/api/mcp', '/api/search/providers']) {
+  for (const route of ['/api/skills/generate', '/api/checkpoint/restore', '/api/mcp', '/api/search/providers']) {
     assert.equal((await request(route, { method: 'POST', body: {} })).status, 501);
   }
   pass('restricted execution and search', 'public mutation interfaces reject unsupported execution with HTTP 501');

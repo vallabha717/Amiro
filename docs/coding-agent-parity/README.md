@@ -2,10 +2,9 @@
 
 Closes the top of the gap list in
 [docs/future-implementation/amiro-vs-coding-agents-comparison.md](../future-implementation/amiro-vs-coding-agents-comparison.md):
-workspace trust, checkpoints/rewind, sandboxed shell execution, git
-push/PR, and background agent runs — the five items that document ranks
-"closest to 'this is a coding agent, not a chat app with tools'" and "the
-background agent story."
+workspace trust, checkpoints/rewind, sandboxed shell execution, and git
+push/PR — the items that document ranks "closest to 'this is a coding
+agent, not a chat app with tools'".
 
 ## Read in this order
 
@@ -16,7 +15,6 @@ background agent story."
 | 02 | [Checkpoints & rewind](02-checkpoints-and-rewind.md) | What gets captured, where it lives, what restore does |
 | 03 | [Sandboxed execution](03-sandboxed-execution.md) | Per-platform isolation, the honest-degrade contract |
 | 04 | [Git remote operations](04-git-remote-operations.md) | `push`/`create_pr` shape, credentials, the always-ask gate |
-| 05 | [Background agent runs](05-background-agent-runs.md) | Job lifecycle, unattended permissions, auto-PR composition |
 | — | [**Progress**](progress/README.md) | What is actually built, phase by phase |
 
 ## Progress
@@ -32,20 +30,18 @@ never mistaken for a status report.
 | 1 | ⚠️ Complete with gaps (2/6 criteria MET literally; underlying behavior proven) — [record](progress/phase-01-checkpoints-and-rewind.md) |
 | 2 | ⚠️ Complete with gaps (4/5 criteria MET; verified against a real bubblewrap backend, macOS unverified) — [record](progress/phase-02-sandboxed-execution.md) |
 | 3 | ⚠️ Complete with gaps (3/5 criteria literally MET; the other 2 proven at the unit/HTTP layer, blocked from a literal pass by pnpm/PTY environment gaps) — [record](progress/phase-03-git-remote-operations.md) |
-| 4 | ⚠️ Complete with gaps (5/7 criteria literally MET; 1 more via the same environment-honest pattern Phase 2 established; 1 not met for lack of a Tauri runtime in this sandbox) — [record](progress/phase-04-background-agent-runs.md) |
 
 ## Phases
 
-The build order lives in [`phases/`](phases/README.md). Five phases, each
+The build order lives in [`phases/`](phases/README.md). Four phases, each
 with its own exit criteria and an explicit dependency graph.
 
 | Phase | Title | Size | Blocks |
 |---|---|---|---|
-| [0](phases/phase-00-workspace-trust-and-rules.md) | Workspace trust + `AGENTS.md` | M | 4 |
+| [0](phases/phase-00-workspace-trust-and-rules.md) | Workspace trust + `AGENTS.md` | M | — |
 | [1](phases/phase-01-checkpoints-and-rewind.md) | Checkpoints & rewind | M | — |
-| [2](phases/phase-02-sandboxed-execution.md) | Sandboxed shell execution | L | 4 |
-| [3](phases/phase-03-git-remote-operations.md) | Git push + PR creation | M | 4 |
-| [4](phases/phase-04-background-agent-runs.md) | Background agent runs | L | — |
+| [2](phases/phase-02-sandboxed-execution.md) | Sandboxed shell execution | L | — |
+| [3](phases/phase-03-git-remote-operations.md) | Git push + PR creation | M | — |
 
 ## Decisions already made
 
@@ -53,10 +49,9 @@ These were settled before the phase documents were written; they are not
 open questions for implementation to re-litigate.
 
 1. **Compose existing primitives before adding new ones.** Checkpoints
-   reuse the local blob store; auto-PR reuses `walkthrough` + `push` +
-   `create_pr`; the trust prompt and rewind confirmation both reuse the
-   existing approval-card renderer. No phase adds a second version of a
-   mechanism Amiro already has.
+   reuse the local blob store; the trust prompt and rewind confirmation
+   both reuse the existing approval-card renderer. No phase adds a second
+   version of a mechanism Amiro already has.
 2. **The rules file is named `AGENTS.md`**, not `.cursorrules` or
    `CLAUDE.md` — vendor-neutral, matching the reasoning
    `docs/skills/00-overview.md` already applied to the Skills format
@@ -73,22 +68,9 @@ open questions for implementation to re-litigate.
    a new `AlwaysAsk` predicate that asks even in Auto mode, because a push
    reaches a system outside the user's own machine, which nothing else in
    the tool set does today. See [04](04-git-remote-operations.md).
-6. **Unattended is a stricter mode, not a bigger one.** A background job
-   never gets a capability an interactive turn doesn't have; it loses the
-   ability to fall back to "ask a human," and every place that would have
-   asked either suspends the job or refuses outright. See
-   [05](05-background-agent-runs.md).
-7. **Background-run concurrency is capped at 2 for this plan**, well below
-   Cursor's 8 and Antigravity's 5, because Phase 4 is also proving the
-   underlying shape (a goroutine outliving a request) for the first time in
-   this codebase — raising the cap is explicit follow-up work once that
-   shape is proven, not a target this plan tries to hit.
-8. **No `gh` CLI dependency.** `create_pr` calls the GitHub REST API
+6. **No `gh` CLI dependency.** `create_pr` calls the GitHub REST API
    directly, consistent with the backend standard's "pure Go, no new
    runtime dependency" — the same reasoning that already kept `ripgrep` and
    tree-sitter out of other tools.
-9. **GitHub only, this round.** GitLab/Bitbucket support is real but
-   deferred, not blocking Phase 3 or Phase 4.
-10. **A background job is always started by an explicit user action.**
-    Scheduled/cron-triggered runs are out of scope — see `00-overview.md`'s
-    non-goals.
+7. **GitHub only, this round.** GitLab/Bitbucket support is real but
+   deferred, not blocking Phase 3.

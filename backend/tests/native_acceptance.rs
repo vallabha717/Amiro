@@ -467,17 +467,24 @@ async fn native_registration_cannot_escalate_or_clobber_another_persona() {
             "member must not access {route}"
         );
     }
+    // The manual "Agent runs" surface (background jobs) was removed. Its former
+    // execution route must not resolve to anything that can launch
+    // tool-enabled work against an arbitrary machine path.
     let forbidden_root = server.home.join("must-not-create-untrusted-workspace");
     let response = server.client.post(format!("{}/api/background-jobs", server.url))
         .bearer_auth(token)
         .json(&json!({"prompt":"acceptance must never execute this", "mode":"edit", "workspaceRoot":forbidden_root}))
         .send().await.unwrap();
+    // The route is gone: main.rs only registers GET on the `/api/{*path}`
+    // catch-all, so a POST lands on 405 there rather than 404. Either way it
+    // must never resolve to something that executes tool-enabled work.
     assert!(
         matches!(
             response.status(),
-            StatusCode::FORBIDDEN | StatusCode::NOT_IMPLEMENTED
+            StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED
         ),
-        "ordinary members must not launch tool-enabled jobs on arbitrary machine paths"
+        "the removed Agent runs execution surface must stay gone, got {}",
+        response.status()
     );
     assert!(
         !forbidden_root.exists(),

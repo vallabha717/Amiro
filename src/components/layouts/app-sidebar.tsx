@@ -35,7 +35,7 @@ export function AppSidebar({
 
   return (
     <Sidebar
-      collapsible="none"
+      collapsible="offcanvas"
       className="border-r border-sidebar-border/80 h-screen"
     >
       <SidebarHeaderShared

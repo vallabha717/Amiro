@@ -221,37 +221,6 @@ export class SkillsPage {
   }
 }
 
-export class RunsPage {
-  readonly page: Page;
-  readonly panel: Locator;
-  readonly promptInput: Locator;
-  readonly startButton: Locator;
-  readonly emptyState: Locator;
-  readonly rows: Locator;
-
-  constructor(page: Page) {
-    this.page = page;
-    this.panel = page.locator('[data-testid="background-jobs-panel"]');
-    this.promptInput = page.locator(
-      '[data-testid="background-job-prompt-input"]',
-    );
-    this.startButton = page.locator(
-      '[data-testid="background-job-start-button"]',
-    );
-    this.emptyState = page.locator('[data-testid="background-jobs-empty"]');
-    this.rows = page.locator('[data-testid="background-job-row"]');
-  }
-
-  async goto() {
-    await this.page.goto("/runs");
-    await this.page.waitForLoadState("domcontentloaded");
-  }
-
-  statusBadgeFor(row: Locator) {
-    return row.locator('[data-testid="background-job-status-badge"]');
-  }
-}
-
 export class SkillDetailPage {
   readonly page: Page;
   readonly nameInput: Locator;
