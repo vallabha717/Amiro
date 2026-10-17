@@ -5,6 +5,7 @@ import {
   FileText,
   FlaskConical,
   KeySquare,
+  Link2,
   Loader,
   Loader2,
   Trash2,
@@ -46,6 +47,8 @@ export const SearchProviderCard = memo(function SearchProviderCard({
   apiKeyHint,
   isActive,
   extracts,
+  baseUrl,
+  custom,
 }: SearchProviderConfig) {
   const t = useTranslations("Providers");
   const router = useRouter();
@@ -230,9 +233,16 @@ export const SearchProviderCard = memo(function SearchProviderCard({
           )}
         </span>
 
+        {(baseUrl || custom?.endpoint) && (
+          <span className="flex items-center gap-1.5 font-mono text-[11px] truncate max-w-xs text-primary/80">
+            <Link2 className="size-3 shrink-0" />
+            <span className="truncate">{baseUrl || custom?.endpoint}</span>
+          </span>
+        )}
+
         <span className="flex items-center gap-1.5">
           <FileText className="size-3.5 shrink-0" />
-          {extracts ? "extracts page content" : "links and snippets only"}
+          <span>{extracts ? "extracts page content" : "links and snippets only"}</span>
         </span>
       </CardContent>
     </Card>
