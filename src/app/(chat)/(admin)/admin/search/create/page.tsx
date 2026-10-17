@@ -12,7 +12,7 @@ const LightRays = dynamic(() => import("@/components/ui/light-rays"), {
 
 export default function CreateSearchProviderPage() {
   const searchParams = useSearchParams();
-  const templateProvider = searchParams.get("template") || "duckduckgo";
+  const templateProvider = searchParams.get("template") || "brave";
 
   return (
     <>

@@ -20,6 +20,21 @@ fn catalog_lock() -> Arc<Mutex<Option<Catalog>>> {
     CATALOG.get_or_init(|| Arc::new(Mutex::new(None))).clone()
 }
 
+fn load_cached_models(state: &AppState, provider: &str) -> Vec<String> {
+    let cache_file = state.runtime_home.join("cache").join(format!("{}_models.json", provider));
+    if let Ok(content) = std::fs::read_to_string(&cache_file) {
+        if let Ok(val) = serde_json::from_str::<Value>(&content) {
+            if let Some(arr) = val.get("models").and_then(|m| m.as_array()) {
+                return arr
+                    .iter()
+                    .filter_map(|item| item.get("id").and_then(|id| id.as_str()).map(|s| s.to_string()))
+                    .collect();
+            }
+        }
+    }
+    vec![]
+}
+
 async fn build_catalog(state: &AppState) -> Value {
     let cached = {
         let lock = catalog_lock();
@@ -47,13 +62,44 @@ async fn build_catalog(state: &AppState) -> Value {
     for p in available {
         let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
         if id.is_empty() { continue; }
-        match crate::runtime::model_list(state, &id).await {
-            Ok(res) => {
-                let models = res.get("models").and_then(|m| m.as_array()).cloned().unwrap_or_default();
-                let selected = res.get("selected_model").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                providers.push(json!({"id": id, "name": p.get("display_name").and_then(|v| v.as_str()).unwrap_or(&id).to_string(), "models": models, "selectedModel": selected}));
+        let mut models = vec![];
+        let mut selected = String::new();
+        if let Ok(res) = crate::runtime::model_list(state, &id).await {
+            if let Some(m_arr) = res.get("models").and_then(|m| m.as_array()) {
+                for m in m_arr {
+                    if let Some(s) = m.as_str() {
+                        models.push(s.to_string());
+                    }
+                }
             }
-            Err(_) => continue,
+            if let Some(r_arr) = res.get("routes").and_then(|r| r.as_array()) {
+                for r in r_arr {
+                    if let Some(m) = r.get("model").and_then(|m| m.as_str()) {
+                        if !models.contains(&m.to_string()) {
+                            models.push(m.to_string());
+                        }
+                    }
+                }
+            }
+            if let Some(s) = res.get("selected_model").and_then(|v| v.as_str()) {
+                selected = s.to_string();
+            }
+        }
+        for cached_model in load_cached_models(state, &id) {
+            if !models.contains(&cached_model) {
+                models.push(cached_model);
+            }
+        }
+        if selected.is_empty() && !models.is_empty() {
+            selected = models[0].clone();
+        }
+        if !models.is_empty() {
+            providers.push(json!({
+                "id": id,
+                "name": p.get("display_name").and_then(|v| v.as_str()).unwrap_or(&id).to_string(),
+                "models": models,
+                "selectedModel": selected
+            }));
         }
     }
     let data = json!({"providers": providers, "rawStatus": auth});
@@ -120,6 +166,8 @@ async fn get_ai_providers(State(state): State<AppState>) -> Result<Json<Value>, 
     Ok(Json(json!(providers.iter().map(|p| json!({
         "id": p.get("id").cloned().unwrap_or(json!("")),
         "name": p.get("name").cloned().unwrap_or(json!("")),
+        "provider": p.get("id").cloned().unwrap_or(json!("")),
+        "configured": true,
         "models": p.get("models").cloned().unwrap_or(json!([])),
         "selectedModel": p.get("selectedModel").cloned().unwrap_or(json!("")),
     })).collect::<Vec<_>>())))

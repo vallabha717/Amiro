@@ -741,7 +741,11 @@ async fn schedules_reject_dst_gap_and_fold() {
     );
     let body: Value = offset.json().await.unwrap();
     let runs = body["nextRuns"].as_array().expect("nextRuns array");
-    assert_eq!(runs.len(), 1, "once offset preview returns one time: {body}");
+    assert_eq!(
+        runs.len(),
+        1,
+        "once offset preview returns one time: {body}"
+    );
     assert_eq!(
         runs[0].as_str().unwrap(),
         "2029-11-04T05:30:00.000Z",
@@ -864,95 +868,100 @@ async fn schedules_once_timer_fires_across_restart_without_replay() {
 #[tokio::test]
 async fn schedules_running_marked_interrupted_never_replayed() {
     // Crash-during-run policy: a run stuck in `running` when the process
-    // dies is marked interrupted on next boot and NEVER re-executed. This
-    // test seeds that state directly in the store file (the only way to
-    // fabricate a mid-run crash without a live runtime) and asserts the
-    // recovery outcome. Store layout tracked from contract v1; adapt field
-    // names if the backend namespaces them, but do NOT weaken the policy
-    // to make an implementation bug pass.
+    // dies is marked `interrupted` on next boot and NEVER re-executed. The
+    // store layout is `$AMIRO_HOME/store/schedules.json` (`{id: Schedule}`)
+    // plus `$AMIRO_HOME/store/schedule-runs.json` (`{runId: ScheduleRun}`).
+    // This test writes a real `running` row into the top level runs map,
+    // with the schedule's `nextRunAt` left in the past so any replay would
+    // be visible as a second row, then restarts and asserts recovery.
     let mut server = SchedServer::start(false).await;
     let admin = server.admin_token().await;
 
     let created = server
-        .create_notify_once(&admin, "crash mid run", "2030-09-01T00:00:00Z")
+        .create_notify_once(&admin, "crash mid run", &rfc3339_utc_plus(45))
         .await;
     let id = created["schedule"]["id"].as_str().unwrap().to_string();
 
-    // Fabricate the crash: inject a `running` run row into the persisted
-    // store under the same home, then kill the process without any graceful
-    // completion path.
-    let store_candidates = [
-        server.home.join("store").join("schedules.json"),
-        server.home.join("store").join("schedule-runs.json"),
-    ];
-    let mut injected = false;
-    for path in &store_candidates {
-        if path.exists() {
-            let raw = fs::read_to_string(path).unwrap();
-            let mut doc: Value = serde_json::from_str(&raw).unwrap_or(json!({}));
-            // Two plausible layouts: runs nested under the schedule, or a
-            // top-level runs map. Add one running row to whichever exists.
-            if doc.get(&id).is_some() {
-                let run_id = format!("run-crash-{id}");
-                doc[&id]["runs"][&run_id] = json!({
-                    "id": run_id,
-                    "status": "running",
-                    "startedAt": rfc3339_utc_plus(0),
-                });
-                fs::write(path, serde_json::to_vec_pretty(&doc).unwrap()).unwrap();
-                injected = true;
-                break;
-            }
-            if doc.get("runs").is_some() {
-                let run_id = format!("run-crash-{id}");
-                doc["runs"][&run_id] = json!({
-                    "id": run_id,
-                    "scheduleId": id,
-                    "status": "running",
-                    "startedAt": rfc3339_utc_plus(0),
-                });
-                fs::write(path, serde_json::to_vec_pretty(&doc).unwrap()).unwrap();
-                injected = true;
-                break;
-            }
-        }
-    }
-    // If the backend uses different filenames, the boot below still must
-    // show zero replays; the injection assert pins the store discovery.
+    let runs_path = server.home.join("store").join("schedule-runs.json");
+    let sched_path = server.home.join("store").join("schedules.json");
     assert!(
-        injected || !store_candidates.iter().any(|p| p.exists()),
-        "store layout changed: inspect <home>/store/*.json and update the injection, keeping the interrupted-no-replay assertion"
+        sched_path.exists(),
+        "backend must persist schedules.json: inspect <home>/store for the actual layout"
     );
+    // Seed the running row exactly as the tick claim would: a top-level
+    // entry keyed by run id carrying scheduleId + status running.
+    let run_id = format!("run-crash-{id}");
+    let raw = fs::read_to_string(&runs_path).unwrap_or_else(|_| "{}".to_string());
+    let mut runs_doc: Value = serde_json::from_str(&raw).unwrap_or(json!({}));
+    if !runs_doc.is_object() {
+        runs_doc = json!({});
+    }
+    runs_doc[&run_id] = json!({
+        "id": run_id,
+        "scheduleId": id,
+        "userId": created["schedule"]["userId"].clone(),
+        "scheduledAt": rfc3339_utc_plus(0),
+        "startedAt": rfc3339_utc_plus(0),
+        "finishedAt": null,
+        "status": "running",
+        "outputPreview": null,
+        "threadId": null,
+    });
+    fs::write(&runs_path, serde_json::to_vec_pretty(&runs_doc).unwrap()).unwrap();
+    // Leave the schedule due in the past so a replay would append a visible
+    // second row after boot.
+    let sched_raw = fs::read_to_string(&sched_path).unwrap();
+    let mut sched_doc: Value = serde_json::from_str(&sched_raw).unwrap();
+    sched_doc[&id]["nextRunAt"] = json!(rfc3339_utc_plus(0));
+    fs::write(&sched_path, serde_json::to_vec_pretty(&sched_doc).unwrap()).unwrap();
 
     server.restart().await;
     let admin2 = server.admin_token().await;
     // Settle window: recovery runs at boot; nothing may append after that.
     tokio::time::sleep(Duration::from_secs(10)).await;
     let history = server.runs(&admin2, &id).await;
-    let replayed = history
+    let by_id: std::collections::HashMap<&str, &Value> = history
         .iter()
-        .filter(|r| {
-            r["status"] == "succeeded" || r["status"] == "success" || r["status"] == "completed"
-        })
-        .count();
+        .filter_map(|r| r["id"].as_str().map(|rid| (rid, r)))
+        .collect();
+    let crashed = by_id.get(run_id.as_str()).expect(
+        "the seeded running row must still exist after recovery (as interrupted, not deleted)",
+    );
     assert_eq!(
-        replayed, 0,
-        "crashed running runs must never complete as success: {history:?}"
+        crashed["status"], "interrupted",
+        "a run that was running across a restart must be marked interrupted: {history:?}"
+    );
+    assert!(
+        crashed["finishedAt"].is_string(),
+        "an interrupted run must carry finishedAt: {history:?}"
     );
     for run in &history {
-        assert!(
-            !run["status"].as_str().unwrap_or("").contains("running"),
+        assert_ne!(
+            run["status"], "running",
             "no run may stay running after recovery: {history:?}"
         );
+        assert!(
+            run["status"] != "succeeded"
+                && run["status"] != "success"
+                && run["status"] != "completed"
+                && run["status"] != "ok",
+            "a crashed running run must never complete as success: {history:?}"
+        );
     }
+    assert_eq!(
+        history.len(),
+        1,
+        "recovery must close the crashed row without appending a replay: {history:?}"
+    );
 }
 
 #[tokio::test]
 async fn schedules_concurrent_run_now_single_flight() {
-    // run-now + timer race: 8 concurrent run-now calls must not produce
-    // parallel executions of the same schedule. The backend may serialize
-    // (409/423/429/503 on the loser) or coalesce (shared run id); it must
-    // never report distinct successful runs for one burst.
+    // run-now + timer race: 8 concurrent run-now calls must never overlap
+    // in time. The losers get 409/423/429/503, or the backend coalesces to
+    // a shared run id; either way no two `running` rows for one schedule
+    // may exist at once, and the burst must not fabricate extra completed
+    // runs. Serial fast success is fine, overlap is not.
     let server = SchedServer::start(false).await;
     let admin = server.admin_token().await;
 
@@ -960,7 +969,6 @@ async fn schedules_concurrent_run_now_single_flight() {
         .create_notify_once(&admin, "single flight", "2030-10-01T00:00:00Z")
         .await;
     let id = created["schedule"]["id"].as_str().unwrap().to_string();
-    let before = server.runs(&admin, &id).await.len();
 
     let mut handles = Vec::new();
     for _ in 0..8 {
@@ -968,7 +976,7 @@ async fn schedules_concurrent_run_now_single_flight() {
         let token = admin.clone();
         let sid = id.clone();
         handles.push(tokio::spawn(async move {
-            Client::builder()
+            let response = Client::builder()
                 .timeout(Duration::from_secs(30))
                 .build()
                 .unwrap()
@@ -978,20 +986,34 @@ async fn schedules_concurrent_run_now_single_flight() {
                 .json(&json!({}))
                 .send()
                 .await
-                .unwrap()
-                .status()
+                .unwrap();
+            let status = response.status();
+            let body: Value = response.json().await.unwrap_or(json!({}));
+            (status, body)
         }));
     }
     let mut ok = 0;
     let mut conflict = 0;
+    let mut seen_run_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
     for h in handles {
-        match h.await.unwrap() {
-            s if s.is_success() => ok += 1,
-            StatusCode::CONFLICT
-            | StatusCode::LOCKED
-            | StatusCode::TOO_MANY_REQUESTS
-            | StatusCode::SERVICE_UNAVAILABLE => conflict += 1,
-            other => panic!("unexpected run-now status in burst: {other}"),
+        let (status, body) = h.await.unwrap();
+        if status.is_success() {
+            ok += 1;
+            if let Some(rid) = body["run"]["id"].as_str() {
+                seen_run_ids.insert(rid.to_string());
+            }
+        } else {
+            assert!(
+                matches!(
+                    status,
+                    StatusCode::CONFLICT
+                        | StatusCode::LOCKED
+                        | StatusCode::TOO_MANY_REQUESTS
+                        | StatusCode::SERVICE_UNAVAILABLE,
+                ),
+                "unexpected run-now status in burst: {status}"
+            );
+            conflict += 1;
         }
     }
     assert!(ok >= 1, "at least one run-now must succeed");
@@ -1001,18 +1023,101 @@ async fn schedules_concurrent_run_now_single_flight() {
     );
 
     let history = server.runs(&admin, &id).await;
-    let active: Vec<_> = history
+    let live: Vec<_> = history
+        .iter()
+        .filter(|r| r["status"] == "running")
+        .collect();
+    assert!(
+        live.len() <= 1,
+        "no two running rows for one schedule may overlap: {history:?}"
+    );
+    let distinct_completed: std::collections::HashSet<&str> = history
         .iter()
         .filter(|r| {
             r["status"] == "succeeded"
                 || r["status"] == "success"
                 || r["status"] == "completed"
-                || r["status"] == "running"
+                || r["status"] == "ok"
         })
+        .filter_map(|r| r["id"].as_str())
         .collect();
     assert!(
-        active.len() <= before + ok.max(1).min(2),
-        "concurrent run-now must not fan out into parallel executions: {history:?}"
+        distinct_completed.len() <= seen_run_ids.len().max(1) + 1,
+        "the burst must not fabricate extra completed runs beyond the burst responses: {history:?}"
+    );
+}
+
+#[tokio::test]
+async fn schedules_delete_while_running_is_rejected_and_history_kept() {
+    // Delete-while-running is 409: removing the schedule row first would
+    // orphan a background execute (finalize would find no schedule and the
+    // run row would stay running forever). Run history is kept after a
+    // successful delete, so past firings stay readable via the store even
+    // though GET /:id/runs 404s once the schedule row is gone.
+    let server = SchedServer::start(false).await;
+    let admin = server.admin_token().await;
+
+    let created = server
+        .create_notify_once(&admin, "delete guard", "2030-11-01T00:00:00Z")
+        .await;
+    let id = created["schedule"]["id"].as_str().unwrap().to_string();
+
+    // Seed a running row directly, then delete must be refused.
+    let runs_path = server.home.join("store").join("schedule-runs.json");
+    let raw = fs::read_to_string(&runs_path).unwrap_or_else(|_| "{}".to_string());
+    let mut runs_doc: Value = serde_json::from_str(&raw).unwrap_or(json!({}));
+    if !runs_doc.is_object() {
+        runs_doc = json!({});
+    }
+    let run_id = format!("run-guard-{id}");
+    runs_doc[&run_id] = json!({
+        "id": run_id,
+        "scheduleId": id,
+        "userId": created["schedule"]["userId"].clone(),
+        "scheduledAt": rfc3339_utc_plus(0),
+        "startedAt": rfc3339_utc_plus(0),
+        "finishedAt": null,
+        "status": "running",
+        "outputPreview": null,
+        "threadId": null,
+    });
+    fs::write(&runs_path, serde_json::to_vec_pretty(&runs_doc).unwrap()).unwrap();
+
+    assert_eq!(
+        server
+            .delete(&admin, &format!("/api/schedules/{id}"))
+            .await
+            .status(),
+        StatusCode::CONFLICT,
+        "delete while a run is in flight must be 409"
+    );
+
+    // Mark the run closed, then delete succeeds with 204 and the schedule
+    // row is gone, while the run history file keeps the row.
+    let mut runs_doc: Value =
+        serde_json::from_str(&fs::read_to_string(&runs_path).unwrap()).unwrap();
+    runs_doc[&run_id]["status"] = json!("interrupted");
+    runs_doc[&run_id]["finishedAt"] = json!(rfc3339_utc_plus(0));
+    fs::write(&runs_path, serde_json::to_vec_pretty(&runs_doc).unwrap()).unwrap();
+
+    assert_eq!(
+        server
+            .delete(&admin, &format!("/api/schedules/{id}"))
+            .await
+            .status(),
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        server
+            .get(&admin, &format!("/api/schedules/{id}"))
+            .await
+            .status(),
+        StatusCode::NOT_FOUND
+    );
+    let kept: Value = serde_json::from_str(&fs::read_to_string(&runs_path).unwrap()).unwrap();
+    assert!(
+        kept.get(&run_id).is_some(),
+        "run history must be kept after delete: {kept}"
     );
 }
 

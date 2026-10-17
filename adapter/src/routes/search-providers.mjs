@@ -7,14 +7,14 @@ const CATALOG = [
     kind: 'brave',
     label: 'Brave Search',
     extracts: false,
-    freeTier: '2,000 queries/month, no card required',
+    freeTier: '2,000 queries/month free, no card required',
     docs: 'https://brave.com/search/api/',
   },
   {
     kind: 'tavily',
     label: 'Tavily',
     extracts: true,
-    freeTier: '1,000 credits/month, no card required',
+    freeTier: '1,000 credits/month free, no card required',
     docs: 'https://app.tavily.com/',
   },
   {
@@ -30,6 +30,113 @@ const CATALOG = [
     extracts: false,
     freeTier: '2,500 queries free trial',
     docs: 'https://serper.dev',
+  },
+  {
+    kind: 'perplexity',
+    label: 'Perplexity',
+    extracts: true,
+    freeTier: 'Sonar online search model API',
+    docs: 'https://docs.perplexity.ai',
+  },
+  {
+    kind: 'firecrawl',
+    label: 'Firecrawl',
+    extracts: true,
+    freeTier: '500 credits free trial',
+    docs: 'https://www.firecrawl.dev',
+    supportsApiBase: true,
+    defaultApiBase: 'https://api.firecrawl.dev',
+  },
+  {
+    kind: 'keenable',
+    label: 'Keenable',
+    extracts: false,
+    freeTier: 'Keyless free tier, optional key',
+    docs: 'https://keenable.ai',
+    keyless: true,
+  },
+  {
+    kind: 'fastcrw',
+    label: 'fastCRW',
+    extracts: false,
+    freeTier: 'Live crawl & search API',
+    docs: 'https://fastcrw.com',
+    supportsApiBase: true,
+    defaultApiBase: 'https://api.fastcrw.com',
+  },
+  {
+    kind: 'searxng',
+    label: 'SearXNG',
+    extracts: false,
+    freeTier: 'Self-hosted / public metasearch (keyless or token)',
+    docs: 'https://docs.searxng.org',
+    supportsApiBase: true,
+    keyless: true,
+  },
+  {
+    kind: 'tinyfish',
+    label: 'TinyFish',
+    extracts: false,
+    freeTier: 'Web search API',
+    docs: 'https://www.tinyfish.ai',
+    supportsApiBase: true,
+    defaultApiBase: 'https://api.search.tinyfish.ai',
+  },
+  {
+    kind: 'serply',
+    label: 'Serply',
+    extracts: false,
+    freeTier: 'Google search API with location/language options',
+    docs: 'https://serply.io',
+  },
+  {
+    kind: '9router',
+    label: '9Router',
+    extracts: true,
+    freeTier: 'Unified web search aggregator and router',
+    docs: 'https://personal9router.xn--vnda-5g5a.com',
+    supportsApiBase: true,
+  },
+  {
+    kind: 'duckduckgo',
+    label: 'DuckDuckGo',
+    extracts: false,
+    freeTier: '100% free, no API key required',
+    docs: 'https://duckduckgo.com',
+    keyless: true,
+  },
+  {
+    kind: 'bing',
+    label: 'Bing Search',
+    extracts: false,
+    freeTier: 'Microsoft Bing Web Search API',
+    docs: 'https://www.microsoft.com/en-us/bing/apis/bing-web-search-api',
+  },
+  {
+    kind: 'custom',
+    label: 'Custom Search (OpenAI-compatible style)',
+    extracts: true,
+    freeTier: 'Connect any HTTP JSON search API or scraper',
+    docs: 'https://github.com/1jehuang/jcode/blob/main/docs/custom-web-search.md',
+    supportsApiBase: true,
+    supportsCustomConfig: true,
+    keyless: true,
+  },
+  {
+    kind: 'vellum',
+    label: 'Vellum Managed Search',
+    extracts: true,
+    freeTier: 'Managed platform search proxy',
+    docs: 'https://vellum.ai',
+    keyless: true,
+  },
+  {
+    kind: 'inference-provider-native',
+    label: 'Provider Native',
+    extracts: true,
+    freeTier: "Model provider's native web search",
+    docs: 'https://docs.anthropic.com',
+    keyless: true,
   },
 ];
 
@@ -85,14 +192,20 @@ export function register(app, ctx) {
     const providers = await getProviders();
     const list = Object.values(providers).map((p) => {
       const spec = CATALOG.find((c) => c.kind === p.provider);
+      const extracts = spec ? spec.extracts : false;
+      const isKeyless = spec ? Boolean(spec.keyless) : false;
+      const apiKey = p.apiKey || '';
+      const hasCustom = p.custom != null || p.customConfig != null;
       return {
         id: p.id,
         name: p.name,
         provider: p.provider,
-        configured: Boolean(p.apiKey),
-        apiKeyHint: maskKey(p.apiKey),
+        configured: isKeyless || Boolean(apiKey) || hasCustom,
+        apiKeyHint: maskKey(apiKey),
         isActive: Boolean(p.isActive),
-        extracts: spec ? spec.extracts : false,
+        extracts,
+        baseUrl: p.baseUrl ?? null,
+        custom: p.custom ?? p.customConfig ?? null,
       };
     });
     ctx.json(res, 200, list);
@@ -121,17 +234,25 @@ export function register(app, ctx) {
     const id = body.id || crypto.randomUUID();
     const existing = providers[id];
 
-    if (!body.id && !apiKey) {
+    const isKeyless = Boolean(spec.keyless);
+    const isCustom = provider === 'custom';
+    if (!body.id && !apiKey && !isKeyless && !isCustom) {
       ctx.error(res, 400, 'an API key is required');
       return;
     }
+
+    const finalApiKey = apiKey || (existing ? existing.apiKey || '' : '');
+    const customVal = body.custom !== undefined ? body.custom : (body.customConfig !== undefined ? body.customConfig : null);
+    const baseUrlVal = body.baseUrl !== undefined ? body.baseUrl : null;
 
     const record = {
       id,
       name,
       provider,
-      apiKey: apiKey || (existing ? existing.apiKey : ''),
-      isActive: existing ? existing.isActive : false,
+      apiKey: finalApiKey,
+      baseUrl: baseUrlVal,
+      custom: customVal,
+      isActive: existing ? Boolean(existing.isActive) : false,
       updatedAt: ctx.nowIso(),
     };
 

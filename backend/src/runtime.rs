@@ -78,6 +78,22 @@ fn runtime_env(state: &AppState) -> HashMap<OsString, OsString> {
         "AMIRO_API_SOCKET".into(),
         OsString::from(state.runtime_socket.to_string_lossy().to_string()),
     );
+    // The host shell exports the upstream engine's provider profile
+    // (JCODE_OPENROUTER_* pointing at a real gateway, plus its API keys).
+    // Inherited, those hijack the runtime's provider selection: sessions
+    // silently run against the host gateway instead of the configured
+    // Amiro provider. Strip everything except the Amiro namespace.
+    let keys: Vec<OsString> = env.keys().cloned().collect();
+    for key in keys {
+        let name = key.to_string_lossy();
+        let legacy = name.starts_with("JCODE_")
+            || name.starts_with("OPENROUTER_")
+            || name.starts_with("META_MUSE_")
+            || name.starts_with("OPENAI_COMPAT_");
+        if legacy {
+            env.remove(&key);
+        }
+    }
     for legacy in [
         "JCODE_HOME",
         "JCODE_RUNTIME_DIR",
@@ -1073,5 +1089,29 @@ mod tests {
     fn no_tools_profile_is_explicitly_empty() {
         let tools = no_tools();
         assert_eq!(tools.enabled, Some(Vec::new()));
+    }
+
+    #[test]
+    fn runtime_env_strips_host_legacy_provider_vars() {
+        let root = std::env::temp_dir().join(format!("amiro-env-{}", uuid::Uuid::new_v4()));
+        let state = AppState {
+            home: root.join("home"),
+            workspace: root.join("workspace"),
+            runtime_home: root.join("runtime"),
+            runtime_socket: root.join("run/amiro-api.sock"),
+            runtime_bin: root.join("amiro-runtime"),
+            token: "test-token".to_string(),
+            store: std::sync::Arc::new(tokio::sync::Mutex::new(())),
+        };
+        let env = runtime_env(&state);
+        for key in env.keys() {
+            let name = key.to_string_lossy();
+            assert!(!name.starts_with("JCODE_"), "legacy var leaked: {name}");
+            assert!(!name.starts_with("META_MUSE_"), "host provider var leaked: {name}");
+            assert!(!name.starts_with("OPENROUTER_"), "host provider var leaked: {name}");
+            assert!(!name.starts_with("OPENAI_COMPAT_"), "host provider var leaked: {name}");
+        }
+        assert!(env.contains_key(std::ffi::OsStr::new("AMIRO_HOME")));
+        assert!(env.contains_key(std::ffi::OsStr::new("AMIRO_API_SOCKET")));
     }
 }

@@ -74,6 +74,14 @@ impl AppState {
                 .into_iter()
                 .find(|path| path.is_file())
             })
+            .or_else(|| {
+                let candidate = PathBuf::from("/root/.local/bin/jcode");
+                if candidate.is_file() {
+                    Some(candidate)
+                } else {
+                    None
+                }
+            })
             .unwrap_or_else(|| PathBuf::from("amiro"));
         Self {
             workspace: home.join("workspace"),
