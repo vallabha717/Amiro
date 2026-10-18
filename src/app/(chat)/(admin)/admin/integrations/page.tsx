@@ -1,5 +1,9 @@
 "use client";
 
+import { ApiKeyPanel, ComposioSetupCard } from "@/components/composio-dashboard";
+import { useComposioConfig } from "@/hooks/queries/use-composio";
+import { Skeleton } from "ui/skeleton";
+
 import Link from "next/link";
 import { ArrowRight, KeyRound, PlugZap, Puzzle } from "lucide-react";
 import { ScrollArea } from "ui/scroll-area";
@@ -11,6 +15,12 @@ import { Card, CardDescription, CardHeader, CardTitle } from "ui/card";
  * Provides unified access to App Connectors (`/connectors`) and MCP Servers
  * (`/mcp`) inside the Admin Preferences shell.
  */
+function ComposioKeySection() {
+  const { data: config, isLoading } = useComposioConfig();
+  if (isLoading) return <Skeleton className="h-40 w-full" />;
+  return config?.configured ? <ApiKeyPanel /> : <ComposioSetupCard />;
+}
+
 export default function AdminIntegrationsPage() {
   return (
     <ScrollArea className="h-full w-full">
@@ -22,6 +32,17 @@ export default function AdminIntegrationsPage() {
             (MCP) servers so your assistant can work across your tools.
           </p>
         </div>
+
+        <section className="flex flex-col gap-3" data-testid="admin-integrations-composio">
+          <div>
+            <h4 className="text-sm font-semibold">Composio</h4>
+            <p className="text-xs text-muted-foreground">
+              The key that unlocks one-click apps on the Connectors page. Set it once here; everyone on this
+              Amiro then connects their own accounts.
+            </p>
+          </div>
+          <ComposioKeySection />
+        </section>
 
         <div className="grid gap-4">
           <Link href="/connectors" data-testid="admin-integrations-tab-connectors">

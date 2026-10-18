@@ -1,9 +1,7 @@
 "use client";
 
-import {
-  ComposioAppsSection,
-  ComposioSetupCard,
-} from "@/components/composio-dashboard";
+import { AppLogo, ComposioAppsSection } from "@/components/composio-dashboard";
+import Link from "next/link";
 import { fetcher } from "@/lib/backend/client";
 import useSWR from "swr";
 import {
@@ -210,36 +208,45 @@ function ServerRow({
   );
 }
 
-function ComposioAppRow({ toolkit, id, status }: { toolkit: string; id: string; status: string }) {
+/** A connected Composio app, as a tile (logo, name, live dot, disconnect). */
+function ConnectedAppTile({ toolkit, id, status }: { toolkit: string; id: string; status: string }) {
   const { mutate } = useSWRConfig();
   const [busy, setBusy] = useState(false);
   const active = status === "ACTIVE";
+  const name = toolkit.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   return (
     <div
-      className="flex items-center gap-3 rounded-xl border border-border bg-secondary/30 px-4 py-3"
+      className={cn(
+        "relative flex flex-col items-center gap-2.5 rounded-2xl border p-4 text-center transition-all",
+        active ? "border-emerald-500/40 bg-emerald-500/[0.05]" : "border-amber-500/40 bg-amber-500/[0.05]",
+      )}
       data-testid={`connector-app-${toolkit}`}
+      data-status={status}
     >
-      <span className="grid size-9 shrink-0 place-items-center rounded-lg border bg-background text-xs font-semibold uppercase">
-        {toolkit.slice(0, 2)}
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-semibold capitalize">{toolkit.replace(/[_-]/g, " ")}</span>
-          <Badge variant="outline" className="text-[10px] font-normal">
-            App · Composio
-          </Badge>
-        </div>
-        <StatusPill status={active ? "connected" : status === "INITIATED" ? "unknown" : "error"} />
+      <span
+        className={cn(
+          "absolute right-3 top-3 size-2 rounded-full",
+          active ? "animate-pulse bg-emerald-500" : "bg-amber-500",
+        )}
+        aria-label={active ? "Connected" : status.toLowerCase()}
+      />
+      <AppLogo name={name} logo={`https://logos.composio.dev/api/${encodeURIComponent(toolkit)}`} />
+      <div className="w-full min-w-0">
+        <p className="truncate text-sm font-semibold">{name}</p>
+        <p className={cn("text-[11px]", active ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600")}>
+          {active ? "Connected" : status === "INITIATED" ? "Finishing sign-in…" : "Needs attention"}
+        </p>
       </div>
       <Button
         size="sm"
         variant="ghost"
+        className="h-8 w-full text-xs font-semibold text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
         disabled={busy}
         onClick={async () => {
           setBusy(true);
           try {
             await removeComposioConnection(id);
-            toast.success(`Disconnected ${toolkit}`);
+            toast.success(`Disconnected ${name}`);
             await Promise.all([mutate("/api/composio/connections"), mutate("/api/connectors")]);
           } catch (e) {
             handleErrorWithToast(e as Error);
@@ -348,18 +355,34 @@ export function ConnectorsPage() {
               </p>
             </div>
           ) : (
-            <div className="flex flex-col gap-2">
-              {custom.map((server) => (
-                <ServerRow
-                  key={server.name}
-                  server={server}
-                  onEdit={(s) => setDialog({ mode: "edit", server: s })}
-                  onSecrets={setSecretsFor}
-                />
-              ))}
-              {connections.map((c) => (
-                <ComposioAppRow key={c.id} id={c.id} toolkit={c.toolkit} status={c.status} />
-              ))}
+            <div className="flex flex-col gap-4">
+              {connections.length > 0 && (
+                <div
+                  className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
+                  data-testid="connectors-connected-apps"
+                >
+                  {connections.map((c) => (
+                    <ConnectedAppTile key={c.id} id={c.id} toolkit={c.toolkit} status={c.status} />
+                  ))}
+                </div>
+              )}
+              {custom.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  {connections.length > 0 && (
+                    <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      MCP servers
+                    </h3>
+                  )}
+                  {custom.map((server) => (
+                    <ServerRow
+                      key={server.name}
+                      server={server}
+                      onEdit={(s) => setDialog({ mode: "edit", server: s })}
+                      onSecrets={setSecretsFor}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </section>
@@ -367,11 +390,29 @@ export function ConnectorsPage() {
         {isLoading ? null : composioConfigured ? (
           <ComposioAppsSection />
         ) : (
-          <section className="flex flex-col gap-3">
+          <section className="flex flex-col gap-3" data-testid="connectors-apps-setup">
             <h2 className="text-base font-semibold">
               Apps <span className="text-xs font-normal text-muted-foreground">via Composio</span>
             </h2>
-            <ComposioSetupCard />
+            <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-border bg-secondary/30 px-5 py-4">
+              <div className="flex -space-x-2">
+                {["gmail", "slack", "github", "notion"].map((slug) => (
+                  <AppLogo
+                    key={slug}
+                    name={slug}
+                    logo={`https://logos.composio.dev/api/${slug}`}
+                    className="size-9 rounded-full p-1.5 ring-2 ring-background"
+                  />
+                ))}
+              </div>
+              <p className="min-w-0 flex-1 text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">1,000+ apps in one click.</span> Gmail, Slack, GitHub,
+                Notion and more, once an admin adds the Composio key.
+              </p>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/admin/integrations">Set up in Admin</Link>
+              </Button>
+            </div>
           </section>
         )}
       </div>

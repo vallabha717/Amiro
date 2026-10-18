@@ -22,7 +22,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "lib/utils";
 import { Alert, AlertDescription } from "ui/alert";
-import { Avatar, AvatarFallback, AvatarImage } from "ui/avatar";
 import { handleErrorWithToast } from "ui/shared-toast";
 import { Skeleton } from "ui/skeleton";
 
@@ -54,7 +53,8 @@ function SourceLabel({ source }: { source: string | null }) {
   return <>{t("sourceNone")}</>;
 }
 
-function ApiKeyPanel({ onChanged }: { onChanged: () => void }) {
+/** Composio key status and replacement. Lives on Admin → Integrations. */
+export function ApiKeyPanel({ onChanged = () => {} }: { onChanged?: () => void }) {
   const t = useTranslations("Composio");
   const {
     data: config,
@@ -160,6 +160,31 @@ function ApiKeyPanel({ onChanged }: { onChanged: () => void }) {
   );
 }
 
+/** An app logo, falling back to its initials. */
+export function AppLogo({ name, logo, className }: { name: string; logo?: string | null; className?: string }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <div
+      className={cn(
+        "flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border/60 bg-background p-1.5 shadow-sm",
+        className,
+      )}
+    >
+      {logo && !failed ? (
+        <img
+          src={logo}
+          alt=""
+          className="size-full object-contain"
+          onError={() => setFailed(true)}
+          loading="lazy"
+        />
+      ) : (
+        <span className="text-sm font-semibold uppercase text-muted-foreground">{name.slice(0, 2)}</span>
+      )}
+    </div>
+  );
+}
+
 function ToolkitCard({
   toolkit,
   connecting,
@@ -176,83 +201,52 @@ function ToolkitCard({
   const t = useTranslations("Composio");
   const busy = connecting || disconnecting;
   return (
-    <Card
-      className="relative bg-secondary/40 hover:border-foreground/20 transition-colors flex flex-col"
+    <div
+      className={cn(
+        "relative flex flex-col items-center gap-2.5 rounded-2xl border bg-card p-4 text-center transition-all hover:shadow-sm",
+        toolkit.connected
+          ? "border-emerald-500/40 bg-emerald-500/[0.04]"
+          : "border-border/60 hover:border-foreground/20",
+      )}
+      title={toolkit.description || undefined}
       data-testid={`composio-toolkit-card-${toolkit.slug}`}
       data-connected={toolkit.connected}
     >
-      {busy && (
-        <div className="animate-pulse z-10 absolute inset-0 bg-background/50 flex items-center justify-center rounded-xl">
-          <Loader2 className="size-5 animate-spin" />
-        </div>
+      {toolkit.connected && (
+        <span className="absolute right-3 top-3 size-2 rounded-full bg-emerald-500" aria-label={t("connected")} />
       )}
-      <CardHeader className="flex flex-row items-center gap-3 pb-2">
-        <Avatar className="size-9 shrink-0 rounded-lg border">
-          {toolkit.logo && (
-            <AvatarImage src={toolkit.logo} alt={`${toolkit.name} logo`} />
-          )}
-          <AvatarFallback className="rounded-lg text-xs font-semibold">
-            {toolkit.name.slice(0, 2).toUpperCase()}
-          </AvatarFallback>
-        </Avatar>
-        <div className="min-w-0 flex-1">
-          <CardTitle className="text-sm truncate">{toolkit.name}</CardTitle>
-          {toolkit.connected && (
-            <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
-              <CheckCircle2 className="size-3" />
-              {t("connected")}
-            </span>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent className="flex flex-1 flex-col gap-3">
-        <p className="text-xs text-muted-foreground line-clamp-2 min-h-8">
-          {toolkit.description || t("noDescription")}
+      <AppLogo name={toolkit.name} logo={toolkit.logo} />
+      <div className="w-full min-w-0">
+        <p className="truncate text-sm font-semibold">{toolkit.name}</p>
+        <p className="mt-0.5 line-clamp-2 min-h-8 text-[11px] leading-4 text-muted-foreground">
+          {toolkit.description || toolkit.categories[0] || t("noDescription")}
         </p>
-        {toolkit.categories.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {toolkit.categories.slice(0, 3).map((category) => (
-              <Badge key={category} variant="outline" className="text-[11px]">
-                {category}
-              </Badge>
-            ))}
-          </div>
-        )}
-        <div className="flex-1" />
-        {toolkit.connected ? (
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full"
-            disabled={busy}
-            onClick={() => onDisconnect(toolkit)}
-            data-testid={`composio-disconnect-${toolkit.slug}`}
-          >
-            {disconnecting ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Unplug className="size-4" />
-            )}
-            {t("disconnect")}
-          </Button>
-        ) : (
-          <Button
-            size="sm"
-            className="w-full"
-            disabled={busy}
-            onClick={() => onConnect(toolkit)}
-            data-testid={`composio-connect-${toolkit.slug}`}
-          >
-            {connecting ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <PlugZap className="size-4" />
-            )}
-            {t("connect")}
-          </Button>
-        )}
-      </CardContent>
-    </Card>
+      </div>
+      {toolkit.connected ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 w-full text-xs font-semibold text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+          disabled={busy}
+          onClick={() => onDisconnect(toolkit)}
+          data-testid={`composio-disconnect-${toolkit.slug}`}
+        >
+          {disconnecting ? <Loader2 className="size-3.5 animate-spin" /> : <Unplug className="size-3.5" />}
+          {t("disconnect")}
+        </Button>
+      ) : (
+        <Button
+          size="sm"
+          className="h-8 w-full text-xs font-semibold"
+          disabled={busy}
+          onClick={() => onConnect(toolkit)}
+          data-testid={`composio-connect-${toolkit.slug}`}
+        >
+          {connecting ? <Loader2 className="size-3.5 animate-spin" /> : <PlugZap className="size-3.5" />}
+          {t("connect")}
+        </Button>
+      )}
+    </div>
   );
 }
 
@@ -400,8 +394,6 @@ export function ComposioAppsSection() {
           </Button>
         </div>
 
-        <ApiKeyPanel onChanged={refreshAll} />
-
         <div className="flex flex-col sm:flex-row gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
@@ -468,7 +460,7 @@ export function ComposioAppsSection() {
         ) : visibleToolkits.length > 0 ? (
           <div className="flex flex-col gap-4">
             <div
-              className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+              className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"
               data-testid="composio-toolkit-grid"
             >
               {visibleToolkits.map((toolkit) => (
