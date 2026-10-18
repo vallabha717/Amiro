@@ -702,6 +702,59 @@ fn reload_mcp_blocking(state: &AppState) -> McpReloadOutcome {
     outcome
 }
 
+/// The session's real context window and how much of it is in use, as the
+/// runtime itself sees them (the same figures its compaction decisions use).
+///
+/// `context_window` comes from the active provider's model metadata, never a
+/// guess from the model name. Occupancy is the *last* provider call's input,
+/// which is what the next call will carry; summing a turn's calls would count
+/// the same history once per step. Providers disagree on cache accounting:
+/// Anthropic reports cache reads and writes beside `input_tokens`, OpenAI-style
+/// APIs already include them, so they are only added for the former.
+pub async fn context_snapshot(state: &AppState, session_id: &str) -> Option<Value> {
+    ensure_bridge(state).await.ok()?;
+    let state = state.clone();
+    let session_id = session_id.to_string();
+    blocking("context_snapshot", move || {
+        let client = connect_client(&state, false)?;
+        // Runtime commands answer for a session this client is attached to;
+        // attaching reads state, it does not start a turn.
+        client.attach_session(&session_id).map_err(runtime_error)?;
+        let out = client
+            .runtime_command(&session_id, RuntimeCommand::Info, Vec::new())
+            .map_err(runtime_error)?;
+        let data = &out.data;
+        let window = data.get("context_window").and_then(Value::as_u64).filter(|w| *w > 0);
+        let usage = data.get("last_usage");
+        let field = |name: &str| {
+            usage
+                .and_then(|u| u.get(name))
+                .and_then(Value::as_u64)
+                .unwrap_or(0)
+        };
+        let provider = data
+            .get("provider")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let anthropic_style = provider.contains("anthropic") || provider.contains("claude");
+        let tokens = field("input_tokens")
+            + if anthropic_style {
+                field("cache_read_input_tokens") + field("cache_creation_input_tokens")
+            } else {
+                0
+            };
+        Ok(serde_json::json!({
+            "contextWindow": window,
+            "contextTokens": if tokens > 0 { Some(tokens) } else { None },
+            "provider": data.get("provider"),
+            "model": data.get("model"),
+        }))
+    })
+    .await
+    .ok()
+}
+
 /// Tool configuration that exposes no tools. Retained for the internal
 /// non-tool helper turns (thread-title generation) and for the explicit
 /// `AMIRO_TOOL_PROFILE=none` opt-out, never applied to a normal owner turn by
@@ -737,6 +790,24 @@ pub async fn session_titles(state: &AppState) -> Result<std::collections::HashMa
             .filter_map(|session| session.title.map(|title| (session.session_id, title)))
             .collect())
     }).await
+}
+
+/// Every runtime session as the harness API reports it (snake_case
+/// `SessionInfo` rows). The swarm routes read `parent_session_id`,
+/// `agent_label` and `swarm_status` from these to rebuild a thread's swarm.
+pub async fn list_sessions(state: &AppState) -> Result<Vec<Value>, ApiError> {
+    ensure_bridge(state).await?;
+    let state = state.clone();
+    blocking("list_sessions", move || {
+        let client = connect_client(&state, false)?;
+        Ok(client
+            .list_sessions()
+            .map_err(runtime_error)?
+            .into_iter()
+            .map(|session| serde_json::to_value(session).unwrap_or(Value::Null))
+            .collect())
+    })
+    .await
 }
 
 /// Read the runtime's effective title, which already honors explicit renames.

@@ -584,6 +584,11 @@ async fn chat_handler(
         if let Some(usage) = usage_metadata(usage) {
             metadata["usage"] = usage;
         }
+        // The real context window and occupancy, from the runtime, so the
+        // UI never has to guess a limit from the model's name.
+        if let Some(context) = runtime::context_snapshot(&state_for_stream, &session.session_id).await {
+            metadata["context"] = context;
+        }
         yield frame(json!({"type": "finish", "messageMetadata": metadata}));
         yield done_frame();
     };

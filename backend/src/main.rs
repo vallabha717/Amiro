@@ -320,6 +320,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(auth::router())
         .merge(backend::chat::router())
         .merge(backend::threads::router())
+        .merge(backend::swarm::router())
         .merge(backend::models::router())
         .merge(backend::agent::router())
         .merge(backend::routes::router())

@@ -7,6 +7,7 @@ pub mod models;
 pub mod runtime;
 pub mod schedules;
 pub mod state;
+pub mod swarm;
 pub mod threads;
 
 pub mod routes;
