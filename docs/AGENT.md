@@ -10,8 +10,10 @@ The Agent uses four OpenDots plush characters, vendored locally from CopilotKit/
 - **Customize**: four OpenDots plush characters, the existing sidebar theme choices, optional local image upload, name and tagline. Click the central avatar or the sidebar square. Saving a theme here changes the sidebar theme too. Changing the sidebar theme updates Agent colors immediately. Uploaded portraits retain their original colors.
 - **Personality**: five bipolar style sliders and presets. The writing sample is illustrative, not a model-generated response or an audio preview. Sliders do not change permissions or grant autonomy.
 - **Superpowers**: existing runtime, project and supported discovered skills, plus user-authored instruction sets. The old `/skills` URL remains compatible. "Add to message" attaches instruction text, not tool permissions. The server resolves selected names from the authenticated user's catalog. Unsupported or disabled skills are rejected, not silently substituted.
-- **Memory**: an admin-only, read-only inspection of the Amiro runtime's existing global and project memory graphs, with search and constellation/card/list views. There is no second memory engine. Category/tag visual links are presentation relationships, not newly written native memory associations.
-- **Workspace**: an admin-only, allowlisted file browser for runtime memory/skills, Amiro persona mirrors and repository documentation. Credential files, session logs and arbitrary engine-state content are not exposed. Paths are checked after symlink resolution.
+- **Memory**: admin-only, read-only inspection of the runtime's existing global and project memory graphs. The default is a searchable 24-entry list with Show more, detail on selection, and an optional map. There is no second memory engine. Category/tag visual links are presentation relationships, not newly written native memory associations.
+- **Workspace**: an admin-only, read-only file browser with Runtime, Persona and Project roots. Technical root and file metadata are disclosed on demand. Credential files, session logs and arbitrary engine-state content are not exposed. Paths are allowlisted and checked after symlink resolution. Workspace is not a combined memory or skill management screen.
+
+See [settings-ui.md](settings-ui.md) for the simplified surfaces, their actions and current production-browser verification.
 
 Native schedules are delivered (see `docs/SCHEDULES.md`, `/schedules`). Manual background runs were removed. Contacts, Channels and Library are not part of this Agent implementation.
 
@@ -25,7 +27,7 @@ Follow-up turns depend on two bridge behaviours that were found by running the d
 
 Up to eight selected skills are accepted. Each instruction body is bounded to 12 KB with an explicit truncation marker, and the combined reminder is bounded to 48 KB. Oversized combined selections are rejected with an explanation. A skill does not enable MCP servers or broaden the daemon's tool allowlist.
 
-The tool-result continuation branch does not send a new persona reminder. Tool execution remains disabled on the public preview unless a trusted operator explicitly enables it with both existing environment controls. Style preferences and instruction-only skills still work with tools disabled.
+The tool-result continuation branch does not send a new persona reminder. Normal owner chat tools are now enabled by default, with `AMIRO_TOOL_PROFILE=none` as the opt-out. Skills supply instructions, not new permissions. The runtime executes with the owner's permissions, so a VM or sandbox must provide isolation. Earlier trusted-operator environment gating described by legacy adapter checks is no longer the native policy.
 
 Runtime memory mutations through the Agent HTTP surface are intentionally unsupported (`501`), protecting the runtime's native serialization and its own writes. Use the runtime's own memory facilities to manage that data. Shared machine memory and workspace inspection require an administrator.
 
@@ -43,6 +45,10 @@ Decorative motion reads `prefers-reduced-motion` through `usePrefersReducedMotio
 pnpm check-types
 pnpm test
 pnpm build
+cargo test --manifest-path backend/Cargo.toml --test agent_native
+node scripts/verify-settings-clarity.mjs
+node scripts/verify-settings-workflows.mjs
+# The following adapter checks are historical compatibility checks, not native deployment.
 node --test adapter/test/*.test.mjs
 node adapter/tests/agent-safety.mjs
 node adapter/tests/integration.mjs
@@ -55,10 +61,10 @@ AMIRO_TEST_URL=http://127.0.0.1:8788 node adapter/test/browser-smoke.mjs
 
 The Agent acceptance script's two real model turns are route-pinned and configurable with `AMIRO_TEST_MODEL="provider:model"`; the default is `antigravity:gemini-3.8-flash-tiered` because the OpenCode Go key hit its usage limit while this was verified. A model the adapter cannot resolve aborts the turn instead of silently swapping providers.
 
-Observed on this tree: `pnpm check-types` clean, 344 unit tests passed, `adapter/test/*.test.mjs` 37 passed, adapter/tests/agent-safety.mjs all assertions passed, route-boundaries 125 registered routes observed, and both live browser suites passed against the deployed export.
+Historical adapter-stage observations: 344 frontend unit tests and the listed adapter suites passed at that stage. These counts and adapter routes are not a current native release guarantee. On 2026-10-18, 646 frontend tests and typecheck passed, the production export built successfully, and the new settings acceptance scripts passed desktop/mobile routes plus real native credential, file, memory and skill boundaries.
 
 The browser acceptance test temporarily changes the owner's Agent identity, creates a disposable skill and chat, and restores its state in `finally`. It checks persistence, real model delivery of the saved name and selected skill instructions, navigation, read-only native memory, workspace loading, mobile width, color themes, reduced motion and browser errors. Screenshots are written to `$AMIRO_SCRATCH_DIR` (the pre-rename `JCODE_SCRATCH_DIR` is still read) or the default scratch directory, not committed.
 
 ## Boundaries
 
-The new Agent copy is currently English. Existing application translations remain unchanged. Workspace browsing is not a general-purpose filesystem editor or a Vellum Library implementation. This preview continues to use its existing self-signed certificate, shared provider runtime and restricted tool profile.
+The Agent copy is currently English. Existing application translations remain unchanged. Workspace browsing is not a general-purpose filesystem editor or a Vellum Library implementation. Amiro uses a shared owner/provider runtime and does not isolate untrusted tenants. Normal owner turns expose tools by default; schedule execution keeps tools disabled. Browser microphone and transport requirements depend on deployment, not on this guide's earlier adapter preview.

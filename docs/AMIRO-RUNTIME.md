@@ -104,15 +104,31 @@ Native schedules are delivered (`docs/SCHEDULES.md`, `/api/schedules`):
 
 ## Search providers
 
-Search providers are supported in the native backend (`backend/src/routes/search_providers.rs`) and adapter (`adapter/src/routes/search-providers.mjs`):
+The native backend exports the configured search catalogue to a private runtime registry. **Provider Native** is the seeded default, with free DuckDuckGo and Bing configured automatically. Agent-visible IDs and fallback eligibility are limited to configured supported providers, not every catalogue entry.
 
-- Supports all Vellum search options: `exa`, `tavily`, `brave`, `serper`.
-- Supports custom search endpoints.
-- `SearchProviderCard` (`src/components/search-provider-card.tsx`) renders the active `endpoint` and `baseUrl`.
+- Native hosted search is enabled only while Provider Native is the selected default. A selected local provider takes precedence over native search.
+- Local fallback tries configured alternatives only. Unknown IDs and empty or invalid registries fail closed rather than using an unconfigured service.
+- `configured_providers_file` in the runtime home's `config.toml` points to `search-providers-runtime.json`. The registry reloads dynamically, is private (`0600`), and is denied through the workspace API. Secrets are excluded from model schemas and errors.
+- Custom endpoint configuration is validated before export. Vellum is not a search provider.
+
+See [search-runtime.md](search-runtime.md) for configuration, routing and acceptance checks. Binary HTTP-failure fallback and configured-provider boundaries were verified. Actual hosted-native-search failure recovery was not exercised.
+
+## Runtime chat titles
+
+Amiro reuses the runtime's shared `amiro_session_types::prompt_title` fallback and effective session metadata. It does not launch a separate title-model turn. Runtime updates persist to the mapped thread and reach the sidebar through `data-thread-title` events. Manual names are preserved, and synchronization checks ownership, deleted threads and stale session mappings.
+
+See [chat-titles.md](chat-titles.md) for title precedence, persistence and browser acceptance.
+
+## Credentials, connectors and voice
+
+- The encrypted credential vault exposes metadata and masked hints, not plaintext values, through its listing and prompt catalogue. Agent environment bindings and brokered requests have distinct security boundaries. See [CREDENTIAL-VAULT.md](CREDENTIAL-VAULT.md) and [SECURITY-MODEL.md](SECURITY-MODEL.md).
+- Composio connectors use the Tool Router and synchronize into runtime MCP configuration. See [COMPOSIO.md](COMPOSIO.md) for setup, credential resolution, reload behavior and limitations.
+- Voice settings support configured STT/TTS providers, dictation and read-aloud. Inline live voice surfaces do not replace the whole chat screen. Availability still depends on the configured provider, microphone permissions and browser support. See [VOICE-AND-SPEECH.md](VOICE-AND-SPEECH.md).
+- Credentials, Workspace, Memory and Superpowers use compact summaries with secondary details on demand. Native memory starts with a searchable 24-entry list and an optional map. Workspace remains a read-only file preview. See [settings-ui.md](settings-ui.md).
 
 ## Restrictions
 
-- Tool execution is disabled by default (`tools: { enabled: [] }`).
+- Owner chat tools are enabled by default. `AMIRO_TOOL_PROFILE=none` opts out. Schedule execution remains tools-disabled. Tool exposure is not process isolation, and the surrounding VM or sandbox remains the operator's responsibility.
 - Manual background agent runs were removed; native schedules are delivered under `/api/schedules`.
 - The user-authored workflow feature and the chat's Workflow View (canvas, graph pane, header toggle, `@xyflow/react`) were completely removed.
 - Uploaded files use opaque, expiring capabilities, bounded sizes, and download-only content types. Remote URL ingestion is disabled.
@@ -127,6 +143,8 @@ Quotas are read from `amiro usage --json`. Account-level OpenAI OAuth token coun
 - Usage is labeled as shared runtime provider-account scope, not per-user billing.
 
 ## Running and verifying locally
+
+The native backend serves the production `out/` export and API together. Its source default port is 8787; the current VM deployment explicitly sets `AMIRO_PORT=3000`. Rebuild the static frontend with `pnpm build` after UI changes, then hard-refresh the browser. Changing docs alone does not require a server restart.
 
 Build and run with native tools:
 
@@ -147,6 +165,11 @@ pnpm runtime:check
 pnpm verify:native-ui
 pnpm verify:schedules-ui
 node scripts/verify-agent-color-sync.mjs
+node scripts/verify-search-runtime.mjs
+node scripts/verify-search-ui.mjs
+node scripts/verify-runtime-titles.mjs
+node scripts/verify-settings-clarity.mjs
+node scripts/verify-settings-workflows.mjs
 
 # Run retired adapter contract checks
 node --test adapter/test/*.test.mjs
