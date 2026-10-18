@@ -10,6 +10,7 @@ import {
   Puzzle,
   Search,
   SlidersHorizontal,
+  Volume2,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "lib/utils";
@@ -52,6 +53,15 @@ const ADMIN_SECTIONS: AdminSection[] = [
     icon: Search,
     testId: "admin-sidebar-link-search",
     isActive: (p) => p.startsWith("/admin/search"),
+  },
+  {
+    id: "voice",
+    title: "Voice & Speech",
+    subtitle: "Text-to-speech, speech-to-text, custom 9Router & read-aloud",
+    href: "/admin/voice",
+    icon: Volume2,
+    testId: "admin-sidebar-link-voice",
+    isActive: (p) => p.startsWith("/admin/voice"),
   },
   {
     id: "integrations",

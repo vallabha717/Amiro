@@ -28,9 +28,11 @@ import { useFileDragOverlay } from "@/hooks/use-file-drag-overlay";
 import { useToRef } from "@/hooks/use-latest";
 import { useMounted } from "@/hooks/use-mounted";
 import { useThreadFileUploader } from "@/hooks/use-thread-file-uploader";
+import { useMessageReadAloudStore } from "@/lib/ai/speech/read-aloud-store";
 import { deleteThread } from "@/lib/backend/chat-api";
 import { backendFetch } from "@/lib/backend/client";
 import { backendUrl } from "@/lib/backend/config";
+import { getCachedVoiceSettings } from "@/lib/backend/voice-api";
 import {
   ChatApiSchemaRequestBody,
   ChatAttachment,
@@ -153,6 +155,29 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
       }
     } else if (latestRef.current.threadList[0]?.id !== threadId) {
       mutate("/api/thread");
+    }
+
+    try {
+      const voiceSettings = getCachedVoiceSettings();
+      if (voiceSettings.readAloudEnabled && voiceSettings.autoReadAloud) {
+        const lastAssistantMsg = [...messages]
+          .reverse()
+          .find((m) => m.role === "assistant");
+        if (lastAssistantMsg) {
+          const text = lastAssistantMsg.parts
+            .filter((p) => p.type === "text")
+            .map((p) => (p as TextUIPart).text)
+            .join("\n\n");
+          if (text.trim()) {
+            useMessageReadAloudStore.getState().playMessage({
+              messageId: lastAssistantMsg.id,
+              text,
+            });
+          }
+        }
+      }
+    } catch {
+      // ignore
     }
   }, []);
 
@@ -464,8 +489,9 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
       if (typeof first === "string") {
         text = first;
       } else if (first && Array.isArray((first as { parts?: unknown }).parts)) {
-        const textParts = (first as { parts: Array<{ type?: string; text?: string }> })
-          .parts.filter((part) => part?.type === "text");
+        const textParts = (
+          first as { parts: Array<{ type?: string; text?: string }> }
+        ).parts.filter((part) => part?.type === "text");
         if (textParts.length === 1) text = textParts[0].text;
       }
       if (text?.trim().toLowerCase() === "/login") {
@@ -672,7 +698,9 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
             <>
               <div
                 data-testid="chat-messages-container"
-                data-state={isLoading || isPendingToolCall ? "streaming" : "ready"}
+                data-state={
+                  isLoading || isPendingToolCall ? "streaming" : "ready"
+                }
                 className={
                   "flex flex-col gap-2 overflow-y-auto pt-6 pb-40 z-10 [scrollbar-gutter:stable_both-edges]"
                 }

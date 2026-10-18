@@ -1,5 +1,14 @@
 "use client";
 
+import { UploadedFile, appStore } from "@/app/store";
+import { useThreadFileUploader } from "@/hooks/use-thread-file-uploader";
+import { apiFetch } from "@/lib/backend/client";
+import { cn } from "@/lib/utils";
+import { UIMessage, UseChatHelpers } from "@ai-sdk/react";
+import { Editor } from "@tiptap/react";
+import { ChatMention, ChatModel } from "app-types/chat";
+import { DefaultToolName } from "lib/ai/tools";
+import equal from "lib/equal";
 import {
   AudioWaveformIcon,
   ChevronDown,
@@ -8,32 +17,19 @@ import {
   FileTextIcon,
   ImagesIcon,
   Loader2,
+  Mic,
+  MicOff,
   PaperclipIcon,
   PlusIcon,
   Sparkles,
   Square,
   XIcon,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "ui/button";
-import { UIMessage, UseChatHelpers } from "@ai-sdk/react";
-import { apiFetch } from "@/lib/backend/client";
-import { SelectModel } from "./select-model";
-import { appStore, UploadedFile } from "@/app/store";
-import { useShallow } from "zustand/shallow";
-import { ChatMention, ChatModel } from "app-types/chat";
-import dynamic from "next/dynamic";
-import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
-import { useTranslations } from "next-intl";
-import { Editor } from "@tiptap/react";
-import equal from "lib/equal";
-import { MCPIcon } from "ui/mcp-icon";
-import { DefaultToolName } from "lib/ai/tools";
-import { DefaultToolIcon } from "./default-tool-icon";
-import { OpenAIIcon } from "ui/openai-icon";
-import { GrokIcon } from "ui/grok-icon";
 import { ClaudeIcon } from "ui/claude-icon";
-import { GeminiIcon } from "ui/gemini-icon";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -44,14 +40,25 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "ui/dropdown-menu";
-import { cn } from "@/lib/utils";
-import { useThreadFileUploader } from "@/hooks/use-thread-file-uploader";
+import { GeminiIcon } from "ui/gemini-icon";
+import { GrokIcon } from "ui/grok-icon";
+import { MCPIcon } from "ui/mcp-icon";
+import { OpenAIIcon } from "ui/openai-icon";
+import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
+import { useShallow } from "zustand/shallow";
 import { ProjectSelector } from "./chat/project-selector";
+import { DefaultToolIcon } from "./default-tool-icon";
+import { SelectModel } from "./select-model";
 
+import { useChatModels } from "@/hooks/queries/use-chat-models";
+import { isFilePartSupported, isIngestSupported } from "@/lib/ai/file-support";
+import { unlockAudio } from "@/lib/ai/speech/read-aloud-store";
+import {
+  getCachedVoiceSettings,
+  transcribeSpeech,
+} from "@/lib/backend/voice-api";
 import { FileUIPart, TextUIPart } from "ai";
 import { toast } from "sonner";
-import { isFilePartSupported, isIngestSupported } from "@/lib/ai/file-support";
-import { useChatModels } from "@/hooks/queries/use-chat-models";
 
 interface PromptInputProps {
   placeholder?: string;
@@ -95,6 +102,195 @@ export default function PromptInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { uploadFiles } = useThreadFileUploader(threadId);
   const { data: providers } = useChatModels();
+
+  const [dictationState, setDictationState] = useState<
+    "idle" | "recording" | "transcribing"
+  >("idle");
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const speechRecognitionRef = useRef<any>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+  const inputRef = useRef(input);
+  inputRef.current = input;
+
+  useEffect(() => {
+    return () => {
+      if (
+        mediaRecorderRef.current &&
+        mediaRecorderRef.current.state === "recording"
+      ) {
+        mediaRecorderRef.current.stop();
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
+      if (speechRecognitionRef.current) {
+        try {
+          speechRecognitionRef.current.stop();
+        } catch {
+          // ignore
+        }
+      }
+    };
+  }, []);
+
+  const handleToggleDictation = useCallback(async () => {
+    if (dictationState === "recording") {
+      if (speechRecognitionRef.current) {
+        try {
+          speechRecognitionRef.current.stop();
+        } catch {
+          // ignore
+        }
+      }
+      if (
+        mediaRecorderRef.current &&
+        mediaRecorderRef.current.state === "recording"
+      ) {
+        mediaRecorderRef.current.stop();
+      }
+      return;
+    }
+
+    if (dictationState === "transcribing") {
+      return;
+    }
+
+    unlockAudio();
+    const settings = getCachedVoiceSettings();
+    const sttProvider = settings.sttProvider || "browser-native";
+    const sttLanguage = settings.sttLanguage || "en";
+
+    if (
+      sttProvider === "browser-native" &&
+      typeof window !== "undefined" &&
+      ("webkitSpeechRecognition" in window || "SpeechRecognition" in window)
+    ) {
+      const SpeechRecognitionClass =
+        (window as any).SpeechRecognition ||
+        (window as any).webkitSpeechRecognition;
+      try {
+        const recognition = new SpeechRecognitionClass();
+        recognition.continuous = true;
+        recognition.interimResults = false;
+        if (sttLanguage && sttLanguage !== "multi") {
+          recognition.lang = sttLanguage;
+        }
+
+        recognition.onresult = (event: any) => {
+          let transcript = "";
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+              transcript += event.results[i][0].transcript;
+            }
+          }
+          if (transcript.trim()) {
+            const prev = inputRef.current;
+            setInput(prev ? `${prev} ${transcript.trim()}` : transcript.trim());
+          }
+        };
+
+        recognition.onerror = () => {
+          setDictationState("idle");
+          speechRecognitionRef.current = null;
+        };
+
+        recognition.onend = () => {
+          setDictationState("idle");
+          speechRecognitionRef.current = null;
+        };
+
+        recognition.start();
+        speechRecognitionRef.current = recognition;
+        setDictationState("recording");
+        return;
+      } catch {
+        // Fallback to MediaRecorder below
+      }
+    }
+
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
+      toast.error("Audio recording is not supported in this browser");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      audioChunksRef.current = [];
+
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach((track) => track.stop());
+          streamRef.current = null;
+        }
+
+        const audioBlob = new Blob(audioChunksRef.current, {
+          type: mediaRecorder.mimeType || "audio/webm",
+        });
+
+        if (audioBlob.size === 0) {
+          setDictationState("idle");
+          return;
+        }
+
+        setDictationState("transcribing");
+
+        try {
+          const reader = new FileReader();
+          const base64Promise = new Promise<string>((resolve, reject) => {
+            reader.onloadend = () => {
+              const res = reader.result as string;
+              resolve(res.split(",")[1] || "");
+            };
+            reader.onerror = reject;
+          });
+          reader.readAsDataURL(audioBlob);
+          const base64Audio = await base64Promise;
+
+          const providerState = settings.sttProviders[sttProvider];
+          const result = await transcribeSpeech({
+            audio: base64Audio,
+            mimeType: audioBlob.type,
+            provider: sttProvider,
+            model: providerState?.model,
+            language: sttLanguage,
+            baseUrl: providerState?.baseUrl,
+          });
+
+          if (result && result.text) {
+            const prev = inputRef.current;
+            setInput(
+              prev ? `${prev} ${result.text.trim()}` : result.text.trim(),
+            );
+          }
+        } catch (err: any) {
+          toast.error(err?.message || "Transcription failed");
+        } finally {
+          setDictationState("idle");
+        }
+      };
+
+      mediaRecorder.start();
+      setDictationState("recording");
+    } catch {
+      toast.error("Microphone access was denied or is unavailable");
+      setDictationState("idle");
+    }
+  }, [dictationState, setInput]);
 
   const [
     globalModel,
@@ -562,6 +758,37 @@ export default function PromptInput({
                     <ChevronDown className="size-3" />
                   </Button>
                 </SelectModel>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      data-testid="composer-mic-button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleToggleDictation}
+                      className={cn(
+                        "rounded-full p-2 mr-1 transition-colors",
+                        dictationState === "recording" &&
+                          "bg-destructive/15 text-destructive hover:bg-destructive/25 animate-pulse",
+                      )}
+                    >
+                      {dictationState === "transcribing" ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : dictationState === "recording" ? (
+                        <MicOff className="size-4 text-destructive" />
+                      ) : (
+                        <Mic className="size-4" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {dictationState === "recording"
+                      ? "Stop recording"
+                      : dictationState === "transcribing"
+                        ? "Transcribing audio..."
+                        : "Dictate with voice"}
+                  </TooltipContent>
+                </Tooltip>
                 {!isLoading && !input.length && !voiceDisabled ? (
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -760,4 +987,3 @@ export default function PromptInput({
     </div>
   );
 }
-

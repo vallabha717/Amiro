@@ -11,6 +11,7 @@ import {
   isToolUIPart,
 } from "ai";
 import { stepKindOf } from "lib/ai/tools/step-kind";
+import { parseToolTiming } from "lib/ai/tools/timing";
 import { cn, safeJSONParse, truncateString } from "lib/utils";
 import {
   BrainIcon,
@@ -27,11 +28,12 @@ import {
   Loader,
   Pencil,
   RefreshCw,
+  Square,
   Trash2,
   TriangleAlert,
+  Volume2,
   X,
 } from "lucide-react";
-import { parseToolTiming } from "lib/ai/tools/timing";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "ui/badge";
 import { Button } from "ui/button";
@@ -52,6 +54,8 @@ import { ChatMetadata, ChatModel, ManualToolConfirmTag } from "app-types/chat";
 import { toast } from "sonner";
 import { safe } from "ts-safe";
 
+import { useMessageReadAloudStore } from "@/lib/ai/speech/read-aloud-store";
+import { getCachedVoiceSettings } from "@/lib/backend/voice-api";
 import { extractMCPToolId } from "lib/ai/mcp/mcp-tool-id";
 import { useTranslations } from "next-intl";
 import { Separator } from "ui/separator";
@@ -316,6 +320,15 @@ export const AssistMessagePart = memo(function AssistMessagePart({
   const metadata = message.metadata as ChatMetadata | undefined;
   const t = useTranslations("Checkpoint");
 
+  const isReadAloudStoreActive = useMessageReadAloudStore(
+    (s) => s.messageId === message.id,
+  );
+  const readAloudStatus = useMessageReadAloudStore((s) => s.status);
+  const isThisReading = isReadAloudStoreActive && readAloudStatus !== "idle";
+  const isThisLoading = isReadAloudStoreActive && readAloudStatus === "loading";
+  const isThisPlaying = isReadAloudStoreActive && readAloudStatus === "playing";
+  const isReadAloudEnabled = getCachedVoiceSettings().readAloudEnabled ?? true;
+
   // "Rewind to here" only makes sense on a message that actually wrote a
   // file -- docs/coding-agent-parity/phases/phase-01-checkpoints-and-rewind.md's
   // deliverable 3: "the action appears only on messages with file writes".
@@ -420,6 +433,34 @@ export const AssistMessagePart = memo(function AssistMessagePart({
             </TooltipTrigger>
             <TooltipContent>Copy</TooltipContent>
           </Tooltip>
+          {isReadAloudEnabled && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  data-testid="message-read-aloud-button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-3! p-4!"
+                  onClick={() =>
+                    useMessageReadAloudStore
+                      .getState()
+                      .toggle({ messageId: message.id, text: part.text })
+                  }
+                >
+                  {isThisLoading ? (
+                    <Loader className="animate-spin" />
+                  ) : isThisPlaying ? (
+                    <Square className="size-3 fill-current" />
+                  ) : (
+                    <Volume2 />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {isThisReading ? "Stop reading" : "Read aloud"}
+              </TooltipContent>
+            </Tooltip>
+          )}
           {!readonly && hasFileWrites && threadId && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -646,7 +687,9 @@ export const ReasoningPart = memo(function ReasoningPart({
           onClick={() => setIsExpanded(!isExpanded)}
         >
           <span className="size-2 rounded-full bg-primary animate-pulse" />
-          <TextShimmer className="font-medium tracking-wide">Thinking…</TextShimmer>
+          <TextShimmer className="font-medium tracking-wide">
+            Thinking…
+          </TextShimmer>
           <button
             data-testid="message-reasoning-toggle"
             type="button"
@@ -691,7 +734,9 @@ export const ReasoningPart = memo(function ReasoningPart({
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <BrainIcon className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="font-medium text-muted-foreground">Thought process</span>
+        <span className="font-medium text-muted-foreground">
+          Thought process
+        </span>
         {previewSnippet ? (
           <span className="text-[11px] text-muted-foreground/70 truncate max-w-xs md:max-w-md hidden sm:inline">
             · {previewSnippet}
@@ -1031,7 +1076,8 @@ export const ToolMessagePart = memo(
             <div
               className={cn(
                 "group/pill flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-card text-xs cursor-pointer transition-colors hover:bg-muted/40",
-                isError && "border-destructive/40 bg-destructive/5 text-destructive",
+                isError &&
+                  "border-destructive/40 bg-destructive/5 text-destructive",
               )}
               onClick={() => setExpanded(!expanded)}
             >
@@ -1053,7 +1099,9 @@ export const ToolMessagePart = memo(
                 {mcpToolName ? (
                   <>
                     <ChevronRight className="size-3 text-muted-foreground shrink-0" />
-                    <span className="font-mono text-muted-foreground truncate">{mcpToolName}</span>
+                    <span className="font-mono text-muted-foreground truncate">
+                      {mcpToolName}
+                    </span>
                   </>
                 ) : null}
                 {(input as any)?.intent ? (
@@ -1103,7 +1151,9 @@ export const ToolMessagePart = memo(
                           variant="ghost"
                           size="icon"
                           className="size-4 text-muted-foreground"
-                          onClick={() => copyInput(JSON.stringify(input, null, 2))}
+                          onClick={() =>
+                            copyInput(JSON.stringify(input, null, 2))
+                          }
                         >
                           <Copy className="size-3" />
                         </Button>
@@ -1176,7 +1226,9 @@ export const ToolMessagePart = memo(
                         {t("Common.approve")}
                         <Separator orientation="vertical" className="h-4" />
                         <span className="text-muted-foreground">
-                          {getShortcutKeyList(approveToolInvocationShortcut).join(" ")}
+                          {getShortcutKeyList(
+                            approveToolInvocationShortcut,
+                          ).join(" ")}
                         </span>
                       </Button>
                       <Button
@@ -1197,7 +1249,9 @@ export const ToolMessagePart = memo(
                         {t("Common.reject")}
                         <Separator orientation="vertical" className="h-4" />
                         <span className="text-muted-foreground">
-                          {getShortcutKeyList(rejectToolInvocationShortcut).join(" ")}
+                          {getShortcutKeyList(
+                            rejectToolInvocationShortcut,
+                          ).join(" ")}
                         </span>
                       </Button>
                     </div>
