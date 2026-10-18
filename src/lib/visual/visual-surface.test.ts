@@ -416,3 +416,24 @@ describe("parseInlineVisuals", () => {
     expect(visualIds?.[0]).not.toBe(visualIds?.[1]);
   });
 });
+
+describe("inline visual recovery", () => {
+  it("renders a ui_show payload whose html has unescaped quotes", async () => {
+    const { parseInlineVisuals, salvageVisualJson } = await import(
+      "@/components/visual/visual-surface"
+    );
+    const broken =
+      '{"html": "<div style="display:flex"><b class="x">Hi</b></div>", "height": 110}';
+    expect(salvageVisualJson(broken)).toEqual({
+      html: '<div style="display:flex"><b class="x">Hi</b></div>',
+      height: 110,
+    });
+    const segments = parseInlineVisuals(
+      `Here it is. <ui_show surface_type="visual">${broken}</ui_show> Done.`,
+    );
+    expect(segments?.some((s: any) => s.type === "visual")).toBe(true);
+    expect(JSON.stringify(segments)).not.toContain("ui_show");
+    // Well-formed JSON still wins, escaped quotes intact.
+    expect(salvageVisualJson('{"title": "t"}')).toBeNull();
+  });
+});

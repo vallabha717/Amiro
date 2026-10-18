@@ -286,6 +286,33 @@ function readAttributes(source: string): Record<string, string> {
  * (`{"html": "...", "height": 320, "title": "..."}`, or with `source` in place
  * of `html`) or the raw HTML fragment itself.
  */
+/**
+ * Best-effort read of `{"html": "...", "height": N, "title": "..."}` whose
+ * html value has unescaped quotes: take everything from the opening quote
+ * after "html": up to the last quote before the trailing keys or brace.
+ */
+export function salvageVisualJson(body: string): Record<string, unknown> | null {
+  const start = body.match(/"(html|source)"\s*:\s*"/);
+  if (!start || start.index === undefined) return null;
+  const from = start.index + start[0].length;
+  const rest = body.slice(from);
+  const tail = rest.match(/"\s*(,\s*"(height|title)"\s*:[\s\S]*)?}\s*$/);
+  if (!tail || tail.index === undefined) return null;
+  const html = rest
+    .slice(0, tail.index)
+    .replace(/\\"/g, '"')
+    .replace(/\\n/g, "\n")
+    .replace(/\\\\/g, "\\");
+  if (!html.trim()) return null;
+  const height = body.match(/"height"\s*:\s*(\d+)/);
+  const title = body.match(/"title"\s*:\s*"([^"]*)"/);
+  return {
+    html,
+    ...(height ? { height: Number(height[1]) } : {}),
+    ...(title ? { title: title[1] } : {}),
+  };
+}
+
 function parseVisualPayload(
   raw: string,
 ): { html: string; height?: number; title?: string } | null {
@@ -299,7 +326,11 @@ function parseVisualPayload(
     try {
       data = JSON.parse(body) as Record<string, unknown>;
     } catch {
-      return null;
+      // Models often forget to escape the quotes inside the HTML string.
+      // Recover it rather than dumping the raw tag into the reply.
+      const salvaged = salvageVisualJson(body);
+      if (!salvaged) return null;
+      data = salvaged;
     }
     const html =
       typeof data.html === "string"
