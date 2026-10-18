@@ -507,7 +507,9 @@ export function LoginPanel({
   const selected = providers.find((p) => p.id === activeId) ?? null;
   const selectedMechanism = selected ? mechanismOf(selected) : "unknown";
   const selectedIsOAuth = selected ? isOAuthLike(selected) : false;
-  const selectedIsApiKey = selected ? isApiKeyLike(selected) : false;
+  const selectedIsApiKey = selected
+    ? isApiKeyLike(selected) && selected.canAcceptApiKey !== false
+    : false;
   const isOpenAICompatible = selected?.id === "openai-compatible";
 
   const refreshConnected = useCallback(async () => {

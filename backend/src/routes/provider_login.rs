@@ -27,6 +27,16 @@ fn user_id_of(user: &AuthUser) -> String {
         .to_string()
 }
 
+fn completion_flag(provider: &str, input: &str) -> &'static str {
+    if matches!(provider, "openai" | "antigravity" | "google")
+        || (provider == "claude" && (input.contains("://") || input.starts_with('?')))
+    {
+        "--callback-url"
+    } else {
+        "--auth-code"
+    }
+}
+
 /// Static fallback only: used when the live engine catalog cannot be read.
 /// The live check in `can_start_oauth_flow` consults `auth status --json` so
 /// new engine OAuth providers work without editing this file.
@@ -44,8 +54,9 @@ const FALLBACK_OAUTH_PROVIDERS: &[&str] = &[
 /// the static set above so a transient failure cannot lock out logins.
 async fn can_start_oauth_flow(state: &AppState, provider: &str) -> bool {
     let mut cmd = Command::new(&state.runtime_bin);
+    cmd.kill_on_drop(true);
     cmd.args(["auth", "status", "--json"]);
-    cmd.env("AMIRO_HOME", &state.home);
+    cmd.env("AMIRO_HOME", &state.runtime_home);
     cmd.env("AMIRO_RUNTIME_HOME", &state.runtime_home);
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     let output = match cmd.output().await {
@@ -93,6 +104,7 @@ struct FlowRecord {
     expires_at_ms: u64,
     status: String,
     error: Option<String>,
+    poll_task: Option<tokio::task::AbortHandle>,
 }
 
 type FlowStore = Arc<Mutex<HashMap<String, FlowRecord>>>;
@@ -122,6 +134,7 @@ async fn post_oauth_start(
 
     let flow_id = Uuid::new_v4().to_string().replace('-', "");
     let mut cmd = Command::new(&state.runtime_bin);
+    cmd.kill_on_drop(true);
     cmd.args([
         "login",
         &provider,
@@ -130,11 +143,13 @@ async fn post_oauth_start(
         "--flow-id",
         &flow_id,
     ]);
-    cmd.env("AMIRO_HOME", &state.home);
+    cmd.env("AMIRO_HOME", &state.runtime_home);
     cmd.env("AMIRO_RUNTIME_HOME", &state.runtime_home);
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
-    let output = cmd.output().await.map_err(|e| {
+    let output = tokio::time::timeout(std::time::Duration::from_secs(45), cmd.output()).await
+        .map_err(|_| ApiError(StatusCode::GATEWAY_TIMEOUT, "Provider login start timed out".into()))?
+        .map_err(|e| {
         ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
     })?;
 
@@ -197,12 +212,51 @@ async fn post_oauth_start(
         expires_at_ms,
         status: "pending".to_string(),
         error: None,
+        poll_task: None,
     };
 
     let uid = user_id_of(&user);
     let store = get_flow_store();
     let mut lock = store.lock().await;
-    lock.insert(format!("{uid}:{provider}"), flow_record.clone());
+    if let Some(previous) = lock.insert(format!("{uid}:{provider}"), flow_record.clone()) {
+        if let Some(task) = previous.poll_task { task.abort(); }
+    }
+    drop(lock);
+    if is_device {
+        let state = state.clone();
+        let key = format!("{uid}:{provider}");
+        let provider = provider.clone();
+        let flow_id = flow_id.clone();
+        let poll_key = key.clone();
+        let poll_store = store.clone();
+        let task = tokio::spawn(async move {
+            let mut cmd = Command::new(&state.runtime_bin);
+            cmd.args(["login", &provider, "--complete", "--json", "--flow-id", &flow_id]);
+            cmd.env("AMIRO_HOME", &state.runtime_home);
+            cmd.env("AMIRO_RUNTIME_HOME", &state.runtime_home);
+            cmd.kill_on_drop(true);
+            let remaining = expires_at_ms.saturating_sub(chrono::Utc::now().timestamp_millis() as u64);
+            let output = tokio::time::timeout(std::time::Duration::from_millis(remaining), cmd.output()).await;
+            let mut lock = store.lock().await;
+            if let Some(flow) = lock.get_mut(&key).filter(|f| f.flow_id == flow_id) {
+                match output {
+                    Ok(Ok(output)) if output.status.success() => {
+                        flow.status = "authorized".into();
+                        crate::models::invalidate_catalog();
+                    }
+                    Err(_) => flow.status = "expired".into(),
+                    _ => {
+                        flow.status = "error".into();
+                        flow.error = Some("Device authorization failed. Start login again.".into());
+                    }
+                }
+            }
+        });
+        let mut poll_lock = poll_store.lock().await;
+        if let Some(flow) = poll_lock.get_mut(&poll_key) {
+            flow.poll_task = Some(task.abort_handle());
+        }
+    }
 
     Ok(Json(json!({
         "flow": flow_record.flow,
@@ -225,11 +279,14 @@ async fn get_oauth_status(
     let provider = id.trim().to_lowercase();
     let uid = user_id_of(&user);
     let store = get_flow_store();
-    let lock = store.lock().await;
+    let mut lock = store.lock().await;
 
-    let flow = lock.get(&format!("{uid}:{provider}")).ok_or_else(|| {
+    let flow = lock.get_mut(&format!("{uid}:{provider}")).ok_or_else(|| {
         ApiError(StatusCode::NOT_FOUND, "no active login flow".to_string())
     })?;
+    if flow.status == "pending" && flow.expires_at_ms <= chrono::Utc::now().timestamp_millis() as u64 {
+        flow.status = "expired".into();
+    }
 
     Ok(Json(json!({
         "status": flow.status,
@@ -253,11 +310,24 @@ async fn post_oauth_callback(
         lock.get(&format!("{uid}:{provider}")).cloned()
     };
 
+    let flow = flow_opt.as_ref().ok_or_else(|| ApiError(
+        StatusCode::BAD_REQUEST, "No active login flow. Start login again.".to_string(),
+    ))?;
+    if flow.expires_at_ms <= chrono::Utc::now().timestamp_millis() as u64 {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "Login flow expired. Start login again.".to_string()));
+    }
+
     let flow_id = body
         .get("flowId")
         .and_then(|f| f.as_str())
         .or_else(|| flow_opt.as_ref().map(|f| f.flow_id.as_str()))
         .unwrap_or("");
+    if flow_id != flow.flow_id {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "Login flow does not match this account.".to_string()));
+    }
+    if flow.flow == "device_code" {
+        return Ok(Json(json!({"status": flow.status, "provider": provider})));
+    }
 
     let code = body
         .get("code")
@@ -266,7 +336,7 @@ async fn post_oauth_callback(
         .unwrap_or("")
         .trim();
 
-    if code.is_empty() {
+    if code.is_empty() && flow.flow != "device_code" {
         return Err(ApiError(
             StatusCode::BAD_REQUEST,
             "Authorization code or callback URL is required".to_string(),
@@ -274,12 +344,16 @@ async fn post_oauth_callback(
     }
 
     let mut cmd = Command::new(&state.runtime_bin);
-    cmd.args(["login", &provider, "--code", code, "--flow-id", flow_id]);
-    cmd.env("AMIRO_HOME", &state.home);
+    cmd.kill_on_drop(true);
+    cmd.args(["login", &provider, "--json", "--flow-id", flow_id]);
+    cmd.args([completion_flag(&provider, code), code]);
+    cmd.env("AMIRO_HOME", &state.runtime_home);
     cmd.env("AMIRO_RUNTIME_HOME", &state.runtime_home);
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
-    let output = cmd.output().await.map_err(|e| {
+    let output = tokio::time::timeout(std::time::Duration::from_secs(90), cmd.output()).await
+        .map_err(|_| ApiError(StatusCode::GATEWAY_TIMEOUT, "Provider login completion timed out. Try again.".into()))?
+        .map_err(|e| {
         ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
     })?;
 
@@ -320,9 +394,10 @@ async fn cancel_oauth(
     let mut lock = store.lock().await;
 
     if let Some(flow) = lock.remove(&format!("{uid}:{provider}")) {
+        if let Some(task) = flow.poll_task { task.abort(); }
         let mut cmd = Command::new(&state.runtime_bin);
         cmd.args(["login", &provider, "--cancel", "--flow-id", &flow.flow_id]);
-        cmd.env("AMIRO_HOME", &state.home);
+        cmd.env("AMIRO_HOME", &state.runtime_home);
         cmd.env("AMIRO_RUNTIME_HOME", &state.runtime_home);
         let _ = cmd.output().await;
     }
@@ -346,4 +421,19 @@ pub fn routes() -> Router<AppState> {
             "/api/providers/{id}/oauth/cancel",
             post(cancel_oauth),
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn completion_uses_supported_runtime_flags() {
+        assert_eq!(completion_flag("claude", "authorization-code"), "--auth-code");
+        assert_eq!(completion_flag("claude", "https://example.com/?code=x"), "--callback-url");
+        assert_eq!(completion_flag("gemini", "authorization-code"), "--auth-code");
+        for provider in ["openai", "antigravity", "google"] {
+            assert_eq!(completion_flag(provider, "?code=x&state=y"), "--callback-url");
+        }
+    }
 }
