@@ -27,7 +27,6 @@ import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { MCPIcon } from "ui/mcp-icon";
 import { SidebarGroup } from "ui/sidebar";
 import { Skeleton } from "ui/skeleton";
 import { WriteIcon } from "ui/write-icon";
@@ -94,18 +93,6 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
         <SidebarMenu>
           <Tooltip>
             <SidebarMenuItem>
-              <Link href="/mcp" data-testid="sidebar-mcp-link">
-                <SidebarMenuButton className="font-semibold">
-                  <MCPIcon className="size-4 fill-accent-foreground" />
-                  {t("Layout.mcpConfiguration")}
-                </SidebarMenuButton>
-              </Link>
-            </SidebarMenuItem>
-          </Tooltip>
-        </SidebarMenu>
-        <SidebarMenu>
-          <Tooltip>
-            <SidebarMenuItem>
               <Link
                 href="/connectors"
                 data-testid="sidebar-connectors-link"
@@ -113,7 +100,7 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
               >
                 <SidebarMenuButton
                   className="font-semibold"
-                  isActive={pathname.startsWith("/connectors")}
+                  isActive={pathname.startsWith("/connectors") || pathname.startsWith("/mcp")}
                 >
                   <PlugZapIcon className="size-4" />
                   {t("Layout.connectors")}

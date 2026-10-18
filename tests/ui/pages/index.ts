@@ -295,7 +295,7 @@ export class McpPage {
   constructor(page: Page) {
     this.page = page;
     this.addServerButton = page.locator(
-      '[data-testid="add-mcp-server-button"]',
+      '[data-testid="connectors-add-custom"]',
     );
   }
 

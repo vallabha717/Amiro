@@ -64,7 +64,7 @@ export default function AdminIntegrationsPage() {
             </Card>
           </Link>
 
-          <Link href="/mcp" data-testid="admin-integrations-mcp-link">
+          <Link href="/connectors" data-testid="admin-integrations-mcp-link">
             <Card className="cursor-pointer transition-colors hover:bg-accent/40">
               <CardHeader className="flex flex-row items-center gap-3 space-y-0">
                 <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-background/40">
@@ -72,11 +72,11 @@ export default function AdminIntegrationsPage() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <CardTitle className="text-base">
-                    MCP Configuration
+                    Custom MCP servers
                   </CardTitle>
                   <CardDescription>
-                    Add, edit, and test Model Context Protocol servers and their
-                    tools.
+                    Now part of Connectors: add remote or local MCP servers,
+                    store their keys in the vault, and see their tools.
                   </CardDescription>
                 </div>
                 <ArrowRight className="size-4 shrink-0 text-muted-foreground" />

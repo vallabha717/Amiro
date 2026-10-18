@@ -23,7 +23,6 @@ import { Input } from "@/components/ui/input";
 import { cn } from "lib/utils";
 import { Alert, AlertDescription } from "ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "ui/avatar";
-import { ScrollArea } from "ui/scroll-area";
 import { handleErrorWithToast } from "ui/shared-toast";
 import { Skeleton } from "ui/skeleton";
 
@@ -257,7 +256,8 @@ function ToolkitCard({
   );
 }
 
-function ConnectorsGrid() {
+/** The Composio app catalog, embedded as a section of the Connectors page. */
+export function ComposioAppsSection() {
   const t = useTranslations("Composio");
   const { mutate } = useSWRConfig();
   const [searchInput, setSearchInput] = useState("");
@@ -369,21 +369,23 @@ function ConnectorsGrid() {
       .watch(() => setSyncing(false));
 
   return (
-    <ScrollArea className="h-full w-full z-40">
-      <div
-        className="pt-8 flex-1 relative flex flex-col gap-4 px-8 max-w-4xl h-full mx-auto pb-8"
+      <section
+        className="relative flex flex-col gap-4"
         data-testid="composio-dashboard"
       >
-        <div className="flex items-center gap-2 pb-4">
-          <h1
-            className="text-2xl font-bold flex items-center gap-2"
+        <div className="flex items-center gap-2">
+          <h2
+            className="text-base font-semibold flex items-center gap-2"
             data-testid="composio-title"
           >
-            {t("title")}
+            Apps
+            <span className="text-xs font-normal text-muted-foreground">
+              via Composio
+            </span>
             {isValidating && !isLoading && (
               <Loader2 className="size-4 animate-spin" />
             )}
-          </h1>
+          </h2>
           <div className="flex-1" />
           <Button
             variant="outline"
@@ -526,15 +528,15 @@ function ConnectorsGrid() {
             )}
           </div>
         )}
-      </div>
-    </ScrollArea>
+      </section>
   );
 }
 
 const COMPOSIO_API_KEY_URL = "https://platform.composio.dev/settings";
 const COMPOSIO_SIGNUP_URL = "https://platform.composio.dev";
 
-function SetupGuide() {
+/** Compact Composio key setup, shown in place of the app catalog. */
+export function ComposioSetupCard() {
   const t = useTranslations("Composio");
   const { mutate } = useSWRConfig();
   const { mutate: mutateConfig } = useComposioConfig();
@@ -556,13 +558,7 @@ function SetupGuide() {
   const steps = [t("setupStep1"), t("setupStep2"), t("setupStep3")];
 
   return (
-    <ScrollArea className="h-full w-full z-40">
-      <div
-        className="pt-8 flex-1 flex flex-col gap-6 px-8 max-w-2xl h-full mx-auto pb-8"
-        data-testid="composio-setup"
-      >
-        <h1 className="text-2xl font-bold">{t("title")}</h1>
-        <Card className="bg-secondary/40">
+        <Card className="bg-secondary/40" data-testid="composio-setup">
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
               <KeyRound className="size-4 text-muted-foreground" />
@@ -628,20 +624,5 @@ function SetupGuide() {
             </p>
           </CardContent>
         </Card>
-      </div>
-    </ScrollArea>
   );
-}
-
-export default function ComposioDashboard() {
-  const { data: config, isLoading } = useComposioConfig();
-  if (isLoading) {
-    return (
-      <div className="pt-8 px-8 max-w-4xl mx-auto w-full">
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
-  }
-  if (!config?.configured) return <SetupGuide />;
-  return <ConnectorsGrid />;
 }

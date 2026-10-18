@@ -13,14 +13,15 @@ test.describe("dashboard", () => {
     await signedIn.waitForLoadState("domcontentloaded");
     await expect(signedIn.locator('[data-testid="skills-title"]')).toBeVisible({ timeout: 15000 });
 
-    // Navigate to /mcp
+    // The old /mcp deep link now forwards to the unified Connectors page.
     await signedIn.goto("/mcp");
     await signedIn.waitForLoadState("domcontentloaded");
-    await expect(signedIn.locator('[data-testid="mcp-dashboard"]')).toBeVisible({ timeout: 15000 });
+    await expect(signedIn.locator('[data-testid="connectors-page"]')).toBeVisible({ timeout: 15000 });
+    await expect(signedIn).toHaveURL(/\/connectors/);
 
-    // Hard reload on /mcp
+    // Hard reload on /connectors
     await signedIn.reload();
     await signedIn.waitForLoadState("domcontentloaded");
-    await expect(signedIn.locator('[data-testid="mcp-dashboard"]')).toBeVisible({ timeout: 15000 });
+    await expect(signedIn.locator('[data-testid="connectors-page"]')).toBeVisible({ timeout: 15000 });
   });
 });
