@@ -13,6 +13,7 @@ pub mod search_providers;
 pub mod schedules;
 pub mod skills;
 pub mod storage;
+pub mod system;
 pub mod user;
 pub mod voice;
 pub mod workspace_trust;
@@ -31,6 +32,7 @@ pub fn router() -> Router<AppState> {
         .merge(credentials::routes())
         .merge(export::routes())
         .merge(storage::routes())
+        .merge(system::routes())
         .merge(mcp::routes())
         .merge(fsbrowse::routes())
         .merge(providers_catalog::routes())
