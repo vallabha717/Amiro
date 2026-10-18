@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore, useMemo } from "react";
 import { ApiError, apiJson } from "./client";
 import { getSessionToken, setSessionToken } from "./config";
 
@@ -171,8 +171,10 @@ export function useSession(): {
     getSnapshot,
     getServerSnapshot,
   );
-  return {
-    data: snapshot.user ? { user: snapshot.user } : null,
-    isPending: snapshot.isPending,
-  };
+  // Stable identity while the user is unchanged: callers put `data` in
+  // effect deps, and a fresh object per render turned "load on session"
+  // effects into fetch loops (the Schedules page refetched thousands of times).
+  const user = snapshot.user;
+  const data = useMemo(() => (user ? { user } : null), [user]);
+  return useMemo(() => ({ data, isPending: snapshot.isPending }), [data, snapshot.isPending]);
 }
