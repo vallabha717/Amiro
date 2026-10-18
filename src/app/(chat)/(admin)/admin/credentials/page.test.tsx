@@ -2,12 +2,12 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { CredentialMetadata } from "@/lib/backend/credentials-api";
-import AdminCredentialsPage, {
-  AgentUsageDetails,
-  CredentialRow,
+import AdminCredentialsPage from "./page";
+import { AgentUsageDetails, CredentialRow } from "./credentials-view";
+import {
   filterCredentials,
   validateCredentialDraft,
-} from "./page";
+} from "./credentials-view-utils";
 
 function credential(
   overrides: Partial<CredentialMetadata> = {},
