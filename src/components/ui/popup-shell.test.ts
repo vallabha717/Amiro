@@ -28,11 +28,18 @@ describe("popup shell layout contract", () => {
       "src/components/chat/folder-browser-dialog.tsx",
       "src/components/mcp-customization-popup.tsx",
       "src/components/tool-detail-popup.tsx",
-      "src/app/(chat)/mcp/test/page.tsx",
     ];
     for (const file of popups) {
       expect(read(file), file).toContain("PopupShell");
     }
+  });
+
+  it("keeps the legacy MCP test route as a redirect to Connectors", () => {
+    // /mcp/test used to host a PopupShell page. It is now a redirect, so it is
+    // checked for the redirect instead of for the shell.
+    const page = read("src/app/(chat)/mcp/test/page.tsx");
+    expect(page).toContain("RedirectToConnectors");
+    expect(page).not.toContain("PopupShell");
   });
 
   it("gives migrated dialog bodies a bounded flex column shell", () => {
