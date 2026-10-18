@@ -30,7 +30,7 @@ import type {
   Schedule,
   ScheduleKind,
 } from "@/lib/backend/schedules-api";
-import { previewSchedule } from "@/lib/backend/schedules-api";
+import { type ScheduleMode, previewSchedule } from "@/lib/backend/schedules-api";
 import {
   COMMON_TIMEZONES,
   detectBrowserTimezone,
@@ -95,15 +95,27 @@ function parseCronToTimeFields(expression: string): {
   };
 }
 
+/** A pre-filled new schedule, e.g. from a suggested recipe. */
+export interface ScheduleDraft {
+  name: string;
+  prompt: string;
+  mode: ScheduleMode;
+  cadence: "daily" | "weekdays" | "weekly";
+  time: string;
+  weekday?: number;
+}
+
 export function ScheduleDialog({
   open,
   onOpenChange,
   schedule,
+  initial,
   onSaved,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   schedule: Schedule | null;
+  initial?: ScheduleDraft | null;
   onSaved: () => void;
 }) {
   const isEdit = !!schedule;
@@ -127,7 +139,7 @@ export function ScheduleDialog({
   const browserTz = useMemo(() => detectBrowserTimezone(), []);
   const [name, setName] = useState("");
   const [prompt, setPrompt] = useState("");
-  const [mode, setMode] = useState<"execute" | "notify">("execute");
+  const [mode, setMode] = useState<ScheduleMode>("agent");
   const [timezone, setTimezone] = useState(browserTz);
   const [model, setModel] = useState<string>("");
   const [cadence, setCadence] = useState<CadenceTab>("daily");
@@ -157,14 +169,14 @@ export function ScheduleDialog({
       hydratedForIdRef.current = null;
       return;
     }
-    const key = schedule?.id ?? "__create__";
+    const key = schedule?.id ?? `__create__${initial?.name ?? ""}`;
     if (hydratedForIdRef.current === key) return;
     hydratedForIdRef.current = key;
 
     if (schedule) {
       setName(schedule.name);
       setPrompt(schedule.prompt);
-      setMode(schedule.mode === "notify" ? "notify" : "execute");
+      setMode(schedule.mode);
       setTimezone(schedule.timezone || browserTz);
       setModel(schedule.model ?? "");
       const tab = inferCadenceTab(schedule.schedule);
@@ -190,19 +202,19 @@ export function ScheduleDialog({
         setCronExpr(schedule.schedule.expression);
       }
     } else {
-      setName("");
-      setPrompt("");
-      setMode("execute");
+      setName(initial?.name ?? "");
+      setPrompt(initial?.prompt ?? "");
+      setMode(initial?.mode ?? "agent");
       setTimezone(browserTz);
       // model default is handled by the separate effect below so it can wait
       // for the catalog without re-hydrating the whole form.
       setModel("");
-      setCadence("daily");
+      setCadence(initial?.cadence ?? "daily");
       setOnceAt("");
-      setDailyTime("09:00");
-      setWeekdaysTime("09:00");
-      setWeeklyTime("09:00");
-      setWeeklyWeekday(1);
+      setDailyTime(initial?.cadence === "daily" ? initial.time : "09:00");
+      setWeekdaysTime(initial?.cadence === "weekdays" ? initial.time : "09:00");
+      setWeeklyTime(initial?.cadence === "weekly" ? initial.time : "09:00");
+      setWeeklyWeekday(initial?.weekday ?? 1);
       setMonthlyTime("09:00");
       setMonthlyDay(1);
       setIntervalMinutes(60);
@@ -211,7 +223,7 @@ export function ScheduleDialog({
     setPreview(null);
     setPreviewError(null);
     setFormError(null);
-  }, [open, schedule, browserTz]);
+  }, [open, schedule, initial, browserTz]);
 
   // Default model once catalog arrives — separate from hydration so catalog
   // refresh does not wipe the form.
@@ -343,7 +355,7 @@ export function ScheduleDialog({
         mode,
         timezone,
         schedule: builtSchedule,
-        model: mode === "execute" ? (model.trim() || null) : null,
+        model: mode === "notify" ? null : model.trim() || null,
       };
       const { createSchedule, updateSchedule } = await import(
         "@/lib/backend/schedules-api"
@@ -419,43 +431,37 @@ export function ScheduleDialog({
                 className="min-h-[96px] resize-y"
               />
               <p className="text-xs text-muted-foreground">
-                Execute runs the model without tools, so it can draft text but
-                cannot send email or run skills that need tools. In-app
-                reminders create a conversation message you can open later.
+                Write it like a message to your agent. Results land in this
+                schedule&apos;s conversation.
               </p>
             </div>
 
             <div className="grid gap-2">
               <Label>Mode</Label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  data-testid="schedule-mode-execute"
-                  onClick={() => setMode("execute")}
-                  className={`rounded-lg border px-3 py-2.5 text-left transition-colors ${mode === "execute" ? "border-primary bg-primary/10" : "border-border hover:bg-accent"}`}
-                  aria-pressed={mode === "execute"}
-                >
-                  <div className="text-sm font-medium">Execute</div>
-                  <div className="text-xs text-muted-foreground">
-                    Run agent now when scheduled
-                  </div>
-                </button>
-                <button
-                  type="button"
-                  data-testid="schedule-mode-notify"
-                  onClick={() => setMode("notify")}
-                  className={`rounded-lg border px-3 py-2.5 text-left transition-colors ${mode === "notify" ? "border-primary bg-primary/10" : "border-border hover:bg-accent"}`}
-                  aria-pressed={mode === "notify"}
-                >
-                  <div className="text-sm font-medium">In-app reminder</div>
-                  <div className="text-xs text-muted-foreground">
-                    Post a message in this workspace
-                  </div>
-                </button>
+              <div className="grid grid-cols-3 gap-2">
+                {(
+                  [
+                    ["agent", "Agent", "Uses tools and connectors, like a chat"],
+                    ["execute", "Text only", "Writes a reply, no tools"],
+                    ["notify", "Reminder", "Posts your text as-is"],
+                  ] as const
+                ).map(([id, title, sub]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    data-testid={`schedule-mode-${id}`}
+                    onClick={() => setMode(id)}
+                    className={`rounded-lg border px-3 py-2.5 text-left transition-colors ${mode === id ? "border-primary bg-primary/10" : "border-border hover:bg-accent"}`}
+                    aria-pressed={mode === id}
+                  >
+                    <div className="text-sm font-medium">{title}</div>
+                    <div className="text-xs text-muted-foreground">{sub}</div>
+                  </button>
+                ))}
               </div>
             </div>
 
-            {mode === "execute" ? (
+            {mode !== "notify" ? (
               <div className="grid gap-2">
                 <Label htmlFor="schedule-model">Model</Label>
                 {allModels.length === 0 ? (

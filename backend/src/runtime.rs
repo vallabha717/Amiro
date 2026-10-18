@@ -72,8 +72,8 @@ fn runtime_env(state: &AppState) -> HashMap<OsString, OsString> {
     // The owner's agent home is the workspace root; the runtime loads
     // IDENTITY/SOUL/USER/NOW/BOOTSTRAP.md from here into every turn.
     let _ = std::fs::create_dir_all(&state.workspace);
-    let agent_home = std::fs::canonicalize(&state.workspace)
-        .unwrap_or_else(|_| state.workspace.clone());
+    let agent_home =
+        std::fs::canonicalize(&state.workspace).unwrap_or_else(|_| state.workspace.clone());
     env.insert(
         "AMIRO_AGENT_HOME".into(),
         OsString::from(agent_home.to_string_lossy().to_string()),
@@ -126,6 +126,14 @@ fn runtime_env(state: &AppState) -> HashMap<OsString, OsString> {
     // its prompt or transcript.
     for (name, value) in crate::credentials::runtime_env_vars_sync(&state.home) {
         env.insert(OsString::from(name), OsString::from(value));
+    }
+    // Token for the built-in `amiro` MCP server (mcp.json carries only the
+    // `${AMIRO_AGENT_MCP_TOKEN}` placeholder).
+    if let Some(token) = crate::agent_mcp::read_token_sync(&state.home) {
+        env.insert(
+            crate::agent_mcp::TOKEN_ENV_VAR.into(),
+            OsString::from(token),
+        );
     }
     env
 }
@@ -518,11 +526,7 @@ pub async fn exec_json_with_diagnostics(
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(ApiError(
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!(
-                "runtime {:?} failed: {}",
-                args,
-                stderr.trim().to_string()
-            ),
+            format!("runtime {:?} failed: {}", args, stderr.trim().to_string()),
         ));
     }
     let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -631,10 +635,7 @@ pub async fn create_session(
 }
 
 /// Attach to an existing session on its own connection.
-pub async fn attach_session(
-    state: &AppState,
-    session_id: &str,
-) -> Result<SessionHandle, ApiError> {
+pub async fn attach_session(state: &AppState, session_id: &str) -> Result<SessionHandle, ApiError> {
     ensure_bridge(state).await?;
     let state = state.clone();
     let session_id = session_id.to_string();
@@ -678,7 +679,9 @@ pub async fn any_session_busy(state: &AppState) -> bool {
     blocking("any_session_busy", move || {
         let client = connect_client(&state, false)?;
         let sessions = client.list_sessions().map_err(runtime_error)?;
-        Ok(sessions.iter().any(|session| session_is_busy(&session.status)))
+        Ok(sessions
+            .iter()
+            .any(|session| session_is_busy(&session.status)))
     })
     .await
     .unwrap_or(false)
@@ -738,17 +741,24 @@ pub async fn mcp_status(state: &AppState) -> Option<Value> {
         return None;
     }
     let state = state.clone();
-    blocking("mcp_status", move || Ok(mcp_status_blocking(&state, command)))
-        .await
-        .ok()
-        .flatten()
+    blocking("mcp_status", move || {
+        Ok(mcp_status_blocking(&state, command))
+    })
+    .await
+    .ok()
+    .flatten()
 }
 
 fn mcp_status_blocking(state: &AppState, command: RuntimeCommand) -> Option<Value> {
     let client = connect_client(state, false).ok()?;
     let mut sessions = client.list_sessions().ok()?;
     sessions.sort_by_key(|session| {
-        std::cmp::Reverse(session.last_active_at_ms.or(session.updated_at_ms).unwrap_or(0))
+        std::cmp::Reverse(
+            session
+                .last_active_at_ms
+                .or(session.updated_at_ms)
+                .unwrap_or(0),
+        )
     });
     for session in sessions
         .iter()
@@ -788,7 +798,10 @@ pub async fn context_snapshot(state: &AppState, session_id: &str) -> Option<Valu
             .runtime_command(&session_id, RuntimeCommand::Info, Vec::new())
             .map_err(runtime_error)?;
         let data = &out.data;
-        let window = data.get("context_window").and_then(Value::as_u64).filter(|w| *w > 0);
+        let window = data
+            .get("context_window")
+            .and_then(Value::as_u64)
+            .filter(|w| *w > 0);
         let usage = data.get("last_usage");
         let field = |name: &str| {
             usage
@@ -838,22 +851,25 @@ pub fn no_tools() -> ToolConfiguration {
 /// and run with the owner's own permissions. `AMIRO_TOOL_PROFILE=none` is the
 /// one supported opt-out for people who want chat without tools.
 pub fn expose_tools() -> bool {
-    !matches!(
-        std::env::var("AMIRO_TOOL_PROFILE").as_deref(),
-        Ok("none")
-    )
+    !matches!(std::env::var("AMIRO_TOOL_PROFILE").as_deref(), Ok("none"))
 }
 
 /// Runtime history for a session, as the frontend message shape's source rows.
-pub async fn session_titles(state: &AppState) -> Result<std::collections::HashMap<String, String>, ApiError> {
+pub async fn session_titles(
+    state: &AppState,
+) -> Result<std::collections::HashMap<String, String>, ApiError> {
     ensure_bridge(state).await?;
     let state = state.clone();
     blocking("session_titles", move || {
         let client = connect_client(&state, false)?;
-        Ok(client.list_sessions().map_err(runtime_error)?.into_iter()
+        Ok(client
+            .list_sessions()
+            .map_err(runtime_error)?
+            .into_iter()
             .filter_map(|session| session.title.map(|title| (session.session_id, title)))
             .collect())
-    }).await
+    })
+    .await
 }
 
 /// Every runtime session as the harness API reports it (snake_case
@@ -882,8 +898,12 @@ pub async fn session_title(state: &AppState, session_id: &str) -> Result<Option<
     let session_id = session_id.to_string();
     blocking("session_title", move || {
         let client = connect_client(&state, false)?;
-        Ok(client.attach_session(&session_id).map_err(runtime_error)?.title)
-    }).await
+        Ok(client
+            .attach_session(&session_id)
+            .map_err(runtime_error)?
+            .title)
+    })
+    .await
 }
 
 pub async fn get_history(state: &AppState, session_id: &str) -> Result<Vec<Value>, ApiError> {
@@ -1071,7 +1091,9 @@ fn run_turn_worker(
         let client = connect_client(state, require_tools).map_err(|error| error.1)?;
         let handle = match plan.session_id.as_deref() {
             Some(session_id) => {
-                let info = client.attach_session(session_id).map_err(|error| error.to_string())?;
+                let info = client
+                    .attach_session(session_id)
+                    .map_err(|error| error.to_string())?;
                 session_handle(state, info, false, "").map_err(|error| error.1)?
             }
             None => {
@@ -1217,7 +1239,9 @@ fn run_with_reminder(
         }
         match event {
             ApiEvent::TextDelta { text, .. } => result.text.push_str(&text),
-            ApiEvent::TurnStopped { reason, message, .. } => {
+            ApiEvent::TurnStopped {
+                reason, message, ..
+            } => {
                 result.stop_reason = Some(reason);
                 result.stop_message = Some(message);
             }
@@ -1407,9 +1431,18 @@ mod tests {
         for key in env.keys() {
             let name = key.to_string_lossy();
             assert!(!name.starts_with("JCODE_"), "legacy var leaked: {name}");
-            assert!(!name.starts_with("META_MUSE_"), "host provider var leaked: {name}");
-            assert!(!name.starts_with("OPENROUTER_"), "host provider var leaked: {name}");
-            assert!(!name.starts_with("OPENAI_COMPAT_"), "host provider var leaked: {name}");
+            assert!(
+                !name.starts_with("META_MUSE_"),
+                "host provider var leaked: {name}"
+            );
+            assert!(
+                !name.starts_with("OPENROUTER_"),
+                "host provider var leaked: {name}"
+            );
+            assert!(
+                !name.starts_with("OPENAI_COMPAT_"),
+                "host provider var leaked: {name}"
+            );
         }
         assert!(env.contains_key(std::ffi::OsStr::new("AMIRO_HOME")));
         assert!(env.contains_key(std::ffi::OsStr::new("AMIRO_AGENT_HOME")));

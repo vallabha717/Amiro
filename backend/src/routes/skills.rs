@@ -19,8 +19,18 @@ pub const SKILL_NAME_MAX_LENGTH: usize = 64;
 /// as Built-in. Developer skills for working on Amiro itself live in
 /// `.agents/skills` and are never shown or shipped.
 pub const BUNDLED_AGENT_SKILLS: &[(&str, &str)] = &[
-    ("visualize", include_str!("../../../agent-skills/visualize/SKILL.md")),
-    ("mcp-setup", include_str!("../../../agent-skills/mcp-setup/SKILL.md")),
+    (
+        "visualize",
+        include_str!("../../../agent-skills/visualize/SKILL.md"),
+    ),
+    (
+        "mcp-setup",
+        include_str!("../../../agent-skills/mcp-setup/SKILL.md"),
+    ),
+    (
+        "schedules",
+        include_str!("../../../agent-skills/schedules/SKILL.md"),
+    ),
 ];
 
 fn bundled_skill(name: &str) -> Option<&'static str> {
@@ -39,7 +49,9 @@ pub fn install_bundled_skills(state: &AppState) {
         if std::fs::read_to_string(&path).ok().as_deref() == Some(*markdown) {
             continue;
         }
-        if let Err(error) = std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&path, markdown)) {
+        if let Err(error) =
+            std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&path, markdown))
+        {
             eprintln!("skills: could not install bundled skill {name}: {error}");
         }
     }
@@ -80,7 +92,10 @@ pub fn is_valid_skill_name(name: &str) -> bool {
         if part.is_empty() {
             return false;
         }
-        if !part.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()) {
+        if !part
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        {
             return false;
         }
     }
@@ -90,7 +105,9 @@ pub fn is_valid_skill_name(name: &str) -> bool {
 fn is_safe_lookup_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 128
-        && !name.chars().any(|c| c.is_ascii_control() || c == '/' || c == '\\')
+        && !name
+            .chars()
+            .any(|c| c.is_ascii_control() || c == '/' || c == '\\')
 }
 
 fn tools_exposed() -> bool {
@@ -99,10 +116,17 @@ fn tools_exposed() -> bool {
 }
 
 fn skill_generation_enabled() -> bool {
-    std::env::var("AMIRO_ENABLE_SKILL_GENERATION").map(|v| v == "1").unwrap_or(false)
+    std::env::var("AMIRO_ENABLE_SKILL_GENERATION")
+        .map(|v| v == "1")
+        .unwrap_or(false)
 }
 
-fn describe_capability(body: &str, disable_model_inv: bool, name: &str, tools_on: bool) -> (bool, bool, String) {
+fn describe_capability(
+    body: &str,
+    disable_model_inv: bool,
+    name: &str,
+    tools_on: bool,
+) -> (bool, bool, String) {
     let body_trim = body.trim();
     if body_trim.is_empty() {
         return (
@@ -115,7 +139,8 @@ fn describe_capability(body: &str, disable_model_inv: bool, name: &str, tools_on
         return (
             false,
             false,
-            "This SKILL.md sets disable-model-invocation, so the model is not allowed to use it.".to_string(),
+            "This SKILL.md sets disable-model-invocation, so the model is not allowed to use it."
+                .to_string(),
         );
     }
     if !is_valid_skill_name(&name.to_lowercase()) {
@@ -159,7 +184,10 @@ fn parse_skill_markdown(raw: &str, fallback_name: &str) -> ParsedSkill {
     let mut allowed_tools = Vec::new();
     let mut meta = SkillMeta::default();
 
-    if let Some(rest) = raw.strip_prefix("---\n").or_else(|| raw.strip_prefix("---\r\n")) {
+    if let Some(rest) = raw
+        .strip_prefix("---\n")
+        .or_else(|| raw.strip_prefix("---\r\n"))
+    {
         if let Some(idx) = rest.find("\n---") {
             let front = &rest[..idx];
             let after = &rest[idx + 4..];
@@ -176,7 +204,9 @@ fn parse_skill_markdown(raw: &str, fallback_name: &str) -> ParsedSkill {
                         "license" if !val.is_empty() => license = Some(val.to_string()),
                         "disable-model-invocation" => disable_model_invocation = val == "true",
                         "emoji" if !val.is_empty() => meta.emoji = Some(val.to_string()),
-                        "display-name" if !val.is_empty() => meta.display_name = Some(val.to_string()),
+                        "display-name" if !val.is_empty() => {
+                            meta.display_name = Some(val.to_string())
+                        }
                         "category" if !val.is_empty() => meta.category = Some(val.to_string()),
                         "allowed-tools" => {
                             allowed_tools = val
@@ -232,11 +262,17 @@ struct SkillsQuery {
 
 fn assert_usable_project_dir(raw: &str) -> Result<PathBuf, ApiError> {
     if raw.is_empty() {
-        return Err(ApiError(StatusCode::BAD_REQUEST, "path is required".to_string()));
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "path is required".to_string(),
+        ));
     }
     let p = Path::new(raw);
     if !p.is_absolute() {
-        return Err(ApiError(StatusCode::BAD_REQUEST, "path must be absolute".to_string()));
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "path must be absolute".to_string(),
+        ));
     }
     let roots = resolve_browse_roots();
 
@@ -244,7 +280,9 @@ fn assert_usable_project_dir(raw: &str) -> Result<PathBuf, ApiError> {
         return Err(ApiError(StatusCode::FORBIDDEN, "access denied".to_string()));
     }
     let real = std::fs::canonicalize(p).map_err(|e| match e.kind() {
-        std::io::ErrorKind::NotFound => ApiError(StatusCode::BAD_REQUEST, "path does not exist".to_string()),
+        std::io::ErrorKind::NotFound => {
+            ApiError(StatusCode::BAD_REQUEST, "path does not exist".to_string())
+        }
         _ => ApiError(StatusCode::FORBIDDEN, "access denied".to_string()),
     })?;
 
@@ -252,13 +290,18 @@ fn assert_usable_project_dir(raw: &str) -> Result<PathBuf, ApiError> {
         return Err(ApiError(StatusCode::FORBIDDEN, "access denied".to_string()));
     }
     if !is_inside_roots(&real, &roots) {
-        return Err(ApiError(StatusCode::FORBIDDEN, "path is outside allowed roots".to_string()));
+        return Err(ApiError(
+            StatusCode::FORBIDDEN,
+            "path is outside allowed roots".to_string(),
+        ));
     }
-    let meta = std::fs::metadata(&real).map_err(|_| {
-        ApiError(StatusCode::BAD_REQUEST, "path does not exist".to_string())
-    })?;
+    let meta = std::fs::metadata(&real)
+        .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "path does not exist".to_string()))?;
     if !meta.is_dir() {
-        return Err(ApiError(StatusCode::BAD_REQUEST, "path is not a directory".to_string()));
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "path is not a directory".to_string(),
+        ));
     }
     Ok(real)
 }
@@ -304,7 +347,11 @@ fn discover_skills(
     if project_dir.is_some() {
         roots.push((repo_root.join(".amiro").join("skills"), "project", ".amiro"));
         roots.push((repo_root.join(".jcode").join("skills"), "project", ".amiro"));
-        roots.push((repo_root.join(".agents").join("skills"), "project", ".agents"));
+        roots.push((
+            repo_root.join(".agents").join("skills"),
+            "project",
+            ".agents",
+        ));
     }
 
     for (root_dir, scope, source) in roots {
@@ -382,13 +429,21 @@ fn discover_skills(
                 DiscoveredSkill {
                     name: ent_name,
                     description: parsed.description,
-                    body: if parsed.body.is_empty() { raw } else { parsed.body },
+                    body: if parsed.body.is_empty() {
+                        raw
+                    } else {
+                        parsed.body
+                    },
                     resources,
                     license: parsed.license,
                     disable_model_invocation: parsed.disable_model_invocation,
                     allowed_tools: parsed.allowed_tools,
                     scope: scope.to_string(),
-                    source: if bundled { "bundled".to_string() } else { source.to_string() },
+                    source: if bundled {
+                        "bundled".to_string()
+                    } else {
+                        source.to_string()
+                    },
                     writable: false,
                     readonly: true,
                     path: skill_md.to_string_lossy().to_string(),
@@ -411,7 +466,11 @@ fn discover_skills(
             DiscoveredSkill {
                 name: name.to_string(),
                 description: parsed.description,
-                body: if parsed.body.is_empty() { markdown.to_string() } else { parsed.body },
+                body: if parsed.body.is_empty() {
+                    markdown.to_string()
+                } else {
+                    parsed.body
+                },
                 resources: Vec::new(),
                 license: parsed.license,
                 disable_model_invocation: parsed.disable_model_invocation,
@@ -456,8 +515,12 @@ pub async fn resolve_skill_for_turn(
 }
 
 fn present_summary(skill: &DiscoveredSkill, tools_on: bool) -> Value {
-    let (deliverable, invokable, invokable_reason) =
-        describe_capability(&skill.body, skill.disable_model_invocation, &skill.name, tools_on);
+    let (deliverable, invokable, invokable_reason) = describe_capability(
+        &skill.body,
+        skill.disable_model_invocation,
+        &skill.name,
+        tools_on,
+    );
 
     json!({
         "name": skill.name,
@@ -512,7 +575,11 @@ async fn get_merged_skills(
             let resources = v
                 .get("resources")
                 .and_then(|r| r.as_array())
-                .map(|a| a.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
                 .unwrap_or_default();
             let scope = v.get("scope").and_then(|s| s.as_str()).unwrap_or("user");
             let source = v.get("source").and_then(|s| s.as_str()).unwrap_or(".amiro");
@@ -569,7 +636,10 @@ async fn mirror_skill(state: &AppState, name: &str, skill: &DiscoveredSkill) -> 
     }
     let target = skill_dir.join("SKILL.md");
     let content = if !skill.description.is_empty() {
-        format!("---\nname: {}\ndescription: {}\n---\n\n{}", skill.name, skill.description, skill.body)
+        format!(
+            "---\nname: {}\ndescription: {}\n---\n\n{}",
+            skill.name, skill.description, skill.body
+        )
     } else {
         skill.body.clone()
     };
@@ -594,7 +664,10 @@ async fn list_skills(
     let tools_on = tools_exposed();
     let (merged, diagnostics) = get_merged_skills(&state, &uid, project_dir.as_deref()).await?;
 
-    let items: Vec<Value> = merged.values().map(|s| present_summary(s, tools_on)).collect();
+    let items: Vec<Value> = merged
+        .values()
+        .map(|s| present_summary(s, tools_on))
+        .collect();
     Ok(Json(json!({
         "items": items,
         "diagnostics": diagnostics,
@@ -610,7 +683,10 @@ async fn get_skill_detail(
 ) -> Result<Json<Value>, ApiError> {
     let uid = user_id_of(&user);
     if !is_safe_lookup_name(&name) {
-        return Err(ApiError(StatusCode::BAD_REQUEST, "invalid skill name".to_string()));
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "invalid skill name".to_string(),
+        ));
     }
 
     let project_dir = if let Some(p) = query.project.as_deref().filter(|s| !s.is_empty()) {
@@ -642,22 +718,40 @@ async fn create_skill(
         .to_lowercase();
 
     if name.is_empty() {
-        return Err(ApiError(StatusCode::BAD_REQUEST, "skill name is required".to_string()));
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "skill name is required".to_string(),
+        ));
     }
     if !is_valid_skill_name(&name) {
         return Err(ApiError(
             StatusCode::BAD_REQUEST,
-            "skill name must be lowercase letters, digits and single hyphens (max 64 characters)".to_string(),
+            "skill name must be lowercase letters, digits and single hyphens (max 64 characters)"
+                .to_string(),
         ));
     }
 
     let now = now_iso();
-    let desc = body.get("description").and_then(|d| d.as_str()).unwrap_or("").trim().to_string();
-    let skill_body = body.get("body").and_then(|b| b.as_str()).unwrap_or("").trim().to_string();
+    let desc = body
+        .get("description")
+        .and_then(|d| d.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let skill_body = body
+        .get("body")
+        .and_then(|b| b.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
     let resources = body
         .get("resources")
         .and_then(|r| r.as_array())
-        .map(|a| a.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                .collect()
+        })
         .unwrap_or_default();
 
     let store_key = user_store_key(&uid);
@@ -738,7 +832,8 @@ async fn update_skill(
     if !is_valid_skill_name(&name) {
         return Err(ApiError(
             StatusCode::BAD_REQUEST,
-            "skill name must be lowercase letters, digits and single hyphens (max 64 characters)".to_string(),
+            "skill name must be lowercase letters, digits and single hyphens (max 64 characters)"
+                .to_string(),
         ));
     }
 
@@ -751,7 +846,10 @@ async fn update_skill(
         let map = match user_store.as_object_mut() {
             Some(m) => m,
             None => {
-                return Err(ApiError(StatusCode::NOT_FOUND, "skill not found".to_string()));
+                return Err(ApiError(
+                    StatusCode::NOT_FOUND,
+                    "skill not found".to_string(),
+                ));
             }
         };
 
@@ -760,9 +858,15 @@ async fn update_skill(
             None => {
                 let (merged, _) = get_merged_skills(&state, &uid, None).await?;
                 if merged.contains_key(&name) {
-                    return Err(ApiError(StatusCode::CONFLICT, "skill is read-only".to_string()));
+                    return Err(ApiError(
+                        StatusCode::CONFLICT,
+                        "skill is read-only".to_string(),
+                    ));
                 }
-                return Err(ApiError(StatusCode::NOT_FOUND, "skill not found".to_string()));
+                return Err(ApiError(
+                    StatusCode::NOT_FOUND,
+                    "skill not found".to_string(),
+                ));
             }
         };
 
@@ -784,10 +888,24 @@ async fn update_skill(
 
     let discovered = DiscoveredSkill {
         name: name.clone(),
-        description: updated_record.get("description").and_then(|d| d.as_str()).unwrap_or("").to_string(),
-        body: updated_record.get("body").and_then(|b| b.as_str()).unwrap_or("").to_string(),
-        resources: updated_record.get("resources").and_then(|r| r.as_array())
-            .map(|a| a.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect())
+        description: updated_record
+            .get("description")
+            .and_then(|d| d.as_str())
+            .unwrap_or("")
+            .to_string(),
+        body: updated_record
+            .get("body")
+            .and_then(|b| b.as_str())
+            .unwrap_or("")
+            .to_string(),
+        resources: updated_record
+            .get("resources")
+            .and_then(|r| r.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
             .unwrap_or_default(),
         license: None,
         disable_model_invocation: false,
@@ -797,7 +915,11 @@ async fn update_skill(
         writable: true,
         readonly: false,
         path: format!("~/.amiro/skills/{name}/SKILL.md"),
-        updated_at: updated_record.get("updatedAt").and_then(|u| u.as_str()).unwrap_or(&now_iso()).to_string(),
+        updated_at: updated_record
+            .get("updatedAt")
+            .and_then(|u| u.as_str())
+            .unwrap_or(&now_iso())
+            .to_string(),
         meta: SkillMeta::default(),
         bundled: false,
     };
@@ -824,7 +946,8 @@ async fn delete_skill(
     if !is_valid_skill_name(&name) {
         return Err(ApiError(
             StatusCode::BAD_REQUEST,
-            "skill name must be lowercase letters, digits and single hyphens (max 64 characters)".to_string(),
+            "skill name must be lowercase letters, digits and single hyphens (max 64 characters)"
+                .to_string(),
         ));
     }
 
@@ -837,16 +960,25 @@ async fn delete_skill(
         let map = match user_store.as_object_mut() {
             Some(m) => m,
             None => {
-                return Err(ApiError(StatusCode::NOT_FOUND, "skill not found".to_string()));
+                return Err(ApiError(
+                    StatusCode::NOT_FOUND,
+                    "skill not found".to_string(),
+                ));
             }
         };
 
         if map.remove(&name).is_none() {
             let (merged, _) = get_merged_skills(&state, &uid, None).await?;
             if merged.contains_key(&name) {
-                return Err(ApiError(StatusCode::CONFLICT, "skill is read-only".to_string()));
+                return Err(ApiError(
+                    StatusCode::CONFLICT,
+                    "skill is read-only".to_string(),
+                ));
             }
-            return Err(ApiError(StatusCode::NOT_FOUND, "skill not found".to_string()));
+            return Err(ApiError(
+                StatusCode::NOT_FOUND,
+                "skill not found".to_string(),
+            ));
         }
         write_json(&store_file, &user_store).await?;
     }
@@ -864,7 +996,10 @@ async fn duplicate_skill(
 ) -> Result<Json<Value>, ApiError> {
     let uid = user_id_of(&user);
     if !is_safe_lookup_name(&name) {
-        return Err(ApiError(StatusCode::BAD_REQUEST, "invalid skill name".to_string()));
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "invalid skill name".to_string(),
+        ));
     }
 
     let (merged, _) = get_merged_skills(&state, &uid, None).await?;
@@ -879,7 +1014,11 @@ async fn duplicate_skill(
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
         .collect();
     let base = base.trim_matches('-').to_string();
-    let stem = if is_valid_skill_name(&base) { base } else { "skill".to_string() };
+    let stem = if is_valid_skill_name(&base) {
+        base
+    } else {
+        "skill".to_string()
+    };
 
     let mut copy_name = format!("{stem}-copy");
     let mut counter = 1;
@@ -969,10 +1108,7 @@ pub fn routes() -> Router<AppState> {
             "/api/skills/items/{name}",
             get(get_skill_detail).put(update_skill).delete(delete_skill),
         )
-        .route(
-            "/api/skills/items/{name}/duplicate",
-            post(duplicate_skill),
-        )
+        .route("/api/skills/items/{name}/duplicate", post(duplicate_skill))
         .route("/api/skills/generate", post(generate_skill))
 }
 
@@ -1017,8 +1153,18 @@ mod bundled_skill_tests {
         }
         // This repo's developer skills (.agents/skills: plan, implement, ui…)
         // are never the agent's.
-        for dev in ["plan", "implement", "ui", "backend", "test", "amiro-runtime-update"] {
-            assert!(!found.contains_key(dev), "dev skill {dev} must not be listed");
+        for dev in [
+            "plan",
+            "implement",
+            "ui",
+            "backend",
+            "test",
+            "amiro-runtime-update",
+        ] {
+            assert!(
+                !found.contains_key(dev),
+                "dev skill {dev} must not be listed"
+            );
         }
 
         // After install the runtime copy is found and still reads as bundled;
@@ -1026,16 +1172,18 @@ mod bundled_skill_tests {
         install_bundled_skills(&state);
         let custom = state.runtime_home.join("skills").join("my-notes");
         std::fs::create_dir_all(&custom).unwrap();
-        std::fs::write(custom.join("SKILL.md"), "---\nname: my-notes\ndescription: mine\n---\nBody").unwrap();
+        std::fs::write(
+            custom.join("SKILL.md"),
+            "---\nname: my-notes\ndescription: mine\n---\nBody",
+        )
+        .unwrap();
         let (found, _) = discover_skills(&state, None);
         assert!(found["visualize"].bundled);
         assert!(found["mcp-setup"].bundled);
         assert!(!found["my-notes"].bundled);
         assert_eq!(found["my-notes"].source, ".amiro");
-        let installed = std::fs::read_to_string(
-            state.runtime_home.join("skills/mcp-setup/SKILL.md"),
-        )
-        .unwrap();
+        let installed =
+            std::fs::read_to_string(state.runtime_home.join("skills/mcp-setup/SKILL.md")).unwrap();
         assert_eq!(installed, bundled_skill("mcp-setup").unwrap());
     }
 }

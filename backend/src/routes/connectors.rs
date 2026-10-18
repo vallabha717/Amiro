@@ -26,6 +26,9 @@ use crate::runtime::McpReloadOutcome;
 use crate::state::{read_json, write_json, ApiError, AppState, AuthUser};
 
 const COMPOSIO: &str = "composio";
+/// Built-in schedules MCP server (`agent_mcp`): managed by the backend, never
+/// editable, toggleable or deletable from the Connectors API.
+const AMIRO: &str = "amiro";
 const MAX_SLUG_LEN: usize = 40;
 const STATUS_TTL: Duration = Duration::from_secs(5);
 const LEGACY_FILE: &str = "mcp-servers.json";
@@ -37,7 +40,10 @@ fn bad(message: impl Into<String>) -> ApiError {
 
 fn require_admin(user: &AuthUser) -> Result<(), ApiError> {
     if user.0.get("role").and_then(Value::as_str) != Some("admin") {
-        return Err(ApiError(StatusCode::FORBIDDEN, "admin required".to_string()));
+        return Err(ApiError(
+            StatusCode::FORBIDDEN,
+            "admin required".to_string(),
+        ));
     }
     Ok(())
 }
@@ -53,9 +59,10 @@ pub fn mcp_config_path(state: &AppState) -> std::path::PathBuf {
 
 fn servers_key_for(object: &Map<String, Value>, name: Option<&str>) -> &'static str {
     let has = |key: &str| {
-        object.get(key).and_then(Value::as_object).is_some_and(|servers| {
-            name.is_none_or(|name| servers.contains_key(name))
-        })
+        object
+            .get(key)
+            .and_then(Value::as_object)
+            .is_some_and(|servers| name.is_none_or(|name| servers.contains_key(name)))
     };
     if has("servers") {
         "servers"
@@ -222,7 +229,10 @@ fn placeholder(slug: &str, field: &str) -> String {
 
 /// Every `${NAME}` variable name referenced in `text`.
 fn placeholders_in(text: &str) -> Vec<String> {
-    placeholders_with_prefix(text).into_iter().map(|(name, _)| name).collect()
+    placeholders_with_prefix(text)
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect()
 }
 
 /// Each `${NAME}` in `text`, with the literal text just before it (`Bearer `
@@ -237,10 +247,7 @@ fn placeholders_with_prefix(text: &str) -> Vec<(String, String)> {
         match after.find('}') {
             Some(end) => {
                 let name = &after[..end];
-                if !name.is_empty()
-                    && name
-                        .bytes()
-                        .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+                if !name.is_empty() && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
                 {
                     out.push((name.to_string(), before));
                 }
@@ -367,6 +374,8 @@ fn key_names(entry: &Value, key: &str) -> Vec<String> {
 fn source_of(name: &str) -> &'static str {
     if name == COMPOSIO {
         "composio"
+    } else if name == AMIRO {
+        "amiro"
     } else {
         "custom"
     }
@@ -399,7 +408,7 @@ fn build_server(
 ) -> Value {
     let transport = transport_of(entry);
     let enabled = is_enabled(entry);
-    let secrets: Vec<Value> = if name == COMPOSIO {
+    let secrets: Vec<Value> = if name == COMPOSIO || name == AMIRO {
         Vec::new()
     } else {
         secret_refs(name, entry)
@@ -616,7 +625,11 @@ fn legacy_string_map(value: Option<&Value>) -> Map<String, Value> {
 
 fn legacy_entry(config: &Value) -> Option<Value> {
     let mut entry = Map::new();
-    if let Some(url) = config.get("url").and_then(Value::as_str).filter(|u| !u.is_empty()) {
+    if let Some(url) = config
+        .get("url")
+        .and_then(Value::as_str)
+        .filter(|u| !u.is_empty())
+    {
         let kind = config
             .get("type")
             .or_else(|| config.get("transport"))
@@ -678,10 +691,15 @@ pub async fn migrate_legacy(state: &AppState) -> Result<usize, ApiError> {
     let mut additions: Vec<(String, Value)> = Vec::new();
     if let Some(map) = document.as_object() {
         let mut items: Vec<&Value> = map.values().collect();
-        items.sort_by_key(|s| s.get("createdAt").and_then(Value::as_str).unwrap_or("").to_string());
+        items.sort_by_key(|s| {
+            s.get("createdAt")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string()
+        });
         for server in items {
             let slug = slugify(server.get("name").and_then(Value::as_str).unwrap_or(""));
-            if slug.is_empty() || slug == COMPOSIO {
+            if slug.is_empty() || slug == COMPOSIO || slug == AMIRO {
                 continue;
             }
             if additions.iter().any(|(n, _)| n == &slug) {
@@ -728,7 +746,12 @@ struct Pair {
     secret: bool,
 }
 
-fn parse_pairs(body: &Value, key: &str, valid: fn(&str) -> bool, what: &str) -> Result<Vec<Pair>, ApiError> {
+fn parse_pairs(
+    body: &Value,
+    key: &str,
+    valid: fn(&str) -> bool,
+    what: &str,
+) -> Result<Vec<Pair>, ApiError> {
     let Some(list) = body.get(key) else {
         return Ok(Vec::new());
     };
@@ -768,7 +791,11 @@ fn parse_pairs(body: &Value, key: &str, valid: fn(&str) -> bool, what: &str) -> 
         if dup {
             return Err(bad(format!("duplicate {what} name")));
         }
-        out.push(Pair { name, value, secret });
+        out.push(Pair {
+            name,
+            value,
+            secret,
+        });
     }
     Ok(out)
 }
@@ -778,7 +805,9 @@ fn check_literal(slug: &str, text: &str) -> Result<(), ApiError> {
     let own = env_var_for(slug, "");
     for var in placeholders_in(text) {
         if var.starts_with("AMIRO_CRED_") && !var.starts_with(&own) {
-            return Err(bad("values may only reference this connector's own secrets"));
+            return Err(bad(
+                "values may only reference this connector's own secrets",
+            ));
         }
     }
     Ok(())
@@ -800,6 +829,11 @@ fn plan_custom(body: &Value, existing: Option<&Value>) -> Result<Plan, ApiError>
         .to_string();
     if slug == COMPOSIO {
         return Err(bad("the name \"composio\" is reserved"));
+    }
+    if slug == AMIRO {
+        return Err(bad(
+            "the name \"amiro\" is reserved for the built-in schedules server",
+        ));
     }
     if !is_valid_slug(&slug) {
         return Err(bad("name must be 1-40 characters of a-z, 0-9 and -"));
@@ -852,7 +886,11 @@ fn plan_custom(body: &Value, existing: Option<&Value>) -> Result<Plan, ApiError>
             }
             entry.insert(
                 "type".into(),
-                json!(if transport == "http" { "streamable-http" } else { "sse" }),
+                json!(if transport == "http" {
+                    "streamable-http"
+                } else {
+                    "sse"
+                }),
             );
             entry.insert("url".into(), json!(url));
             if !headers.is_empty() {
@@ -878,7 +916,9 @@ fn plan_custom(body: &Value, existing: Option<&Value>) -> Result<Plan, ApiError>
             }
             entry.insert("command".into(), json!(command));
             if let Some(args) = body.get("args").filter(|a| !a.is_null()) {
-                let args = args.as_array().ok_or_else(|| bad("args must be an array"))?;
+                let args = args
+                    .as_array()
+                    .ok_or_else(|| bad("args must be an array"))?;
                 let mut list = Vec::new();
                 for arg in args {
                     let arg = arg.as_str().ok_or_else(|| bad("args must be strings"))?;
@@ -932,7 +972,12 @@ async fn upsert_custom(
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
     require_admin(&user)?;
-    let name_hint = body.get("name").and_then(Value::as_str).unwrap_or("").trim().to_string();
+    let name_hint = body
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_string();
     let existing = if is_valid_slug(&name_hint) {
         read_server(&state, &name_hint).await?
     } else {
@@ -970,7 +1015,7 @@ async fn put_secrets(
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
     require_admin(&user)?;
-    if name == COMPOSIO || !is_valid_slug(&name) {
+    if name == COMPOSIO || name == AMIRO || !is_valid_slug(&name) {
         return Err(bad("invalid connector name"));
     }
     let entry = read_server(&state, &name)
@@ -1015,6 +1060,9 @@ async fn set_enabled(
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
     require_admin(&user)?;
+    if name == AMIRO {
+        return Err(bad("the built-in \"amiro\" connector cannot be disabled"));
+    }
     let enabled = body
         .get("enabled")
         .and_then(Value::as_bool)
@@ -1031,7 +1079,10 @@ async fn set_enabled(
     })
     .await?;
     if !found {
-        return Err(ApiError(StatusCode::NOT_FOUND, "connector not found".into()));
+        return Err(ApiError(
+            StatusCode::NOT_FOUND,
+            "connector not found".into(),
+        ));
     }
     reload(&state).await;
     Ok(Json(server_response(&state, &name).await?))
@@ -1043,17 +1094,29 @@ async fn delete_custom(
     Path(name): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
     require_admin(&user)?;
-    if name == COMPOSIO || !is_valid_slug(&name) {
+    if name == COMPOSIO || name == AMIRO || !is_valid_slug(&name) {
         return Err(bad("invalid connector name"));
     }
-    let (removed, _) = mutate_mcp_servers(&state, Some(&name), |servers| servers.remove(&name)).await?;
+    let (removed, _) =
+        mutate_mcp_servers(&state, Some(&name), |servers| servers.remove(&name)).await?;
     let Some(entry) = removed else {
-        return Err(ApiError(StatusCode::NOT_FOUND, "connector not found".into()));
+        return Err(ApiError(
+            StatusCode::NOT_FOUND,
+            "connector not found".into(),
+        ));
     };
     let service = vault_service(&name);
-    let mut fields: HashSet<String> = secret_refs(&name, &entry).into_iter().map(|s| s.field).collect();
+    let mut fields: HashSet<String> = secret_refs(&name, &entry)
+        .into_iter()
+        .map(|s| s.field)
+        .collect();
     if let Ok(items) = credentials::list_metadata(&state).await {
-        fields.extend(items.into_iter().filter(|m| m.service == service).map(|m| m.field));
+        fields.extend(
+            items
+                .into_iter()
+                .filter(|m| m.service == service)
+                .map(|m| m.field),
+        );
     }
     for field in fields {
         let _ = credentials::delete(&state, &service, &field).await;
@@ -1111,11 +1174,15 @@ mod tests {
     #[test]
     fn repeated_template_prefix_is_stripped() {
         assert_eq!(strip_template_prefix("Bearer ", "Bearer abc123"), "abc123");
-        assert_eq!(strip_template_prefix("Bearer ", "bearer   abc123 "), "abc123");
+        assert_eq!(
+            strip_template_prefix("Bearer ", "bearer   abc123 "),
+            "abc123"
+        );
         assert_eq!(strip_template_prefix("Bearer ", "abc123"), "abc123");
         assert_eq!(strip_template_prefix("", "Bearer abc123"), "Bearer abc123");
         assert_eq!(strip_template_prefix("Bearer ", "Bearer"), "Bearer");
-        let entry = json!({"headers": {"Authorization": "Bearer ${AMIRO_CRED_MCP_DEMO_AUTHORIZATION}"}});
+        let entry =
+            json!({"headers": {"Authorization": "Bearer ${AMIRO_CRED_MCP_DEMO_AUTHORIZATION}"}});
         let refs = secret_refs("demo", &entry);
         assert_eq!(refs[0].prefix, "Bearer ");
     }
@@ -1160,10 +1227,17 @@ mod tests {
             "env": {"GITHUB_TOKEN": "${AMIRO_CRED_MCP_MY_SERVER_GITHUB_TOKEN}"}
         });
         let refs = secret_refs("my-server", &entry);
-        let find = |f: &str| refs.iter().find(|r| r.field == f).map(|r| r.location.clone());
+        let find = |f: &str| {
+            refs.iter()
+                .find(|r| r.field == f)
+                .map(|r| r.location.clone())
+        };
         assert_eq!(find("query_key").as_deref(), Some("url"));
         assert_eq!(find("arg_token").as_deref(), Some("arg"));
-        assert_eq!(find("authorization").as_deref(), Some("header:Authorization"));
+        assert_eq!(
+            find("authorization").as_deref(),
+            Some("header:Authorization")
+        );
         assert_eq!(find("github_token").as_deref(), Some("env:GITHUB_TOKEN"));
         // Another server's secret is not this server's.
         assert_eq!(refs.len(), 4);
@@ -1190,7 +1264,10 @@ mod tests {
         assert_eq!(connected["tools"][0]["name"], "t");
         let bad_status = json!({"name":"s","connected":false,"error":"boom"});
         let errored = build_server("s", &entry, &vars, Some(&bad_status));
-        assert_eq!((errored["status"].clone(), errored["error"].clone()), (json!("error"), json!("boom")));
+        assert_eq!(
+            (errored["status"].clone(), errored["error"].clone()),
+            (json!("error"), json!("boom"))
+        );
         let pending = build_server(
             "s",
             &json!({"url": "http://x/mcp"}),
@@ -1199,7 +1276,10 @@ mod tests {
         );
         assert_eq!(pending["status"], "unknown");
         let disabled = json!({"type":"sse","url":"https://x.example","enabled":false});
-        assert_eq!(build_server("s", &disabled, &none, None)["status"], "disabled");
+        assert_eq!(
+            build_server("s", &disabled, &none, None)["status"],
+            "disabled"
+        );
     }
 
     #[test]
@@ -1235,7 +1315,10 @@ mod tests {
             "env":[{"name":"GITHUB_TOKEN","value":"t","secret":true}]});
         let plan = plan_custom(&stdio, None).unwrap();
         assert!(plan.entry.get("type").is_none());
-        assert_eq!(plan.entry["env"]["GITHUB_TOKEN"], "${AMIRO_CRED_MCP_A_GITHUB_TOKEN}");
+        assert_eq!(
+            plan.entry["env"]["GITHUB_TOKEN"],
+            "${AMIRO_CRED_MCP_A_GITHUB_TOKEN}"
+        );
     }
 
     #[tokio::test]
@@ -1248,21 +1331,32 @@ mod tests {
         .await
         .unwrap();
         let entry = json!({"type": "sse", "url": "https://x.example"});
-        assert!(write_mcp_entry_named(&state, "new", Some(&entry)).await.unwrap());
+        assert!(write_mcp_entry_named(&state, "new", Some(&entry))
+            .await
+            .unwrap());
         // Unchanged write is a no-op.
-        assert!(!write_mcp_entry_named(&state, "new", Some(&entry)).await.unwrap());
-        let doc = read_json(&mcp_config_path(&state), json!({})).await.unwrap();
+        assert!(!write_mcp_entry_named(&state, "new", Some(&entry))
+            .await
+            .unwrap());
+        let doc = read_json(&mcp_config_path(&state), json!({}))
+            .await
+            .unwrap();
         assert_eq!(doc["mcpServers"]["keep"], json!({"command": "x"}));
         assert_eq!(doc["mcpServers"]["new"], entry);
         assert_eq!(doc["extra"], json!({"a": 1}));
         assert!(doc.get("servers").is_none());
         write_mcp_entry_named(&state, "new", None).await.unwrap();
-        let doc = read_json(&mcp_config_path(&state), json!({})).await.unwrap();
+        let doc = read_json(&mcp_config_path(&state), json!({}))
+            .await
+            .unwrap();
         assert!(doc["mcpServers"].get("new").is_none());
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let mode = std::fs::metadata(mcp_config_path(&state)).unwrap().permissions().mode();
+            let mode = std::fs::metadata(mcp_config_path(&state))
+                .unwrap()
+                .permissions()
+                .mode();
             assert_eq!(mode & 0o777, 0o600);
         }
     }
@@ -1282,13 +1376,22 @@ mod tests {
         )
         .await
         .unwrap();
-        write_mcp_entry_named(&state, "exists", Some(&json!({"url":"https://keep.example"})))
+        write_mcp_entry_named(
+            &state,
+            "exists",
+            Some(&json!({"url":"https://keep.example"})),
+        )
+        .await
+        .unwrap();
+        assert_eq!(migrate_legacy(&state).await.unwrap(), 2);
+        let doc = read_json(&mcp_config_path(&state), json!({}))
             .await
             .unwrap();
-        assert_eq!(migrate_legacy(&state).await.unwrap(), 2);
-        let doc = read_json(&mcp_config_path(&state), json!({})).await.unwrap();
         assert_eq!(doc["servers"]["my-remote"]["url"], "https://r.example/mcp");
-        assert_eq!(doc["servers"]["my-remote"]["headers"]["Authorization"], "Bearer literal");
+        assert_eq!(
+            doc["servers"]["my-remote"]["headers"]["Authorization"],
+            "Bearer literal"
+        );
         assert_eq!(doc["servers"]["local-tool"]["command"], "npx");
         assert_eq!(doc["servers"]["exists"]["url"], "https://keep.example");
         assert!(doc["servers"].get("composio").is_none());
@@ -1315,10 +1418,17 @@ mod tests {
             }
             None => Body::empty(),
         };
-        let response = app.clone().oneshot(request.body(body).unwrap()).await.unwrap();
+        let response = app
+            .clone()
+            .oneshot(request.body(body).unwrap())
+            .await
+            .unwrap();
         let status = response.status();
         let bytes = response.into_body().collect().await.unwrap().to_bytes();
-        (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+        (
+            status,
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        )
     }
 
     #[tokio::test]
@@ -1342,32 +1452,62 @@ mod tests {
 
         let create = json!({"name":"my-server","transport":"http","url":"https://x.example/mcp",
             "headers":[{"name":"Authorization","value":"","secret":true}]});
-        let (status, _) = call(&app, "POST", "/api/connectors/custom", "user", Some(create.clone())).await;
+        let (status, _) = call(
+            &app,
+            "POST",
+            "/api/connectors/custom",
+            "user",
+            Some(create.clone()),
+        )
+        .await;
         assert_eq!(status, StatusCode::FORBIDDEN);
 
-        let (status, server) = call(&app, "POST", "/api/connectors/custom", "admin", Some(create)).await;
+        let (status, server) = call(
+            &app,
+            "POST",
+            "/api/connectors/custom",
+            "admin",
+            Some(create),
+        )
+        .await;
         assert_eq!(status, StatusCode::OK, "{server}");
         assert_eq!(server["status"], "needs-secret");
-        assert_eq!(server["secrets"][0]["envVar"], "AMIRO_CRED_MCP_MY_SERVER_AUTHORIZATION");
+        assert_eq!(
+            server["secrets"][0]["envVar"],
+            "AMIRO_CRED_MCP_MY_SERVER_AUTHORIZATION"
+        );
         assert_eq!(server["secrets"][0]["location"], "header:Authorization");
 
         let (status, bad_field) = call(
-            &app, "PUT", "/api/connectors/custom/my-server/secrets", "admin",
+            &app,
+            "PUT",
+            "/api/connectors/custom/my-server/secrets",
+            "admin",
             Some(json!({"secrets":{"nope":"x"}})),
-        ).await;
+        )
+        .await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "{bad_field}");
 
         let (status, server) = call(
-            &app, "PUT", "/api/connectors/custom/my-server/secrets", "admin",
+            &app,
+            "PUT",
+            "/api/connectors/custom/my-server/secrets",
+            "admin",
             Some(json!({"secrets":{"authorization":"Bearer tok-123"}})),
-        ).await;
+        )
+        .await;
         assert_eq!(status, StatusCode::OK, "{server}");
         assert_eq!(server["secrets"][0]["present"], true);
 
         let (status, list) = call(&app, "GET", "/api/connectors", "user", None).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(list["statusAvailable"], false);
-        let listed = list["servers"].as_array().unwrap().iter().find(|s| s["name"] == "my-server").unwrap();
+        let listed = list["servers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["name"] == "my-server")
+            .unwrap();
         assert_eq!(listed["source"], "custom");
         assert_eq!(listed["status"], "unknown");
         assert_eq!(listed["secrets"][0]["present"], true);
@@ -1376,33 +1516,76 @@ mod tests {
         // Secret reached credential-env.json for the runtime.
         let env: Value = serde_json::from_slice(
             &std::fs::read(state.runtime_home.join("credential-env.json")).unwrap(),
-        ).unwrap();
-        assert_eq!(env["AMIRO_CRED_MCP_MY_SERVER_AUTHORIZATION"], "Bearer tok-123");
+        )
+        .unwrap();
+        assert_eq!(
+            env["AMIRO_CRED_MCP_MY_SERVER_AUTHORIZATION"],
+            "Bearer tok-123"
+        );
 
         // Editing without retyping the secret keeps the vault value.
-        let (_, edited) = call(&app, "POST", "/api/connectors/custom", "admin", Some(json!({
+        let (_, edited) = call(
+            &app,
+            "POST",
+            "/api/connectors/custom",
+            "admin",
+            Some(json!({
             "name":"my-server","transport":"http","url":"https://y.example/mcp",
-            "headers":[{"name":"Authorization","value":"","secret":true}]}))).await;
+            "headers":[{"name":"Authorization","value":"","secret":true}]})),
+        )
+        .await;
         assert_eq!(edited["secrets"][0]["present"], true);
         assert_eq!(edited["url"], "https://y.example/mcp");
 
         // Blank non-secret value on edit keeps the current literal; omitted entries go.
-        call(&app, "POST", "/api/connectors/custom", "admin", Some(json!({
+        call(
+            &app,
+            "POST",
+            "/api/connectors/custom",
+            "admin",
+            Some(json!({
             "name":"my-server","transport":"http","url":"https://y.example/mcp",
             "headers":[{"name":"Authorization","value":"","secret":true},
                        {"name":"X-Lit","value":"keep-me","secret":false},
-                       {"name":"X-Drop","value":"gone","secret":false}]}))).await;
-        call(&app, "POST", "/api/connectors/custom", "admin", Some(json!({
+                       {"name":"X-Drop","value":"gone","secret":false}]})),
+        )
+        .await;
+        call(
+            &app,
+            "POST",
+            "/api/connectors/custom",
+            "admin",
+            Some(json!({
             "name":"my-server","transport":"http","url":"https://y.example/mcp",
             "headers":[{"name":"Authorization","value":"","secret":true},
-                       {"name":"X-Lit","value":"","secret":false}]}))).await;
-        let doc = read_json(&mcp_config_path(&state), json!({})).await.unwrap();
+                       {"name":"X-Lit","value":"","secret":false}]})),
+        )
+        .await;
+        let doc = read_json(&mcp_config_path(&state), json!({}))
+            .await
+            .unwrap();
         assert_eq!(doc["servers"]["my-server"]["headers"]["X-Lit"], "keep-me");
-        assert!(doc["servers"]["my-server"]["headers"].get("X-Drop").is_none());
+        assert!(doc["servers"]["my-server"]["headers"]
+            .get("X-Drop")
+            .is_none());
 
-        let (_, off) = call(&app, "POST", "/api/connectors/my-server/enabled", "admin", Some(json!({"enabled":false}))).await;
+        let (_, off) = call(
+            &app,
+            "POST",
+            "/api/connectors/my-server/enabled",
+            "admin",
+            Some(json!({"enabled":false})),
+        )
+        .await;
         assert_eq!(off["status"], "disabled");
-        let (status, _) = call(&app, "POST", "/api/connectors/missing/enabled", "admin", Some(json!({"enabled":true}))).await;
+        let (status, _) = call(
+            &app,
+            "POST",
+            "/api/connectors/missing/enabled",
+            "admin",
+            Some(json!({"enabled":true})),
+        )
+        .await;
         assert_eq!(status, StatusCode::NOT_FOUND);
 
         let (status, reloaded) = call(&app, "POST", "/api/connectors/reload", "admin", None).await;
@@ -1410,12 +1593,101 @@ mod tests {
         assert_eq!(reloaded["reloaded"], false);
         assert!(reloaded["servers"].is_array());
 
-        let (status, _) = call(&app, "DELETE", "/api/connectors/custom/my-server", "admin", None).await;
+        let (status, _) = call(
+            &app,
+            "DELETE",
+            "/api/connectors/custom/my-server",
+            "admin",
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
-        assert!(credentials::get_plaintext(&state, "mcp.my-server", "authorization").await.unwrap().is_none());
+        assert!(
+            credentials::get_plaintext(&state, "mcp.my-server", "authorization")
+                .await
+                .unwrap()
+                .is_none()
+        );
         let (_, list) = call(&app, "GET", "/api/connectors", "admin", None).await;
         assert!(list["servers"].as_array().unwrap().is_empty());
-        let (status, _) = call(&app, "DELETE", "/api/connectors/custom/composio", "admin", None).await;
+        let (status, _) = call(
+            &app,
+            "DELETE",
+            "/api/connectors/custom/composio",
+            "admin",
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn builtin_amiro_connector_is_protected() {
+        let state = state();
+        write_json(
+            &state.home.join("users.json"),
+            &json!({"users":[{"id":"a","role":"admin"}]}),
+        )
+        .await
+        .unwrap();
+        write_json(
+            &state.home.join("sessions.json"),
+            &json!({"sessions":{"admin":{"userId":"a","createdAt":crate::state::now_iso()}}}),
+        )
+        .await
+        .unwrap();
+        write_mcp_entry_named(&state, "amiro", Some(&crate::agent_mcp::mcp_entry(4000)))
+            .await
+            .unwrap();
+        let app = routes().with_state(state.clone());
+
+        let (_, list) = call(&app, "GET", "/api/connectors", "admin", None).await;
+        let amiro = list["servers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["name"] == "amiro")
+            .unwrap();
+        assert_eq!(amiro["source"], "amiro");
+        assert_eq!(amiro["secrets"], json!([]));
+        assert_ne!(amiro["status"], "needs-secret");
+
+        let body = json!({"name":"amiro","transport":"http","url":"https://evil.example/mcp"});
+        let (status, _) = call(&app, "POST", "/api/connectors/custom", "admin", Some(body)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let (status, _) = call(
+            &app,
+            "DELETE",
+            "/api/connectors/custom/amiro",
+            "admin",
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let (status, _) = call(
+            &app,
+            "PUT",
+            "/api/connectors/custom/amiro/secrets",
+            "admin",
+            Some(json!({"secrets":{}})),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let (status, _) = call(
+            &app,
+            "POST",
+            "/api/connectors/amiro/enabled",
+            "admin",
+            Some(json!({"enabled":false})),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let doc = read_json(&mcp_config_path(&state), json!({}))
+            .await
+            .unwrap();
+        assert_eq!(
+            doc["servers"]["amiro"]["url"],
+            "http://127.0.0.1:4000/agent-mcp"
+        );
     }
 }

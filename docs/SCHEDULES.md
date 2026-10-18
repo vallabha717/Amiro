@@ -2,9 +2,10 @@
 
 Schedules run a saved prompt on a timer. Each schedule belongs to one user,
 fires in its own timezone, and records every firing in run history you can
-inspect. There are two modes: `notify` posts the result as a visible thread
-message with no model call, and `execute` runs an agent turn with tools
-forced off and the model pinned server side.
+inspect. There are three modes: `notify` posts the result as a visible thread
+message with no model call, `execute` runs a model turn with tools forced off
+and the model pinned server side, and `agent` runs a full agent turn with
+tools on.
 
 ## User guide
 
@@ -30,10 +31,20 @@ flight is rejected with 409. A successful delete removes the schedule row
 with 204 and keeps the run history file, so past firings stay on disk even
 though GET runs for the deleted id answers 404.
 
-Scheduled runs have no tools and send no external notifications. There is no
+`execute` runs have no tools and send no external notifications. There is no
 email, no push, and no inbox access. The default prompt should describe a
 self contained task such as "Write three focus lines for today", not
 "Summarize inbox", which would imply mailbox tools the runner does not have.
+`agent` mode is the opposite: each firing starts a fresh runtime session with
+the same tool exposure chats get and the agent workspace as working directory,
+so the agent-home files (IDENTITY, SOUL, USER, NOW) load and the agent can use
+Connectors/MCP and file tools. It shares the pinned model, 15 minute timeout,
+cancel, run history, result thread, and 8,000/2,000 character retention with
+`execute`. If any runtime session is busy (a live chat), the firing is not run:
+the run is recorded with status `skipped` and a reason, and the next run stays
+scheduled. Write agent prompts as self contained tasks; the agent acts with the
+owner's connectors, so keep them specific.
+
 Failures are visible in the schedule detail run history with the error text,
 and the next firing still happens on schedule.
 
@@ -52,7 +63,7 @@ effects, and recurring schedules resolve forward with no replay storms.
 `AppState.store` is an in process mutex only and is not the cross process
 safety mechanism. The OS advisory lock is.
 
-Execute mode pins the model server side, forces tools off through the
+Execute and agent modes pin the model server side, (execute) forces tools off through the
 `runtime::configure_tools` path with no CLI bypass, and runs under a turn
 timeout with cancel. The saved model is applied to each runtime session, not
 inherited from the daemon default. Results retain up to 8,000 characters in
@@ -73,6 +84,7 @@ and run history is bounded.
 | POST | `/api/schedules/:id/run` | none | 200 `{schedule,run}` |
 | GET | `/api/schedules/:id/runs` | none | 200 `{runs}` |
 | POST | `/api/schedules/preview` | `{schedule,timezone}` | 200 `{nextRuns}` |
+| GET | `/api/schedules/system` | none | 200 `{tasks}` |
 
 Schedule shape:
 
@@ -90,10 +102,24 @@ Schedule shape:
   "lastRunAt": null,
   "lastStatus": null,
   "threadId": "uuid",
+  "cadenceDescription": "Mondays at 9:00 AM",
   "createdAt": "...",
   "updatedAt": "..."
 }
 ```
+
+`mode` is `notify`, `execute`, or `agent`; `model` is pinned for the last two.
+`cadenceDescription` is computed by the server and never stored: cron becomes
+plain English ("Every day at 9:00 AM", "Weekdays at 8:00 AM", "Every hour",
+"On the 1st of every month at 9:00 AM") with a "Cron: <expr>" fallback,
+interval becomes "Every N minutes/hours", and once becomes "Once on Oct 20,
+2026 at 9:00 AM" in the schedule's timezone.
+
+`GET /api/schedules/system` lists built in tasks as read only rows:
+`{tasks:[{id,name,description,enabled,cadence,nextRunAt,lastRunAt,lastStatus,
+threadId?,editable}]}` for `heartbeat` (editable, toggled through
+`PUT /api/agent-home/heartbeat`; `lastStatus` is quiet, message, error,
+skipped, or null) and `memory` (Memory upkeep, not editable).
 
 `schedule.kind` is `once` (`at`), `cron` (`expression`, 5 field), or
 `interval` (`minutes`). Malformed zone, cron, `at`, kind, mode, or empty
@@ -155,3 +181,32 @@ Run browser verification after building the UI and native binary:
 It uses disposable accounts and storage, the real owned runtime, and a local
 stub provider. Native acceptance stays on notify mode for the persistence,
 timer, and restart paths.
+
+## Chat and the Schedules page are one system
+
+The backend publishes its schedules to the agent as a built-in MCP server,
+`amiro` (`backend/src/agent_mcp.rs`, `POST /agent-mcp`, local only, its own
+token in `~/.amiro/protected/agent-mcp.token`, never written to `mcp.json`).
+The agent reaches it through `mcp_call` with tools `schedule_list`,
+`schedule_create`, `schedule_update`, `schedule_delete`, `schedule_run_now`
+and `schedule_runs`, all going through the same code as the HTTP routes.
+
+- A schedule the agent creates is tagged `createdBy: "agent"` and shows
+  "Created in chat" on the page. With no model given it runs on the model
+  you last chatted with (`store/last-chat-model.json`), unless
+  `AMIRO_DEFAULT_MODEL` is set.
+- The built-in **Schedules** skill (`agent-skills/schedules`) loads for
+  scheduling asks ("every weekday at 8", "remind me Friday", "how did my
+  briefing go?") and keeps the agent off the runtime's private `schedule`
+  wake-up tool, which never appears on the page.
+
+## Logs
+
+- **Schedules page:** "Recent runs" lists the latest runs across schedules;
+  each schedule's detail panel shows its run history with full output or
+  error and a link to the run's conversation.
+- **Chat:** ask "how did my briefing go?" and the agent reads the run log via
+  `schedule_runs`.
+- **Each schedule's conversation** holds every result in full.
+- **System tasks:** the Heartbeat row shows its last result and opens its
+  notes thread.

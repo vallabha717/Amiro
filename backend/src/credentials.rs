@@ -171,7 +171,11 @@ struct StoredCredential {
         skip_serializing_if = "Option::is_none"
     )]
     usage_description: Option<String>,
-    #[serde(rename = "allowedTools", default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        rename = "allowedTools",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
     allowed_tools: Vec<String>,
     #[serde(
         rename = "allowedDomains",
@@ -718,8 +722,13 @@ pub fn runtime_env_vars_sync(home: &Path) -> Vec<(String, String)> {
         let Ok(stored) = stored_from(value) else {
             continue;
         };
-        let Ok(secret) = decrypt(key.bytes(), service, field, &stored.nonce, &stored.ciphertext)
-        else {
+        let Ok(secret) = decrypt(
+            key.bytes(),
+            service,
+            field,
+            &stored.nonce,
+            &stored.ciphertext,
+        ) else {
             continue;
         };
         pairs.push((env_var_name(service, field), secret.expose().to_string()));
@@ -756,6 +765,12 @@ pub fn sync_runtime_credential_env(state: &AppState) -> std::io::Result<()> {
     for (name, value) in runtime_env_vars_sync(&state.home) {
         object.insert(name, Value::String(value));
     }
+    if let Some(token) = crate::agent_mcp::read_token_sync(&state.home) {
+        object.insert(
+            crate::agent_mcp::TOKEN_ENV_VAR.to_string(),
+            Value::String(token),
+        );
+    }
     let dir = state.runtime_home.clone();
     std::fs::create_dir_all(&dir)?;
     let target = credential_env_file(state);
@@ -769,8 +784,8 @@ pub fn sync_runtime_credential_env(state: &AppState) -> std::io::Result<()> {
     }
     let result = (|| {
         let mut file = options.open(&temporary)?;
-        let mut bytes = serde_json::to_vec_pretty(&Value::Object(object))
-            .map_err(std::io::Error::other)?;
+        let mut bytes =
+            serde_json::to_vec_pretty(&Value::Object(object)).map_err(std::io::Error::other)?;
         bytes.push(b'\n');
         file.write_all(&bytes)?;
         file.sync_all()?;
@@ -992,7 +1007,10 @@ mod tests {
             "AMIRO_CRED_TTS_OPENAI_API_KEY"
         );
         assert_eq!(env_var_name("api-key", "x"), "AMIRO_CRED_API_KEY_X");
-        assert_eq!(sanitize_env_part("MiXeD.dot-dash_under"), "MIXED_DOT_DASH_UNDER");
+        assert_eq!(
+            sanitize_env_part("MiXeD.dot-dash_under"),
+            "MIXED_DOT_DASH_UNDER"
+        );
     }
 
     #[tokio::test]
@@ -1029,8 +1047,13 @@ mod tests {
         // The synchronous catalog agrees, and the plaintext never leaks.
         let sync = list_metadata_sync(&state.home);
         assert_eq!(sync.len(), 1);
-        assert_eq!(sync[0].usage_description.as_deref(), Some("Call the GitHub REST API"));
-        assert!(!serde_json::to_string(&sync[0]).unwrap().contains("ghp-secret"));
+        assert_eq!(
+            sync[0].usage_description.as_deref(),
+            Some("Call the GitHub REST API")
+        );
+        assert!(!serde_json::to_string(&sync[0])
+            .unwrap()
+            .contains("ghp-secret"));
 
         // A plain `set` preserves policy for the slot.
         let plain = set(&state, "github", "token", "ghp-rotated-9999", None)
@@ -1075,10 +1098,16 @@ mod tests {
                 .find(|(key, _)| key == name)
                 .map(|(_, value)| value.clone())
         };
-        assert_eq!(find("AMIRO_CRED_GITHUB_TOKEN").as_deref(), Some("ghp-alias-1234"));
+        assert_eq!(
+            find("AMIRO_CRED_GITHUB_TOKEN").as_deref(),
+            Some("ghp-alias-1234")
+        );
         assert_eq!(find("GITHUB_TOKEN").as_deref(), Some("ghp-alias-1234"));
         assert_eq!(find("GH_TOKEN").as_deref(), Some("ghp-alias-1234"));
-        assert_eq!(find("AMIRO_CRED_TTS_OPENAI_API_KEY").as_deref(), Some("sk-tts-5678"));
+        assert_eq!(
+            find("AMIRO_CRED_TTS_OPENAI_API_KEY").as_deref(),
+            Some("sk-tts-5678")
+        );
 
         // metadata_sync and env export agree on the variable names.
         let names: Vec<String> = list_metadata_sync(&state.home)
@@ -1104,8 +1133,12 @@ mod tests {
         );
         #[cfg(unix)]
         assert_eq!(mode_of(&file), 0o600);
-        assert!(delete(&state, "mcp.my-server", "authorization").await.unwrap());
-        assert!(read().get("AMIRO_CRED_MCP_MY_SERVER_AUTHORIZATION").is_none());
+        assert!(delete(&state, "mcp.my-server", "authorization")
+            .await
+            .unwrap());
+        assert!(read()
+            .get("AMIRO_CRED_MCP_MY_SERVER_AUTHORIZATION")
+            .is_none());
         let _ = std::fs::remove_dir_all(root);
     }
 }

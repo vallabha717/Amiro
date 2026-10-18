@@ -7,6 +7,7 @@
 //! - `DELETE /api/schedules/:id` -> 204
 //! - `POST /api/schedules/:id/run` -> `{schedule, run}`
 //! - `GET /api/schedules/:id/runs` -> `{runs}`
+//! - `GET /api/schedules/system` -> `{tasks}` (heartbeat + memory upkeep)
 //! - `POST /api/schedules/preview` -> `{nextRuns}` (read-only, validated)
 //!
 //! Cross-owner access is 404 (existence is never leaked). Malformed
@@ -111,13 +112,23 @@ async fn preview(
     Ok(Json(json!({ "nextRuns": next })))
 }
 
+async fn system_tasks(
+    State(state): State<AppState>,
+    _user: AuthUser,
+) -> Result<Json<Value>, ApiError> {
+    Ok(Json(schedules::system_tasks(&state).await?))
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/schedules", post(create_schedule).get(list_schedules))
         .route("/api/schedules/preview", post(preview))
+        .route("/api/schedules/system", get(system_tasks))
         .route(
             "/api/schedules/{id}",
-            get(get_schedule).patch(update_schedule).delete(delete_schedule),
+            get(get_schedule)
+                .patch(update_schedule)
+                .delete(delete_schedule),
         )
         .route("/api/schedules/{id}/run", post(run_schedule))
         .route("/api/schedules/{id}/runs", get(list_runs))

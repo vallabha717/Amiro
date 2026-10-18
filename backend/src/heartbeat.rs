@@ -51,7 +51,9 @@ impl Settings {
 
     pub fn from_doc(doc: &Value, fallback_tz: &str) -> Self {
         let mut s = Self::default_for(fallback_tz);
-        let Some(h) = doc.get("heartbeat") else { return s };
+        let Some(h) = doc.get("heartbeat") else {
+            return s;
+        };
         if let Some(v) = h.get("enabled").and_then(Value::as_bool) {
             s.enabled = v;
         }
@@ -60,13 +62,25 @@ impl Settings {
                 s.interval_hours = v;
             }
         }
-        if let Some(v) = h.get("quietStart").and_then(Value::as_str).filter(|v| parse_hhmm(v).is_some()) {
+        if let Some(v) = h
+            .get("quietStart")
+            .and_then(Value::as_str)
+            .filter(|v| parse_hhmm(v).is_some())
+        {
             s.quiet_start = v.to_string();
         }
-        if let Some(v) = h.get("quietEnd").and_then(Value::as_str).filter(|v| parse_hhmm(v).is_some()) {
+        if let Some(v) = h
+            .get("quietEnd")
+            .and_then(Value::as_str)
+            .filter(|v| parse_hhmm(v).is_some())
+        {
             s.quiet_end = v.to_string();
         }
-        if let Some(v) = h.get("timezone").and_then(Value::as_str).filter(|v| v.parse::<Tz>().is_ok()) {
+        if let Some(v) = h
+            .get("timezone")
+            .and_then(Value::as_str)
+            .filter(|v| v.parse::<Tz>().is_ok())
+        {
             s.timezone = v.to_string();
         }
         s
@@ -108,7 +122,10 @@ pub fn in_quiet_hours(local: NaiveTime, start: NaiveTime, end: NaiveTime) -> boo
 }
 
 fn quiet_at(settings: &Settings, instant: DateTime<Utc>) -> bool {
-    let (Some(start), Some(end)) = (parse_hhmm(&settings.quiet_start), parse_hhmm(&settings.quiet_end)) else {
+    let (Some(start), Some(end)) = (
+        parse_hhmm(&settings.quiet_start),
+        parse_hhmm(&settings.quiet_end),
+    ) else {
         return false;
     };
     let local = instant.with_timezone(&settings.tz()).time();
@@ -131,7 +148,11 @@ pub fn is_due(now: DateTime<Utc>, last: Option<DateTime<Utc>>, settings: &Settin
 }
 
 /// When the next automatic run is expected (None when disabled).
-pub fn next_due_at(now: DateTime<Utc>, last: Option<DateTime<Utc>>, settings: &Settings) -> Option<DateTime<Utc>> {
+pub fn next_due_at(
+    now: DateTime<Utc>,
+    last: Option<DateTime<Utc>>,
+    settings: &Settings,
+) -> Option<DateTime<Utc>> {
     if !settings.enabled {
         return None;
     }
@@ -151,9 +172,40 @@ pub fn is_heartbeat_ok(text: &str) -> bool {
     t.is_empty() || t == "HEARTBEAT_OK"
 }
 
+/// Human cadence, e.g. "Every 4 hours · quiet 22:00–08:00 (UTC)".
+pub fn cadence_text(settings: &Settings) -> String {
+    let h = settings.interval_hours;
+    let minutes = (h * 60.0).round() as i64;
+    let every = if minutes == 60 {
+        "Every hour".to_string()
+    } else if minutes % 60 == 0 && minutes >= 60 {
+        format!("Every {} hours", minutes / 60)
+    } else if minutes == 1 {
+        "Every minute".to_string()
+    } else {
+        format!("Every {minutes} minutes")
+    };
+    match (
+        parse_hhmm(&settings.quiet_start),
+        parse_hhmm(&settings.quiet_end),
+    ) {
+        (Some(s), Some(e)) if s != e => {
+            format!(
+                "{every} \u{b7} quiet {}\u{2013}{} ({})",
+                settings.quiet_start, settings.quiet_end, settings.timezone
+            )
+        }
+        _ => every,
+    }
+}
+
 pub fn build_prompt(heartbeat_md: &str, date: &str, tz: &str, journal: &str) -> String {
     let checklist = agent_home::strip_comment_lines(heartbeat_md);
-    let journal = if journal.trim().is_empty() { "(none yet)" } else { journal.trim() };
+    let journal = if journal.trim().is_empty() {
+        "(none yet)"
+    } else {
+        journal.trim()
+    };
     format!(
         "It's heartbeat time. Run the checklist in HEARTBEAT.md now:\n\n{checklist}\n\nToday is {date} ({tz}). Recent journal: {journal}"
     )
@@ -182,19 +234,24 @@ pub fn recent_journal(workspace: &Path, budget: usize) -> String {
         if remaining == 0 {
             break;
         }
-        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
         let chars: Vec<char> = text.trim().chars().collect();
         let take = chars.len().min(remaining);
         let tail: String = chars[chars.len() - take..].iter().collect();
         remaining -= take;
-        let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
         parts.push(format!("[{name}]\n{tail}"));
     }
     parts.reverse();
     parts.join("\n\n")
 }
 
-fn parse_time(value: Option<&Value>) -> Option<DateTime<Utc>> {
+pub(crate) fn parse_time(value: Option<&Value>) -> Option<DateTime<Utc>> {
     value?.as_str()?.parse::<DateTime<Utc>>().ok()
 }
 
@@ -227,6 +284,19 @@ impl Drop for SessionGuard {
 /// Run one tools-on agent turn in a fresh session and return the final
 /// assistant text (the text after the last tool call).
 async fn heartbeat_turn(state: &AppState, prompt: String) -> Result<(String, String), ApiError> {
+    agent_turn(state, prompt, None).await
+}
+
+/// Shared tools-on turn (same tool exposure as chats, working dir = agent
+/// workspace) used by the heartbeat and by `agent` mode schedules. `model`
+/// pins a route; `None` uses the runtime default. Returns `(final text,
+/// session id)`; the caller archives the session. Dropping the future cancels
+/// the runtime session.
+pub(crate) async fn agent_turn(
+    state: &AppState,
+    prompt: String,
+    model: Option<String>,
+) -> Result<(String, String), ApiError> {
     use crate::runtime::{TurnPlan, TurnUpdate};
     use amiro_sdk::ApiEvent;
     let mut turn = crate::runtime::start_turn(
@@ -235,7 +305,7 @@ async fn heartbeat_turn(state: &AppState, prompt: String) -> Result<(String, Str
             session_id: None,
             working_dir: state.workspace.to_string_lossy().to_string(),
             expose_tools: crate::runtime::expose_tools(),
-            model: None,
+            model,
             prompt,
             images: Vec::new(),
             tool_results: Vec::new(),
@@ -246,14 +316,25 @@ async fn heartbeat_turn(state: &AppState, prompt: String) -> Result<(String, Str
     let session = turn
         .session
         .await
-        .map_err(|_| ApiError(StatusCode::BAD_GATEWAY, "runtime closed before creating the heartbeat session".into()))?
+        .map_err(|_| {
+            ApiError(
+                StatusCode::BAD_GATEWAY,
+                "runtime closed before creating the heartbeat session".into(),
+            )
+        })?
         .map_err(|m| ApiError(StatusCode::BAD_GATEWAY, m))?;
-    let mut guard = SessionGuard { state: state.clone(), session_id: session.session_id.clone(), completed: false };
+    let mut guard = SessionGuard {
+        state: state.clone(),
+        session_id: session.session_id.clone(),
+        completed: false,
+    };
     let mut text = String::new();
     let mut after_tool = false;
     while let Some(update) = turn.updates.recv().await {
         match update {
-            TurnUpdate::Event(ApiEvent::ToolStart { .. } | ApiEvent::ToolExec { .. } | ApiEvent::ToolCall { .. }) => {
+            TurnUpdate::Event(
+                ApiEvent::ToolStart { .. } | ApiEvent::ToolExec { .. } | ApiEvent::ToolCall { .. },
+            ) => {
                 after_tool = true;
             }
             TurnUpdate::Event(ApiEvent::TextDelta { text: delta, .. }) => {
@@ -265,7 +346,9 @@ async fn heartbeat_turn(state: &AppState, prompt: String) -> Result<(String, Str
                     text.push_str(&delta);
                 }
             }
-            TurnUpdate::Event(ApiEvent::TextReplace { text: replacement, .. }) => {
+            TurnUpdate::Event(ApiEvent::TextReplace {
+                text: replacement, ..
+            }) => {
                 after_tool = false;
                 text = replacement.chars().take(MAX_MESSAGE_CHARS).collect();
             }
@@ -277,7 +360,10 @@ async fn heartbeat_turn(state: &AppState, prompt: String) -> Result<(String, Str
             _ => {}
         }
     }
-    Err(ApiError(StatusCode::BAD_GATEWAY, "runtime ended without a completed heartbeat turn".into()))
+    Err(ApiError(
+        StatusCode::BAD_GATEWAY,
+        "runtime ended without a completed heartbeat turn".into(),
+    ))
 }
 
 /// Create the Heartbeat thread once (remembering its id in agent-home.json).
@@ -359,7 +445,11 @@ pub async fn run_heartbeat(state: &AppState) -> Value {
     let Some(owner) = agent_home::owner_user(state).await else {
         return json!({"result": "skipped", "reason": "no owner account"});
     };
-    let owner_id = owner.get("id").and_then(Value::as_str).unwrap_or("").to_string();
+    let owner_id = owner
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
     agent_home::seed(state).await;
     let md = match tokio::fs::read_to_string(state.workspace.join("HEARTBEAT.md")).await {
         Ok(md) => md,
@@ -371,7 +461,10 @@ pub async fn run_heartbeat(state: &AppState) -> Value {
     let doc = load_state(state).await.unwrap_or(json!({}));
     let tz_name = agent_home::owner_timezone(state, Some(&owner), &doc).await;
     let settings = Settings::from_doc(&doc, &tz_name);
-    let date = Utc::now().with_timezone(&settings.tz()).format("%Y-%m-%d").to_string();
+    let date = Utc::now()
+        .with_timezone(&settings.tz())
+        .format("%Y-%m-%d")
+        .to_string();
     let ws = state.workspace.clone();
     let journal = tokio::task::spawn_blocking(move || recent_journal(&ws, JOURNAL_BUDGET))
         .await
@@ -497,14 +590,28 @@ async fn heartbeat_view(state: &AppState) -> Result<Value, ApiError> {
     Ok(view)
 }
 
-async fn get_agent_home(State(state): State<AppState>, _user: AuthUser) -> Result<Json<Value>, ApiError> {
+async fn get_agent_home(
+    State(state): State<AppState>,
+    _user: AuthUser,
+) -> Result<Json<Value>, ApiError> {
     let ws = state.workspace.clone();
-    let files: Vec<Value> = ["IDENTITY.md", "SOUL.md", "USER.md", "NOW.md", "HEARTBEAT.md", "BOOTSTRAP.md"]
-        .iter()
-        .map(|name| file_info(&ws, name))
-        .collect();
+    let files: Vec<Value> = [
+        "IDENTITY.md",
+        "SOUL.md",
+        "USER.md",
+        "NOW.md",
+        "HEARTBEAT.md",
+        "BOOTSTRAP.md",
+    ]
+    .iter()
+    .map(|name| file_info(&ws, name))
+    .collect();
     let journal_count = std::fs::read_dir(ws.join("journal"))
-        .map(|rd| rd.filter_map(Result::ok).filter(|e| e.file_name().to_string_lossy().ends_with(".md")).count())
+        .map(|rd| {
+            rd.filter_map(Result::ok)
+                .filter(|e| e.file_name().to_string_lossy().ends_with(".md"))
+                .count()
+        })
         .unwrap_or(0);
     Ok(Json(json!({
         "files": files,
@@ -526,14 +633,23 @@ pub fn apply_patch(current: &Settings, body: &Value) -> Result<Settings, String>
         }
         next.interval_hours = hours;
     }
-    for (key, slot) in [("quietStart", &mut next.quiet_start), ("quietEnd", &mut next.quiet_end)] {
+    for (key, slot) in [
+        ("quietStart", &mut next.quiet_start),
+        ("quietEnd", &mut next.quiet_end),
+    ] {
         if let Some(v) = body.get(key) {
-            let s = v.as_str().filter(|s| parse_hhmm(s).is_some()).ok_or(format!("{key} must be HH:MM"))?;
+            let s = v
+                .as_str()
+                .filter(|s| parse_hhmm(s).is_some())
+                .ok_or(format!("{key} must be HH:MM"))?;
             *slot = s.to_string();
         }
     }
     if let Some(v) = body.get("timezone") {
-        let s = v.as_str().filter(|s| s.parse::<Tz>().is_ok()).ok_or("timezone must be an IANA name")?;
+        let s = v
+            .as_str()
+            .filter(|s| s.parse::<Tz>().is_ok())
+            .ok_or("timezone must be an IANA name")?;
         next.timezone = s.to_string();
     }
     Ok(next)
@@ -551,7 +667,8 @@ async fn put_heartbeat(
         let owner = agent_home::owner_user(&state).await;
         let tz = agent_home::owner_timezone(&state, owner.as_ref(), &doc).await;
         let current = Settings::from_doc(&doc, &tz);
-        let next = apply_patch(&current, &body).map_err(|m| ApiError(StatusCode::BAD_REQUEST, m))?;
+        let next =
+            apply_patch(&current, &body).map_err(|m| ApiError(StatusCode::BAD_REQUEST, m))?;
         doc["heartbeat"] = next.to_json();
         save_state(&state, &doc).await?;
     }
@@ -561,7 +678,9 @@ async fn put_heartbeat(
 async fn run_now(State(state): State<AppState>, user: AuthUser) -> Result<Json<Value>, ApiError> {
     require_owner(&user)?;
     let outcome = run_heartbeat(&state).await;
-    Ok(Json(json!({"result": outcome["result"].clone(), "outcome": outcome, "heartbeat": heartbeat_view(&state).await?})))
+    Ok(Json(
+        json!({"result": outcome["result"].clone(), "outcome": outcome, "heartbeat": heartbeat_view(&state).await?}),
+    ))
 }
 
 pub fn router() -> Router<AppState> {
@@ -599,8 +718,16 @@ mod tests {
     fn due_math() {
         let s = settings();
         assert!(is_due(at("2026-01-01T12:00:00Z"), None, &s));
-        assert!(!is_due(at("2026-01-01T12:00:00Z"), Some(at("2026-01-01T09:00:00Z")), &s));
-        assert!(is_due(at("2026-01-01T12:00:00Z"), Some(at("2026-01-01T08:00:00Z")), &s));
+        assert!(!is_due(
+            at("2026-01-01T12:00:00Z"),
+            Some(at("2026-01-01T09:00:00Z")),
+            &s
+        ));
+        assert!(is_due(
+            at("2026-01-01T12:00:00Z"),
+            Some(at("2026-01-01T08:00:00Z")),
+            &s
+        ));
         // quiet hours
         assert!(!is_due(at("2026-01-01T23:00:00Z"), None, &s));
         let mut off = s.clone();
@@ -615,11 +742,32 @@ mod tests {
     #[test]
     fn next_due_skips_quiet_hours() {
         let s = settings();
-        let next = next_due_at(at("2026-01-01T21:00:00Z"), Some(at("2026-01-01T20:00:00Z")), &s).unwrap();
+        let next = next_due_at(
+            at("2026-01-01T21:00:00Z"),
+            Some(at("2026-01-01T20:00:00Z")),
+            &s,
+        )
+        .unwrap();
         assert_eq!(next, at("2026-01-02T08:00:00Z"));
         let mut off = s;
         off.enabled = false;
         assert!(next_due_at(at("2026-01-01T12:00:00Z"), None, &off).is_none());
+    }
+
+    #[test]
+    fn cadence_text_is_human() {
+        let mut s = settings();
+        assert_eq!(
+            cadence_text(&s),
+            "Every 4 hours \u{b7} quiet 22:00\u{2013}08:00 (UTC)"
+        );
+        s.interval_hours = 1.0;
+        s.quiet_end = s.quiet_start.clone();
+        assert_eq!(cadence_text(&s), "Every hour");
+        s.interval_hours = 0.5;
+        assert_eq!(cadence_text(&s), "Every 30 minutes");
+        s.interval_hours = 1.5;
+        assert_eq!(cadence_text(&s), "Every 90 minutes");
     }
 
     #[test]
@@ -628,14 +776,23 @@ mod tests {
         assert!(is_heartbeat_ok("  HEARTBEAT_OK\n"));
         assert!(is_heartbeat_ok(""));
         assert!(is_heartbeat_ok("   "));
-        assert!(!is_heartbeat_ok("HEARTBEAT_OK, but also: your tax form is due"));
+        assert!(!is_heartbeat_ok(
+            "HEARTBEAT_OK, but also: your tax form is due"
+        ));
         assert!(!is_heartbeat_ok("Heads up about Friday."));
     }
 
     #[test]
     fn prompt_strips_comments() {
-        let p = build_prompt("_ secret note\n# Heartbeat\n\n- [ ] Check NOW.md\n", "2026-03-04", "UTC", "");
-        assert!(p.starts_with("It's heartbeat time. Run the checklist in HEARTBEAT.md now:\n\n# Heartbeat"));
+        let p = build_prompt(
+            "_ secret note\n# Heartbeat\n\n- [ ] Check NOW.md\n",
+            "2026-03-04",
+            "UTC",
+            "",
+        );
+        assert!(p.starts_with(
+            "It's heartbeat time. Run the checklist in HEARTBEAT.md now:\n\n# Heartbeat"
+        ));
         assert!(!p.contains("secret note"));
         assert!(p.contains("Today is 2026-03-04 (UTC). Recent journal: (none yet)"));
     }
@@ -644,21 +801,35 @@ mod tests {
     fn journal_takes_last_two_within_budget() {
         let ws = std::env::temp_dir().join(format!("amiro-hb-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(ws.join("journal")).unwrap();
-        for (d, c) in [("2026-01-01", "old"), ("2026-01-02", "mid"), ("2026-01-03", "new")] {
+        for (d, c) in [
+            ("2026-01-01", "old"),
+            ("2026-01-02", "mid"),
+            ("2026-01-03", "new"),
+        ] {
             std::fs::write(ws.join(format!("journal/{d}.md")), c).unwrap();
         }
         let j = recent_journal(&ws, 3000);
         assert!(!j.contains("old") && j.contains("mid") && j.contains("new"));
         assert!(j.find("mid").unwrap() < j.find("new").unwrap());
         std::fs::write(ws.join("journal/2026-01-04.md"), "x".repeat(5000)).unwrap();
-        assert!(recent_journal(&ws, 3000).chars().filter(|c| *c == 'x').count() <= 3000);
+        assert!(
+            recent_journal(&ws, 3000)
+                .chars()
+                .filter(|c| *c == 'x')
+                .count()
+                <= 3000
+        );
         let _ = std::fs::remove_dir_all(ws);
     }
 
     #[test]
     fn patch_validates() {
         let s = settings();
-        let n = apply_patch(&s, &json!({"intervalHours": 2, "quietStart": "23:00", "enabled": false})).unwrap();
+        let n = apply_patch(
+            &s,
+            &json!({"intervalHours": 2, "quietStart": "23:00", "enabled": false}),
+        )
+        .unwrap();
         assert!(!n.enabled && n.interval_hours == 2.0 && n.quiet_start == "23:00");
         assert!(apply_patch(&s, &json!({"quietEnd": "8am"})).is_err());
         assert!(apply_patch(&s, &json!({"timezone": "Mars/Base"})).is_err());

@@ -1237,3 +1237,142 @@ async fn schedules_second_process_cannot_mutate() {
     let _ = other.kill();
     let _ = other.wait();
 }
+
+#[tokio::test]
+async fn schedules_agent_mode_validation_run_path_and_cadence() {
+    // Agent mode is accepted (model pinned like execute), unknown modes are
+    // 400, every schedule carries a server-computed cadenceDescription, and a
+    // run with no reachable runtime fails visibly (run row + result thread)
+    // instead of vanishing. Notify and execute remain valid.
+    let server = SchedServer::start().await;
+    let admin = server.admin_token().await;
+    let body = |mode: &str| {
+        json!({
+            "name": format!("{mode} sched"),
+            "prompt": "Check my calendar and summarize",
+            "mode": mode,
+            "model": "openai-compatible:acceptance-model",
+            "timezone": "UTC",
+            "schedule": {"kind": "cron", "expression": "0 8 * * 1-5"},
+        })
+    };
+    let bad = server.post(&admin, "/api/schedules", &body("robot")).await;
+    assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+    for mode in ["notify", "execute"] {
+        let r = server.post(&admin, "/api/schedules", &body(mode)).await;
+        assert_eq!(r.status(), StatusCode::CREATED, "{mode} stays valid");
+    }
+    let created = server.post(&admin, "/api/schedules", &body("agent")).await;
+    assert_eq!(created.status(), StatusCode::CREATED);
+    let created: Value = created.json().await.unwrap();
+    let sched = &created["schedule"];
+    assert_eq!(sched["mode"], "agent");
+    assert_eq!(sched["model"], "openai-compatible:acceptance-model");
+    assert_eq!(sched["cadenceDescription"], "Weekdays at 8:00 AM");
+    let id = sched["id"].as_str().unwrap().to_string();
+
+    // Patch to agent from notify keeps validation; patch cadence recomputes text.
+    let patched = server
+        .patch(
+            &admin,
+            &format!("/api/schedules/{id}"),
+            &json!({"schedule": {"kind": "interval", "minutes": 120}}),
+        )
+        .await;
+    assert_eq!(patched.status(), StatusCode::OK);
+    let patched: Value = patched.json().await.unwrap();
+    assert_eq!(patched["schedule"]["cadenceDescription"], "Every 2 hours");
+    let bad_patch = server
+        .patch(
+            &admin,
+            &format!("/api/schedules/{id}"),
+            &json!({"mode": "nope"}),
+        )
+        .await;
+    assert_eq!(bad_patch.status(), StatusCode::BAD_REQUEST);
+
+    let listed: Value = server
+        .get(&admin, "/api/schedules")
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert!(listed["schedules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|s| s["cadenceDescription"].is_string()));
+
+    // Run path: no runtime socket in this harness, so the turn fails visibly.
+    let run = server
+        .post(&admin, &format!("/api/schedules/{id}/run"), &json!({}))
+        .await;
+    assert_eq!(run.status(), StatusCode::OK);
+    let mut finished = None;
+    for _ in 0..100 {
+        let runs = server.runs(&admin, &id).await;
+        if let Some(r) = runs.iter().find(|r| r["status"] != "running") {
+            finished = Some(r.clone());
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let finished = finished.expect("agent run must close");
+    assert!(
+        matches!(
+            finished["status"].as_str(),
+            Some("failed") | Some("skipped") | Some("ok")
+        ),
+        "{finished}"
+    );
+    if finished["status"] == "failed" {
+        assert!(finished["outputPreview"]
+            .as_str()
+            .unwrap()
+            .contains("Scheduled task failed"));
+        assert!(finished["threadId"].is_string());
+    }
+}
+
+#[tokio::test]
+async fn schedules_system_tasks_shape() {
+    let server = SchedServer::start().await;
+    let admin = server.admin_token().await;
+    let anon = server
+        .client
+        .get(format!("{}/api/schedules/system", server.url))
+        .header("X-Amiro-Token", SECRET)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(anon.status(), StatusCode::UNAUTHORIZED);
+    let response = server.get(&admin, "/api/schedules/system").await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = response.json().await.unwrap();
+    let tasks = body["tasks"].as_array().unwrap();
+    assert_eq!(tasks.len(), 2);
+    let hb = &tasks[0];
+    assert_eq!(hb["id"], "heartbeat");
+    assert_eq!(hb["name"], "Heartbeat");
+    assert_eq!(hb["editable"], true);
+    assert!(hb["enabled"].is_boolean());
+    assert_eq!(
+        hb["cadence"],
+        "Every 4 hours \u{b7} quiet 22:00\u{2013}08:00 (UTC)"
+    );
+    for key in [
+        "description",
+        "nextRunAt",
+        "lastRunAt",
+        "lastStatus",
+        "threadId",
+    ] {
+        assert!(hb.get(key).is_some(), "heartbeat missing {key}");
+    }
+    let mem = &tasks[1];
+    assert_eq!(mem["id"], "memory");
+    assert_eq!(mem["editable"], false);
+    assert_eq!(mem["enabled"], true);
+    assert_eq!(mem["cadence"], "After each conversation");
+    assert!(mem["nextRunAt"].is_null() && mem["lastStatus"].is_null());
+}

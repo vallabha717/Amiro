@@ -7,13 +7,13 @@ pub mod connectors;
 pub mod credentials;
 pub mod export;
 pub mod fsbrowse;
-pub mod live_voice;
 pub mod github;
+pub mod live_voice;
 pub mod mcp;
 pub mod provider_login;
 pub mod providers_catalog;
-pub mod search_providers;
 pub mod schedules;
+pub mod search_providers;
 pub mod skills;
 pub mod storage;
 pub mod system;
@@ -21,8 +21,8 @@ pub mod user;
 pub mod voice;
 pub mod workspace_trust;
 
-use axum::Router;
 use crate::state::AppState;
+use axum::Router;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -48,13 +48,14 @@ pub fn router() -> Router<AppState> {
         .merge(skills::routes())
         .merge(voice::routes())
         .merge(live_voice::routes())
+        .merge(crate::agent_mcp::router())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
     use serde_json::json;
+    use std::path::Path;
 
     #[test]
     fn test_router_builds() {
@@ -94,7 +95,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_concurrent_store_locking() {
-        let temp_dir = std::env::temp_dir().join(format!("amiro-test-lock-{}", uuid::Uuid::new_v4()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("amiro-test-lock-{}", uuid::Uuid::new_v4()));
         let _ = tokio::fs::create_dir_all(&temp_dir).await;
         let file = temp_dir.join("test-counter.json");
         let store = std::sync::Arc::new(tokio::sync::Mutex::new(()));
@@ -107,7 +109,9 @@ mod tests {
             let s = store.clone();
             handles.push(tokio::spawn(async move {
                 let _lock = s.lock().await;
-                let mut doc = crate::state::read_json(&f, json!({ "count": 0 })).await.unwrap();
+                let mut doc = crate::state::read_json(&f, json!({ "count": 0 }))
+                    .await
+                    .unwrap();
                 let current = doc["count"].as_i64().unwrap_or(0);
                 doc["count"] = json!(current + 1);
                 crate::state::write_json(&f, &doc).await.unwrap();
@@ -125,15 +129,20 @@ mod tests {
 
     #[test]
     fn test_storage_token_format() {
-        assert!(storage::is_valid_token("0123456789abcdef0123456789abcdef0123456789abcdef"));
+        assert!(storage::is_valid_token(
+            "0123456789abcdef0123456789abcdef0123456789abcdef"
+        ));
         assert!(!storage::is_valid_token("short_token"));
-        assert!(!storage::is_valid_token("0123456789abcdef0123456789abcdef0123456789abcdeg")); // 'g' is non-hex
+        assert!(!storage::is_valid_token(
+            "0123456789abcdef0123456789abcdef0123456789abcdeg"
+        )); // 'g' is non-hex
         assert!(!storage::is_valid_token(""));
     }
 
     #[tokio::test]
     async fn test_user_preferences_isolation() {
-        let temp_dir = std::env::temp_dir().join(format!("amiro-test-user-{}", uuid::Uuid::new_v4()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("amiro-test-user-{}", uuid::Uuid::new_v4()));
         let _ = tokio::fs::create_dir_all(temp_dir.join("store")).await;
         let prefs_file = temp_dir.join("store").join("user-preferences.json");
 
@@ -143,7 +152,9 @@ mod tests {
         });
         crate::state::write_json(&prefs_file, &doc).await.unwrap();
 
-        let read_back = crate::state::read_json(&prefs_file, json!({})).await.unwrap();
+        let read_back = crate::state::read_json(&prefs_file, json!({}))
+            .await
+            .unwrap();
         assert_eq!(read_back["user1"]["displayName"], "Alice");
         assert_eq!(read_back["user2"]["displayName"], "Bob");
 
@@ -152,7 +163,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_workspace_trust_grant_and_revoke() {
-        let temp_dir = std::env::temp_dir().join(format!("amiro-test-trust-{}", uuid::Uuid::new_v4()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("amiro-test-trust-{}", uuid::Uuid::new_v4()));
         let _ = tokio::fs::create_dir_all(temp_dir.join("store")).await;
         let trust_file = temp_dir.join("store").join("workspace-trust.json");
 
@@ -161,14 +173,20 @@ mod tests {
                 { "resolvedRoot": "/path/one", "grantedAt": "2026-01-01T00:00:00Z" }
             ]
         });
-        crate::state::write_json(&trust_file, &initial).await.unwrap();
+        crate::state::write_json(&trust_file, &initial)
+            .await
+            .unwrap();
 
-        let mut doc = crate::state::read_json(&trust_file, json!({})).await.unwrap();
+        let mut doc = crate::state::read_json(&trust_file, json!({}))
+            .await
+            .unwrap();
         let grants = doc.get_mut("user1").unwrap().as_array_mut().unwrap();
         grants.push(json!({ "resolvedRoot": "/path/two", "grantedAt": "2026-01-02T00:00:00Z" }));
         crate::state::write_json(&trust_file, &doc).await.unwrap();
 
-        let verified = crate::state::read_json(&trust_file, json!({})).await.unwrap();
+        let verified = crate::state::read_json(&trust_file, json!({}))
+            .await
+            .unwrap();
         assert_eq!(verified["user1"].as_array().unwrap().len(), 2);
 
         let _ = tokio::fs::remove_dir_all(&temp_dir).await;

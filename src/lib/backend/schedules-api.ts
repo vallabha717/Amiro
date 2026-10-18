@@ -2,7 +2,8 @@
 
 import { apiJson } from "./client";
 
-export type ScheduleMode = "execute" | "notify";
+/** agent: a full agent turn with tools in the Workspace. execute: text only, no tools. notify: posts the text as-is. */
+export type ScheduleMode = "agent" | "execute" | "notify";
 
 export type ScheduleKind =
   | { kind: "once"; at: string }
@@ -22,6 +23,12 @@ export interface Schedule {
   lastRunAt: string | null;
   lastStatus: "ok" | "failed" | "skipped" | null;
   threadId: string | null;
+  /** Server-computed plain English, e.g. "Weekdays at 8:00 AM". */
+  cadenceDescription?: string;
+  /** "agent" when your agent created it from a chat. */
+  createdBy?: "user" | "agent";
+  /** The chat it was created in, when known. */
+  createdFromThreadId?: string | null;
   createdAt: string;
   updatedAt: string;
 }

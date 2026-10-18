@@ -80,7 +80,11 @@ export function ScheduleDetailSheet({
           <div>
             <dt className="text-muted-foreground">Mode</dt>
             <dd className="font-medium">
-              {schedule.mode === "execute" ? "Execute" : "In-app reminder"}
+              {schedule.mode === "agent"
+                ? "Agent (tools and connectors)"
+                : schedule.mode === "execute"
+                  ? "Text only"
+                  : "Reminder"}
             </dd>
           </div>
           <div>
@@ -113,8 +117,17 @@ export function ScheduleDetailSheet({
           ) : null}
           <div className="col-span-2">
             <dt className="text-muted-foreground">Schedule</dt>
-            <dd className="font-mono text-[12px] break-all">
-              {schedule.schedule.kind === "once"
+            <dd className="break-all">
+              {schedule.cadenceDescription ? (
+                <>
+                  {schedule.cadenceDescription}
+                  {schedule.schedule.kind === "cron" ? (
+                    <span className="ml-2 font-mono text-[11px] text-muted-foreground">
+                      {schedule.schedule.expression}
+                    </span>
+                  ) : null}
+                </>
+              ) : schedule.schedule.kind === "once"
                 ? `once at ${schedule.schedule.at}`
                 : schedule.schedule.kind === "cron"
                   ? schedule.schedule.expression
@@ -131,6 +144,15 @@ export function ScheduleDetailSheet({
           >
             Edit
           </Button>
+          {schedule.createdBy === "agent" && schedule.createdFromThreadId ? (
+            <a
+              href={`/?thread=${encodeURIComponent(schedule.createdFromThreadId)}`}
+              data-testid="schedule-detail-created-in-chat"
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-3 text-xs font-medium hover:bg-accent"
+            >
+              Created in chat <ExternalLink className="size-3.5" />
+            </a>
+          ) : null}
           {schedule.threadId ? (
             <a
               href={`/?thread=${encodeURIComponent(schedule.threadId)}`}

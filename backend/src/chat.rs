@@ -39,6 +39,41 @@ fn uid_of(user: &AuthUser) -> String {
 }
 
 /// Share the runtime's no-inference prompt-title fallback while it starts.
+/// A request to make something happen later or on a cadence, or to ask how
+/// a schedule went.
+fn is_scheduling_request(prompt: &str) -> bool {
+    let p = prompt.to_lowercase();
+    [
+        "schedule",
+        "remind me",
+        "reminder",
+        "every day",
+        "every morning",
+        "every evening",
+        "every night",
+        "every week",
+        "every weekday",
+        "weekdays at",
+        "every monday",
+        "every tuesday",
+        "every wednesday",
+        "every thursday",
+        "every friday",
+        "every saturday",
+        "every sunday",
+        "every hour",
+        "every month",
+        "each morning",
+        "daily at",
+        "briefing",
+        "wrap-up",
+        "wrap up",
+        "cron",
+    ]
+    .iter()
+    .any(|k| p.contains(k))
+}
+
 fn derive_title(text: &str) -> String {
     amiro_session_types::prompt_title(text).unwrap_or_else(|| "New Chat".to_string())
 }
@@ -88,7 +123,11 @@ fn extract_tool_results(message: &Value) -> Vec<(String, String)> {
 fn split_attachments(attachments: Option<&Value>) -> (Vec<(String, String)>, Vec<String>) {
     let mut images = Vec::new();
     let mut extra_text = Vec::new();
-    for attachment in attachments.and_then(|value| value.as_array()).into_iter().flatten() {
+    for attachment in attachments
+        .and_then(|value| value.as_array())
+        .into_iter()
+        .flatten()
+    {
         let Some(url) = attachment.get("url").and_then(|u| u.as_str()) else {
             continue;
         };
@@ -165,10 +204,9 @@ where
         "x-vercel-ai-ui-message-stream",
         HeaderValue::from_static("v1"),
     );
-    response.headers_mut().insert(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static("no-cache"),
-    );
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
     response
 }
 
@@ -255,9 +293,27 @@ async fn chat_handler(
 
     let chat_model = body.get("chatModel").cloned().unwrap_or(json!({}));
     let requested_model = runtime::resolve_model(
-        chat_model.get("provider").and_then(|p| p.as_str()).unwrap_or(""),
-        chat_model.get("model").and_then(|m| m.as_str()).unwrap_or(""),
+        chat_model
+            .get("provider")
+            .and_then(|p| p.as_str())
+            .unwrap_or(""),
+        chat_model
+            .get("model")
+            .and_then(|m| m.as_str())
+            .unwrap_or(""),
     );
+    crate::schedules::remember_chat_model(
+        &state,
+        chat_model
+            .get("provider")
+            .and_then(|p| p.as_str())
+            .unwrap_or(""),
+        chat_model
+            .get("model")
+            .and_then(|m| m.as_str())
+            .unwrap_or(""),
+    )
+    .await;
 
     let permission_mode = body
         .get("permissionMode")
@@ -363,6 +419,24 @@ async fn chat_handler(
                     &state_for_stream,
                     &uid,
                     "visualize",
+                    Some(FsPath::new(&working_dir)),
+                )
+                .await
+            {
+                let clipped: String = skill_body.chars().take(12_000).collect();
+                reminder_blocks.push(format!(
+                    "Auto-activated skill for this request: \"{resolved_name}\" (source {source})\n\
+                     --- begin \"{resolved_name}\" ---\n{clipped}\n--- end \"{resolved_name}\" ---"
+                ));
+            }
+        } else if is_scheduling_request(&prompt) {
+            // Scheduling asks go to the shared Amiro schedules (the Schedules
+            // page), not the runtime's private wake-up timer.
+            if let Some((resolved_name, source, skill_body)) =
+                crate::routes::skills::resolve_skill_for_turn(
+                    &state_for_stream,
+                    &uid,
+                    "schedules",
                     Some(FsPath::new(&working_dir)),
                 )
                 .await
@@ -686,8 +760,14 @@ async fn chat_temporary(
         .join("\n");
     let chat_model = body.get("chatModel").cloned().unwrap_or(json!({}));
     let requested_model = runtime::resolve_model(
-        chat_model.get("provider").and_then(|p| p.as_str()).unwrap_or(""),
-        chat_model.get("model").and_then(|m| m.as_str()).unwrap_or(""),
+        chat_model
+            .get("provider")
+            .and_then(|p| p.as_str())
+            .unwrap_or(""),
+        chat_model
+            .get("model")
+            .and_then(|m| m.as_str())
+            .unwrap_or(""),
     );
     let instructions = body
         .get("instructions")
@@ -924,7 +1004,8 @@ async fn chat_title(
         .unwrap_or("hello")
         .to_string();
 
-    let entry = threads::get_entry(&state, &thread_id).await?
+    let entry = threads::get_entry(&state, &thread_id)
+        .await?
         .filter(|entry| threads::entry_owned(entry, &uid))
         .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "thread not found".into()))?;
     let _ = message; // Legacy callers may send text, but the runtime owns naming.
@@ -984,7 +1065,8 @@ async fn chat_export(
                 if let Some(session_id) = entry.get("sessionId").and_then(|value| value.as_str()) {
                     match runtime::get_history(&state, session_id).await {
                         Ok(history) => {
-                            messages = threads::history_to_messages(&thread_id, session_id, &history)
+                            messages =
+                                threads::history_to_messages(&thread_id, session_id, &history)
                         }
                         Err(error) => {
                             return Err(ApiError(
@@ -1045,6 +1127,21 @@ pub fn router() -> Router<AppState> {
 }
 
 #[cfg(test)]
+mod scheduling_request_tests {
+    use super::is_scheduling_request;
+
+    #[test]
+    fn detects_scheduling_asks() {
+        assert!(is_scheduling_request(
+            "Send me a briefing every weekday at 8"
+        ));
+        assert!(is_scheduling_request("remind me Friday to file expenses"));
+        assert!(is_scheduling_request("Why did my evening wrap-up fail?"));
+        assert!(!is_scheduling_request("What's the capital of France?"));
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -1056,7 +1153,10 @@ mod tests {
         let title = derive_title(&long);
         assert_eq!(title.chars().count(), 65);
         assert!(title.ends_with('…'));
-        assert_eq!(derive_title("<system-reminder>private</system-reminder> Fix titles"), "Fix titles");
+        assert_eq!(
+            derive_title("<system-reminder>private</system-reminder> Fix titles"),
+            "Fix titles"
+        );
         assert_eq!(derive_title("/model test"), "New Chat");
     }
 
@@ -1068,7 +1168,10 @@ mod tests {
         ]);
         let (images, extra) = split_attachments(Some(&attachments));
         assert_eq!(images, vec![("image/png".to_string(), "AAAA".to_string())]);
-        assert_eq!(extra, vec!["[attachment: https://example.test/a.png]".to_string()]);
+        assert_eq!(
+            extra,
+            vec!["[attachment: https://example.test/a.png]".to_string()]
+        );
     }
 
     #[test]
@@ -1079,7 +1182,10 @@ mod tests {
             {"type": "text", "text": "hi"}
         ]});
         let results = extract_tool_results(&message);
-        assert_eq!(results, vec![("c1".to_string(), "{\"ok\":true}".to_string())]);
+        assert_eq!(
+            results,
+            vec![("c1".to_string(), "{\"ok\":true}".to_string())]
+        );
         assert_eq!(extract_text(&message), "hi");
     }
 }

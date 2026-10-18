@@ -135,7 +135,11 @@ fn request_token(headers: &axum::http::HeaderMap, uri: &axum::http::Uri) -> Stri
 /// - Requires the sidecar secret for every API call and every non-read request,
 ///   exactly as the desktop webview does. Static assets are public because a
 ///   browser navigation cannot attach `X-Amiro-Token`; they hold no secrets.
-async fn sidecar_and_origin_middleware(req: Request, next: Next) -> Response {
+async fn sidecar_and_origin_middleware(
+    State(state): State<AppState>,
+    req: Request,
+    next: Next,
+) -> Response {
     let method = req.method().clone();
     let path = req.uri().path().to_string();
     let headers = req.headers().clone();
@@ -165,7 +169,12 @@ async fn sidecar_and_origin_middleware(req: Request, next: Next) -> Response {
     // sidecar secret exactly as it does inside the desktop webview.
     let needs_secret = path.starts_with("/api") || path == "/health" || !is_read;
 
-    if needs_secret {
+    // The built-in agent MCP endpoint authenticates with its own token. Exactly
+    // `POST /agent-mcp` with a valid agent token skips the sidecar secret; any
+    // other request (including a bad/missing agent token) takes the normal path.
+    let agent_mcp_ok = backend::agent_mcp::bypasses_sidecar(&state, &method, &path, &headers);
+
+    if needs_secret && !agent_mcp_ok {
         let token = std::env::var("AMIRO_TOKEN").unwrap_or_default();
         if !token.is_empty() && !constant_time_eq(&token, &request_token(&headers, &uri)) {
             return add_cors(
@@ -304,6 +313,10 @@ async fn main() -> anyhow::Result<()> {
 
     // Export vault secrets to the runtime's credential-env.json so `${VAR}`
     // placeholders in mcp.json resolve without a runtime restart.
+    // The agent MCP token must exist before the first env sync.
+    if let Err(error) = backend::agent_mcp::ensure_token(&state) {
+        tracing::warn!(%error, "agent MCP token unavailable");
+    }
     backend::credentials::sync_runtime_credential_env_logged(&state);
     // Ship the agent's built-in skills (agent-skills/) into the runtime.
     backend::routes::skills::install_bundled_skills(&state);
@@ -315,6 +328,7 @@ async fn main() -> anyhow::Result<()> {
     // The owner's agent home (SOUL/USER/NOW/HEARTBEAT, first-run BOOTSTRAP).
     backend::agent_home::seed(&state).await;
     backend::agent::ensure_owner_identity_file(&state).await;
+    backend::schedules::load_last_chat_model(&state).await;
 
     let out_dir: PathBuf = state.out_dir();
     tracing::info!(
@@ -360,7 +374,10 @@ async fn main() -> anyhow::Result<()> {
             resolve_static_route,
         ))
         .layer(middleware::from_fn(inject_backend_origin))
-        .layer(middleware::from_fn(sidecar_and_origin_middleware))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            sidecar_and_origin_middleware,
+        ))
         .with_state(state.clone());
 
     let port: u16 = std::env::var("AMIRO_PORT")
@@ -378,6 +395,15 @@ async fn main() -> anyhow::Result<()> {
         );
     }
     let listener = tokio::net::TcpListener::bind(&addr).await?;
+    // Register the built-in `amiro` MCP server for the port actually bound.
+    if let Ok(bound) = listener.local_addr() {
+        let wiring_state = state.clone();
+        tokio::spawn(async move {
+            if let Err(error) = backend::agent_mcp::wire(&wiring_state, bound.port()).await {
+                tracing::warn!(error=%error.1, "could not register the amiro agent MCP server");
+            }
+        });
+    }
     // A process that cannot bind its listener must never start background work.
     let heartbeat = backend::heartbeat::spawn_heartbeat(state.clone());
     let scheduler = backend::schedules::spawn_scheduler(state);
