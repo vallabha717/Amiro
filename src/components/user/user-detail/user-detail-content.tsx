@@ -5,10 +5,10 @@ import { WorkspaceTrustSettingsCard } from "@/components/workspace-trust/trust-s
 import { useFileUpload } from "@/hooks/use-presigned-upload";
 import { ApiError, apiJson } from "@/lib/backend/client";
 import { rewriteStorageUrl } from "@/lib/backend/config";
+import { changeCredentials } from "@/lib/backend/session-context";
 import { BasicUser } from "app-types/user";
 import { getUserAvatar } from "lib/user/utils";
 import { fetcher } from "lib/utils";
-import { passwordSchema } from "lib/validations/password";
 import { Camera, Loader2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
@@ -41,7 +41,6 @@ const LEGACY_DESKTOP_DEFAULT_EMAIL = "local@betterchatbot.desktop";
 
 const USER_DETAILS_KEY = "/api/user/details";
 const AUTH_METHODS_KEY = "/api/user/auth-methods";
-const USER_PASSWORD_KEY = "/api/user/password";
 
 export function UserDetailContent({
   view = "user",
@@ -64,7 +63,7 @@ export function UserDetailContent({
       data-testid="user-detail-content"
     >
       <ProfileCard user={user} view={view} />
-      {view === "user" && <PasswordCard />}
+      {view === "user" && <AccountCard user={user} />}
       {view === "user" && <WorkspaceTrustSettingsCard />}
       {view === "user" && <GitHubConnectCard />}
     </div>
@@ -291,19 +290,35 @@ function ProfileCard({
   );
 }
 
-function PasswordCard() {
+/**
+ * The owner's "Account" settings: change the login email/username and/or the
+ * password through PUT /api/auth/credentials, which verifies the current
+ * password and signs out every other session. `hasPassword` is always true for
+ * a native Amiro account, so the current password is always required.
+ */
+function AccountCard({ user }: { user: BasicUser }) {
   const t = useTranslations("User.Profile.user");
   const tc = useTranslations("User.Profile.common");
-  const { data: authMethods } = useSWR<{ hasPassword: boolean }>(
-    AUTH_METHODS_KEY,
-    fetcher,
-  );
+  const [email, setEmail] = useState(user.email ?? "");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  const hasPassword = authMethods?.hasPassword ?? false;
+  useEffect(() => {
+    setEmail(user.email ?? "");
+  }, [user.email]);
+
+  const emailChanged = email.trim() !== (user.email ?? "");
+  const passwordChanged = newPassword.length > 0;
+  const passwordStrong =
+    newPassword.length >= 12 &&
+    /[a-zA-Z]/.test(newPassword) &&
+    /[\d\W_]/.test(newPassword);
+  const canSave =
+    currentPassword.length > 0 &&
+    (emailChanged || passwordChanged) &&
+    (!passwordChanged || (passwordStrong && newPassword === confirmPassword));
 
   const reset = () => {
     setCurrentPassword("");
@@ -312,33 +327,36 @@ function PasswordCard() {
   };
 
   const handleSubmit = async () => {
-    const { success, error } = passwordSchema.safeParse(newPassword);
-    if (!success) {
-      toast.error(error.issues.map((i) => i.message).join("\n"));
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      toast.error(tc("confirmPassword"));
-      return;
-    }
-    if (hasPassword && !currentPassword) {
+    if (!currentPassword) {
       toast.error(tc("currentPassword"));
+      return;
+    }
+    if (!emailChanged && !passwordChanged) {
+      return;
+    }
+    if (passwordChanged && !passwordStrong) {
+      toast.error(t("newPasswordPlaceholder"));
+      return;
+    }
+    if (passwordChanged && newPassword !== confirmPassword) {
+      toast.error(tc("confirmPassword"));
       return;
     }
 
     setIsSaving(true);
     try {
-      await apiJson(USER_PASSWORD_KEY, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currentPassword, newPassword }),
+      await changeCredentials({
+        currentPassword,
+        newEmail: emailChanged ? email.trim() : undefined,
+        newPassword: passwordChanged ? newPassword : undefined,
       });
-      toast.success(tc("passwordUpdatedSuccessfully"));
+      toast.success(tc("credentialsUpdatedSuccessfully"));
       reset();
+      mutate(USER_DETAILS_KEY);
       mutate(AUTH_METHODS_KEY);
     } catch (e) {
       toast.error(
-        e instanceof ApiError ? e.message : tc("failedToUpdatePassword"),
+        e instanceof ApiError ? e.message : tc("failedToUpdateCredentials"),
       );
     } finally {
       setIsSaving(false);
@@ -349,34 +367,43 @@ function PasswordCard() {
     <Card>
       <CardHeader className="pb-4">
         <CardTitle className="text-lg font-semibold">
-          {tc("passwordManagement")}
+          {tc("accountManagement")}
         </CardTitle>
-        <CardDescription>
-          {hasPassword ? t("changeUserPassword") : t("setPasswordDescription")}
-        </CardDescription>
+        <CardDescription>{tc("accountManagementDescription")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {hasPassword && (
-          <div className="space-y-2">
-            <Label htmlFor="current-password">{tc("currentPassword")}</Label>
-            <Input
-              id="current-password"
-              type="password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              disabled={isSaving}
-              data-testid="current-password-input"
-            />
-          </div>
-        )}
         <div className="space-y-2">
-          <Label htmlFor="new-password">{t("newPasswordPlaceholder")}</Label>
+          <Label htmlFor="account-email">{tc("emailOrUsername")}</Label>
+          <Input
+            id="account-email"
+            type="text"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={isSaving}
+            data-testid="account-email-input"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="current-password">{tc("currentPassword")}</Label>
+          <Input
+            id="current-password"
+            type="password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            disabled={isSaving}
+            autoComplete="current-password"
+            data-testid="current-password-input"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="new-password">{tc("newPasswordOptional")}</Label>
           <Input
             id="new-password"
             type="password"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             disabled={isSaving}
+            autoComplete="new-password"
             data-testid="new-password-input"
           />
         </div>
@@ -388,16 +415,17 @@ function PasswordCard() {
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             disabled={isSaving}
+            autoComplete="new-password"
             data-testid="confirm-password-input"
           />
         </div>
         <Button
           className="w-full"
-          disabled={isSaving || !newPassword}
+          disabled={isSaving || !canSave}
           onClick={handleSubmit}
-          data-testid="update-password-button"
+          data-testid="update-account-button"
         >
-          {isSaving ? tc("saving") : t("updatePasswordButton")}
+          {isSaving ? tc("saving") : tc("accountManagement")}
         </Button>
       </CardContent>
     </Card>

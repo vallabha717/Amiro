@@ -53,8 +53,8 @@ fn is_safe_lookup_name(name: &str) -> bool {
 }
 
 fn tools_exposed() -> bool {
-    std::env::var("AMIRO_TRUSTED_OPERATOR").map(|v| v == "1").unwrap_or(false)
-        && std::env::var("AMIRO_TOOL_PROFILE").map(|v| v == "full").unwrap_or(false)
+    // Single source of truth for the tool policy lives in `runtime`.
+    crate::runtime::expose_tools()
 }
 
 fn skill_generation_enabled() -> bool {

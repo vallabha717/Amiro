@@ -44,28 +44,29 @@ the supported release lines and their support windows.
 The version field in `package.json` and `src-tauri/tauri.conf.json` is not a
 support promise by itself.
 
-## Preview restrictions are a policy, not an OS sandbox
+## Single-owner, and the VM or sandbox is the boundary
 
 This is the most important caveat in this document.
 
-Amiro applies restrictions such as loopback-only binds, a sidecar token,
-preview-port TLS termination, approval prompts, read-only workspace and memory
-modes, and an admin-gated workspace view. Together these are a **policy layer**.
-They are enforced by Amiro's own code and by the vendored runtime's permission
-logic, running with the privileges of the user who started the app.
+Amiro is a single-owner application: one owner account, no registration, and
+designed to be installed, started, and left running inside a VM or sandbox. It
+binds to `127.0.0.1` by default. Tools are **on by default** and run with the
+owner's own permissions, so that sandbox is what actually contains them, not a
+flag. Amiro still applies a sidecar token, loopback-only binds, and an
+admin-gated workspace view, but those are a **policy layer** enforced by Amiro's
+own code and the vendored runtime's permission logic.
 
 They are not an operating system sandbox. There is no kernel-enforced isolation
 between the runtime, the tools it invokes, and the rest of your user account. Do
-not treat the preview restrictions, the tool approval flow, or a read-only
-workspace mode as a security boundary against untrusted code that you choose to
-run.
+not treat Amiro's restrictions, or a read-only workspace mode, as a security
+boundary against untrusted code. Put the app inside a VM or sandbox, and put TLS
+and a network boundary in front of it before exposing it beyond loopback.
 
 What that means in practice:
 
 - **In scope.** Bypassing an Amiro restriction without user intent, such as
-  reaching an admin-only route as a non-admin, reading another user's threads or
-  memory, escaping the intended workspace root, or having a prompt injection
-  drive a tool call that Amiro claimed the user must approve. Also in scope:
+  reaching an admin-only route without a session, reading another user's threads
+  or memory, or escaping the intended workspace root. Also in scope:
   authentication or session flaws, leaks of stored provider credentials, and
   cross-user data exposure in the backend.
 - **In scope, but expected.** A model or prompt influencing the runtime to
@@ -99,5 +100,6 @@ What that means in practice:
   for sharing.
 - Run Amiro as an unprivileged user, and point the workspace at a directory you
   would accept the runtime reading and writing.
-- Review tool calls that ask for shell or filesystem access. The approval prompt
-  is a speed bump, not a container.
+- Tools run automatically with the owner's permissions; there is no per-action
+  approval prompt. Treat the VM or sandbox as the boundary: set
+  `AMIRO_TOOL_PROFILE=none` if you want chat with no tools at all.

@@ -1,20 +1,18 @@
 "use client";
 
-import useSWR from "swr";
 import { fetcher } from "@/lib/backend/client";
+import useSWR from "swr";
 
 /**
- * GET /api/auth/status -- currently just `isFirstUser`, the "this instance
- * has no accounts at all yet" flag. better-chatbot read the equivalent
- * server-side (`await getIsFirstUser()` in the sign-in page's Server
- * Component); this app renders auth fully client-side, so it comes over
- * HTTP instead.
+ * GET /api/auth/status -- `needsSetup` is true while the instance has no
+ * account at all yet, which is when the first-run "Set up Amiro" page owns
+ * account creation. `isFirstUser` is kept as an alias for older callers.
  *
  * Unauthenticated route, so no session is needed -- which matters, because
  * the whole point is answering it *before* anyone can sign in.
  */
 export function useAuthStatus() {
-  return useSWR<{ isFirstUser: boolean; registrationEnabled?: boolean }>(
+  return useSWR<{ needsSetup: boolean; isFirstUser?: boolean }>(
     "/api/auth/status",
     fetcher,
     {

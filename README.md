@@ -116,8 +116,8 @@ Node.js at all. Node is only a build-time and test-time dependency.
 - Admin surfaces for providers, search providers, usage, and users.
 - Self-view usage stats, quota read from the runtime, and explicit labelling of
   shared-account scope instead of pretending per-user billing.
-- Password changes that take effect immediately, rate-limited sign-in, closed
-  registration by default, and a generated per-install admin password.
+- Password changes that take effect immediately, rate-limited sign-in, and
+  first-run owner setup. There is no registration.
 
 ---
 
@@ -146,7 +146,7 @@ There are **two different homes**, and conflating them is the most common source
 of confusion:
 
 - `AMIRO_HOME` is the **application** home: `users.json`, `threads.json`,
-  `store/`, `workspace/`, and `admin-initial-password`.
+  `store/`, and `workspace/`.
 - `AMIRO_RUNTIME_HOME` is the **runtime** home: memory, sessions, and the
   runtime's own credential layout.
 
@@ -302,16 +302,23 @@ requests, and `AMIRO_ALLOWED_ORIGIN` and `AMIRO_TOKEN` control what it trusts.
 
 ### First sign-in
 
-There is **no default password**. On first boot Amiro generates one:
+There is **no default password** and no sign-up. On a fresh install, open the app
+and complete the one-time **Set up Amiro** page: choose the owner's email (or
+username) and a password of at least 12 characters. That creates the single owner
+account, as an admin. Once any account exists, setup answers `403` forever.
+
+For headless provisioning you can create the owner at boot instead, by setting a
+password source before first start:
 
 ```sh
-cat "$AMIRO_HOME/admin-initial-password"     # default: ~/.amiro/admin-initial-password
+export AMIRO_OWNER_EMAIL=owner@example.com
+export AMIRO_OWNER_PASSWORD='a-long-owner-password'
+# or: export AMIRO_OWNER_PASSWORD_FILE=/run/secrets/amiro-owner-password
 ```
 
-That file is a mode-`0600` JSON object with `email` (default `admin@local`) and
-`password`. Sign in with both, then change the password from the UI. Registration
-is closed by default, and an existing insecure default admin account is refused at
-startup rather than silently reset.
+Change the owner email or password later from the settings popup's **Account**
+section (`PUT /api/auth/credentials`). A password change takes effect immediately
+and signs out every other session.
 
 Provider credentials are connected from the admin providers page, or with the
 `/login` composer command. Keys and authorization codes are never submitted as
@@ -373,17 +380,16 @@ Every value below has a working default. Set only what you need.
 | `AMIRO_NO_RUNTIME_SPAWN` | unset | `1` makes the backend refuse to start a bridge and require one already running |
 | `AMIRO_NO_RUNTIME_KEEPALIVE` | unset | `1` disables the supervisor thread that pings and restarts the runtime |
 | `AMIRO_NO_SCHEDULER` | unset | `1` disables the schedule ticker for this process |
-| `AMIRO_SEED_ADMIN` | on when the user store is empty | Seeds the first admin account on boot. Set `0` to disable seeding entirely |
-| `AMIRO_ALLOW_REGISTRATION` | `0` | `1` opens sign-up |
-| `AMIRO_ALLOW_INSECURE_ADMIN` | unset | `1` accepts a pre-existing insecure `admin@local` account that still uses the old default password. Development only, never on a reachable host |
+| `AMIRO_OWNER_EMAIL` | unset | Owner identifier provisioned at boot, only while the user store is empty. Requires a password below |
+| `AMIRO_OWNER_PASSWORD` | unset | Owner password used once at first boot, when `AMIRO_OWNER_EMAIL` is set. Must meet the 12-character strength rule |
+| `AMIRO_OWNER_PASSWORD_FILE` | unset | Read the owner password from this file at first boot instead of `AMIRO_OWNER_PASSWORD` |
 | `AMIRO_ENABLE_SKILL_GENERATION` | `0` | `1` re-enables legacy skill generation, off by default |
 | `AMIRO_SESSION_TTL_DAYS` | unset | Session lifetime in days |
 | `AMIRO_DEFAULT_MODEL` | unset | `provider:model` used when a request omits a model. Also makes that group sort first |
 | `AMIRO_PINNED_MODELS` | unset | Hard allow-list of models. When set, anything else is rejected |
 | `AMIRO_BROWSE_ROOTS` | `/root,/home,/srv,/opt,/var/www,/tmp` | Absolute roots the server-side folder picker may browse |
 | `AMIRO_WORKSPACE_ROOT` | `$AMIRO_HOME/workspace` | Default workspace root for file, edit, search, and git tools |
-| `AMIRO_TRUSTED_OPERATOR` | unset | `1`, together with `AMIRO_TOOL_PROFILE=full`, is required to enable tools |
-| `AMIRO_TOOL_PROFILE` | unset | `none`, `minimal`, or `full`. Tools stay disabled unless this and the flag above are both set |
+| `AMIRO_TOOL_PROFILE` | on | Tools run by default, with the owner's permissions. Set `none` for chat without tools |
 | `AMIRO_NO_TELEMETRY` | unset | `1` disables runtime telemetry |
 | `NEXT_PUBLIC_BACKEND_URL` | unset | Frontend-only dev: backend base URL |
 | `NEXT_PUBLIC_BACKEND_TOKEN` | unset | Frontend-only dev: must match `AMIRO_TOKEN` |
@@ -465,8 +471,8 @@ success is worse than an honest error.
 
 **Not enabled, and returns explicit unsupported errors rather than pretending**
 
-- Tool execution, unless a trusted local operator sets both `AMIRO_TRUSTED_OPERATOR=1`
-  and `AMIRO_TOOL_PROFILE=full`. The deployed default enables no tools at all.
+- Per-action tool approval. Tools run automatically with the owner's
+  permissions; set `AMIRO_TOOL_PROFILE=none` to run chat without tools.
 - Per-action permission prompts. The runtime's api-bridge does not advertise the
   `permissions` capability, so a client waiting for a prompt would wait forever.
 - MCP tool execution and authorization.
@@ -581,8 +587,9 @@ a public issue. See [`SECURITY.md`](SECURITY.md).
 
 Two things to internalise before deploying this anywhere shared:
 
-- **The preview restrictions are a policy, not an OS sandbox.** Tools being off is
-  a configuration decision made by the backend, not a kernel-enforced boundary.
+- **The VM or sandbox is the boundary, not a flag.** Tools run by default with the
+  owner's permissions; the restrictions are enforced by Amiro's own code, not by
+  the kernel, so run Amiro inside a VM or sandbox and bind it to loopback.
 - **Provider credentials are shared operator credentials.** This is a
   single-operator design today. It is not multi-tenant.
 

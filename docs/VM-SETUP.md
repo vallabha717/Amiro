@@ -188,15 +188,15 @@ The backend listens on `127.0.0.1:8787` by default (`AMIRO_HOST` and `AMIRO_PORT
 ssh -L 8787:127.0.0.1:8787 you@your-server
 ```
 
-Then open http://127.0.0.1:8787 locally and sign in as `admin@local` with the generated password (see First sign in). Never bind `AMIRO_HOST=0.0.0.0` without a real auth and TLS story in front of it. The admin account starts with a generated password, registration is closed by default, and sign-in is rate limited, but the preview policy is still meant for a trusted operator.
+Then open http://127.0.0.1:8787 locally and complete the one-time **Set up Amiro** page to create the single owner account (see First run setup). Never bind `AMIRO_HOST=0.0.0.0` without a real auth and TLS story in front of it; the backend logs a warning if it is bound to a non-loopback address without `AMIRO_TOKEN`. Sign-in is rate limited, but tools run with the owner's permissions, so keep Amiro inside the VM or sandbox.
 
-On the server, `AMIRO_HOME` defaults to `~/.amiro`, so the admin password file is at `~/.amiro/admin-initial-password`.
+On the server, `AMIRO_HOME` defaults to `~/.amiro`. For headless provisioning, set `AMIRO_OWNER_EMAIL` and `AMIRO_OWNER_PASSWORD` (or `AMIRO_OWNER_PASSWORD_FILE`) before first start instead of using the setup page.
 
 ## Environment variables
 
 | Variable | Default | What it does |
 |----------|---------|--------------|
-| `AMIRO_HOME` | `~/.amiro` (native backend, `backend/src/state.rs`), `~/.amiro-dev` under `scripts/dev-backend.sh` | Application data home: `store/`, `users.json`, `threads.json`, `workspace/`, `admin-initial-password` |
+| `AMIRO_HOME` | `~/.amiro` (native backend, `backend/src/state.rs`), `~/.amiro-dev` under `scripts/dev-backend.sh` | Application data home: `store/`, `users.json`, `threads.json`, `workspace/` |
 | `AMIRO_HOST` | `127.0.0.1` (`backend/src/main.rs`) | Interface the native backend binds to |
 | `AMIRO_PORT` | `8787` (`backend/src/main.rs`) | Port for the backend HTTP listener and the served UI. `scripts/dev-backend.sh` and `scripts/start-local.sh` use the same default |
 | `AMIRO_API_SOCKET` | `<runtime home>/amiro-api.sock` (`backend/src/state.rs`) | Unix socket the backend uses to talk to the runtime bridge. The adapter default in `scripts/dev-backend.sh` is `$HOME/.jcode/scratch/amiro-api.sock`, with the pre-rename `JCODE_API_SOCKET` still read as a fallback |
@@ -208,19 +208,22 @@ On the server, `AMIRO_HOME` defaults to `~/.amiro`, so the admin password file i
 Two behavior flags worth knowing:
 
 - `AMIRO_NO_RUNTIME_SPAWN=1` means the backend will not start a bridge (`backend/src/runtime.rs`). Use it when you supervise the runtime yourself. Without it, the backend spawns the engine from `AMIRO_RUNTIME_BIN` on demand and keeps it alive.
-- `AMIRO_ALLOW_REGISTRATION=1` opens registration. Default is closed: once the first user exists, new signups are refused (`backend/src/auth.rs`). `AMIRO_SEED_ADMIN` controls seeding the initial admin account.
+- `AMIRO_OWNER_EMAIL` + `AMIRO_OWNER_PASSWORD` (or `AMIRO_OWNER_PASSWORD_FILE`) provision the single owner at boot while the user store is empty (`backend/src/auth.rs`). Otherwise the owner is created through the first-run setup page. There is no registration.
+- `AMIRO_TOOL_PROFILE=none` runs chat without tools. Tools otherwise run with the owner's permissions.
 
-## First sign in (admin password)
+## First run setup
 
-On first start the backend generates the owner password into `$AMIRO_HOME/admin-initial-password`, a mode `0600` JSON file shaped like `{"email":"admin@local","password":"...","createdAt":"..."}`. There is no default password.
+There is no default password and no sign-up. On a fresh home the app shows the one-time **Set up Amiro** page: choose the owner's email (or username) and a password of at least 12 characters with a letter and a number or symbol. That creates the single owner account, as an admin. `POST /api/auth/setup` refuses with `403` once any account exists.
+
+For headless provisioning, create the owner at boot instead by exporting the owner email and a password source before first start:
 
 ```sh
-cat ~/.amiro/admin-initial-password
+export AMIRO_OWNER_EMAIL=owner@example.com
+export AMIRO_OWNER_PASSWORD='a-long-owner-password'
+# or: export AMIRO_OWNER_PASSWORD_FILE=/run/secrets/amiro-owner-password
 ```
 
-Sign in with email `admin@local` and the generated password. Registration is closed by default, so that file is the only way in on a fresh home. Do not publish it. You can change the password later with `PUT /api/user/password` (the UI profile flow uses the same route).
-
-If `AMIRO_HOME` is overridden, read the file under that directory instead. `scripts/dev-backend.sh` defaults `AMIRO_HOME` to `~/.amiro-dev`, so its password file is `~/.amiro-dev/admin-initial-password`.
+Change the owner's email or password later from the settings popup's **Account** section (`PUT /api/auth/credentials`). If `AMIRO_HOME` is overridden, the owner lives in that home's `users.json`; `scripts/dev-backend.sh` defaults `AMIRO_HOME` to `~/.amiro-dev`.
 
 ## Starting the app
 

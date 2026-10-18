@@ -57,8 +57,8 @@ OPENAI_COMPAT_API_KEY=stub-key \
 AMIRO_OUT_DIR=$OUT_DIR \
 AMIRO_PORT=$BACKEND_PORT \
 AMIRO_HOST=127.0.0.1 \
-AMIRO_SEED_ADMIN=1 \
-AMIRO_ALLOW_REGISTRATION=0 \
+AMIRO_OWNER_EMAIL=owner@amiro.test \
+AMIRO_OWNER_PASSWORD=native-ui-check-owner-1 \
   "$BACKEND_BIN" > "$ROOT/backend.log" 2>&1 &
 PIDS+=($!)
 
@@ -74,7 +74,7 @@ done
 
 TOKEN_FILE=$ROOT/token
 curl -s -m 60 -H 'Content-Type: application/json' \
-  -d "$(cat "$ROOT/home/admin-initial-password")" \
+  -d '{"email":"owner@amiro.test","password":"native-ui-check-owner-1"}' \
   "http://127.0.0.1:$BACKEND_PORT/api/auth/login" |
   sed -E 's/.*"token":"([^"]+)".*/\1/' > "$TOKEN_FILE"
 [ "$(wc -c < "$TOKEN_FILE")" -gt 10 ] || fail "login did not return a session token"

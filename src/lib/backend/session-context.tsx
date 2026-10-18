@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useSyncExternalStore } from "react";
-import { apiJson, ApiError } from "./client";
+import { ApiError, apiJson } from "./client";
 import { getSessionToken, setSessionToken } from "./config";
 
 export type BackendUser = {
@@ -24,7 +24,7 @@ type SessionState = {
  * via GET /api/auth/session, the same request every page used to get for
  * free from the server-rendered session cookie.
  *
- * A module-level store (not React context) so `login`/`register`/`logout`
+ * A module-level store (not React context) so `login`/`setupOwner`/`logout`
  * work as plain async functions callable from event handlers -- exactly
  * how the old `authClient.signIn.email(...)` was called -- while still
  * being observable by components via useSyncExternalStore.
@@ -98,12 +98,37 @@ export async function login(email: string, password: string) {
   return resp.user;
 }
 
-export async function register(name: string, email: string, password: string) {
+export async function setupOwner(
+  email: string,
+  password: string,
+  name?: string,
+) {
   const resp = await apiJson<{ user: BackendUser; token: string }>(
-    "/api/auth/register",
-    { method: "POST", body: JSON.stringify({ name, email, password }) },
+    "/api/auth/setup",
+    {
+      method: "POST",
+      body: JSON.stringify({ email, password, name }),
+    },
   );
   setSessionToken(resp.token);
+  setState({ user: resp.user, isPending: false });
+  return resp.user;
+}
+
+/**
+ * Change the owner's login email and/or password. The backend verifies the
+ * current password and invalidates every other session, so this one keeps
+ * working while any other device is signed out.
+ */
+export async function changeCredentials(input: {
+  currentPassword: string;
+  newEmail?: string;
+  newPassword?: string;
+}) {
+  const resp = await apiJson<{ user: BackendUser }>("/api/auth/credentials", {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
   setState({ user: resp.user, isPending: false });
   return resp.user;
 }
@@ -146,5 +171,8 @@ export function useSession(): {
     getSnapshot,
     getServerSnapshot,
   );
-  return { data: snapshot.user ? { user: snapshot.user } : null, isPending: snapshot.isPending };
+  return {
+    data: snapshot.user ? { user: snapshot.user } : null,
+    isPending: snapshot.isPending,
+  };
 }

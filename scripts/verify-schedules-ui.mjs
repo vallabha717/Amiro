@@ -59,7 +59,6 @@ const child = spawn(binary, [], {
     AMIRO_SCHEDULE_STUB_KEY: "stub-key",
     AMIRO_DEFAULT_MODEL: "openai-compatible:stub-model",
     AMIRO_PINNED_MODELS: "openai-compatible:stub-model,openai-compatible:stub-scheduled-model",
-    AMIRO_TRUSTED_OPERATOR: "0",
     AMIRO_TOOL_PROFILE: "none",
     AMIRO_NO_TELEMETRY: "1",
     XDG_CONFIG_HOME: path.join(fixture, "config"),
@@ -67,8 +66,8 @@ const child = spawn(binary, [], {
     AMIRO_HOST: "127.0.0.1",
     AMIRO_PORT: String(port),
     AMIRO_TOKEN: "",
-    AMIRO_SEED_ADMIN: "1",
-    AMIRO_ALLOW_REGISTRATION: "0",
+    AMIRO_OWNER_EMAIL: "owner@amiro.test",
+    AMIRO_OWNER_PASSWORD: "schedules-ui-owner-1",
     AMIRO_OUT_DIR: path.join(ROOT, "out"),
   },
   stdio: ["ignore", log.fd, log.fd],
@@ -96,12 +95,10 @@ try {
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
-  const credentials = JSON.parse(
-    await fs.readFile(
-      path.join(fixture, "home/admin-initial-password"),
-      "utf8",
-    ),
-  );
+  const credentials = {
+    email: "owner@amiro.test",
+    password: "schedules-ui-owner-1",
+  };
   const login = await fetch(`${base}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

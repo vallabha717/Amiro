@@ -110,7 +110,7 @@ const SESSION_TOKEN_STORAGE_KEY = "amiro.session-token";
 const LEGACY_SESSION_TOKEN_STORAGE_KEY = "betterchatbot.session-token";
 
 /** The per-user bearer session token (internal/auth's own token, distinct
- * from the shared secret above) -- issued by POST /api/auth/login|register,
+ * from the shared secret above) -- issued by POST /api/auth/setup|login,
  * persisted in localStorage so a page refresh doesn't sign the user out. */
 export function getSessionToken(): string | null {
   if (typeof window === "undefined") return null;

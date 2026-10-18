@@ -6,7 +6,7 @@ The Playwright UI test suite validates Amiro's web application surface end-to-en
 
 - **Go ↔ TypeScript Runner Seam**: The UI suite uses `amirotest env --surface ui [--json]` (or `amirotest backend start/stop`) to mint/join test runs, launch isolated Go server backends (`-tags embedui`), and provide dynamic base URLs, authentication tokens, and run log directories to Playwright worker processes.
 - **Per-test backend isolation**: The `amiro` fixture in `fixtures.ts` is test-scoped, not worker-scoped — every test gets its own fresh SQLite database, workspace, port and pre-seeded accounts (`user@amiro.test`, `admin@amiro.test`) via `amirotest backend start`. A worker running several tests in sequence never shares a backend across them.
-- **Page Objects**: Located in `tests/ui/pages/index.ts`, encapsulating locators, navigation, and user actions for all application routes (`SignInPage`, `SignUpPage`, `OnboardingPage`, `ChatPage`, `ThreadsPage`, `AgentsPage`, `AgentDetailPage`, `McpPage`, `ArchivePage`, `AdminPage`, `ExportPage`, `SettingsPage`).
+- **Page Objects**: Located in `tests/ui/pages/index.ts`, encapsulating locators, navigation, and user actions for all application routes (`SignInPage`, `SetupPage`, `OnboardingPage`, `ChatPage`, `ThreadsPage`, `AgentsPage`, `AgentDetailPage`, `McpPage`, `ArchivePage`, `AdminPage`, `ExportPage`, `SettingsPage`).
 - **Fixtures & Observers**: Defined in `tests/ui/support/fixtures.ts`, providing automated token-injected contexts (`signedIn`, `admin`), capturing browser console output to `console.ndjson`, capturing uncaught exceptions to `pageerrors.ndjson`, and enforcing test isolation. The `context` fixture builds its own `browser.newContext()` (baseURL is per-test, not global) and so also hand-wires `recordVideo` and replicates Playwright's `on`/`off`/`retain-on-failure`/`on-first-retry` policy — a custom context fixture does not inherit that from `playwright.config.ts` for free.
 - **Results reporting**: `tests/ui/support/timeline-reporter.ts` writes two things per test — an `events.ndjson` entry (interleaved with the Go harness's own backend `process`/`http` events on one clock) and a `results.ndjson` entry in the exact shape `tests/harness/run/summary.go`'s `TestResult` decodes, which is what lets `amirotest run --surface ui`'s summary show real pass/fail/skip counts instead of `0 passed`.
 - **Zero-Wait Invariant**: Spec files never use hardcoded timeouts (`sleep`, `page.waitForTimeout`); assertions rely exclusively on web-first locators and reactive predicates (`toBeVisible`, `waitForURL`, `expect.poll`). Enforced by `suites/meta/ui_guard_test.go`, not just convention.
@@ -61,7 +61,7 @@ tests/ui/
 │   ├── admin/            # Admin dashboard tabs and RBAC boundaries
 │   ├── agents/           # Agent listing, filtering, and creation
 │   ├── archive/          # Archived conversation management
-│   ├── auth/             # Sign-in, sign-up wizard, protected routes
+│   ├── auth/             # Sign-in, first-run setup, protected routes
 │   ├── chat/             # Chat threads, streaming, store state
 │   ├── dashboard/        # SPA fallback and deep linking
 │   ├── errors/           # page-error-allowed.spec.ts (escape hatch, logs and

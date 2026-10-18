@@ -22,9 +22,9 @@ The runtime engine lives in `runtime/`: an Amiro-owned, vendored Rust workspace 
 
 There are two different logins:
 
-1. **Application sign-in:** a random initial owner password is generated into `$AMIRO_HOME/admin-initial-password`, a mode-0600 JSON file. There is no public default password. Registration is closed by default. An existing insecure `admin@local` account using the old `admin` default is rejected at startup, not reset.
+1. **Application sign-in:** the single owner account is created on first run, either through the one-time **Set up Amiro** page or from `AMIRO_OWNER_EMAIL` plus `AMIRO_OWNER_PASSWORD` (or `AMIRO_OWNER_PASSWORD_FILE`) at boot while the user store is empty. There is no default password and no registration; `POST /api/auth/setup` answers `403` forever once an account exists. Change the owner's email or password from the settings **Account** section (`PUT /api/auth/credentials`).
 
-   The owner may replace it with a shorter password through `PUT /api/user/password` (the UI profile flow uses the same route). This preview is owner-only, so that is the owner's choice. A short password on a publicly reachable admin account is a real risk. Compensating controls currently in place: sign-in is rate-limited to 15 attempts per 15 minutes per client address, registration is closed, and provider mutation is admin-only. Prefer a long password if the preview is left running unattended. A password change takes effect immediately and survives later logins.
+   Sign-in is rate-limited to 15 attempts per 15 minutes per identifier, and provider mutation is admin-only. A password change takes effect immediately, survives later logins, and invalidates every other session.
 2. **Provider connection:** use `/login` in the chat composer or the visible UI connection control in the admin panel. It opens a dedicated panel. API keys and authorization codes are never submitted as ordinary chat messages. OAuth starts a scriptable Amiro runtime CLI flow, displays the provider authorization URL or device code, accepts callback and code input separately, and polls for completion. The CLI receives callback secrets over stdin, not process arguments. After successful login, the runtime bridge is notified that authentication changed.
 
 **Important scope:** this preview attaches to one owner's existing daemon and credential home. Provider credentials are shared runtime and operator credentials. Provider mutation is admin-only. This is not an isolated multi-tenant BYOK service. Enabling multiple untrusted users requires separate credential and daemon isolation and per-user provider selection before it is safe to call this production-ready.
@@ -61,7 +61,7 @@ The Amiro runtime controls tool execution through server-side configuration:
 
 - **Tool availability:** `--tool-profile full|minimal/lite|none`, `--tools <allow-list>`, `--disabled-tools`, `--disable-base-tools`. This is configured per session on the backend.
 - **Permission prompts:** the runtime bridge API does not advertise interactive prompt approval. The composer's old four-way picker (Auto / Edit Automatically / Manual / Plan), the tools selector dropdown, and the tool mode dropdown were removed.
-- **Default preview policy:** the deployed preview defaults to `tools: { enabled: [] }`, reapplied before every turn. Enabling tools requires a trusted local operator to set both `AMIRO_TRUSTED_OPERATOR=1` and `AMIRO_TOOL_PROFILE=full`.
+- **Default policy:** tools are **on by default** and run with the owner's own permissions. Amiro is meant to run inside a VM or sandbox, and that sandbox is the boundary. Set `AMIRO_TOOL_PROFILE=none` for chat without tools.
 
 ## Provider connection in the admin panel
 

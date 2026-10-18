@@ -6,14 +6,12 @@ export class SignInPage {
   readonly emailInput: Locator;
   readonly passwordInput: Locator;
   readonly submitButton: Locator;
-  readonly createAccountLink: Locator;
 
   constructor(page: Page) {
     this.page = page;
     this.emailInput = page.locator('[data-testid="signin-email-input"]');
     this.passwordInput = page.locator('[data-testid="signin-password-input"]');
     this.submitButton = page.locator('[data-testid="signin-submit-button"]');
-    this.createAccountLink = page.locator('a[href="/sign-up"]');
   }
 
   async goto() {
@@ -28,35 +26,33 @@ export class SignInPage {
   }
 }
 
-export class SignUpPage {
+// First-run owner setup (/setup): the single-account creation flow shown on a
+// fresh instance. There is no sign-up page anymore.
+export class SetupPage {
   readonly page: Page;
   readonly emailInput: Locator;
-  readonly nameInput: Locator;
   readonly passwordInput: Locator;
-  readonly nextButton: Locator;
-  readonly backButton: Locator;
+  readonly confirmInput: Locator;
+  readonly submitButton: Locator;
 
   constructor(page: Page) {
     this.page = page;
-    this.emailInput = page.locator('[data-testid="signup-email-input"]');
-    this.nameInput = page.locator('[data-testid="signup-name-input"]');
-    this.passwordInput = page.locator('[data-testid="signup-password-input"]');
-    this.nextButton = page.locator('[data-testid="signup-next-button"]');
-    this.backButton = page.locator('[data-testid="signup-back-button"]');
+    this.emailInput = page.locator('[data-testid="setup-email-input"]');
+    this.passwordInput = page.locator('[data-testid="setup-password-input"]');
+    this.confirmInput = page.locator('[data-testid="setup-confirm-input"]');
+    this.submitButton = page.locator('[data-testid="setup-submit-button"]');
   }
 
   async goto() {
-    await this.page.goto("/sign-up");
+    await this.page.goto("/setup");
     await this.page.waitForLoadState("domcontentloaded");
   }
 
-  async signUp(email: string, name: string, pass: string) {
-    await this.emailInput.fill(email);
-    await this.nextButton.click();
-    await this.nameInput.fill(name);
-    await this.nextButton.click();
+  async setup(identifier: string, pass: string) {
+    await this.emailInput.fill(identifier);
     await this.passwordInput.fill(pass);
-    await this.nextButton.click();
+    await this.confirmInput.fill(pass);
+    await this.submitButton.click();
   }
 }
 

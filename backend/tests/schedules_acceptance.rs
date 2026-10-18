@@ -36,13 +36,14 @@ use std::{
 
 const SECRET: &str = "schedules-acceptance-secret";
 const MEMBER_PASSWORD: &str = "schedules-member-password-0147";
+const OWNER_EMAIL: &str = "owner@amiro.test";
+const OWNER_PASSWORD: &str = "schedules-owner-password-1";
 
 struct SchedServer {
     child: Child,
     home: PathBuf,
     url: String,
     client: Client,
-    registration: bool,
 }
 
 impl Drop for SchedServer {
@@ -78,7 +79,7 @@ impl SchedServer {
         home
     }
 
-    fn spawn_on_home(home: &PathBuf, registration: bool) -> (Child, String, Client) {
+    fn spawn_on_home(home: &PathBuf) -> (Child, String, Client) {
         let port = TcpListener::bind("127.0.0.1:0")
             .unwrap()
             .local_addr()
@@ -94,11 +95,8 @@ impl SchedServer {
             .env("AMIRO_PORT", port.to_string())
             .env("AMIRO_HOST", "127.0.0.1")
             .env("AMIRO_TOKEN", SECRET)
-            .env("AMIRO_SEED_ADMIN", "1")
-            .env(
-                "AMIRO_ALLOW_REGISTRATION",
-                if registration { "1" } else { "0" },
-            )
+            .env("AMIRO_OWNER_EMAIL", OWNER_EMAIL)
+            .env("AMIRO_OWNER_PASSWORD", OWNER_PASSWORD)
             .env("AMIRO_ALLOWED_ORIGIN", "http://tauri.localhost")
             .stdout(Stdio::null())
             .stderr(Stdio::inherit())
@@ -131,15 +129,14 @@ impl SchedServer {
         panic!("native backend did not become healthy");
     }
 
-    async fn start(registration: bool) -> Self {
+    async fn start() -> Self {
         let home = Self::fresh_home();
-        let (child, url, client) = Self::spawn_on_home(&home, registration);
+        let (child, url, client) = Self::spawn_on_home(&home);
         let mut server = Self {
             child,
             home,
             url,
             client,
-            registration,
         };
         server.wait_healthy().await;
         server
@@ -162,7 +159,7 @@ impl SchedServer {
 
     /// Boot a backend against the existing home (after `stop`).
     async fn boot(&mut self) {
-        let (child, url, client) = Self::spawn_on_home(&self.home, self.registration);
+        let (child, url, client) = Self::spawn_on_home(&self.home);
         self.child = child;
         self.url = url;
         self.client = client;
@@ -170,16 +167,11 @@ impl SchedServer {
     }
 
     async fn admin_token(&self) -> String {
-        let credentials: Value = serde_json::from_slice(
-            &fs::read(self.home.join("admin-initial-password"))
-                .expect("native backend must persist a generated bootstrap password"),
-        )
-        .unwrap();
         let response = self
             .client
             .post(format!("{}/api/auth/login", self.url))
             .header("X-Amiro-Token", SECRET)
-            .json(&json!({"email": credentials["email"], "password": credentials["password"]}))
+            .json(&json!({"email": OWNER_EMAIL, "password": OWNER_PASSWORD}))
             .send()
             .await
             .unwrap();
@@ -193,12 +185,30 @@ impl SchedServer {
     }
 
     async fn member_token(&self) -> String {
+        // There is no registration endpoint anymore, so the second account is
+        // seeded straight into the store with the real password hasher. Each
+        // request re-reads users.json, so a running server picks it up.
+        let users_file = self.home.join("users.json");
+        let mut document: Value =
+            serde_json::from_slice(&fs::read(&users_file).expect("users.json")).unwrap();
+        let password_hash = backend::auth::hash_password(MEMBER_PASSWORD).await.unwrap();
+        document["users"]
+            .as_array_mut()
+            .expect("users array")
+            .push(json!({
+                "id": "sched-member",
+                "name": "Schedule Member",
+                "email": "sched-member@example.test",
+                "role": "user",
+                "passwordHash": password_hash,
+                "createdAt": "2026-01-01T00:00:00.000Z",
+            }));
+        fs::write(&users_file, serde_json::to_vec_pretty(&document).unwrap()).unwrap();
         let response = self
             .client
-            .post(format!("{}/api/auth/register", self.url))
+            .post(format!("{}/api/auth/login", self.url))
             .header("X-Amiro-Token", SECRET)
             .json(&json!({
-                "name": "Schedule Member",
                 "email": "sched-member@example.test",
                 "password": MEMBER_PASSWORD,
             }))
@@ -208,7 +218,7 @@ impl SchedServer {
         assert_eq!(
             response.status(),
             StatusCode::OK,
-            "member registration must work when enabled"
+            "seeded member must be able to sign in"
         );
         let body: Value = response.json().await.unwrap();
         assert_eq!(body["user"]["role"], "user");
@@ -295,7 +305,7 @@ fn rfc3339_utc_plus(secs: u64) -> String {
 
 #[tokio::test]
 async fn schedules_crud_pause_run_history_delete_are_persisted() {
-    let server = SchedServer::start(false).await;
+    let server = SchedServer::start().await;
     let admin = server.admin_token().await;
 
     // Create a far-future one-shot so no timer fires during this test.
@@ -396,7 +406,7 @@ async fn schedules_crud_pause_run_history_delete_are_persisted() {
 
 #[tokio::test]
 async fn schedules_are_owner_isolated() {
-    let server = SchedServer::start(true).await;
+    let server = SchedServer::start().await;
     let admin = server.admin_token().await;
     let member = server.member_token().await;
 
@@ -469,7 +479,7 @@ async fn schedules_are_owner_isolated() {
 
 #[tokio::test]
 async fn schedules_reject_malformed_time_and_spec() {
-    let server = SchedServer::start(false).await;
+    let server = SchedServer::start().await;
     let admin = server.admin_token().await;
 
     for (case, body) in [
@@ -557,7 +567,7 @@ async fn schedules_reject_malformed_time_and_spec() {
 
 #[tokio::test]
 async fn schedules_preview_once_returns_single_time() {
-    let server = SchedServer::start(false).await;
+    let server = SchedServer::start().await;
     let admin = server.admin_token().await;
 
     let response = server
@@ -583,7 +593,7 @@ async fn schedules_preview_once_returns_single_time() {
 
 #[tokio::test]
 async fn schedules_preview_recurring_returns_five_ascending_runs() {
-    let server = SchedServer::start(false).await;
+    let server = SchedServer::start().await;
     let admin = server.admin_token().await;
 
     let response = server
@@ -611,7 +621,7 @@ async fn schedules_preview_recurring_returns_five_ascending_runs() {
 
 #[tokio::test]
 async fn schedules_preview_interval_returns_five_spaced_runs() {
-    let server = SchedServer::start(false).await;
+    let server = SchedServer::start().await;
     let admin = server.admin_token().await;
 
     let response = server
@@ -642,7 +652,7 @@ async fn schedules_preview_interval_returns_five_spaced_runs() {
 
 #[tokio::test]
 async fn schedules_reject_dst_gap_and_fold() {
-    let server = SchedServer::start(false).await;
+    let server = SchedServer::start().await;
     let admin = server.admin_token().await;
 
     // 2029-03-11 02:30 never exists in America/New_York (spring-forward
@@ -757,7 +767,7 @@ async fn schedules_reject_dst_gap_and_fold() {
 async fn schedules_once_converts_browser_local_to_utc() {
     // Browser form posts a naive local wall time plus the selected zone;
     // the backend owns the conversion. 09:00 Asia/Kolkata == 03:30Z.
-    let server = SchedServer::start(false).await;
+    let server = SchedServer::start().await;
     let admin = server.admin_token().await;
 
     let preview = server
@@ -806,7 +816,7 @@ async fn schedules_once_converts_browser_local_to_utc() {
 
 #[tokio::test]
 async fn schedules_once_timer_fires_across_restart_without_replay() {
-    let mut server = SchedServer::start(false).await;
+    let mut server = SchedServer::start().await;
     let admin = server.admin_token().await;
 
     // Genuine overdue-on-startup proof: create a once ~6s out, STOP the
@@ -874,7 +884,7 @@ async fn schedules_running_marked_interrupted_never_replayed() {
     // This test writes a real `running` row into the top level runs map,
     // with the schedule's `nextRunAt` left in the past so any replay would
     // be visible as a second row, then restarts and asserts recovery.
-    let mut server = SchedServer::start(false).await;
+    let mut server = SchedServer::start().await;
     let admin = server.admin_token().await;
 
     let created = server
@@ -962,7 +972,7 @@ async fn schedules_concurrent_run_now_single_flight() {
     // a shared run id; either way no two `running` rows for one schedule
     // may exist at once, and the burst must not fabricate extra completed
     // runs. Serial fast success is fine, overlap is not.
-    let server = SchedServer::start(false).await;
+    let server = SchedServer::start().await;
     let admin = server.admin_token().await;
 
     let created = server
@@ -1054,7 +1064,7 @@ async fn schedules_delete_while_running_is_rejected_and_history_kept() {
     // run row would stay running forever). Run history is kept after a
     // successful delete, so past firings stay readable via the store even
     // though GET /:id/runs 404s once the schedule row is gone.
-    let server = SchedServer::start(false).await;
+    let server = SchedServer::start().await;
     let admin = server.admin_token().await;
 
     let created = server
@@ -1125,7 +1135,7 @@ async fn schedules_delete_while_running_is_rejected_and_history_kept() {
 async fn schedules_second_process_cannot_mutate() {
     use std::process::Stdio;
 
-    let server = SchedServer::start(false).await;
+    let server = SchedServer::start().await;
     let admin = server.admin_token().await;
     let created = server
         .create_notify_once(&admin, "lock holder", "2030-07-01T00:00:00Z")
@@ -1149,8 +1159,8 @@ async fn schedules_second_process_cannot_mutate() {
         .env("AMIRO_PORT", port.to_string())
         .env("AMIRO_HOST", "127.0.0.1")
         .env("AMIRO_TOKEN", SECRET)
-        .env("AMIRO_SEED_ADMIN", "1")
-        .env("AMIRO_ALLOW_REGISTRATION", "0")
+        .env("AMIRO_OWNER_EMAIL", OWNER_EMAIL)
+        .env("AMIRO_OWNER_PASSWORD", OWNER_PASSWORD)
         .stdout(Stdio::null())
         .stderr(Stdio::inherit())
         .spawn()

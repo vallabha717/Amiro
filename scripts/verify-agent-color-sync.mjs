@@ -3,10 +3,14 @@ import { readFile } from "node:fs/promises";
 import { chromium } from "@playwright/test";
 
 const base = process.env.AMIRO_TEST_URL || "http://127.0.0.1:8788";
-const credentials = JSON.parse(await readFile(
-  process.env.AMIRO_TEST_CREDENTIALS || "/root/.amiro-preview/admin-initial-password",
-  "utf8",
-));
+// Amiro has no generated admin password file anymore. Pass the owner
+// credentials directly (JSON file) or as AMIRO_OWNER_EMAIL/PASSWORD.
+const credentials = process.env.AMIRO_TEST_CREDENTIALS
+  ? JSON.parse(await readFile(process.env.AMIRO_TEST_CREDENTIALS, "utf8"))
+  : {
+      email: process.env.AMIRO_OWNER_EMAIL,
+      password: process.env.AMIRO_OWNER_PASSWORD,
+    };
 const login = await fetch(`${base}/api/auth/login`, {
   method: "POST",
   headers: { "content-type": "application/json" },

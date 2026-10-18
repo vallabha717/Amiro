@@ -292,6 +292,12 @@ async fn main() -> anyhow::Result<()> {
         std::process::exit(1);
     }
 
+    // Fold any legacy plaintext Composio key into the encrypted credential store
+    // before the server accepts requests so the plaintext file is removed.
+    if let Err(error) = backend::composio_config::migrate_legacy(&state).await {
+        tracing::warn!("legacy Composio key migration failed: {}", error.1);
+    }
+
     backend::routes::search_providers::initialize(&state)
         .await
         .map_err(|error| anyhow::anyhow!("search provider initialization failed: {}", error.1))?;
@@ -351,6 +357,14 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or(8787);
     let host = std::env::var("AMIRO_HOST").unwrap_or_else(|_| "127.0.0.1".into());
     let addr = format!("{host}:{port}");
+    let loopback = matches!(host.as_str(), "127.0.0.1" | "localhost" | "::1" | "[::1]")
+        || host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback());
+    if !loopback && std::env::var("AMIRO_TOKEN").unwrap_or_default().is_empty() {
+        tracing::warn!(
+            addr = %addr,
+            "bound to a non-loopback address without AMIRO_TOKEN; put TLS and a network boundary in front of Amiro before exposing it"
+        );
+    }
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     // A process that cannot bind its listener must never start background work.
     let scheduler = backend::schedules::spawn_scheduler(state);

@@ -7,31 +7,32 @@ import {
   SidebarMenuSubItem,
   useSidebar,
 } from "ui/sidebar";
-import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
 import { SidebarMenu, SidebarMenuItem } from "ui/sidebar";
 import { SidebarGroupContent } from "ui/sidebar";
+import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
 
-import { SidebarGroup } from "ui/sidebar";
-import Link from "next/link";
-import { getShortcutKeyList, Shortcuts } from "lib/keyboard-shortcuts";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useTranslations } from "next-intl";
-import { MCPIcon } from "ui/mcp-icon";
-import { WriteIcon } from "ui/write-icon";
+import { useArchives } from "@/hooks/queries/use-archives";
+import { BasicUser } from "app-types/user";
+import { Shortcuts, getShortcutKeyList } from "lib/keyboard-shortcuts";
+import { cn } from "lib/utils";
 import {
   CalendarClockIcon,
   ChevronRight,
   FolderOpenIcon,
   FolderSearchIcon,
+  PlugZapIcon,
   PlusIcon,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
+import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { MCPIcon } from "ui/mcp-icon";
+import { SidebarGroup } from "ui/sidebar";
 import { Skeleton } from "ui/skeleton";
-import { useArchives } from "@/hooks/queries/use-archives";
+import { WriteIcon } from "ui/write-icon";
 import { ArchiveDialog } from "../archive-dialog";
-import { BasicUser } from "app-types/user";
 import { AppSidebarAdmin } from "./app-sidebar-menu-admin";
-import { cn } from "lib/utils";
 
 export function AppSidebarMenus({ user }: { user?: BasicUser }) {
   const router = useRouter();
@@ -97,6 +98,25 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
                 <SidebarMenuButton className="font-semibold">
                   <MCPIcon className="size-4 fill-accent-foreground" />
                   {t("Layout.mcpConfiguration")}
+                </SidebarMenuButton>
+              </Link>
+            </SidebarMenuItem>
+          </Tooltip>
+        </SidebarMenu>
+        <SidebarMenu>
+          <Tooltip>
+            <SidebarMenuItem>
+              <Link
+                href="/connectors"
+                data-testid="sidebar-connectors-link"
+                onClick={() => setOpenMobile(false)}
+              >
+                <SidebarMenuButton
+                  className="font-semibold"
+                  isActive={pathname.startsWith("/connectors")}
+                >
+                  <PlugZapIcon className="size-4" />
+                  {t("Layout.connectors")}
                 </SidebarMenuButton>
               </Link>
             </SidebarMenuItem>

@@ -16,6 +16,11 @@ struct Server {
     client: Client,
 }
 
+/// Headless owner provisioning: the harness always creates the single owner
+/// from these env vars, exactly as a VM install would.
+const OWNER_EMAIL: &str = "owner@amiro.test";
+const OWNER_PASSWORD: &str = "native-acceptance-owner-1";
+
 impl Drop for Server {
     fn drop(&mut self) {
         let _ = self.child.kill();
@@ -27,10 +32,15 @@ impl Drop for Server {
 
 impl Server {
     async fn start(secret: &str) -> Self {
-        Self::start_config(secret, false).await
+        Self::start_with_owner(secret, Some((OWNER_EMAIL, OWNER_PASSWORD))).await
     }
 
-    async fn start_config(secret: &str, registration: bool) -> Self {
+    /// A server with no owner provisioned, for exercising first-run setup.
+    async fn start_bare(secret: &str) -> Self {
+        Self::start_with_owner(secret, None).await
+    }
+
+    async fn start_with_owner(secret: &str, owner: Option<(&str, &str)>) -> Self {
         let port = TcpListener::bind("127.0.0.1:0")
             .unwrap()
             .local_addr()
@@ -64,7 +74,8 @@ impl Server {
             "<html><head><title>Workspace</title></head><body>amiro-workspace-shell</body></html>",
         )
         .unwrap();
-        let child = Command::new(env!("CARGO_BIN_EXE_amiro-backend"))
+        let mut command = Command::new(env!("CARGO_BIN_EXE_amiro-backend"));
+        command
             .env("AMIRO_HOME", &home)
             .env("AMIRO_RUNTIME_HOME", home.join("runtime"))
             .env("AMIRO_API_SOCKET", home.join("absent-runtime.sock"))
@@ -76,12 +87,13 @@ impl Server {
             .env("AMIRO_PORT", port.to_string())
             .env("AMIRO_HOST", "127.0.0.1")
             .env("AMIRO_TOKEN", secret)
-            .env("AMIRO_SEED_ADMIN", "1")
-            .env(
-                "AMIRO_ALLOW_REGISTRATION",
-                if registration { "1" } else { "0" },
-            )
-            .env("AMIRO_ALLOWED_ORIGIN", "http://tauri.localhost")
+            .env("AMIRO_ALLOWED_ORIGIN", "http://tauri.localhost");
+        if let Some((email, password)) = owner {
+            command
+                .env("AMIRO_OWNER_EMAIL", email)
+                .env("AMIRO_OWNER_PASSWORD", password);
+        }
+        let child = command
             .stdout(Stdio::null())
             .stderr(Stdio::inherit())
             .spawn()
@@ -120,36 +132,18 @@ impl Server {
     }
 
     async fn login(&self, secret: &str) -> String {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mode = fs::metadata(self.home.join("admin-initial-password"))
-                .unwrap()
-                .permissions()
-                .mode();
-            assert_eq!(
-                mode & 0o077,
-                0,
-                "bootstrap password must not be readable by other users"
-            );
-        }
-        let credentials: Value = serde_json::from_slice(
-            &fs::read(self.home.join("admin-initial-password"))
-                .expect("native backend must persist a generated bootstrap password"),
-        )
-        .unwrap();
         let response = self
             .client
             .post(format!("{}/api/auth/login", self.url))
             .header("X-Amiro-Token", secret)
-            .json(&json!({"email": credentials["email"], "password": credentials["password"]}))
+            .json(&json!({"email": OWNER_EMAIL, "password": OWNER_PASSWORD}))
             .send()
             .await
             .unwrap();
         assert_eq!(
             response.status(),
             StatusCode::OK,
-            "bootstrap credentials must authenticate without resetting any account"
+            "provisioned owner credentials must authenticate"
         );
         let body: Value = response.json().await.unwrap();
         body["token"].as_str().expect("login token").to_owned()
@@ -402,82 +396,103 @@ async fn native_identity_roundtrip_and_workspace_are_real_and_contained() {
 }
 
 #[tokio::test]
-async fn native_registration_cannot_escalate_or_clobber_another_persona() {
-    let server = Server::start_config("", true).await;
-    let admin_token = server.login("").await;
-    let registration = server.client.post(format!("{}/api/auth/register", server.url))
-        .json(&json!({"name":"Studio Member","email":"member@example.test","password":"acceptance-only-password-9071","role":"admin"}))
-        .send().await.unwrap();
-    assert!(registration.status().is_success());
-    let member: Value = registration.json().await.unwrap();
+async fn native_first_run_setup_creates_one_owner_then_forbids_more() {
+    // No owner is provisioned: the store is empty and setup must be the only
+    // way in. `needsSetup` is true until then.
+    let server = Server::start_bare("").await;
+    let status: Value = server
+        .client
+        .get(format!("{}/api/auth/status", server.url))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(status["needsSetup"], true, "fresh store needs owner setup");
+
+    // Weak passwords are refused before any account exists.
+    let weak = server
+        .client
+        .post(format!("{}/api/auth/setup", server.url))
+        .json(&json!({"email":"owner@amiro.test","password":"short"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(weak.status(), StatusCode::BAD_REQUEST);
+
+    // Setup creates the owner as an admin regardless of a requested role.
+    let created = server
+        .client
+        .post(format!("{}/api/auth/setup", server.url))
+        .json(&json!({"name":"Studio Owner","email":"owner@amiro.test","password":"native-acceptance-owner-1","role":"admin"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(created.status(), StatusCode::OK);
+    let owner: Value = created.json().await.unwrap();
+    assert_eq!(owner["user"]["role"], "admin");
+    let token = owner["token"].as_str().expect("setup token").to_owned();
+
+    // After the first user, setup is closed forever.
+    let again = server
+        .client
+        .post(format!("{}/api/auth/setup", server.url))
+        .json(&json!({"email":"second@amiro.test","password":"native-acceptance-owner-2"}))
+        .send()
+        .await
+        .unwrap();
     assert_eq!(
-        member["user"]["role"], "user",
-        "registration must ignore requested privileged roles"
+        again.status(),
+        StatusCode::FORBIDDEN,
+        "setup must be closed once an owner exists"
     );
-    let token = member["token"].as_str().unwrap();
+    let status: Value = server
+        .client
+        .get(format!("{}/api/auth/status", server.url))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(status["needsSetup"], false);
+
+    // There is no registration endpoint anymore.
+    let registration = server
+        .client
+        .post(format!("{}/api/auth/register", server.url))
+        .json(&json!({"name":"Member","email":"member@example.test","password":"acceptance-only-password-9071"}))
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        matches!(
+            registration.status(),
+            StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED
+        ),
+        "registration must be gone, got {}",
+        registration.status()
+    );
+
+    // The owner is an admin and can reach the machine surfaces.
     let response = server
         .client
-        .put(format!("{}/api/agent/identity", server.url))
-        .bearer_auth(token)
-        .json(&json!({"name":"Member Persona"}))
+        .get(format!("{}/api/agent/workspace", server.url))
+        .bearer_auth(&token)
         .send()
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    let identity: Value = server
-        .client
-        .get(format!("{}/api/agent/identity", server.url))
-        .bearer_auth(&admin_token)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_ne!(
-        identity["name"], "Member Persona",
-        "personas must remain per-user"
-    );
-    let member_identity: Value = server
-        .client
-        .get(format!("{}/api/agent/identity", server.url))
-        .bearer_auth(token)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(member_identity["name"], "Member Persona");
-    assert!(
-        member_identity.get("memoryStats").is_none(),
-        "shared machine memory statistics are admin-only"
-    );
-    for route in ["/api/agent/workspace", "/api/agent/memory"] {
-        let response = server
-            .client
-            .get(format!("{}{route}", server.url))
-            .bearer_auth(token)
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(
-            response.status(),
-            StatusCode::FORBIDDEN,
-            "member must not access {route}"
-        );
-    }
+
     // The manual "Agent runs" surface (background jobs) was removed. Its former
     // execution route must not resolve to anything that can launch
     // tool-enabled work against an arbitrary machine path.
     let forbidden_root = server.home.join("must-not-create-untrusted-workspace");
     let response = server.client.post(format!("{}/api/background-jobs", server.url))
-        .bearer_auth(token)
+        .bearer_auth(&token)
         .json(&json!({"prompt":"acceptance must never execute this", "mode":"edit", "workspaceRoot":forbidden_root}))
         .send().await.unwrap();
-    // The route is gone: main.rs only registers GET on the `/api/{*path}`
-    // catch-all, so a POST lands on 405 there rather than 404. Either way it
-    // must never resolve to something that executes tool-enabled work.
     assert!(
         matches!(
             response.status(),
@@ -494,7 +509,7 @@ async fn native_registration_cannot_escalate_or_clobber_another_persona() {
     let response = server
         .client
         .post(format!("{}/api/checkpoint/restore", server.url))
-        .bearer_auth(&admin_token)
+        .bearer_auth(&token)
         .json(&json!({"threadId":"nonexistent-thread", "turnId":"nonexistent-turn"}))
         .send()
         .await
@@ -506,6 +521,73 @@ async fn native_registration_cannot_escalate_or_clobber_another_persona() {
         ),
         "a missing or unsupported checkpoint must never report successful restoration"
     );
+}
+
+#[tokio::test]
+async fn native_change_credentials_verifies_and_invalidates_other_sessions() {
+    let server = Server::start("").await;
+    let first = server.login("").await;
+    let second = server.login("").await;
+
+    // A wrong current password is refused.
+    let rejected = server
+        .client
+        .put(format!("{}/api/auth/credentials", server.url))
+        .bearer_auth(&first)
+        .json(&json!({"currentPassword":"not-the-owner-password","newPassword":"native-acceptance-owner-2"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(rejected.status(), StatusCode::UNAUTHORIZED);
+
+    // A real change requires the current password and succeeds.
+    let changed = server
+        .client
+        .put(format!("{}/api/auth/credentials", server.url))
+        .bearer_auth(&first)
+        .json(&json!({"currentPassword":OWNER_PASSWORD,"newEmail":"renamed@amiro.test","newPassword":"native-acceptance-owner-2"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(changed.status(), StatusCode::OK);
+    let updated: Value = changed.json().await.unwrap();
+    assert_eq!(updated["user"]["email"], "renamed@amiro.test");
+
+    // The session that made the change survives; every other one is gone.
+    let kept = server
+        .client
+        .get(format!("{}/api/auth/session", server.url))
+        .bearer_auth(&first)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(kept.status(), StatusCode::OK);
+    let invalidated = server
+        .client
+        .get(format!("{}/api/auth/session", server.url))
+        .bearer_auth(&second)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(invalidated.status(), StatusCode::UNAUTHORIZED);
+
+    // The new identifier and password are the credentials that now work.
+    let old_login = server
+        .client
+        .post(format!("{}/api/auth/login", server.url))
+        .json(&json!({"email":OWNER_EMAIL,"password":OWNER_PASSWORD}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(old_login.status(), StatusCode::UNAUTHORIZED);
+    let new_login = server
+        .client
+        .post(format!("{}/api/auth/login", server.url))
+        .json(&json!({"email":"renamed@amiro.test","password":"native-acceptance-owner-2"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(new_login.status(), StatusCode::OK);
 }
 
 #[tokio::test]

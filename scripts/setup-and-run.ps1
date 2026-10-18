@@ -244,8 +244,8 @@ Write-Host ""
 Write-Host "Next commands:"
 Write-Host "  Start the native backend (serves out/ and spawns the runtime bridge):"
 Write-Host "    .\backend\target\release\amiro-backend.exe"
-Write-Host "    # then open http://127.0.0.1:8787 and sign in as admin@local"
-Write-Host '    # (password is generated into $env:AMIRO_HOME\admin-initial-password)'
+Write-Host '    # then open http://127.0.0.1:8787 and complete the one-time "Set up Amiro" page'
+Write-Host "    # (or pre-set AMIRO_OWNER_EMAIL and AMIRO_OWNER_PASSWORD before first start)"
 Write-Host ""
 Write-Host "  Or run the dev loop (Node adapter, needs adapter deps):"
 Write-Host "    powershell -ExecutionPolicy Bypass -File scripts\dev-backend.ps1"

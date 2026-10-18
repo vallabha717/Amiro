@@ -28,6 +28,8 @@ use std::{
 };
 
 const SECRET: &str = "schedules-durability-secret";
+const OWNER_EMAIL: &str = "owner@amiro.test";
+const OWNER_PASSWORD: &str = "durability-owner-password-1";
 
 struct DurabilityServer {
     child: Child,
@@ -84,8 +86,8 @@ impl DurabilityServer {
             .env("AMIRO_PORT", port.to_string())
             .env("AMIRO_HOST", "127.0.0.1")
             .env("AMIRO_TOKEN", SECRET)
-            .env("AMIRO_SEED_ADMIN", "1")
-            .env("AMIRO_ALLOW_REGISTRATION", "0")
+            .env("AMIRO_OWNER_EMAIL", OWNER_EMAIL)
+            .env("AMIRO_OWNER_PASSWORD", OWNER_PASSWORD)
             .stdout(Stdio::null())
             .stderr(Stdio::inherit())
             .spawn()
@@ -149,16 +151,11 @@ impl DurabilityServer {
     }
 
     async fn admin_token(&self) -> String {
-        let credentials: Value = serde_json::from_slice(
-            &fs::read(self.home.join("admin-initial-password"))
-                .expect("bootstrap password must be persisted"),
-        )
-        .unwrap();
         let response = self
             .client
             .post(format!("{}/api/auth/login", self.url))
             .header("X-Amiro-Token", SECRET)
-            .json(&json!({"email": credentials["email"], "password": credentials["password"]}))
+            .json(&json!({"email": OWNER_EMAIL, "password": OWNER_PASSWORD}))
             .send()
             .await
             .unwrap();
