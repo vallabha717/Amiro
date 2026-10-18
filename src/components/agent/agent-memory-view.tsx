@@ -8,14 +8,12 @@ import {
   ChevronRight,
   CircleDot,
   Compass,
-  Crosshair,
   Gauge,
   LayoutGrid,
+  Link2,
   Loader2,
-  Maximize2,
   Plus,
   RefreshCw,
-  RotateCcw,
   Search,
   Send,
   ShieldCheck,
@@ -23,8 +21,6 @@ import {
   Tag,
   Trash2,
   X,
-  ZoomIn,
-  ZoomOut,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -59,9 +55,9 @@ import {
 import { Separator } from "ui/separator";
 import { Skeleton } from "ui/skeleton";
 import { Textarea } from "ui/textarea";
-import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
 import { apiJson } from "lib/backend/client";
 import { cn, fetcher } from "lib/utils";
+import { MemoryMap } from "./memory-map";
 
 /* -------------------------------------------------------------------------- */
 /*                                   Types                                    */
@@ -126,8 +122,8 @@ interface CreateMemoryResponse {
 }
 
 /**
- * Primary view is the plain readable list. The 3D map is an opt-in secondary
- * lens, so the default stays calm and searchable.
+ * The map is the default: it shows how memories group by category and link by
+ * shared tag. The card grid remains one click away for reading at length.
  */
 type ViewMode = "cards" | "map";
 type RecencyLens = "all" | "7d" | "24h";
@@ -186,25 +182,6 @@ function hexToRgba(hex: string, alpha: number) {
 /*                              Small utilities                               */
 /* -------------------------------------------------------------------------- */
 
-function hashString(str: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
-function rand01(seed: number, salt: number): number {
-  let x = (seed ^ Math.imul(salt, 0x9e3779b1)) >>> 0;
-  x ^= x << 13;
-  x >>>= 0;
-  x ^= x >>> 17;
-  x ^= x << 5;
-  x >>>= 0;
-  return x / 4294967296;
-}
-
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
@@ -259,143 +236,6 @@ export function paginateMemories<T>(memories: T[], visibleCount: number): T[] {
   if (!Number.isFinite(visibleCount)) return memories;
   const limit = Math.max(0, Math.floor(visibleCount));
   return memories.slice(0, limit);
-}
-
-/* -------------------------------------------------------------------------- */
-/*                            Constellation layout                            */
-/* -------------------------------------------------------------------------- */
-
-interface Vec3 {
-  x: number;
-  y: number;
-  z: number;
-}
-
-const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
-
-function goldenPoint(index: number, total: number): Vec3 {
-  const y = 1 - ((index + 0.5) * 2) / total;
-  const radius = Math.sqrt(Math.max(0, 1 - y * y));
-  const theta = GOLDEN_ANGLE * index;
-  return { x: Math.cos(theta) * radius, y, z: Math.sin(theta) * radius };
-}
-
-const CLUSTER_CENTERS: Vec3[] = CLUSTER_ORDER.map((_, index) => {
-  const p = goldenPoint(index, CLUSTER_ORDER.length);
-  const pull = 0.62;
-  return { x: p.x * pull, y: p.y * pull, z: p.z * pull };
-});
-
-interface LayoutNode extends AgentMemoryNode {
-  pos: Vec3;
-  cluster: string;
-  color: string;
-  /** Strength relative to the strongest memory in view, 0..1. */
-  intensity: number;
-}
-
-function layoutNode(memory: AgentMemoryNode, maxStrength: number): LayoutNode {
-  const cluster = normalizeCategory(memory.category);
-  const clusterIndex = Math.max(0, CLUSTER_ORDER.indexOf(cluster));
-  const center = CLUSTER_CENTERS[clusterIndex];
-  const seed = hashString(memory.id);
-  const azimuth = rand01(seed, 1) * Math.PI * 2;
-  const cosElevation = rand01(seed, 2) * 2 - 1;
-  const shell = 0.16 + rand01(seed, 3) * 0.18;
-  const ring = Math.sqrt(Math.max(0, 1 - cosElevation * cosElevation));
-  return {
-    ...memory,
-    cluster,
-    color: categoryMeta(memory.category).color,
-    intensity: clamp(memory.strength / Math.max(1, maxStrength), 0, 1),
-    pos: {
-      x: center.x + Math.cos(azimuth) * ring * shell,
-      y: center.y + cosElevation * shell,
-      z: center.z + Math.sin(azimuth) * ring * shell,
-    },
-  };
-}
-
-interface Camera {
-  yaw: number;
-  pitch: number;
-  zoom: number;
-}
-
-interface CamTarget {
-  yaw: number;
-  pitch: number;
-  zoom: number;
-  at: number;
-}
-
-const CAM_DISTANCE = 3.15;
-const BASE_SCALE = 0.34;
-
-function rotatePoint(p: Vec3, yaw: number, pitch: number): Vec3 {
-  const cy = Math.cos(yaw);
-  const sy = Math.sin(yaw);
-  const x1 = p.x * cy + p.z * sy;
-  const z1 = -p.x * sy + p.z * cy;
-  const cp = Math.cos(pitch);
-  const sp = Math.sin(pitch);
-  const y2 = p.y * cp - z1 * sp;
-  const z2 = p.y * sp + z1 * cp;
-  return { x: x1, y: y2, z: z2 };
-}
-
-interface ProjectedPoint {
-  sx: number;
-  sy: number;
-  depth: number;
-  persp: number;
-}
-
-function projectPoint(
-  pos: Vec3,
-  cam: Camera,
-  width: number,
-  height: number,
-): ProjectedPoint {
-  const r = rotatePoint(pos, cam.yaw, cam.pitch);
-  const depth = CAM_DISTANCE - r.z;
-  const persp = CAM_DISTANCE / depth;
-  const scale = Math.min(width, height) * BASE_SCALE * cam.zoom;
-  return {
-    sx: width / 2 + r.x * scale * persp,
-    sy: height / 2 - r.y * scale * persp,
-    depth,
-    persp,
-  };
-}
-
-/* -------------------------------------------------------------------------- */
-/*                              Canvas scene type                             */
-/* -------------------------------------------------------------------------- */
-
-interface Scene {
-  width: number;
-  height: number;
-  cam: Camera;
-  camTarget: CamTarget | null;
-  nodes: LayoutNode[];
-  edges: AgentMemoryEdge[];
-  adjacency: Map<string, Set<string>>;
-  clusterCounts: number[];
-  selectedId: string | null;
-  hoverId: string | null;
-  dragging: boolean;
-  lastInteract: number;
-  isDark: boolean;
-  reduceMotion: boolean;
-  pulse: { id: string; at: number } | null;
-  projected: Array<{
-    id: string;
-    sx: number;
-    sy: number;
-    radius: number;
-    depth: number;
-  }>;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -561,15 +401,17 @@ export function AgentMemoryView({ className }: { className?: string }) {
   // Native Amiro memory is retained by the Amiro engine; direct creation/deletion/reinforcement is read-only
   const isReadOnly = data?.readOnly !== false;
 
-  // The readable list is the default. The map is a secondary, opt-in lens.
-  const [viewMode, setViewMode] = useState<ViewMode>("cards");
+  // The map is the default lens; the card grid is a single click away.
+  const [viewMode, setViewMode] = useState<ViewMode>("map");
   const [scopeFilter, setScopeFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [recency, setRecency] = useState<RecencyLens>("all");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // The map keeps its own selection so closing the detail drawer does not
+  // clear the node the reader focused there ("Focus selected" stays usable).
+  const [mapSelectionId, setMapSelectionId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [pendingFocusId, setPendingFocusId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(LIST_PAGE_SIZE);
 
   /* --------------------------- detail focus -------------------------------- */
@@ -611,20 +453,6 @@ export function AgentMemoryView({ className }: { className?: string }) {
     () => filteredMemories.reduce((max, m) => Math.max(max, m.strength), 1),
     [filteredMemories],
   );
-
-  const layoutNodes = useMemo(
-    () => filteredMemories.map((memory) => layoutNode(memory, maxStrength)),
-    [filteredMemories, maxStrength],
-  );
-
-  const clusterCounts = useMemo(() => {
-    const counts = CLUSTER_ORDER.map(() => 0);
-    for (const node of layoutNodes) {
-      const index = CLUSTER_ORDER.indexOf(node.cluster);
-      if (index >= 0) counts[index] += 1;
-    }
-    return counts;
-  }, [layoutNodes]);
 
   const edges = useMemo(() => {
     const visible = new Set(filteredMemories.map((m) => m.id));
@@ -679,6 +507,29 @@ export function AgentMemoryView({ className }: { className?: string }) {
     return map;
   }, [edges, filteredMemories]);
 
+  // Connection totals come from the same edge list the map draws, so a card
+  // never claims a link the map does not show.
+  const connectionCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const edge of edges) {
+      counts.set(edge.source, (counts.get(edge.source) ?? 0) + 1);
+      counts.set(edge.target, (counts.get(edge.target) ?? 0) + 1);
+    }
+    return counts;
+  }, [edges]);
+
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const memory of filteredMemories) {
+      const key = normalizeCategory(memory.category);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return CLUSTER_ORDER.filter((key) => counts.has(key)).map((key) => ({
+      key,
+      count: counts.get(key) ?? 0,
+    }));
+  }, [filteredMemories]);
+
   const selectedMemory = useMemo(
     () => allMemories.find((m) => m.id === selectedId) ?? null,
     [allMemories, selectedId],
@@ -710,518 +561,10 @@ export function AgentMemoryView({ className }: { className?: string }) {
     setSearch("");
   }, []);
 
-  /* ------------------------------ canvas refs ------------------------------ */
-
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const dragRef = useRef<{
-    x: number;
-    y: number;
-    pointerId: number;
-    moved: boolean;
-  } | null>(null);
-
-  const sceneRef = useRef<Scene>({
-    width: 0,
-    height: 0,
-    cam: { yaw: 0.6, pitch: 0.32, zoom: 1 },
-    camTarget: null,
-    nodes: [],
-    edges: [],
-    adjacency: new Map(),
-    clusterCounts: CLUSTER_ORDER.map(() => 0),
-    selectedId: null,
-    hoverId: null,
-    dragging: false,
-    lastInteract: 0,
-    isDark: false,
-    reduceMotion: false,
-    pulse: null,
-    projected: [],
-  });
-
-  const nodesRef = useRef<LayoutNode[]>([]);
-  nodesRef.current = layoutNodes;
-
-  useEffect(() => {
-    const scene = sceneRef.current;
-    scene.nodes = layoutNodes;
-    scene.edges = edges;
-    scene.adjacency = adjacency;
-    scene.clusterCounts = clusterCounts;
-    scene.selectedId = selectedId;
-  }, [layoutNodes, edges, adjacency, clusterCounts, selectedId]);
-
-  useEffect(() => {
-    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const apply = () => {
-      sceneRef.current.reduceMotion = media.matches;
-    };
-    apply();
-    media.addEventListener("change", apply);
-    return () => media.removeEventListener("change", apply);
+  const handleSelect = useCallback((id: string) => {
+    setSelectedId(id);
+    setMapSelectionId(id);
   }, []);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    const apply = () => {
-      sceneRef.current.isDark = root.classList.contains("dark");
-    };
-    apply();
-    const observer = new MutationObserver(apply);
-    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
-    return () => observer.disconnect();
-  }, []);
-
-  /* --------------------------- camera interactions -------------------------- */
-
-  const zoomBy = useCallback((factor: number) => {
-    const scene = sceneRef.current;
-    scene.camTarget = null;
-    scene.cam.zoom = clamp(scene.cam.zoom * factor, 0.45, 3.4);
-    scene.lastInteract = performance.now();
-  }, []);
-
-  const resetCamera = useCallback(() => {
-    const scene = sceneRef.current;
-    scene.camTarget = { yaw: 0.6, pitch: 0.32, zoom: 1, at: performance.now() };
-    scene.lastInteract = performance.now();
-  }, []);
-
-  const flyTo = useCallback((id: string) => {
-    const node = nodesRef.current.find((n) => n.id === id);
-    if (!node) return;
-    const { x, y, z } = node.pos;
-    const scene = sceneRef.current;
-    scene.camTarget = {
-      yaw: Math.atan2(-x, z),
-      pitch: Math.atan2(y, Math.hypot(x, z)),
-      zoom: Math.max(scene.cam.zoom, 1.35),
-      at: performance.now(),
-    };
-    scene.pulse = { id, at: performance.now() };
-    scene.lastInteract = performance.now();
-  }, []);
-
-  useEffect(() => {
-    if (!pendingFocusId) return;
-    if (!layoutNodes.some((n) => n.id === pendingFocusId)) return;
-    flyTo(pendingFocusId);
-    setPendingFocusId(null);
-  }, [pendingFocusId, layoutNodes, flyTo]);
-
-  /* --------------------------------- scene --------------------------------- */
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const container = containerRef.current;
-    if (!canvas || !container) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    let frame = 0;
-    let disposed = false;
-
-    const resize = () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
-      const rect = container.getBoundingClientRect();
-      const width = Math.max(1, Math.round(rect.width));
-      const height = Math.max(1, Math.round(rect.height));
-      canvas.width = Math.round(width * dpr);
-      canvas.height = Math.round(height * dpr);
-      canvas.style.width = `${width}px`;
-      canvas.style.height = `${height}px`;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      sceneRef.current.width = width;
-      sceneRef.current.height = height;
-    };
-
-    resize();
-    const observer = new ResizeObserver(resize);
-    observer.observe(container);
-
-    const hitTest = (mx: number, my: number) => {
-      const projected = sceneRef.current.projected;
-      let best: { id: string; depth: number } | null = null;
-      for (const p of projected) {
-        const dist = Math.hypot(p.sx - mx, p.sy - my);
-        if (dist > p.radius + 8) continue;
-        if (!best || p.depth < best.depth) best = { id: p.id, depth: p.depth };
-      }
-      return best?.id ?? null;
-    };
-
-    const onPointerDown = (event: PointerEvent) => {
-      const scene = sceneRef.current;
-      canvas.setPointerCapture(event.pointerId);
-      dragRef.current = {
-        x: event.clientX,
-        y: event.clientY,
-        moved: false,
-        pointerId: event.pointerId,
-      };
-      scene.dragging = true;
-      scene.lastInteract = performance.now();
-    };
-
-    const onPointerMove = (event: PointerEvent) => {
-      const scene = sceneRef.current;
-      const rect = canvas.getBoundingClientRect();
-      const mx = event.clientX - rect.left;
-      const my = event.clientY - rect.top;
-      if (scene.dragging && dragRef.current) {
-        const dx = event.clientX - dragRef.current.x;
-        const dy = event.clientY - dragRef.current.y;
-        if (Math.abs(dx) + Math.abs(dy) > 3) dragRef.current.moved = true;
-        scene.cam.yaw += dx * 0.0075;
-        scene.cam.pitch = clamp(scene.cam.pitch + dy * 0.0075, -1.35, 1.35);
-        scene.camTarget = null;
-        scene.lastInteract = performance.now();
-        dragRef.current.x = event.clientX;
-        dragRef.current.y = event.clientY;
-      } else {
-        scene.hoverId = hitTest(mx, my);
-        canvas.style.cursor = scene.hoverId ? "pointer" : "grab";
-      }
-    };
-
-    const onPointerUp = (event: PointerEvent) => {
-      const scene = sceneRef.current;
-      if (canvas.hasPointerCapture(event.pointerId)) {
-        canvas.releasePointerCapture(event.pointerId);
-      }
-      const rect = canvas.getBoundingClientRect();
-      const mx = event.clientX - rect.left;
-      const my = event.clientY - rect.top;
-      const wasDrag = dragRef.current?.moved ?? false;
-      dragRef.current = null;
-      scene.dragging = false;
-      scene.lastInteract = performance.now();
-      canvas.style.cursor = "grab";
-      if (!wasDrag) {
-        const hit = hitTest(mx, my);
-        setSelectedId(hit);
-        scene.selectedId = hit;
-      }
-    };
-
-    const onPointerLeave = () => {
-      sceneRef.current.hoverId = null;
-      if (!sceneRef.current.dragging) canvas.style.cursor = "grab";
-    };
-
-    const onWheel = (event: WheelEvent) => {
-      event.preventDefault();
-      const scene = sceneRef.current;
-      scene.camTarget = null;
-      scene.cam.zoom = clamp(
-        scene.cam.zoom * Math.exp(-event.deltaY * 0.0012),
-        0.45,
-        3.4,
-      );
-      scene.lastInteract = performance.now();
-    };
-
-    canvas.addEventListener("pointerdown", onPointerDown);
-    canvas.addEventListener("pointermove", onPointerMove);
-    canvas.addEventListener("pointerup", onPointerUp);
-    canvas.addEventListener("pointercancel", onPointerUp);
-    canvas.addEventListener("pointerleave", onPointerLeave);
-    canvas.addEventListener("wheel", onWheel, { passive: false });
-    canvas.style.cursor = "grab";
-
-    const drawScene = (now: number) => {
-      const scene = sceneRef.current;
-      const { width, height, cam } = scene;
-      ctx.clearRect(0, 0, width, height);
-      if (width < 2 || height < 2) return;
-
-      const dark = scene.isDark;
-      const textColor = dark ? "rgba(240,240,246,0.95)" : "rgba(24,22,32,0.95)";
-      const labelBg = dark ? "rgba(14,14,18,0.92)" : "rgba(255,255,255,0.96)";
-      const labelBorder = dark
-        ? "rgba(255,255,255,0.16)"
-        : "rgba(20,18,30,0.12)";
-      const edgeBase = dark ? "rgba(255,255,255,0.5)" : "rgba(30,26,44,0.45)";
-
-      const egoId = scene.selectedId ?? scene.hoverId ?? null;
-      const neighbors = egoId ? scene.adjacency.get(egoId) : undefined;
-
-      const projected = new Map<
-        string,
-        {
-          sx: number;
-          sy: number;
-          depth: number;
-          persp: number;
-          node: LayoutNode;
-        }
-      >();
-      for (const node of scene.nodes) {
-        const p = projectPoint(node.pos, cam, width, height);
-        projected.set(node.id, { ...p, node });
-      }
-
-      /* cluster labels, behind everything */
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.font = "600 11px ui-sans-serif, system-ui, sans-serif";
-      for (let i = 0; i < CLUSTER_ORDER.length; i++) {
-        if (!scene.clusterCounts[i]) continue;
-        const p = projectPoint(CLUSTER_CENTERS[i], cam, width, height);
-        ctx.globalAlpha = clamp(0.1 + (p.persp - 0.7) * 0.22, 0.06, 0.32);
-        ctx.fillStyle = categoryMeta(CLUSTER_ORDER[i]).color;
-        ctx.fillText(
-          `${CLUSTER_ORDER[i]} · ${scene.clusterCounts[i]}`,
-          p.sx,
-          p.sy,
-        );
-      }
-      ctx.globalAlpha = 1;
-
-      /* edges */
-      ctx.lineCap = "round";
-      for (const edge of scene.edges) {
-        const a = projected.get(edge.source);
-        const b = projected.get(edge.target);
-        if (!a || !b) continue;
-        const dimmed = egoId && edge.source !== egoId && edge.target !== egoId;
-        const strength =
-          (edge.kind === "explicit" ? 0.5 : edge.kind === "tag" ? 0.34 : 0.22) *
-          (1 / Math.max(1.6, (a.depth + b.depth) / 2 - 2.05));
-        const alpha = dimmed ? strength * 0.16 : strength;
-        ctx.strokeStyle = edgeBase.replace(
-          /[\d.]+\)$/,
-          `${clamp(alpha, 0.02, 0.6)})`,
-        );
-        ctx.lineWidth = edge.kind === "explicit" ? 1.15 : 0.8;
-        ctx.beginPath();
-        ctx.moveTo(a.sx, a.sy);
-        ctx.lineTo(b.sx, b.sy);
-        ctx.stroke();
-      }
-
-      /* nodes, far to near */
-      const ordered = [...projected.values()].sort((x, y) => y.depth - x.depth);
-      const hitList: Scene["projected"] = [];
-
-      for (const entry of ordered) {
-        const { node } = entry;
-        const isEgo = egoId === node.id;
-        const isNeighbor = neighbors?.has(node.id) ?? false;
-        const dimmed = egoId ? !isEgo && !isNeighbor : false;
-        const alpha = dimmed ? 0.18 : 1;
-        const base = 3.1 + node.intensity * 2.4;
-        const radius = base * entry.persp * (0.9 + 0.12 * cam.zoom);
-        const fresh =
-          now - parseTime(node.createdAt) < 24 * 3600_000 ||
-          now - parseTime(node.updatedAt) < 2 * 3600_000;
-
-        hitList.push({
-          id: node.id,
-          sx: entry.sx,
-          sy: entry.sy,
-          radius,
-          depth: entry.depth,
-        });
-
-        /* halo for fresh / high-strength / active nodes */
-        const haloStrength = Math.max(
-          node.intensity,
-          fresh ? 0.7 : 0,
-          isEgo ? 1 : 0,
-        );
-        if (haloStrength > 0.3) {
-          const haloRadius = radius + 6 + haloStrength * 14;
-          const gradient = ctx.createRadialGradient(
-            entry.sx,
-            entry.sy,
-            radius * 0.4,
-            entry.sx,
-            entry.sy,
-            haloRadius,
-          );
-          gradient.addColorStop(
-            0,
-            hexToRgba(node.color, 0.34 * alpha * haloStrength + 0.05),
-          );
-          gradient.addColorStop(1, hexToRgba(node.color, 0));
-          ctx.fillStyle = gradient;
-          ctx.beginPath();
-          ctx.arc(entry.sx, entry.sy, haloRadius, 0, Math.PI * 2);
-          ctx.fill();
-        }
-
-        /* core */
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = node.active ? node.color : hexToRgba(node.color, 0.5);
-        ctx.beginPath();
-        ctx.arc(entry.sx, entry.sy, radius, 0, Math.PI * 2);
-        ctx.fill();
-
-        if (node.active) {
-          ctx.strokeStyle = dark
-            ? "rgba(255,255,255,0.22)"
-            : "rgba(255,255,255,0.75)";
-          ctx.lineWidth = 1;
-          ctx.stroke();
-        }
-
-        /* selection ring */
-        if (isEgo) {
-          ctx.globalAlpha = 1;
-          ctx.strokeStyle = textColor;
-          ctx.lineWidth = 1.4;
-          ctx.setLineDash([3, 3]);
-          ctx.beginPath();
-          ctx.arc(entry.sx, entry.sy, radius + 5, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.setLineDash([]);
-        } else if (isNeighbor) {
-          ctx.globalAlpha = 0.75;
-          ctx.strokeStyle = hexToRgba(node.color, 0.85);
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.arc(entry.sx, entry.sy, radius + 3, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-
-        /* pulse rings after creation */
-        if (scene.pulse && scene.pulse.id === node.id) {
-          const age = now - scene.pulse.at;
-          if (age < 2600) {
-            for (let k = 0; k < 3; k++) {
-              const phase = (age - k * 520) / 1400;
-              if (phase <= 0 || phase >= 1) continue;
-              ctx.globalAlpha = (1 - phase) * 0.7;
-              ctx.strokeStyle = node.color;
-              ctx.lineWidth = 2 * (1 - phase) + 0.5;
-              ctx.beginPath();
-              ctx.arc(entry.sx, entry.sy, radius + phase * 46, 0, Math.PI * 2);
-              ctx.stroke();
-            }
-          }
-        }
-
-        ctx.globalAlpha = 1;
-      }
-
-      scene.projected = hitList;
-
-      /* floating labels for hover / selection */
-      const labelTargets: Array<{
-        node: LayoutNode;
-        entry: ProjectedPoint & { sx: number; sy: number };
-      }> = [];
-      const hoverEntry = scene.hoverId ? projected.get(scene.hoverId) : null;
-      if (hoverEntry) {
-        labelTargets.push({ node: hoverEntry.node, entry: hoverEntry });
-      }
-      const selectedEntry = scene.selectedId
-        ? projected.get(scene.selectedId)
-        : null;
-      if (selectedEntry && scene.selectedId !== scene.hoverId) {
-        labelTargets.push({ node: selectedEntry.node, entry: selectedEntry });
-      }
-
-      ctx.font = "500 12px ui-sans-serif, system-ui, sans-serif";
-      ctx.textAlign = "left";
-      ctx.textBaseline = "middle";
-      for (const { node, entry } of labelTargets) {
-        const label = truncate(node.content.replace(/\s+/g, " "), 46);
-        const meta = categoryMeta(node.category).label;
-        const textWidth = ctx.measureText(label).width;
-        ctx.font = "600 10px ui-sans-serif, system-ui, sans-serif";
-        const metaWidth = ctx.measureText(meta).width;
-        ctx.font = "500 12px ui-sans-serif, system-ui, sans-serif";
-        const padX = 10;
-        const boxW = Math.max(textWidth + padX * 2, metaWidth + padX * 2, 120);
-        const boxH = 34;
-        let bx = entry.sx + entry.persp * 14 + 8;
-        let by = entry.sy - boxH / 2;
-        if (bx + boxW > width - 8) bx = entry.sx - boxW - entry.persp * 14 - 8;
-        by = clamp(by, 8, height - boxH - 8);
-
-        ctx.globalAlpha = 0.98;
-        ctx.fillStyle = labelBg;
-        ctx.strokeStyle = labelBorder;
-        ctx.lineWidth = 1;
-        const r = 8;
-        ctx.beginPath();
-        ctx.moveTo(bx + r, by);
-        ctx.arcTo(bx + boxW, by, bx + boxW, by + boxH, r);
-        ctx.arcTo(bx + boxW, by + boxH, bx, by + boxH, r);
-        ctx.arcTo(bx, by + boxH, bx, by, r);
-        ctx.arcTo(bx, by, bx + boxW, by, r);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.fillStyle = hexToRgba(node.color, 1);
-        ctx.font = "600 10px ui-sans-serif, system-ui, sans-serif";
-        ctx.fillText(meta, bx + padX, by + 11);
-        ctx.fillStyle = textColor;
-        ctx.font = "500 12px ui-sans-serif, system-ui, sans-serif";
-        ctx.fillText(label, bx + padX, by + 24);
-        ctx.globalAlpha = 1;
-      }
-    };
-
-    const loop = () => {
-      if (disposed) return;
-      const scene = sceneRef.current;
-      const now = performance.now();
-
-      if (scene.camTarget) {
-        const target = scene.camTarget;
-        let ty = target.yaw;
-        ty += Math.round((scene.cam.yaw - ty) / (Math.PI * 2)) * Math.PI * 2;
-        scene.cam.yaw += (ty - scene.cam.yaw) * 0.11;
-        scene.cam.pitch += (target.pitch - scene.cam.pitch) * 0.11;
-        scene.cam.zoom += (target.zoom - scene.cam.zoom) * 0.11;
-        scene.lastInteract = now;
-        if (
-          Math.abs(ty - scene.cam.yaw) < 0.0015 &&
-          Math.abs(target.pitch - scene.cam.pitch) < 0.0015 &&
-          Math.abs(target.zoom - scene.cam.zoom) < 0.0015
-        ) {
-          scene.cam.yaw = ty;
-          scene.cam.pitch = target.pitch;
-          scene.cam.zoom = target.zoom;
-          scene.camTarget = null;
-        }
-      } else if (
-        !scene.reduceMotion &&
-        !scene.dragging &&
-        !scene.hoverId &&
-        now - scene.lastInteract > 3500
-      ) {
-        scene.cam.yaw += 0.0016;
-      }
-
-      if (scene.pulse && now - scene.pulse.at > 3000) scene.pulse = null;
-
-      drawScene(now);
-      frame = requestAnimationFrame(loop);
-    };
-
-    frame = requestAnimationFrame(loop);
-
-    return () => {
-      disposed = true;
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-      canvas.removeEventListener("pointerdown", onPointerDown);
-      canvas.removeEventListener("pointermove", onPointerMove);
-      canvas.removeEventListener("pointerup", onPointerUp);
-      canvas.removeEventListener("pointercancel", onPointerUp);
-      canvas.removeEventListener("pointerleave", onPointerLeave);
-      canvas.removeEventListener("wheel", onWheel);
-    };
-    // Re-run when the view changes or data arrives: in list mode, and while
-    // the first load shows skeletons, the canvas is not mounted yet, so a
-    // mount-only effect would return early and the Map would stay blank.
-  }, [viewMode, data]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -1307,6 +650,9 @@ export function AgentMemoryView({ className }: { className?: string }) {
           description: truncate(memory.content, 72),
         });
         setSelectedId((current) => (current === memory.id ? null : current));
+        setMapSelectionId((current) =>
+          current === memory.id ? null : current,
+        );
         await mutate();
       } catch (err) {
         const isForbidden =
@@ -1335,10 +681,7 @@ export function AgentMemoryView({ className }: { className?: string }) {
       onClose={() => setSelectedId(null)}
       maxStrength={maxStrength}
       isReadOnly={isReadOnly}
-      onFocus={(id) => {
-        setSelectedId(id);
-        flyTo(id);
-      }}
+      onFocus={handleSelect}
       neighbors={selectedId ? [...(adjacency.get(selectedId) ?? [])] : []}
       memories={allMemories}
     />
@@ -1568,23 +911,77 @@ export function AgentMemoryView({ className }: { className?: string }) {
         ) : isLoading && !data ? (
           <MemoryListSkeleton />
         ) : viewMode === "map" ? (
-          <div className="space-y-3">
-            <ConstellationPanel
-              containerRef={containerRef}
-              canvasRef={canvasRef}
-              nodes={layoutNodes}
-              onZoomIn={() => zoomBy(1.18)}
-              onZoomOut={() => zoomBy(1 / 1.18)}
-              onReset={resetCamera}
+          filteredMemories.length === 0 ? (
+            <EmptyState
+              icon={<Compass className="size-5" />}
+              title={
+                hasActiveFilters
+                  ? "No memories match this map"
+                  : "No memories to map yet"
+              }
+              detail={
+                hasActiveFilters
+                  ? "Try clearing the search or filters to bring memories back into view."
+                  : "Memories appear here grouped by category as Amiro remembers them."
+              }
+              action={
+                hasActiveFilters ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    type="button"
+                    onClick={resetFilters}
+                  >
+                    <RefreshCw className="size-4" />
+                    Clear search and filters
+                  </Button>
+                ) : undefined
+              }
             />
-            <LegendRow clusterCounts={clusterCounts} />
-          </div>
+          ) : (
+            <div className="space-y-3">
+              <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div className="max-w-xl">
+                  <h2 className="font-brand text-lg tracking-tight">
+                    Memory map
+                  </h2>
+                  <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                    Explore what Amiro remembers. Pick a memory to read it, or a
+                    category to explore that part of the map.
+                  </p>
+                </div>
+                <div className="hidden flex-wrap items-center gap-x-3.5 gap-y-1.5 text-[11px] text-muted-foreground sm:flex sm:justify-end">
+                  {categoryCounts.map(({ key, count }) => (
+                    <span
+                      key={key}
+                      className="inline-flex items-center gap-1.5"
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="size-1.5 rounded-full"
+                        style={{ backgroundColor: categoryMeta(key).color }}
+                      />
+                      {categoryMeta(key).label}
+                      <span className="tabular-nums">{count}</span>
+                    </span>
+                  ))}
+                </div>
+              </header>
+              <MemoryMap
+                memories={filteredMemories}
+                edges={edges}
+                selectedId={mapSelectionId}
+                onSelect={handleSelect}
+              />
+            </div>
+          )
         ) : (
           <MemoryList
             memories={visibleMemories}
             selectedId={selectedId}
-            onSelect={setSelectedId}
+            onSelect={handleSelect}
             remaining={remaining}
+            connectionCounts={connectionCounts}
             onLoadMore={() =>
               setVisibleCount((count) => count + LIST_PAGE_SIZE)
             }
@@ -1633,8 +1030,7 @@ export function AgentMemoryView({ className }: { className?: string }) {
             setRecency("all");
             setSearch("");
             await mutate();
-            setSelectedId(memory.id);
-            setPendingFocusId(memory.id);
+            handleSelect(memory.id);
           }}
         />
       )}
@@ -1665,7 +1061,7 @@ function ViewSwitcher({
     <div
       role="group"
       aria-label="View mode"
-      className="hidden items-center gap-0.5 rounded-full border border-border/70 bg-card/60 p-0.5 shadow-xs sm:flex"
+      className="flex items-center gap-0.5 rounded-full border border-border/70 bg-card/60 p-0.5 shadow-xs"
     >
       {options.map((option) => (
         <button
@@ -1674,7 +1070,7 @@ function ViewSwitcher({
           aria-pressed={value === option.id}
           onClick={() => onChange(option.id)}
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40",
+            "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-medium transition duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 sm:px-3",
             value === option.id
               ? "bg-primary text-primary-foreground shadow-xs"
               : "text-muted-foreground hover:text-foreground",
@@ -1694,9 +1090,12 @@ function ViewSwitcher({
 
 function MemoryListSkeleton() {
   return (
-    <div className="space-y-2.5" aria-hidden="true">
+    <div
+      className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"
+      aria-hidden="true"
+    >
       {Array.from({ length: 6 }).map((_, index) => (
-        <Skeleton key={index} className="h-[92px] w-full rounded-2xl" />
+        <Skeleton key={index} className="h-[196px] w-full rounded-2xl" />
       ))}
     </div>
   );
@@ -1707,12 +1106,14 @@ function MemoryList({
   selectedId,
   onSelect,
   remaining,
+  connectionCounts,
   onLoadMore,
 }: {
   memories: AgentMemoryNode[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   remaining: number;
+  connectionCounts: Map<string, number>;
   onLoadMore: () => void;
 }) {
   if (memories.length === 0) {
@@ -1726,71 +1127,89 @@ function MemoryList({
   }
 
   return (
-    <div className="space-y-3">
-      <ul data-testid="memory-list" className="space-y-2.5">
+    <div className="space-y-4">
+      <ul
+        data-testid="memory-list"
+        className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"
+      >
         {memories.map((memory) => {
           const meta = categoryMeta(memory.category);
           const selected = selectedId === memory.id;
+          const connections = connectionCounts.get(memory.id) ?? 0;
+          const scopeLabel = memory.scopeLabel || memory.scope;
           return (
-            <li key={memory.id}>
+            <li key={memory.id} className="min-w-0">
               <button
                 type="button"
                 data-testid="memory-card"
-                aria-label={`View memory details: ${truncate(memory.content, 48)}`}
+                aria-label={`${meta.label} memory in ${scopeLabel}: ${memory.content}`}
                 aria-current={selected ? "true" : undefined}
                 onClick={() => onSelect(memory.id)}
                 className={cn(
-                  "group flex w-full items-start gap-3 rounded-2xl border border-border/70 bg-card/50 p-4 text-left shadow-xs transition duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] hover:-translate-y-0.5 hover:border-border hover:shadow-md focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none",
-                  selected && "ring-2 ring-ring/60",
-                  !memory.active && "opacity-70",
+                  "group flex h-full w-full flex-col rounded-2xl border border-border/70 bg-card/50 p-4 text-left shadow-xs transition-colors duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] outline-none hover:border-border hover:bg-card focus-visible:ring-[3px] focus-visible:ring-ring/40 sm:p-5",
+                  selected && "border-primary/50 ring-2 ring-ring/40",
+                  !memory.active && "border-dashed bg-muted/20",
                 )}
               >
-                <span
-                  aria-hidden="true"
-                  className="mt-1 size-2.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: meta.color }}
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <CategoryTag category={memory.category} />
-                    <span className="font-mono text-[11px] text-muted-foreground">
-                      {relativeTime(memory.updatedAt)}
-                    </span>
-                    {!memory.active ? (
-                      <Badge
-                        variant="secondary"
-                        className="rounded-full text-[10px] font-normal"
+                <span className="flex items-start justify-between gap-3">
+                  <span className="inline-flex min-w-0 items-center gap-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                    <span
+                      aria-hidden="true"
+                      className="size-1.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: meta.color }}
+                    />
+                    {meta.label}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    {connections > 0 ? (
+                      <span
+                        title={`${connections} connection${connections === 1 ? "" : "s"} from runtime links, shared tags, or category grouping`}
+                        className="inline-flex items-center gap-1 rounded-full bg-muted/60 px-2 py-0.5 text-[10px] text-muted-foreground"
                       >
-                        superseded
-                      </Badge>
+                        <Link2 aria-hidden="true" className="size-3" />
+                        <span className="tabular-nums">{connections}</span>
+                        <span className="sr-only"> connections</span>
+                      </span>
+                    ) : null}
+                    {!memory.active ? (
+                      <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] text-muted-foreground">
+                        Superseded
+                      </span>
                     ) : null}
                   </span>
-                  <span className="mt-1.5 line-clamp-2 block text-sm leading-relaxed text-foreground">
-                    {memory.content}
-                  </span>
-                  {memory.tags.length ? (
-                    <span className="mt-2 flex flex-wrap gap-1.5">
-                      {memory.tags.slice(0, 4).map((tag) => (
-                        <Badge
-                          key={tag}
-                          variant="outline"
-                          className="rounded-full text-[10px] font-normal text-muted-foreground"
-                        >
-                          {tag}
-                        </Badge>
-                      ))}
-                      {memory.tags.length > 4 ? (
-                        <span className="text-[10px] text-muted-foreground">
-                          +{memory.tags.length - 4}
-                        </span>
-                      ) : null}
-                    </span>
-                  ) : null}
                 </span>
-                <ChevronRight
-                  aria-hidden="true"
-                  className="mt-0.5 size-4 shrink-0 text-muted-foreground transition group-hover:translate-x-0.5 group-hover:text-foreground"
-                />
+
+                <span className="mt-2.5 mb-3 line-clamp-5 block text-[15px] leading-[1.55] text-foreground">
+                  {memory.content}
+                </span>
+
+                {memory.tags.length ? (
+                  <span className="mb-4 flex flex-wrap gap-1.5">
+                    {memory.tags.slice(0, 3).map((tag) => (
+                      <span
+                        key={tag}
+                        className="max-w-full truncate rounded-md bg-muted/60 px-1.5 py-0.5 text-[11px] text-muted-foreground"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                    {memory.tags.length > 3 ? (
+                      <span
+                        title={memory.tags.slice(3).join(", ")}
+                        className="inline-flex items-center rounded-md px-1 py-0.5 text-[11px] text-muted-foreground"
+                      >
+                        +{memory.tags.length - 3}
+                      </span>
+                    ) : null}
+                  </span>
+                ) : null}
+
+                <span className="mt-auto flex items-baseline justify-between gap-3 border-t border-border/50 pt-3 text-[11px] text-muted-foreground">
+                  <span className="truncate">{scopeLabel}</span>
+                  <span className="shrink-0">
+                    {relativeTime(memory.updatedAt)}
+                  </span>
+                </span>
               </button>
             </li>
           );
@@ -1816,131 +1235,8 @@ function MemoryList({
 }
 
 /* -------------------------------------------------------------------------- */
-/*                          Constellation panel + map                          */
-/* -------------------------------------------------------------------------- */
-
-function ConstellationPanel({
-  containerRef,
-  canvasRef,
-  nodes,
-  onZoomIn,
-  onZoomOut,
-  onReset,
-}: {
-  containerRef: React.RefObject<HTMLDivElement | null>;
-  canvasRef: React.RefObject<HTMLCanvasElement | null>;
-  nodes: LayoutNode[];
-  onZoomIn: () => void;
-  onZoomOut: () => void;
-  onReset: () => void;
-}) {
-  return (
-    <div className="relative overflow-hidden rounded-2xl border border-border/70 bg-[radial-gradient(120%_120%_at_50%_10%,color-mix(in_oklab,var(--foreground)_5%,transparent),transparent_60%)] shadow-sm">
-      <div
-        ref={containerRef}
-        className="relative h-[420px] w-full sm:h-[520px] lg:h-[600px]"
-      >
-        <canvas
-          ref={canvasRef}
-          data-testid="memory-constellation-canvas"
-          role="img"
-          className="absolute inset-0 size-full touch-none select-none"
-          aria-label="Interactive memory constellation. Drag to rotate, scroll to zoom, click a node for details."
-        />
-        {nodes.length === 0 ? (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <div className="max-w-xs text-center">
-              <p className="font-brand text-lg">No memories in this lens</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Widen the scope, category, or recency filters to bring nodes
-                back into orbit.
-              </p>
-            </div>
-          </div>
-        ) : null}
-      </div>
-
-      <div className="pointer-events-none absolute top-3 left-3 flex items-center gap-2 rounded-full border border-border/60 bg-background/70 px-3 py-1.5 text-[11px] text-muted-foreground backdrop-blur-sm">
-        <Crosshair className="size-3.5" />
-        Drag to orbit · scroll to zoom · click a node
-      </div>
-
-      <div className="absolute top-3 right-3 flex items-center gap-1 rounded-full border border-border/60 bg-background/70 p-0.5 backdrop-blur-sm">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-7"
-              onClick={onZoomIn}
-              aria-label="Zoom in"
-            >
-              <ZoomIn className="size-3.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Zoom in</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-7"
-              onClick={onZoomOut}
-              aria-label="Zoom out"
-            >
-              <ZoomOut className="size-3.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Zoom out</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-7"
-              onClick={onReset}
-              aria-label="Reset camera"
-            >
-              <RotateCcw className="size-3.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Reset camera</TooltipContent>
-        </Tooltip>
-      </div>
-    </div>
-  );
-}
-
-function LegendRow({ clusterCounts }: { clusterCounts: number[] }) {
-  const totalNodes = clusterCounts.reduce((sum, count) => sum + count, 0);
-  return (
-    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-2xl border border-border/60 bg-card/40 px-4 py-3 text-xs text-muted-foreground">
-      <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
-        <Maximize2 className="size-3.5" />
-        {totalNodes} nodes drawn
-      </span>
-      <span className="inline-flex items-center gap-1.5">
-        <span className="h-px w-6 bg-foreground/40" /> explicit link
-      </span>
-      <span className="inline-flex items-center gap-1.5">
-        <span className="h-px w-6 border-t border-dashed border-foreground/40" />
-        shared tag
-      </span>
-      <span className="inline-flex items-center gap-1.5">
-        <Sparkles className="size-3.5" />
-        halo marks fresh or strong memory
-      </span>
-    </div>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
 /*                              Detail inspector                              */
+/* -------------------------------------------------------------------------- */
 /* -------------------------------------------------------------------------- */
 
 function MemoryInspector({
@@ -2106,15 +1402,11 @@ function MemoryInspector({
               <ChevronRight className="size-3.5 transition group-open:rotate-90" />
             </summary>
             <div className="space-y-4 border-t border-border/60 p-3">
-              <button
-                type="button"
-                aria-label="Focus memory location in constellation"
-                onClick={() => onFocus(memory.id)}
-                className="flex w-full items-center gap-2 rounded-xl border border-border/60 bg-card/40 px-3 py-2 text-left font-mono text-[11px] text-muted-foreground transition hover:border-border hover:text-foreground"
-              >
+              <div className="flex w-full items-center gap-2 rounded-xl border border-border/60 bg-card/40 px-3 py-2 text-left font-mono text-[11px] text-muted-foreground">
                 <CircleDot className="size-3.5 shrink-0" />
+                <span className="sr-only">Stored in </span>
                 <span className="truncate">{scopePath}</span>
-              </button>
+              </div>
 
               <div className="grid grid-cols-2 gap-x-4 gap-y-4">
                 {trustNumeric ? (

@@ -28,8 +28,8 @@ describe("workspace and memory separation", () => {
     expect(workspaceSource).toContain("Memory lives in its own view");
   });
 
-  it("memory defaults to readable entries, with the map available on demand", () => {
-    expect(memorySource).toContain('useState<ViewMode>("cards")');
+  it("memory defaults to a readable map, with cards available on demand", () => {
+    expect(memorySource).toContain('useState<ViewMode>("map")');
     expect(memorySource).toContain('id: "cards"');
     expect(memorySource).toContain('label: "Map"');
     expect(memorySource).toContain("LIST_PAGE_SIZE = 24");
@@ -45,11 +45,9 @@ describe("workspace and memory separation", () => {
     expect(backendAgentSource).toContain('label: "Runtime"');
   });
 
-  it("memory Map canvas draw loop restarts when the view changes", () => {
-    // Regression: a mount-only canvas effect returns early in Cards mode
-    // (canvas unmounted), leaving the Map blank after switching to it.
-    expect(memorySource).toContain("}, [viewMode, data]);");
-    expect(memorySource).toContain('data-testid="memory-constellation-canvas"');
+  it("memory delegates its map to a mounted React component, without a canvas draw loop", () => {
+    expect(memorySource).toContain("<MemoryMap");
+    expect(memorySource).not.toContain('getContext("2d")');
   });
 
   it("memory is titled Memory, not a palace or skills view", () => {

@@ -98,8 +98,9 @@ Node.js at all. Node is only a build-time and test-time dependency.
   and the sidebar theme.
 - **Superpowers**: a searchable compact skill list over the runtime, project,
   and user-authored instruction sets, resolved server-side.
-- **Memory**: read-only list-first inspection of the runtime's own memory
-  graphs (24 per page, opt-in map), reflecting the native read-only capability.
+- **Memory**: read-only map-first inspection of the runtime's own memory
+  graphs, with labeled groups, readable previews, pan/zoom and focused links.
+  Searchable Cards remains available (24 per page).
   There is no second memory engine.
 - **Workspace**: files-only, admin-gated, allowlisted, realpath-contained file
   navigation and preview of allowed subtrees. No memory or skill management
@@ -503,7 +504,7 @@ success is worse than an honest error.
   explicitly rather than succeeding).
 - The model catalog, including distinguishing a live listing from the runtime's
   static fallback.
-- Agent identity, personality, skills, read-only memory (list-first, 24 per page),
+- Agent identity, personality, skills, read-only memory (map-first, Cards 24 per page),
   files-only workspace browsing.
 - Schedules end to end, including DST-correct timezone handling and run history.
 - Configured-provider search (native default plus keyless/free engines),

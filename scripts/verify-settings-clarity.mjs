@@ -112,9 +112,9 @@ try {
       }
       if (phase === "after" && name === "memory") {
         assert.equal(
-          await page.getByTestId("memory-constellation-canvas").count(),
-          0,
-          "Memory starts with readable entries, not a map",
+          await page.getByRole("button", { name: "Map", exact: true }).getAttribute("aria-pressed"),
+          "true",
+          "Memory starts in the labeled map view",
         );
         await page
           .getByTestId("memory-search-input")

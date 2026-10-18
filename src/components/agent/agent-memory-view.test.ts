@@ -11,12 +11,10 @@ import {
 } from "./agent-memory-view";
 
 /**
- * The Memory view was cluttered: three rows of header chrome, duplicated
- * stat/category chips (including a repeated "Other" pill), a 158-row wall of
- * cards, and technical meters shown before the reader asked for them. The
- * simplification makes the plain list the default, moves the map and the
- * technical numbers behind an opt-in, and pages the list. These guards lock
- * that shape and cover the smaller pure helpers directly.
+ * Memory opens as a labeled, interactive map. Cards remain a paginated
+ * alternative, and technical detail stays opt-in. These guards preserve the
+ * read-only contract, shared filters, and keyboard detail workflow while pure
+ * layout tests cover graph geometry and bounded exploration separately.
  *
  * There is no DOM test environment in this repo (see agent-truthfulness.test.ts),
  * so structure is asserted against the source and behaviour against the
@@ -49,13 +47,32 @@ function memory(overrides: Partial<AgentMemoryNode> = {}): AgentMemoryNode {
   };
 }
 
-describe("AgentMemoryView default is the readable list", () => {
-  it("opens in cards and keeps the map as an opt-in secondary lens", () => {
-    expect(memorySource).toContain('useState<ViewMode>("cards")');
+describe("AgentMemoryView default is the readable map", () => {
+  it("opens in map with cards as an alternative on every screen size", () => {
+    expect(memorySource).toContain('useState<ViewMode>("map")');
+    expect(memorySource).toContain("<MemoryMap");
+    expect(memorySource).not.toContain("hidden items-center gap-0.5");
     expect(memorySource).toContain('{ id: "cards", label: "Cards"');
     expect(memorySource).toContain('{ id: "map", label: "Map"');
-    // The map is no longer the default split view.
+    // One clear primary view, not a cramped permanent split.
     expect(memorySource).not.toContain('useState<ViewMode>("split")');
+  });
+
+  it("retains map selection when closing the inspector so neighborhood focus is usable", () => {
+    expect(memorySource).toContain("selectedId={mapSelectionId}");
+    expect(memorySource).toContain("setMapSelectionId(id)");
+    expect(memorySource).toContain("onSelect={handleSelect}");
+    expect(memorySource).toContain("onClose={() => setSelectedId(null)}");
+  });
+
+  it("cards use a responsive grid with readable text, scope, tags and connections", () => {
+    expect(memorySource).toContain(
+      "grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3",
+    );
+    expect(memorySource).toContain("line-clamp-5");
+    expect(memorySource).toContain("connectionCounts={connectionCounts}");
+    expect(memorySource).toContain("memory.tags.slice(0, 3)");
+    expect(memorySource).toContain("{scopeLabel}");
   });
 
   it("keeps 'What Amiro remembers' and the memory endpoint", () => {
@@ -91,9 +108,10 @@ describe("AgentMemoryView default is the readable list", () => {
     expect(memorySource).toContain('data-testid="memory-reinforce-button"');
   });
 
-  it("keeps honest error states and the map canvas", () => {
+  it("keeps honest error states and delegates to a labeled map without an idle canvas loop", () => {
     expect(memorySource).toContain("Administrator Access Required");
-    expect(memorySource).toContain('data-testid="memory-constellation-canvas"');
+    expect(memorySource).toContain("<MemoryMap");
+    expect(memorySource).not.toContain('getContext("2d")');
   });
 });
 

@@ -183,21 +183,50 @@ workspace payload therefore does not leak inline provider credentials.
 Source: `src/components/agent/agent-memory-view.tsx` and the memory routes in
 `backend/src/agent.rs`.
 
-### Default list
+### Default map and memory cards
 
-Memory now opens in a readable list. The 3D constellation is an opt-in secondary
-lens selected with a plain toggle button, not the default view. The duplicated
-stat and category chip rows are removed.
+Memory opens in **Map**. The map replaces the anonymous rotating 3D dots with
+readable memory previews grouped by actual category. Category headings explain
+what facts, preferences, entities, and corrections mean. Selecting a memory
+opens its full detail. Pan, zoom, fit, and neighborhood focus help explore a
+larger collection without confusing the overview with individual memories.
 
-The list shows the memory text, category, relative update time, a superseded
-marker, and up to four tags. It keeps search plus scope, category, and recency
-filters, with a live `N of M memories` count.
+Relationships are not invented semantic conclusions. Solid lines represent
+runtime links. Shared-tag relationships are visually distinguished and labeled
+as tag matches. Category grouping alone does not imply a relationship. Large
+maps disclose the number shown: 20 category-balanced previews initially, expanding
+to 60. Search and category filters operate on the whole collection, and Cards
+can page through every result. A category jump rail stays available on mobile,
+while the desktop has a mini overview. **How to read this map** and the accessible
+memory list are disclosures, not duplicate upfront card walls.
+
+**Cards** remains a plain toggle available on desktop and mobile. Its responsive
+grid gives the memory text more room, with category, scope, relative update time,
+a superseded marker, compact tags, and relationship counts. Search plus scope,
+category, and recency filters apply to both views, with a live `N of M memories`
+count. Technical metrics stay in the detail disclosure.
+
+Design references: [Vellum's public product page](https://www.vellum.ai/product)
+for personal-memory clarity and [KeyLines' public graph exploration overview](https://cambridge-intelligence.com/keylines/)
+for grouping, decluttering, and focused exploration. These are design references,
+not added dependencies or a claim of reproducing Vellum's authenticated memory UI.
+Memory data stays in the existing Amiro API workflow.
 
 ### Pagination and detail
 
-`LIST_PAGE_SIZE` is 24. The list shows the first 24 matches and a **Show 24
-more** button while matches remain. The isolated workflow test loads 35
-synthetic memories, verifies 24 initially, and verifies 35 after one load.
+`LIST_PAGE_SIZE` is 24. Cards shows the first 24 matches and a **Show 24
+more** button while matches remain. The settings workflow switches from Map to
+Cards before testing its 35-memory pagination fixture.
+
+`node scripts/verify-memory-map.mjs` runs the built Rust API and production export
+with an isolated home/runtime, never production memories. Its fixture contains
+85 entries, of which the read-only API exposes 84 active entries. On 2026-10-18
+it passed at 1440px and 390px: Map default, 20-to-60 bounded previews, category
+jump, pointer pan without accidental selection, zoom/fit, search beyond the
+initial map window, full detail/Escape, retained neighborhood focus, no-match
+state, Cards 24-to-48 pagination, map remount, light/dark, and no page overflow
+or JavaScript errors. This checks real UI/API behavior using synthetic memory
+content, not external-provider or memory-write functionality.
 
 Selecting a memory opens a detail panel with `role="dialog"` and the accessible
 name **Memory detail**. The panel shows content, category, scope, tags, created

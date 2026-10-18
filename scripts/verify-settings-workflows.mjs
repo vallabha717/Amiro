@@ -225,9 +225,11 @@ try {
     .first()
     .waitFor();
   assert.equal(
-    await page.getByTestId("memory-constellation-canvas").count(),
-    0,
+    await page.getByTestId("memory-map").count(),
+    1,
+    "Memory opens in the labeled map",
   );
+  await page.getByRole("button", { name: "Cards", exact: true }).click();
   assert.equal(
     await page.getByTestId("memory-create-button").count(),
     0,
