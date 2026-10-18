@@ -47,3 +47,9 @@ mime_guess = "2"
 # workspace so the backend can never drift onto an invented wire format.
 amiro-session-types = { path = "../runtime/crates/amiro-session-types" }
 amiro-sdk = { path = "../runtime/crates/amiro-sdk" }
+# Encrypted credential store: AES-256-GCM with a per-store random key. The
+# `zeroize` feature scrubs key material on drop; `zeroize` (with `alloc`) scrubs
+# owned plaintext buffers; `base64` carries nonce/ciphertext in the JSON document.
+aes-gcm = { version = "0.10", features = ["aes", "alloc", "getrandom", "zeroize"] }
+zeroize = { version = "1", features = ["alloc"] }
+base64 = { version = "0.22", features = ["std"] }
