@@ -36,6 +36,8 @@ export default function AdminSearchProvidersPage() {
     data: providers,
     isLoading,
     isValidating,
+    error,
+    mutate,
   } = useSWR<SearchProviderConfig[]>(
     SEARCH_PROVIDERS_KEY,
     selectSearchProviders,
@@ -45,7 +47,7 @@ export default function AdminSearchProvidersPage() {
     },
   );
 
-  // The picker is served by the Go registry, so a provider added there
+  // The picker is served by the backend registry, so a provider added there
   // appears here without a second list to keep in step.
   const { data: catalog = [] } = useSWR<SearchProviderSpec[]>(
     SEARCH_CATALOG_KEY,
@@ -54,7 +56,13 @@ export default function AdminSearchProvidersPage() {
   );
 
   const handleCreateNew = (templateId: string) =>
-    router.push(`/admin/search/create?template=${templateId}`);
+    router.push(
+      `/admin/search/create?template=${encodeURIComponent(templateId)}`,
+    );
+
+  const configuredProviders = providers?.filter((p) => p.configured) ?? [];
+  const defaultProvider = configuredProviders.find((p) => p.isActive);
+  const fallbackCount = configuredProviders.filter((p) => !p.isActive).length;
 
   const addMenu = (align: "end" | "center") => (
     <DropdownMenuContent align={align} className="w-72">
@@ -122,7 +130,39 @@ export default function AdminSearchProvidersPage() {
             </DropdownMenu>
           </div>
 
-          {isLoading ? (
+          <div
+            className="space-y-2 text-sm text-muted-foreground"
+            data-testid="search-provider-policy"
+          >
+            <p>
+              Only configured providers are available to your agent. Searches
+              try your selected default first, then other configured providers
+              if it fails.
+            </p>
+            <p>
+              Free DuckDuckGo and Bing providers are configured by the backend
+              on first setup. You can change the default or add another provider
+              below.
+            </p>
+            {!isLoading && !error && (
+              <p data-testid="search-provider-counts">
+                {configuredProviders.length} configured ·{" "}
+                {defaultProvider
+                  ? `Default: ${defaultProvider.name}`
+                  : "No default selected"}{" "}
+                · {fallbackCount} fallback{fallbackCount === 1 ? "" : "s"}
+              </p>
+            )}
+          </div>
+
+          {error ? (
+            <div role="alert" className="space-y-2 rounded-lg border p-4">
+              <p>Search providers could not be loaded.</p>
+              <Button variant="outline" onClick={() => void mutate()}>
+                Retry
+              </Button>
+            </div>
+          ) : isLoading ? (
             <div className="flex flex-col gap-4">
               <Skeleton className="h-40 w-full" />
               <Skeleton className="h-40 w-full" />
@@ -133,7 +173,11 @@ export default function AdminSearchProvidersPage() {
               data-testid="search-providers-section"
             >
               {providers.map((p) => (
-                <SearchProviderCard key={p.id} {...p} />
+                <SearchProviderCard
+                  key={p.id}
+                  {...p}
+                  spec={catalog.find((spec) => spec.kind === p.provider)}
+                />
               ))}
             </div>
           ) : (
@@ -145,8 +189,9 @@ export default function AdminSearchProvidersPage() {
                 No Search Providers configured
               </h3>
               <p className="text-muted-foreground max-w-md text-lg">
-                Connect a web search provider to allow your agent to browse the
-                internet for real-time information.
+                No saved providers are available. Add a provider to enable
+                search. Only configured providers can be used, including as
+                fallbacks.
               </p>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

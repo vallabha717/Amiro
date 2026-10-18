@@ -24,6 +24,7 @@ export interface SearchProviderConfig {
   provider: string;
   configured: boolean;
   apiKeyHint?: string;
+  /** Selected default, tried before the other configured providers. */
   isActive: boolean;
   /** Whether this provider can extract page content (the web_content tool). */
   extracts: boolean;
@@ -185,12 +186,15 @@ export function toWireCustom(c: CustomSearchConfig): CustomSearchConfigWire {
   };
 }
 
-export function fromWireCustom(w: Partial<CustomSearchConfigWire>): CustomSearchConfig {
+export function fromWireCustom(
+  w: Partial<CustomSearchConfigWire>,
+): CustomSearchConfig {
   return {
     endpoint: String(w.endpoint ?? ""),
-    method: (String(w.method ?? "GET").toUpperCase() === "POST" ? "POST" : "GET"),
+    method: String(w.method ?? "GET").toUpperCase() === "POST" ? "POST" : "GET",
     queryParam: String(w.query_param ?? "q"),
-    countParam: w.count_param === undefined ? null : (w.count_param as string | null),
+    countParam:
+      w.count_param === undefined ? null : (w.count_param as string | null),
     params: (w.params as Record<string, string>) ?? {},
     body: (w.body as Record<string, unknown>) ?? {},
     headers: (w.headers as Record<string, string>) ?? {},
@@ -209,19 +213,23 @@ export async function selectSearchProviders(): Promise<SearchProviderConfig[]> {
 }
 
 export async function selectSearchCatalog(): Promise<SearchProviderSpec[]> {
-  return apiJson<SearchProviderSpec[]>(SEARCH_CATALOG_KEY, { method: "GET" });
+  const catalog = await apiJson<SearchProviderSpec[]>(SEARCH_CATALOG_KEY, {
+    method: "GET",
+  });
+  // Older servers may still advertise this removed search integration.
+  return catalog.filter((spec) => spec.kind.toLowerCase() !== "vellum");
 }
 
 /**
- * Which provider currently answers web_search / web_content, and nothing
+ * The selected default for web_search / web_content, and nothing
  * that identifies or authenticates it beyond that.
  *
  * Unlike every other function here, this one works for any signed-in user --
  * the server enforces that, not this client -- because "which engine
  * answered this search" is a fact about a message on screen, not a secret.
- * Used both by the composer's tools menu (so it can be checked before
- * sending) and by the web-search tool card (so a completed search can say
- * where its results came from).
+ * Used by the web-search tool card before a call completes. The result's
+ * provider is authoritative after completion, since a configured fallback
+ * may have answered instead.
  */
 export interface ActiveSearchProvider {
   configured: boolean;
@@ -245,7 +253,9 @@ export interface SearchProviderSaveInput {
   custom?: CustomSearchConfig;
 }
 
-export async function saveSearchProvider(config: SearchProviderSaveInput): Promise<{ id: string }> {
+export async function saveSearchProvider(
+  config: SearchProviderSaveInput,
+): Promise<{ id: string }> {
   const body: Record<string, unknown> = {
     id: config.id,
     name: config.name,

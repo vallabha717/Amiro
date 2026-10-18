@@ -56,13 +56,13 @@ function hostnameOf(url: string): string {
 }
 
 /**
- * Which provider is currently configured, fetched once and shared by every
+ * The selected default provider, fetched once and shared by every
  * search/content card on screen.
  *
  * Only meaningful before a tool call resolves -- once it has, the output
  * itself names the provider that actually answered (`result.provider`),
  * which is the more trustworthy source: this hook's answer can be stale by
- * the time a slow search finishes if someone changes the active provider
+ * the time a slow search finishes if a fallback answers or someone changes the default
  * mid-turn.
  */
 function useActiveProviderHint() {
@@ -284,7 +284,7 @@ function PureWebSearchToolInvocation({ part }: WebSearchToolInvocationProps) {
               </TextShimmer>
             </div>
             {activeProvider?.configured && activeProvider.label && (
-              <ProviderBadge label={activeProvider.label} />
+              <ProviderBadge label={`Default: ${activeProvider.label}`} />
             )}
           </div>
           <PendingFrame>
@@ -306,7 +306,7 @@ function PureWebSearchToolInvocation({ part }: WebSearchToolInvocationProps) {
           </div>
           {activeProvider &&
             (activeProvider.configured && activeProvider.label ? (
-              <ProviderBadge label={activeProvider.label} />
+              <ProviderBadge label={`Default: ${activeProvider.label}`} />
             ) : (
               // Shown before the call even resolves: the tool is certain to
               // fail for lack of a provider, and there is no reason to make

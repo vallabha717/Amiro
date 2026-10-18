@@ -26,8 +26,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
 import { WriteIcon } from "ui/write-icon";
 
 import {
+  SEARCH_ACTIVE_KEY,
   SEARCH_PROVIDERS_KEY,
   type SearchProviderConfig,
+  type SearchProviderSpec,
   activateSearchProvider,
   deleteSearchProvider,
 } from "@/lib/backend/search-provider-api";
@@ -49,7 +51,8 @@ export const SearchProviderCard = memo(function SearchProviderCard({
   extracts,
   baseUrl,
   custom,
-}: SearchProviderConfig) {
+  spec,
+}: SearchProviderConfig & { spec?: SearchProviderSpec }) {
   const t = useTranslations("Providers");
   const router = useRouter();
   const { mutate } = useSWRConfig();
@@ -63,6 +66,7 @@ export const SearchProviderCard = memo(function SearchProviderCard({
     await safe(() => setIsProcessing(true))
       .ifOk(() => deleteSearchProvider(id))
       .ifOk(() => mutate(SEARCH_PROVIDERS_KEY))
+      .ifOk(() => mutate(SEARCH_ACTIVE_KEY))
       .ifOk(() => toast.success(t("providerDeleted")))
       .ifFail(handleErrorWithToast)
       .watch(() => setIsProcessing(false));
@@ -72,7 +76,8 @@ export const SearchProviderCard = memo(function SearchProviderCard({
     await safe(() => setIsProcessing(true))
       .ifOk(() => activateSearchProvider(id))
       .ifOk(() => mutate(SEARCH_PROVIDERS_KEY))
-      .ifOk(() => toast.success(`${name} activated`))
+      .ifOk(() => mutate(SEARCH_ACTIVE_KEY))
+      .ifOk(() => toast.success(`${name} set as default`))
       .ifFail(handleErrorWithToast)
       .watch(() => setIsProcessing(false));
   }, [id, name, mutate]);
@@ -82,7 +87,7 @@ export const SearchProviderCard = memo(function SearchProviderCard({
   return (
     <Card
       className={`relative transition-colors ${
-        isActive
+        isActive && configured
           ? "border-primary/50 shadow-[0_0_15px_rgba(var(--primary),0.2)] bg-primary/5"
           : "hover:border-foreground/20 bg-secondary/40"
       }`}
@@ -104,19 +109,19 @@ export const SearchProviderCard = memo(function SearchProviderCard({
                 variant="secondary"
                 className="bg-primary/20 text-primary border-primary/30 text-[10px] px-1.5"
               >
-                {t("active")}
+                Default
               </Badge>
             ) : (
               <Badge
                 variant="secondary"
                 className="bg-green-500/10 text-green-600 dark:text-green-500 border-green-500/20 text-[10px] px-1.5"
               >
-                Configured
+                Fallback
               </Badge>
             )
           ) : (
             <Badge variant="destructive" className="text-[10px] px-1.5">
-              {t("noKey")}
+              Unavailable
             </Badge>
           )}
         </h4>
@@ -133,12 +138,14 @@ export const SearchProviderCard = memo(function SearchProviderCard({
                   className="text-muted-foreground hover:text-primary"
                   onClick={handleActivate}
                   disabled={isLoading}
+                  aria-label={`Set ${name} as default`}
+                  data-testid="search-provider-default-button"
                 >
                   <CheckCircle2 className="size-4" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Set Active</p>
+                <p>Set Default</p>
               </TooltipContent>
             </Tooltip>
             <div className="h-4 mx-1">
@@ -217,6 +224,14 @@ export const SearchProviderCard = memo(function SearchProviderCard({
         </Tooltip>
       </CardHeader>
 
+      <CardContent className="pt-0 text-xs text-muted-foreground">
+        {!configured
+          ? "Not configured. Unavailable to the agent until its configuration is complete and supported."
+          : isActive
+            ? "Tried first for every search. Other configured providers are fallbacks if it fails."
+            : "Available to the agent as a fallback if the default provider fails."}
+      </CardContent>
+
       {/* The detail strip: what engine, what key, and whether picking it
           keeps the web_content tool working. Three facts, stated flat --
           the JSON dump this replaced existed to show a key that is no
@@ -229,7 +244,11 @@ export const SearchProviderCard = memo(function SearchProviderCard({
           {apiKeyHint ? (
             <span className="font-mono">{apiKeyHint}</span>
           ) : (
-            <span>no key saved</span>
+            <span>
+              {spec?.keyless || provider === "custom"
+                ? "No API key required"
+                : "No API key stored"}
+            </span>
           )}
         </span>
 
@@ -242,7 +261,9 @@ export const SearchProviderCard = memo(function SearchProviderCard({
 
         <span className="flex items-center gap-1.5">
           <FileText className="size-3.5 shrink-0" />
-          <span>{extracts ? "extracts page content" : "links and snippets only"}</span>
+          <span>
+            {extracts ? "extracts page content" : "links and snippets only"}
+          </span>
         </span>
       </CardContent>
     </Card>
