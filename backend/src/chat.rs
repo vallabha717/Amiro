@@ -346,7 +346,17 @@ async fn chat_handler(
                     }
                 }
             }
-        } else if prompt.to_lowercase().contains("visualize") {
+        } else if {
+            let lower = prompt.to_lowercase();
+            lower.contains("visualize")
+                || lower.contains("visualise")
+                || lower.contains("diagram")
+                || lower.contains("flowchart")
+                || lower.contains("architecture diagram")
+                || lower.contains("visual explainer")
+                || lower.contains("draw a ")
+                || lower.contains("draw an ")
+        } {
             if let Some((resolved_name, source, skill_body)) =
                 crate::routes::skills::resolve_skill_for_turn(
                     &state_for_stream,

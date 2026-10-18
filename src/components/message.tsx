@@ -1,6 +1,14 @@
 "use client";
 
 import { type UIMessage, getToolName, isToolUIPart } from "ai";
+import { parseConnectorSetup } from "@/lib/backend/connectors-api";
+import { ConnectorSetupCard } from "./connectors/connector-setup-card";
+import {
+  SecretPromptCard,
+  type SecretPromptRequest,
+} from "./credentials/secret-prompt-card";
+import { parseSecretPrompt } from "@/lib/security/secret-detection";
+import { VisualPlaceholder, VisualSurface } from "./visual/visual-surface";
 import equal from "lib/equal";
 import { type ReactNode, memo, useMemo, useState } from "react";
 
@@ -341,11 +349,39 @@ const PurePreviewMessage = ({
               );
 
             if (lastToolIndex < 0) {
+              const textSecretPrompts: SecretPromptRequest[] = [];
+              if (!isUserMessage) {
+                for (let i = 0; i < partsForDisplay.length; i++) {
+                  const p = partsForDisplay[i];
+                  if (p.type === "text" && p.text) {
+                    const sp = parseSecretPrompt(p.text);
+                    if (sp && !textSecretPrompts.some((x) => x.id === sp.id)) {
+                      textSecretPrompts.push({ ...sp, id: `${message.id}-sp-${i}-${sp.id}` });
+                    }
+                  }
+                }
+              }
               return (
                 <>
                   {partsForDisplay.map(renderPart)}
                   {artifactCards}
                   {approvals}
+                  {textSecretPrompts.map((sp) => (
+                    <SecretPromptCard
+                      key={sp.id}
+                      prompt={sp}
+                      readonly={readonly}
+                      onSaved={
+                        isLastMessage && sendMessage
+                          ? (text) =>
+                              sendMessage({
+                                role: "user",
+                                parts: [{ type: "text", text }],
+                              })
+                          : undefined
+                      }
+                    />
+                  ))}
                 </>
               );
             }
@@ -364,11 +400,30 @@ const PurePreviewMessage = ({
             // Parts that must stay visible under hideAllTools because the
             // user has to act on them (a manual-confirm call awaiting input).
             const mustShow: ReactNode[] = [];
+            // The agent added a connector that still needs a key: the user
+            // types it into a secure card, whatever the tool filter says.
+            const connectorSetups: { server: string; missingSecrets: string[]; id: string }[] = [];
+            // Vellum-style inline visuals (applet html view) and secret prompt cards
+            // render directly in the transcript outside the collapsed work log.
+            const inlineVisuals: {
+              id: string;
+              html: string;
+              height?: number;
+              title?: string;
+              pending: boolean;
+            }[] = [];
+            const secretPrompts: SecretPromptRequest[] = [];
             for (let i = 0; i < workParts.length; i++) {
               const part = workParts[i];
               if (part.type === "step-start") continue;
 
               if (!isToolUIPart(part)) {
+                if (part.type === "text" && part.text) {
+                  const sp = parseSecretPrompt(part.text);
+                  if (sp && !secretPrompts.some((x) => x.service === sp.service && x.field === sp.field)) {
+                    secretPrompts.push({ ...sp, id: `${message.id}-sp-${i}-${sp.id}` });
+                  }
+                }
                 // Filtering hides tool calls only; the agent's prose stays.
                 if (hideAllTools) {
                   mustShow.push(renderPart(part, i));
@@ -382,6 +437,53 @@ const PurePreviewMessage = ({
               }
 
               const toolName = getToolName(part);
+              if (toolName === "mcp" && part.state === "output-available") {
+                const setup = parseConnectorSetup(part.output);
+                if (setup) connectorSetups.push({ ...setup, id: part.toolCallId });
+              }
+              const partInput = (part as any).input;
+              if (toolName === "applet") {
+                const htmlSource =
+                  partInput?.view?.type === "html" &&
+                  typeof partInput?.view?.source === "string"
+                    ? partInput.view.source
+                    : typeof partInput?.html === "string"
+                      ? partInput.html
+                      : null;
+                if (htmlSource && part.state !== "output-error") {
+                  const height =
+                    typeof partInput?.view?.height === "number"
+                      ? partInput.view.height
+                      : typeof partInput?.height === "number"
+                        ? partInput.height
+                        : 320;
+                  inlineVisuals.push({
+                    id: partInput?.instance || part.toolCallId,
+                    html: htmlSource,
+                    height,
+                    title: partInput?.title,
+                    pending: !part.state.startsWith("output"),
+                  });
+                }
+              }
+              const spFromTool =
+                parseSecretPrompt(partInput) ||
+                (part.state === "output-available"
+                  ? parseSecretPrompt(part.output)
+                  : null);
+              if (
+                spFromTool &&
+                !secretPrompts.some(
+                  (x) =>
+                    x.service === spFromTool.service &&
+                    x.field === spFromTool.field,
+                )
+              ) {
+                secretPrompts.push({
+                  ...spFromTool,
+                  id: `${part.toolCallId}-${spFromTool.id}`,
+                });
+              }
               const partImages =
                 part.state === "output-available"
                   ? extractInlineImages(part.output)
@@ -513,11 +615,81 @@ const PurePreviewMessage = ({
                     }
                   />
                 )}
-                {tailParts.map((part, i) =>
-                  renderPart(part, lastToolIndex + 1 + i),
+                {tailParts.map((part, i) => {
+                  if (part.type === "text" && part.text) {
+                    const sp = parseSecretPrompt(part.text);
+                    if (
+                      sp &&
+                      !secretPrompts.some(
+                        (x) =>
+                          x.service === sp.service && x.field === sp.field,
+                      )
+                    ) {
+                      secretPrompts.push({
+                        ...sp,
+                        id: `${message.id}-tail-sp-${i}-${sp.id}`,
+                      });
+                    }
+                  }
+                  return renderPart(part, lastToolIndex + 1 + i);
+                })}
+                {inlineVisuals.map((vis) =>
+                  vis.pending ? (
+                    <VisualPlaceholder
+                      key={vis.id}
+                      title={vis.title}
+                      height={vis.height}
+                    />
+                  ) : (
+                    <VisualSurface
+                      key={vis.id}
+                      surfaceId={vis.id}
+                      html={vis.html}
+                      height={vis.height}
+                      title={vis.title}
+                      onSendPrompt={
+                        sendMessage
+                          ? (prompt) =>
+                              sendMessage({
+                                role: "user",
+                                parts: [{ type: "text", text: prompt }],
+                              })
+                          : undefined
+                      }
+                    />
+                  ),
                 )}
                 {artifactCards}
                 {approvals}
+                {connectorSetups.map((setup) => (
+                  <ConnectorSetupCard
+                    key={setup.id}
+                    server={setup.server}
+                    missingSecrets={setup.missingSecrets}
+                    readonly={readonly}
+                    onDone={
+                      isLastMessage && sendMessage
+                        ? (text) => sendMessage({ role: "user", parts: [{ type: "text", text }] })
+                        : undefined
+                    }
+                  />
+                ))}
+                {secretPrompts.map((sp) => (
+                  <SecretPromptCard
+                    key={sp.id}
+                    prompt={sp}
+                    readonly={readonly}
+                    onSaved={
+                      isLastMessage && sendMessage
+                        ? (text) =>
+                            sendMessage({
+                              role: "user",
+                              parts: [{ type: "text", text }],
+                            })
+                        : undefined
+                    }
+                  />
+                ))}
               </>
             );
           })()}

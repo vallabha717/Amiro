@@ -96,11 +96,11 @@ export function buildStoragePolyfill(): string {
     key: function(i) { return Object.keys(store)[i] || null; }
   };
   try {
-    Object.defineProperty(window, 'localStorage', { value: storageShim, writable: true, configurable: true });
-  } catch(e) { try { window.localStorage = storageShim; } catch(e2) {} }
+    Object.defineProperty(window, 'localStorage', { get: function() { return storageShim; }, configurable: true });
+  } catch(e) {}
   try {
-    Object.defineProperty(window, 'sessionStorage', { value: storageShim, writable: true, configurable: true });
-  } catch(e) { try { window.sessionStorage = storageShim; } catch(e2) {} }
+    Object.defineProperty(window, 'sessionStorage', { get: function() { return storageShim; }, configurable: true });
+  } catch(e) {}
 })();
 </script>`;
 }
