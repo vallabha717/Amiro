@@ -180,6 +180,7 @@ pub fn history_to_messages(thread_id: &str, session_id: &str, history: &[Value])
                         "toolCallId": call_id,
                         "toolName": name,
                         "state": "output-available",
+                        "providerExecuted": true,
                         "input": input,
                         "output": parsed_output,
                     }));

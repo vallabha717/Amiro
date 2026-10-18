@@ -470,7 +470,7 @@ async fn chat_handler(
                                 text_open = false;
                             }
                             tool_names.insert(call_id.clone(), name.clone());
-                            yield frame(json!({"type": "tool-input-start", "toolCallId": call_id, "toolName": name}));
+                            yield frame(json!({"type": "tool-input-start", "toolCallId": call_id, "toolName": name, "providerExecuted": true}));
                         }
                         ApiEvent::ToolInputDelta { call_id, delta, .. } => {
                             tool_inputs.entry(call_id.clone()).or_default().push_str(&delta);
@@ -488,7 +488,7 @@ async fn chat_handler(
                             tool_names.insert(call_id.clone(), name.clone());
                             let raw_input = tool_inputs.get(&call_id).map(|s| s.as_str()).unwrap_or("");
                             let parsed_input: Value = serde_json::from_str(raw_input).unwrap_or_else(|_| json!({}));
-                            yield frame(json!({"type": "tool-input-available", "toolCallId": call_id, "toolName": name, "input": parsed_input}));
+                            yield frame(json!({"type": "tool-input-available", "toolCallId": call_id, "toolName": name, "input": parsed_input, "providerExecuted": true}));
                             tool_input_emitted.insert(call_id);
                             tool_count += 1;
                         }
@@ -510,11 +510,11 @@ async fn chat_handler(
                             if !tool_input_emitted.contains(&call_id) {
                                 let tool_name = tool_names.get(&call_id).cloned().unwrap_or_else(|| name.clone());
                                 if !tool_names.contains_key(&call_id) {
-                                    yield frame(json!({"type": "tool-input-start", "toolCallId": call_id, "toolName": tool_name}));
+                                    yield frame(json!({"type": "tool-input-start", "toolCallId": call_id, "toolName": tool_name, "providerExecuted": true}));
                                 }
                                 let raw_input = tool_inputs.get(&call_id).map(|s| s.as_str()).unwrap_or("");
                                 let parsed_input: Value = serde_json::from_str(raw_input).unwrap_or_else(|_| json!({}));
-                                yield frame(json!({"type": "tool-input-available", "toolCallId": call_id, "toolName": tool_name, "input": parsed_input}));
+                                yield frame(json!({"type": "tool-input-available", "toolCallId": call_id, "toolName": tool_name, "input": parsed_input, "providerExecuted": true}));
                                 tool_input_emitted.insert(call_id.clone());
                                 tool_count += 1;
                             }
@@ -523,9 +523,9 @@ async fn chat_handler(
                                 _ => Value::String(output),
                             };
                             if let Some(error) = error {
-                                yield frame(json!({"type": "tool-output-error", "toolCallId": call_id, "errorText": error}));
+                                yield frame(json!({"type": "tool-output-error", "toolCallId": call_id, "errorText": error, "providerExecuted": true}));
                             } else {
-                                yield frame(json!({"type": "tool-output-available", "toolCallId": call_id, "output": parsed_output}));
+                                yield frame(json!({"type": "tool-output-available", "toolCallId": call_id, "output": parsed_output, "providerExecuted": true}));
                             }
                         }
                         ApiEvent::TokenUsage { input, output, cache_read_input, .. } => {
@@ -723,7 +723,7 @@ async fn chat_temporary(
                                 text_open = false;
                             }
                             tool_names.insert(call_id.clone(), name.clone());
-                            yield frame(json!({"type": "tool-input-start", "toolCallId": call_id, "toolName": name}));
+                            yield frame(json!({"type": "tool-input-start", "toolCallId": call_id, "toolName": name, "providerExecuted": true}));
                         }
                         ApiEvent::ToolInputDelta { call_id, delta, .. } => {
                             tool_inputs.entry(call_id.clone()).or_default().push_str(&delta);
@@ -741,7 +741,7 @@ async fn chat_temporary(
                             tool_names.insert(call_id.clone(), name.clone());
                             let raw_input = tool_inputs.get(&call_id).map(|s| s.as_str()).unwrap_or("");
                             let parsed_input: Value = serde_json::from_str(raw_input).unwrap_or_else(|_| json!({}));
-                            yield frame(json!({"type": "tool-input-available", "toolCallId": call_id, "toolName": name, "input": parsed_input}));
+                            yield frame(json!({"type": "tool-input-available", "toolCallId": call_id, "toolName": name, "input": parsed_input, "providerExecuted": true}));
                             tool_input_emitted.insert(call_id);
                             tool_count += 1;
                         }
@@ -763,11 +763,11 @@ async fn chat_temporary(
                             if !tool_input_emitted.contains(&call_id) {
                                 let tool_name = tool_names.get(&call_id).cloned().unwrap_or_else(|| name.clone());
                                 if !tool_names.contains_key(&call_id) {
-                                    yield frame(json!({"type": "tool-input-start", "toolCallId": call_id, "toolName": tool_name}));
+                                    yield frame(json!({"type": "tool-input-start", "toolCallId": call_id, "toolName": tool_name, "providerExecuted": true}));
                                 }
                                 let raw_input = tool_inputs.get(&call_id).map(|s| s.as_str()).unwrap_or("");
                                 let parsed_input: Value = serde_json::from_str(raw_input).unwrap_or_else(|_| json!({}));
-                                yield frame(json!({"type": "tool-input-available", "toolCallId": call_id, "toolName": tool_name, "input": parsed_input}));
+                                yield frame(json!({"type": "tool-input-available", "toolCallId": call_id, "toolName": tool_name, "input": parsed_input, "providerExecuted": true}));
                                 tool_input_emitted.insert(call_id.clone());
                                 tool_count += 1;
                             }
@@ -776,9 +776,9 @@ async fn chat_temporary(
                                 _ => Value::String(output),
                             };
                             if let Some(error) = error {
-                                yield frame(json!({"type": "tool-output-error", "toolCallId": call_id, "errorText": error}));
+                                yield frame(json!({"type": "tool-output-error", "toolCallId": call_id, "errorText": error, "providerExecuted": true}));
                             } else {
-                                yield frame(json!({"type": "tool-output-available", "toolCallId": call_id, "output": parsed_output}));
+                                yield frame(json!({"type": "tool-output-available", "toolCallId": call_id, "output": parsed_output, "providerExecuted": true}));
                             }
                         }
                         ApiEvent::TokenUsage { input, output, cache_read_input, .. } => {

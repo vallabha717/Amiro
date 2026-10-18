@@ -222,16 +222,16 @@ function createSse(res) {
     reasoningStart: (id) => frame({ type: 'reasoning-start', id }),
     reasoningDelta: (id, delta) => frame({ type: 'reasoning-delta', id, delta }),
     reasoningEnd: (id) => frame({ type: 'reasoning-end', id }),
-    toolInputStart: (toolCallId, toolName) =>
-      frame({ type: 'tool-input-start', toolCallId, toolName }),
+    toolInputStart: (toolCallId, toolName, providerExecuted = true) =>
+      frame({ type: 'tool-input-start', toolCallId, toolName, providerExecuted }),
     toolInputDelta: (toolCallId, inputTextDelta) =>
       frame({ type: 'tool-input-delta', toolCallId, inputTextDelta }),
-    toolInputAvailable: (toolCallId, toolName, input) =>
-      frame({ type: 'tool-input-available', toolCallId, toolName, input }),
-    toolOutputAvailable: (toolCallId, output) =>
-      frame({ type: 'tool-output-available', toolCallId, output }),
-    toolOutputError: (toolCallId, errorText) =>
-      frame({ type: 'tool-output-error', toolCallId, errorText }),
+    toolInputAvailable: (toolCallId, toolName, input, providerExecuted = true) =>
+      frame({ type: 'tool-input-available', toolCallId, toolName, input, providerExecuted }),
+    toolOutputAvailable: (toolCallId, output, providerExecuted = true) =>
+      frame({ type: 'tool-output-available', toolCallId, output, providerExecuted }),
+    toolOutputError: (toolCallId, errorText, providerExecuted = true) =>
+      frame({ type: 'tool-output-error', toolCallId, errorText, providerExecuted }),
     data: (name, id, data) => {
       const f = { type: `data-${name}`, data };
       if (id) f.id = id;

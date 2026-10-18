@@ -175,6 +175,7 @@ export function historyToMessages(threadId, sessionId, history) {
             toolCallId: callId,
             toolName: name,
             state: 'output-available',
+            providerExecuted: true,
             input,
             output: parsedOutput,
           });

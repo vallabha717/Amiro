@@ -48,6 +48,7 @@ test('historyToMessages folds assistant and tool rows into single assistant turn
     toolCallId: 'calc-1',
     toolName: 'calculator',
     state: 'output-available',
+    providerExecuted: true,
     input: { expr: '2+2' },
     output: { result: 4 },
   });

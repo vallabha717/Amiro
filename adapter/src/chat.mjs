@@ -287,7 +287,7 @@ async function streamTurn({ sse, client, sessionId, allowTools, iterator }) {
         case 'tool_call':
           closeBeforeTools();
           toolNames.set(ev.call_id, ev.name);
-          sse.toolInputAvailable(ev.call_id, ev.name, ev.input);
+          sse.toolInputAvailable(ev.call_id, ev.name, ev.input, false);
           toolInputEmitted.add(ev.call_id);
           toolCount++;
           break;
