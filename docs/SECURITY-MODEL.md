@@ -31,8 +31,13 @@ not protected.
   `POST /api/credentials/validate`, `POST /api/credentials/broker`. Writes,
   validate and broker are owner-only.
 - Broker: executes an HTTP request server side, injects the secret into a
-  header, enforces the credential's `allowedDomains`, and scrubs the secret
-  from the response, so the model never sees the raw value.
+  header, checks the request host against the credential's `allowedDomains`,
+  and scrubs the secret from the response, so the model never sees the raw
+  value. An empty `allowedDomains` list means no restriction, so a credential
+  is only limited to specific hosts once you set one. The broker itself is
+  owner-only. The allowlist applies to brokered requests only and is not a
+  process-wide network sandbox: the runtime and its tools can still reach any
+  host.
 - A legacy plaintext Composio key is migrated into the vault and deleted at
   boot.
 - Tests: `backend/tests/credentials.rs`, unit tests in `credentials.rs`.
