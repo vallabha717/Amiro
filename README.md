@@ -610,7 +610,8 @@ The living documents, worth reading in this order:
 
 Everything else under `docs/`, including every `progress/` and `phases/`
 directory, is design history. Treat those as a record of what was decided, not as
-a description of what runs today.
+a description of what runs today. The latest dated wrap-up is
+[`docs/session-2026-10-18.md`](docs/session-2026-10-18.md).
 
 ---
 

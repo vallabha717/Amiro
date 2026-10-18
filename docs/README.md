@@ -52,6 +52,12 @@ retired compatibility harness kept only for contract tests.
   - [runtime/TELEMETRY.md](../runtime/TELEMETRY.md): Telemetry architecture and fork policy opt-in notice.
   - [runtime/CONTRIBUTING.md](../runtime/CONTRIBUTING.md): Runtime contribution and environment notes.
 
+## Dated Wrap-Up
+
+- [session-2026-10-18.md](session-2026-10-18.md): Dated record of today's
+  integration and documentation work, with feature guide links, commit map,
+  evidence, and limitations (owned by humpback).
+
 ## Historical Design Records
 
 These documents record earlier phases and design proposals, preserved for historical reference:
