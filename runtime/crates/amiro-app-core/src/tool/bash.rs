@@ -854,7 +854,7 @@ where
 }
 
 #[path = "bash_destructive_gate.rs"]
-mod destructive_gate;
+pub(in crate::tool) mod destructive_gate;
 use destructive_gate::destructive_command_refusal;
 #[async_trait]
 impl Tool for BashTool {

@@ -2254,6 +2254,19 @@ pub(super) async fn handle_client(
                         handle_reload(id, false, &client_session_id, &agent, &swarm_members, &client_event_tx).await;
                         return Ok((serde_json::Value::Null, String::new()));
                     }
+                    if parsed == amiro_harness_api::RuntimeCommand::McpStatus {
+                        if !args.is_empty() { anyhow::bail!("Usage: mcp_status (accepts no arguments)"); }
+                        // Reaches the session's MCP manager through a registry
+                        // keyed by session id, so a running turn (agent lock held)
+                        // never blocks or is blocked by this read-only snapshot.
+                        let manager = crate::tool::mcp::mcp_manager_for_session(&client_session_id)
+                            .ok_or_else(|| anyhow::anyhow!("No MCP manager is registered for this session yet"))?;
+                        let guard = manager.try_read().map_err(|_| anyhow::anyhow!("MCP manager is busy (reloading). Retry shortly."))?;
+                        let data = guard.status_snapshot().await;
+                        drop(guard);
+                        let count = data["servers"].as_array().map_or(0, Vec::len);
+                        return Ok((data, format!("{count} MCP server(s)")));
+                    }
                     if parsed == amiro_harness_api::RuntimeCommand::McpReload {
                         if !args.is_empty() { anyhow::bail!("Usage: /mcp-reload (accepts no arguments)"); }
                         let mut guard = agent.try_lock().map_err(|_| anyhow::anyhow!("Session is busy. Retry the MCP reload after the current turn."))?;

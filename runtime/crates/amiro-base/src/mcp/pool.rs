@@ -23,6 +23,17 @@ const FAILED_CONNECT_RETRY_COOLDOWN: Duration = Duration::from_secs(30);
 struct FailedConnectRecord {
     message: String,
     failed_at: Instant,
+    /// The resolved config that failed. A changed config (a key that just
+    /// arrived in the vault, an edited URL) retries at once instead of
+    /// waiting out the cooldown.
+    fingerprint: u64,
+}
+
+fn config_fingerprint(config: &McpServerConfig) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    serde_json::to_string(config).unwrap_or_default().hash(&mut hasher);
+    hasher.finish()
 }
 
 enum ConnectAttempt {
@@ -323,7 +334,13 @@ impl SharedMcpPool {
         ConnectAttempt::Leader(notify)
     }
 
-    async fn finish_connect(&self, name: &str, notify: Arc<Notify>, result: Result<McpClient>) {
+    async fn finish_connect(
+        &self,
+        name: &str,
+        notify: Arc<Notify>,
+        result: Result<McpClient>,
+        fingerprint: u64,
+    ) {
         match result {
             Ok(client) => {
                 let handle = client.handle();
@@ -347,6 +364,7 @@ impl SharedMcpPool {
                     FailedConnectRecord {
                         message: format!("{:#}", error),
                         failed_at: Instant::now(),
+                        fingerprint,
                     },
                 );
             }
@@ -371,7 +389,8 @@ impl SharedMcpPool {
         name: String,
         config: McpServerConfig,
     ) -> std::result::Result<bool, String> {
-        if let Some(record) = self.recent_failure(&name).await {
+        let fingerprint = config_fingerprint(&config);
+        if let Some(record) = self.recent_failure(&name, fingerprint).await {
             let retry_after = FAILED_CONNECT_RETRY_COOLDOWN
                 .saturating_sub(record.failed_at.elapsed())
                 .as_secs()
@@ -417,7 +436,7 @@ impl SharedMcpPool {
                     Ok(_) => Ok(true),
                     Err(error) => Err(format!("{:#}", error)),
                 };
-                self.finish_connect(&name, notify, result).await;
+                self.finish_connect(&name, notify, result, fingerprint).await;
                 outcome
             }
         }
@@ -440,7 +459,7 @@ impl SharedMcpPool {
         }
     }
 
-    async fn recent_failure(&self, name: &str) -> Option<FailedConnectRecord> {
+    async fn recent_failure(&self, name: &str, fingerprint: u64) -> Option<FailedConnectRecord> {
         if self
             .handles
             .read()
@@ -455,7 +474,10 @@ impl SharedMcpPool {
             .read()
             .await
             .get(name)
-            .filter(|record| record.failed_at.elapsed() < FAILED_CONNECT_RETRY_COOLDOWN)
+            .filter(|record| {
+                record.fingerprint == fingerprint
+                    && record.failed_at.elapsed() < FAILED_CONNECT_RETRY_COOLDOWN
+            })
             .cloned()
     }
 }
@@ -560,7 +582,7 @@ mod tests {
         let ConnectAttempt::Wait(waiter) = pool.begin_connect("early").await else {
             panic!("waiter");
         };
-        pool.finish_connect("early", leader, Err(anyhow::anyhow!("fixture failure")))
+        pool.finish_connect("early", leader, Err(anyhow::anyhow!("fixture failure")), 0)
             .await;
         tokio::time::timeout(
             std::time::Duration::from_millis(100),

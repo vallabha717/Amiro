@@ -1031,3 +1031,54 @@ fn mcp_source_logs_explain_provenance_without_config_values() {
     assert!(!imported.contains("TOKEN"));
     assert!(!imported.contains("inline-secret"));
 }
+
+#[test]
+fn load_expands_from_credential_env_file_after_process_env() {
+    let _guard = crate::storage::lock_test_env();
+    let previous_home = std::env::var_os("AMIRO_HOME");
+    let home = tempfile::tempdir().expect("home tempdir");
+    crate::env::set_var("AMIRO_HOME", home.path());
+    std::fs::write(
+        home.path().join("mcp.json"),
+        r#"{"servers":{"linear":{"type":"http","url":"https://mcp.linear.app/mcp","headers":{"Authorization":"${AMIRO_CRED_MCP_LINEAR_AUTHORIZATION}","X-Other":"${AMIRO_CRED_MCP_LINEAR_OTHER}"}}}}"#,
+    )
+    .unwrap();
+    crate::env::set_var("AMIRO_CRED_MCP_LINEAR_OTHER", "from-process");
+
+    let result = std::panic::catch_unwind(|| {
+        // Missing file: placeholder stays literal.
+        let config = McpConfig::load_for_dir(None);
+        let headers = &config.servers["linear"].headers;
+        assert_eq!(headers["Authorization"], "${AMIRO_CRED_MCP_LINEAR_AUTHORIZATION}");
+        assert_eq!(headers["X-Other"], "from-process");
+
+        // File appears: picked up on the next load without restart; process
+        // env still wins over the file.
+        std::fs::write(
+            home.path().join("credential-env.json"),
+            r#"{"AMIRO_CRED_MCP_LINEAR_AUTHORIZATION":"Bearer tok","AMIRO_CRED_MCP_LINEAR_OTHER":"from-file"}"#,
+        )
+        .unwrap();
+        let config = McpConfig::load_for_dir(None);
+        let headers = &config.servers["linear"].headers;
+        assert_eq!(headers["Authorization"], "Bearer tok");
+        assert_eq!(headers["X-Other"], "from-process");
+
+        // Invalid file: no entries, no panic.
+        std::fs::write(home.path().join("credential-env.json"), "{{{").unwrap();
+        let config = McpConfig::load_for_dir(None);
+        assert_eq!(
+            config.servers["linear"].headers["Authorization"],
+            "${AMIRO_CRED_MCP_LINEAR_AUTHORIZATION}"
+        );
+    });
+
+    crate::env::remove_var("AMIRO_CRED_MCP_LINEAR_OTHER");
+    match previous_home {
+        Some(v) => crate::env::set_var("AMIRO_HOME", v),
+        None => crate::env::remove_var("AMIRO_HOME"),
+    }
+    if let Err(panic) = result {
+        std::panic::resume_unwind(panic);
+    }
+}

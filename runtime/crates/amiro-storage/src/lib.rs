@@ -183,6 +183,42 @@ pub fn amiro_dir() -> Result<PathBuf> {
     Ok(home.join(".jcode"))
 }
 
+/// File name (inside the runtime home) of the live credential overlay.
+pub const CREDENTIAL_ENV_FILE: &str = "credential-env.json";
+
+/// Path of `$AMIRO_HOME/credential-env.json` (or the `AMIRO_RUNTIME_HOME` /
+/// default home equivalent). The embedding backend rewrites it, 0600, whenever
+/// a vault credential changes, so MCP `${AMIRO_CRED_*}` references resolve
+/// without restarting the runtime.
+pub fn credential_env_path() -> Result<PathBuf> {
+    Ok(amiro_dir()?.join(CREDENTIAL_ENV_FILE))
+}
+
+/// Parse a flat `{"NAME": "value"}` credential overlay. Non-string values are
+/// ignored. A missing or invalid file yields no entries.
+pub fn read_credential_env_from(path: &Path) -> std::collections::HashMap<String, String> {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Default::default();
+    };
+    let Ok(serde_json::Value::Object(map)) = serde_json::from_str::<serde_json::Value>(&text)
+    else {
+        return Default::default();
+    };
+    map.into_iter()
+        .filter_map(|(key, value)| match value {
+            serde_json::Value::String(value) => Some((key, value)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Read the credential overlay fresh from disk (no caching).
+pub fn read_credential_env() -> std::collections::HashMap<String, String> {
+    credential_env_path()
+        .map(|path| read_credential_env_from(&path))
+        .unwrap_or_default()
+}
+
 /// Whether a runtime-home variable redirects this process away from the user's
 /// real `~/.jcode` directory.
 ///
@@ -814,5 +850,44 @@ mod env_file_tests {
             std::fs::read_to_string(&path).expect("unchanged env"),
             "SAFE_KEY=safe-value\n"
         );
+    }
+}
+
+#[cfg(test)]
+mod credential_env_tests {
+    use super::*;
+
+    #[test]
+    fn credential_env_reads_strings_and_tolerates_bad_files() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let path = temp.path().join(CREDENTIAL_ENV_FILE);
+        assert!(read_credential_env_from(&path).is_empty());
+        std::fs::write(&path, "not json").unwrap();
+        assert!(read_credential_env_from(&path).is_empty());
+        std::fs::write(&path, r#"[1,2]"#).unwrap();
+        assert!(read_credential_env_from(&path).is_empty());
+        std::fs::write(
+            &path,
+            r#"{"AMIRO_CRED_MCP_LINEAR_AUTHORIZATION":"Bearer abc","N":5}"#,
+        )
+        .unwrap();
+        let map = read_credential_env_from(&path);
+        assert_eq!(map.len(), 1);
+        assert_eq!(map["AMIRO_CRED_MCP_LINEAR_AUTHORIZATION"], "Bearer abc");
+    }
+
+    #[test]
+    fn credential_env_path_lives_in_runtime_home() {
+        let _guard = test_amiro_home_lock();
+        let temp = tempfile::tempdir().expect("temp dir");
+        let previous = std::env::var_os("AMIRO_HOME");
+        // SAFETY: serialized by test_amiro_home_lock.
+        unsafe { std::env::set_var("AMIRO_HOME", temp.path()) };
+        let path = credential_env_path().unwrap();
+        match previous {
+            Some(v) => unsafe { std::env::set_var("AMIRO_HOME", v) },
+            None => unsafe { std::env::remove_var("AMIRO_HOME") },
+        }
+        assert_eq!(path, temp.path().join("credential-env.json"));
     }
 }

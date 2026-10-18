@@ -1470,6 +1470,7 @@ impl Registry {
         use std::sync::Arc;
         use tokio::sync::RwLock;
 
+        let session_id_for_status = session_id.clone();
         let mcp_manager = if let Some(pool) = shared_pool {
             let sid = session_id.unwrap_or_else(|| "unknown".to_string());
             Arc::new(RwLock::new(McpManager::with_shared_pool_for_dir(
@@ -1480,6 +1481,10 @@ impl Registry {
         } else {
             Arc::new(RwLock::new(McpManager::new()))
         };
+
+        if let Some(session_id) = session_id_for_status.as_deref() {
+            mcp::register_session_mcp_manager(session_id, &mcp_manager);
+        }
 
         // Register MCP management tool immediately (with registry for dynamic tool registration)
         let mcp_tool =

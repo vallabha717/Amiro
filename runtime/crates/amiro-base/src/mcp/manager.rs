@@ -64,6 +64,9 @@ pub struct McpManager {
     /// Project directory used to resolve project-local MCP config. `None`
     /// loads only global config and never consults the process working directory.
     project_dir: Option<std::path::PathBuf>,
+    /// Most recent connect error per server (cleared on success), surfaced by
+    /// [`McpManager::status_snapshot`].
+    last_errors: std::sync::Mutex<HashMap<String, String>>,
 }
 
 struct OwnedConnectionAttemptGuard {
@@ -129,6 +132,7 @@ impl McpManager {
             config: McpConfig::load_for_dir(project_dir.as_deref()),
             session_id: "owned".to_string(),
             project_dir,
+            last_errors: Default::default(),
         }
     }
 
@@ -153,6 +157,7 @@ impl McpManager {
             config: McpConfig::load_for_dir(project_dir.as_deref()),
             session_id,
             project_dir,
+            last_errors: Default::default(),
         }
     }
 
@@ -166,6 +171,7 @@ impl McpManager {
             config,
             session_id: "owned".to_string(),
             project_dir: None,
+            last_errors: Default::default(),
         }
     }
 
@@ -245,6 +251,9 @@ impl McpManager {
             }
         }
 
+        for (name, error) in &total_failures {
+            self.record_connect_result(name, Some(error.clone()));
+        }
         Ok((total_successes, total_failures))
     }
 
@@ -254,6 +263,25 @@ impl McpManager {
         reason = "MCP connect flow keeps shared-pool and owned-server paths explicit"
     )]
     pub async fn connect(&self, name: &str, config: &McpServerConfig) -> Result<()> {
+        let result = self.connect_inner(name, config).await;
+        self.record_connect_result(name, result.as_ref().err().map(|e| format!("{e:#}")));
+        result
+    }
+
+    fn record_connect_result(&self, name: &str, error: Option<String>) {
+        if let Ok(mut errors) = self.last_errors.lock() {
+            match error {
+                Some(error) => {
+                    errors.insert(name.to_string(), error);
+                }
+                None => {
+                    errors.remove(name);
+                }
+            }
+        }
+    }
+
+    async fn connect_inner(&self, name: &str, config: &McpServerConfig) -> Result<()> {
         // Partner-discovery provenance: if this server's command matches a
         // setup the agent saw in a discover_tools listing, tag it so calls to
         // it are metered coarsely (counts only; see sponsors::provenance).
@@ -606,6 +634,69 @@ impl McpManager {
 
         // Reconnect everything
         self.connect_all().await
+    }
+
+    /// Insert or replace one server definition in this manager's in-memory
+    /// config (after the on-disk config changed) without reconnecting anything.
+    pub fn set_server_config(&mut self, name: &str, config: McpServerConfig) {
+        self.config.servers.insert(name.to_string(), config);
+    }
+
+    /// Forget one server definition and its recorded error.
+    pub fn remove_server_config(&mut self, name: &str) {
+        self.config.servers.remove(name);
+        self.record_connect_result(name, None);
+    }
+
+    /// Live status of every configured server (connected or not, including
+    /// disabled) plus ad hoc connected ones, as JSON:
+    /// `{"servers":[{name,transport,enabled,connected,error,tools:[{name,description}]}]}`.
+    pub async fn status_snapshot(&self) -> serde_json::Value {
+        let connected: std::collections::HashSet<String> =
+            self.connected_servers().await.into_iter().collect();
+        let all_tools = self.all_tools().await;
+        let errors = self
+            .last_errors
+            .lock()
+            .map(|errors| errors.clone())
+            .unwrap_or_default();
+        let mut names: std::collections::BTreeSet<String> =
+            self.config.servers.keys().cloned().collect();
+        names.extend(connected.iter().cloned());
+        let servers: Vec<serde_json::Value> = names
+            .into_iter()
+            .map(|name| {
+                let config = self.config.servers.get(&name);
+                let transport = match config {
+                    Some(cfg) if cfg.is_stdio() => "stdio",
+                    Some(cfg) => cfg
+                        .remote_transport()
+                        .map(|transport| transport.label())
+                        .unwrap_or("http"),
+                    None => "unknown",
+                };
+                let is_connected = connected.contains(&name);
+                let tools: Vec<serde_json::Value> = all_tools
+                    .iter()
+                    .filter(|(owner, _)| owner == &name)
+                    .map(|(_, tool)| {
+                        serde_json::json!({
+                            "name": tool.name,
+                            "description": tool.description,
+                        })
+                    })
+                    .collect();
+                serde_json::json!({
+                    "name": name,
+                    "transport": transport,
+                    "enabled": config.map(|cfg| cfg.is_enabled()).unwrap_or(true),
+                    "connected": is_connected,
+                    "error": if is_connected { None } else { errors.get(&name).cloned() },
+                    "tools": tools,
+                })
+            })
+            .collect();
+        serde_json::json!({ "servers": servers })
     }
 
     /// Get config

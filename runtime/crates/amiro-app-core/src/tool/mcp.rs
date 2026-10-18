@@ -472,7 +472,7 @@ impl Tool for McpCallTool {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 struct McpToolInput {
     action: String,
     #[serde(default)]
@@ -489,6 +489,21 @@ struct McpToolInput {
     headers: Option<HashMap<String, String>>,
     #[serde(default)]
     transport: Option<String>,
+    #[serde(default)]
+    secrets: Option<Vec<McpSecretSpec>>,
+}
+
+/// One secret the user (not the model) supplies through the secure card.
+/// Exactly one of `header` / `env` names where the value is injected.
+#[derive(Debug, Clone, Deserialize)]
+struct McpSecretSpec {
+    key: String,
+    #[serde(default)]
+    header: Option<String>,
+    #[serde(default)]
+    env: Option<String>,
+    #[serde(default)]
+    prefix: Option<String>,
 }
 
 fn connection_config(
@@ -565,6 +580,421 @@ fn validate_remote_url(value: &str) -> Result<()> {
     Ok(())
 }
 
+
+// ---------------------------------------------------------------------------
+// Persistent connector setup (`add` / `remove`)
+// ---------------------------------------------------------------------------
+
+/// Connector managed by the Connectors page; the agent must not replace it.
+const MANAGED_SERVER: &str = "composio";
+
+type SessionManagers = std::sync::Mutex<HashMap<String, std::sync::Weak<RwLock<McpManager>>>>;
+
+fn session_managers() -> &'static SessionManagers {
+    static MANAGERS: std::sync::OnceLock<SessionManagers> = std::sync::OnceLock::new();
+    MANAGERS.get_or_init(Default::default)
+}
+
+/// Record a session's MCP manager so lock-free runtime commands (for example
+/// `mcp_status`) can reach it without taking the agent lock.
+pub fn register_session_mcp_manager(session_id: &str, manager: &Arc<RwLock<McpManager>>) {
+    if let Ok(mut managers) = session_managers().lock() {
+        managers.retain(|_, weak| weak.strong_count() > 0);
+        managers.insert(session_id.to_string(), Arc::downgrade(manager));
+    }
+}
+
+/// The MCP manager registered for `session_id`, falling back to any live one
+/// (the MCP config is user-level, so every session reports the same servers).
+pub fn mcp_manager_for_session(session_id: &str) -> Option<Arc<RwLock<McpManager>>> {
+    let managers = session_managers().lock().ok()?;
+    managers
+        .get(session_id)
+        .and_then(std::sync::Weak::upgrade)
+        .or_else(|| managers.values().find_map(std::sync::Weak::upgrade))
+}
+
+/// Whether a `mcp` tool call mutates persistent configuration or launches a
+/// local process, and so needs user approval in the default permission mode.
+/// `list` / `status` / `logout` / `reload` / `disconnect` and a by-name
+/// `connect` of an already configured server stay read-only or pre-approved.
+pub fn mcp_call_requires_approval(input: &Value) -> bool {
+    match input.get("action").and_then(Value::as_str) {
+        Some("add" | "remove") => true,
+        Some("connect") => input.get("command").is_some_and(|c| !c.is_null()),
+        _ => false,
+    }
+}
+
+/// Normalize a connector name to a `[a-z0-9-]` slug of 1..=40 characters.
+fn normalize_slug(name: &str) -> Result<String> {
+    let mut slug = String::new();
+    for ch in name.trim().chars().flat_map(char::to_lowercase) {
+        if ch.is_ascii_alphanumeric() {
+            slug.push(ch);
+        } else if !slug.ends_with('-') {
+            slug.push('-');
+        }
+    }
+    let slug = slug.trim_matches('-').to_string();
+    if slug.is_empty() || slug.len() > 40 {
+        anyhow::bail!("'server' must normalize to 1-40 characters of [a-z0-9-] (got '{name}')");
+    }
+    Ok(slug)
+}
+
+/// Secret field name: lowercased, anything outside `[a-z0-9_]` becomes `_`.
+fn secret_field(key: &str) -> Result<String> {
+    let field: String = key
+        .trim()
+        .chars()
+        .flat_map(char::to_lowercase)
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '_' {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if field.is_empty() || field.len() > 64 {
+        anyhow::bail!("secret 'key' must be 1-64 characters");
+    }
+    Ok(field)
+}
+
+fn env_token(text: &str) -> String {
+    text.chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_uppercase()
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+/// `AMIRO_CRED_MCP_<SLUG>_<FIELD>`: matches the backend's vault naming
+/// (service `mcp.<slug>` + field, uppercased, non-alphanumerics to `_`).
+fn placeholder_var(slug: &str, field: &str) -> String {
+    format!("AMIRO_CRED_MCP_{}_{}", env_token(slug), env_token(field))
+}
+
+/// Remove `${...}` references so only literal text is inspected.
+fn strip_placeholders(value: &str) -> String {
+    let mut out = String::new();
+    let mut rest = value;
+    while let Some(start) = rest.find("${") {
+        out.push_str(&rest[..start]);
+        match rest[start..].find('}') {
+            Some(end) => rest = &rest[start + end + 1..],
+            None => {
+                rest = "";
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Heuristic for a token the model typed into a header/env value. `strict`
+/// limits the check to well-known token prefixes (used for command args, which
+/// legitimately contain long package names).
+fn looks_like_literal_secret(value: &str, strict: bool) -> bool {
+    let literal = strip_placeholders(value);
+    let text = literal.trim();
+    let lower = text.to_ascii_lowercase();
+    const PREFIXES: &[&str] = &[
+        "sk-", "ghp_", "gho_", "ghs_", "github_pat_", "xox", "glpat-", "akia", "aiza",
+    ];
+    if PREFIXES.iter().any(|prefix| lower.starts_with(prefix)) {
+        return true;
+    }
+    for scheme in ["bearer ", "basic ", "token "] {
+        if let Some(rest) = lower.strip_prefix(scheme)
+            && rest.trim().len() > 16
+        {
+            return true;
+        }
+    }
+    if strict || text.len() <= 24 || text.chars().any(|c| c.is_whitespace() || c == '/') {
+        return false;
+    }
+    let token_chars = text
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
+        .count();
+    token_chars * 10 >= text.chars().count() * 9
+}
+
+fn reject_literal_secret(location: &str, value: &str, strict: bool) -> Result<()> {
+    if looks_like_literal_secret(value, strict) {
+        anyhow::bail!(
+            "{location} looks like a literal secret. Never put tokens, keys or passwords in headers/env/args yourself. \
+             Declare them with the 'secrets' parameter instead (for example \
+             secrets=[{{\"key\":\"api_key\",\"header\":\"Authorization\",\"prefix\":\"Bearer \"}}]) so the user enters the value in a secure card."
+        );
+    }
+    Ok(())
+}
+
+/// A saved entry plus the `(field, ${placeholder variable})` pairs it uses.
+struct ConnectorEntry {
+    entry: Value,
+    secrets: Vec<(String, String)>,
+    is_stdio: bool,
+}
+
+fn build_connector_entry(slug: &str, params: &McpToolInput) -> Result<ConnectorEntry> {
+    let remote = params.url.is_some();
+    if remote == params.command.is_some() {
+        anyhow::bail!("'add' needs exactly one of 'url' (remote MCP) or 'command' (local stdio)");
+    }
+    let mut headers: std::collections::BTreeMap<String, String> = params
+        .headers
+        .clone()
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
+    let mut env: std::collections::BTreeMap<String, String> =
+        params.env.clone().unwrap_or_default().into_iter().collect();
+    let mut entry = serde_json::Map::new();
+    if let Some(url) = params.url.as_deref() {
+        if params.args.is_some() || params.env.is_some() {
+            anyhow::bail!("'args' and 'env' are only supported with 'command'");
+        }
+        validate_remote_url(url)?;
+        let transport = params.transport.as_deref().unwrap_or("http");
+        if !matches!(transport, "http" | "streamable-http" | "sse") {
+            anyhow::bail!("'transport' must be 'http', 'streamable-http', or 'sse'");
+        }
+        entry.insert("type".into(), json!(transport));
+        entry.insert("url".into(), json!(url));
+    } else {
+        let command = params.command.as_deref().unwrap_or_default().trim();
+        if command.is_empty() {
+            anyhow::bail!("'command' must not be empty");
+        }
+        if params.headers.is_some()
+            || params
+                .transport
+                .as_deref()
+                .is_some_and(|transport| transport != "stdio")
+        {
+            anyhow::bail!("'headers' and remote transports require 'url'");
+        }
+        for arg in params.args.iter().flatten() {
+            let value = if arg.starts_with('-') {
+                arg.split_once('=').map_or(arg.as_str(), |(_, v)| v)
+            } else {
+                arg.as_str()
+            };
+            reject_literal_secret("An entry in 'args'", value, true)?;
+        }
+        entry.insert("command".into(), json!(command));
+        if let Some(args) = &params.args {
+            entry.insert("args".into(), json!(args));
+        }
+    }
+    for (name, value) in &headers {
+        reject_literal_secret(&format!("Header '{name}'"), value, false)?;
+    }
+    for (name, value) in &env {
+        reject_literal_secret(&format!("Env '{name}'"), value, false)?;
+    }
+
+    let mut secrets = Vec::new();
+    for spec in params.secrets.iter().flatten() {
+        let field = secret_field(&spec.key)?;
+        let var = placeholder_var(slug, &field);
+        let prefix = spec.prefix.clone().unwrap_or_default();
+        if prefix.len() > 20 || strip_placeholders(&prefix) != prefix {
+            anyhow::bail!("secret 'prefix' must be a short literal such as \"Bearer \"");
+        }
+        let value = format!("{prefix}${{{var}}}");
+        match (spec.header.as_deref(), spec.env.as_deref()) {
+            (Some(header), None) if remote => {
+                let header = header.trim();
+                if header.is_empty() || header.chars().any(|c| c.is_whitespace() || c == ':') {
+                    anyhow::bail!("secret 'header' must be a valid HTTP header name");
+                }
+                headers.insert(header.to_string(), value);
+            }
+            (None, Some(name)) if !remote => {
+                let name = name.trim();
+                if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                {
+                    anyhow::bail!("secret 'env' must be a valid environment variable name");
+                }
+                env.insert(name.to_string(), value);
+            }
+            _ => anyhow::bail!(
+                "each secret needs 'header' (for a 'url' server) or 'env' (for a 'command' server), not both"
+            ),
+        }
+        if !secrets.iter().any(|(f, _)| f == &field) {
+            secrets.push((field, var));
+        }
+    }
+    if !headers.is_empty() {
+        entry.insert("headers".into(), json!(headers));
+    }
+    if !env.is_empty() {
+        entry.insert("env".into(), json!(env));
+    }
+    Ok(ConnectorEntry {
+        entry: Value::Object(entry),
+        secrets,
+        is_stdio: !remote,
+    })
+}
+
+/// `$AMIRO_HOME/mcp.json`: the file `McpConfig::load*` reads as the user-level
+/// config (and the backend writes as `$AMIRO_RUNTIME_HOME/mcp.json`).
+fn user_mcp_config_path() -> Result<std::path::PathBuf> {
+    Ok(crate::storage::amiro_dir()?.join("mcp.json"))
+}
+
+/// Read the user-level config as raw JSON (no env expansion, no typed
+/// round-trip). A missing file is an empty config; an unreadable or invalid
+/// one is an error so it is never clobbered.
+fn read_raw_user_config(path: &std::path::Path) -> Result<Value> {
+    match std::fs::read_to_string(path) {
+        Ok(text) if text.trim().is_empty() => Ok(json!({})),
+        Ok(text) => {
+            let value: Value = serde_json::from_str(&text).map_err(|e| {
+                anyhow::anyhow!("{} is not valid JSON ({e}); refusing to overwrite it", path.display())
+            })?;
+            anyhow::ensure!(
+                value.is_object(),
+                "{} must contain a JSON object; refusing to overwrite it",
+                path.display()
+            );
+            Ok(value)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(json!({})),
+        Err(e) => Err(anyhow::anyhow!("cannot read {}: {e}", path.display())),
+    }
+}
+
+fn servers_key(root: &serde_json::Map<String, Value>) -> &'static str {
+    if root.contains_key("servers") {
+        "servers"
+    } else if root.contains_key("mcpServers") {
+        "mcpServers"
+    } else {
+        "servers"
+    }
+}
+
+/// Insert or replace one entry, leaving every other value untouched.
+fn upsert_server_value(root: &mut Value, name: &str, entry: Value) -> Result<()> {
+    let root = root.as_object_mut().ok_or_else(|| anyhow::anyhow!("config root is not an object"))?;
+    let key = servers_key(root);
+    let servers = root.entry(key).or_insert_with(|| json!({}));
+    servers
+        .as_object_mut()
+        .ok_or_else(|| anyhow::anyhow!("'{key}' in mcp.json is not an object"))?
+        .insert(name.to_string(), entry);
+    Ok(())
+}
+
+/// Remove one entry; returns whether it existed.
+fn remove_server_value(root: &mut Value, name: &str) -> Result<bool> {
+    let Some(root) = root.as_object_mut() else {
+        return Ok(false);
+    };
+    let key = servers_key(root);
+    match root.get_mut(key) {
+        None => Ok(false),
+        Some(servers) => Ok(servers
+            .as_object_mut()
+            .ok_or_else(|| anyhow::anyhow!("'{key}' in mcp.json is not an object"))?
+            .remove(name)
+            .is_some()),
+    }
+}
+
+/// Write pretty JSON atomically (tmp + rename) with 0600 permissions.
+fn write_json_atomic(path: &std::path::Path, value: &Value) -> Result<()> {
+    use std::io::Write;
+    let parent = path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("config path has no parent"))?;
+    std::fs::create_dir_all(parent)?;
+    let tmp = parent.join(format!(
+        ".mcp.json.tmp-{}-{}",
+        std::process::id(),
+        crate::id::new_id("w")
+    ));
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let result = (|| -> Result<()> {
+        let mut file = options.open(&tmp)?;
+        file.write_all(serde_json::to_string_pretty(value)?.as_bytes())?;
+        file.write_all(b"\n")?;
+        file.sync_all()?;
+        std::fs::rename(&tmp, path)?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
+}
+
+/// Whether `var` resolves from the process env or the live credential file.
+fn credential_resolved(var: &str, overlay: &HashMap<String, String>) -> bool {
+    std::env::var(var).is_ok_and(|v| !v.is_empty()) || overlay.get(var).is_some_and(|v| !v.is_empty())
+}
+
+/// Still-unexpanded `${AMIRO_CRED_*}` references in a loaded server config.
+fn unresolved_credential_vars(config: &McpServerConfig) -> Vec<String> {
+    let mut found = std::collections::BTreeSet::new();
+    let values = config
+        .args
+        .iter()
+        .chain(config.env.values())
+        .chain(config.headers.values())
+        .chain(config.url.iter());
+    for value in values {
+        let mut rest = value.as_str();
+        while let Some(start) = rest.find("${AMIRO_CRED_") {
+            let after = &rest[start + 2..];
+            let Some(end) = after.find('}') else { break };
+            found.insert(after[..end].to_string());
+            rest = &after[end + 1..];
+        }
+    }
+    found.into_iter().collect()
+}
+
+/// Field label for a placeholder variable of server `slug` (best effort).
+fn field_label(slug: &str, var: &str) -> String {
+    let prefix = format!("AMIRO_CRED_MCP_{}_", env_token(slug));
+    var.strip_prefix(&prefix).unwrap_or(var).to_ascii_lowercase()
+}
+
+fn waiting_message(slug: &str, fields: &[String]) -> String {
+    format!(
+        "Waiting for the user to enter {} in the secure card shown in the chat. Do not ask for the value in chat. After they confirm, call mcp with action \"connect\" and server \"{slug}\".",
+        fields.join(", ")
+    )
+}
+
+fn connector_setup_line(slug: &str, missing: &[String]) -> String {
+    format!(
+        "CONNECTOR_SETUP {}",
+        json!({"server": slug, "missingSecrets": missing})
+    )
+}
+
 pub struct McpManagementTool {
     manager: Arc<RwLock<McpManager>>,
     registry: Option<crate::tool::WeakRegistry>,
@@ -591,7 +1021,14 @@ impl Tool for McpManagementTool {
     }
 
     fn description(&self) -> &str {
-        "Manage MCP (Model Context Protocol) servers, including HTTP/SSE connections and local OAuth status/logout. Interactive login requires the explicit CLI command `amiro mcp login <configured-server>`."
+        "Manage MCP (Model Context Protocol) servers: list/connect/disconnect/reload, persistent `add`/`remove` of custom connectors, and local OAuth status/logout. \
+Interactive OAuth login requires the explicit CLI command `amiro mcp login <configured-server>`.\n\
+Adding connectors: prefer connectors that already exist (see `list`) before adding one. For a new service, find its official remote MCP URL and call `add` with `server` (name) and `url` (optional `transport`: http|streamable-http|sse). \
+`add` saves the connector persistently to the user-level mcp.json and connects it. \
+For ANY token, API key or password use `secrets`: [{\"key\":\"api_key\",\"header\":\"Authorization\",\"prefix\":\"Bearer \"}] (or `env` instead of `header` for stdio servers). \
+Never put a secret value in headers/env/args or ask for it in chat: the user enters it in a secure card, then call `connect` with the server name. Literal-looking secrets are rejected. \
+A `command` (stdio) connector runs a local process on this machine, so only use trusted commands; `add` and `remove` require user approval. \
+`remove` deletes a saved connector. `composio` is managed by the Connectors page and cannot be added or removed here."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -601,7 +1038,7 @@ impl Tool for McpManagementTool {
                 "intent": super::intent_schema_property(),
                 "action": {
                     "type": "string",
-                    "enum": ["list", "connect", "disconnect", "reload", "status", "logout"],
+                    "enum": ["list", "connect", "disconnect", "reload", "status", "logout", "add", "remove"],
                     "description": "Action."
                 },
                 "server": {
@@ -634,7 +1071,21 @@ impl Tool for McpManagementTool {
                 "transport": {
                     "type": "string",
                     "enum": ["stdio", "http", "streamable-http", "sse"],
-                    "description": "Ad hoc transport. Remote URLs default to Streamable HTTP with legacy SSE fallback."
+                    "description": "Transport for ad hoc connect and `add`. Remote URLs default to Streamable HTTP with legacy SSE fallback."
+                },
+                "secrets": {
+                    "type": "array",
+                    "description": "For `add`: secrets the USER will enter in a secure card. Never supply values.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "key": {"type": "string", "description": "Field name, e.g. api_key."},
+                            "header": {"type": "string", "description": "HTTP header to carry the secret (url servers)."},
+                            "env": {"type": "string", "description": "Environment variable to carry the secret (command servers)."},
+                            "prefix": {"type": "string", "description": "Optional literal prefix, e.g. \"Bearer \"."}
+                        },
+                        "required": ["key"]
+                    }
                 }
             },
             "required": ["action"]
@@ -660,6 +1111,8 @@ impl Tool for McpManagementTool {
         let result = match params.action.as_str() {
             "list" => self.list_servers().await,
             "connect" => self.connect_server(params, &ctx.session_id).await,
+            "add" => self.add_server(params, &ctx).await,
+            "remove" => self.remove_server(params, &ctx.session_id).await,
             "disconnect" => self.disconnect_server(params).await,
             "reload" => self.reload_config(&ctx.session_id).await,
             "status" | "logout" => self.oauth_action(params).await,
@@ -667,7 +1120,7 @@ impl Tool for McpManagementTool {
                 "Interactive MCP OAuth login is CLI-only. Run `amiro mcp login <configured-server>` in a terminal (add --no-browser to print the authorization URL). No browser was opened."
             ),
             _ => Ok(ToolOutput::new(format!(
-                "Unknown action: {}. Use 'list', 'connect', 'disconnect', 'reload', 'status', or 'logout'.",
+                "Unknown action: {}. Use 'list', 'connect', 'disconnect', 'reload', 'status', 'logout', 'add', or 'remove'.",
                 params.action
             ))),
         };
@@ -860,6 +1313,193 @@ impl McpManagementTool {
         Ok(ToolOutput::new(output).with_title("MCP: Server list"))
     }
 
+    async fn add_server(&self, params: McpToolInput, ctx: &ToolContext) -> Result<ToolOutput> {
+        let raw_name = params
+            .server
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("'server' is required for add action"))?;
+        let slug = normalize_slug(raw_name)?;
+        if slug == MANAGED_SERVER {
+            anyhow::bail!("'composio' is managed by the Connectors page and cannot be changed here");
+        }
+        let built = build_connector_entry(&slug, &params)?;
+        if built.is_stdio {
+            let mut line = params.command.clone().unwrap_or_default();
+            for arg in params.args.iter().flatten() {
+                line.push(' ');
+                line.push_str(arg);
+            }
+            if let Some(refusal) =
+                super::bash::destructive_gate::destructive_command_refusal(&line, None, ctx.working_dir.clone())
+            {
+                anyhow::bail!("{refusal}");
+            }
+        }
+
+        let path = user_mcp_config_path()?;
+        let mut root = read_raw_user_config(&path)?;
+        let replaced = root
+            .get(servers_key(root.as_object().unwrap_or(&serde_json::Map::new())))
+            .and_then(|servers| servers.get(&slug))
+            .is_some();
+        upsert_server_value(&mut root, &slug, built.entry.clone())?;
+        write_json_atomic(&path, &root)?;
+
+        let overlay = crate::storage::read_credential_env();
+        let missing: Vec<String> = built
+            .secrets
+            .iter()
+            .filter(|(_, var)| !credential_resolved(var, &overlay))
+            .map(|(field, _)| field.clone())
+            .collect();
+
+        let mut output = format!(
+            "{} MCP server '{}' in {}.\n",
+            if replaced { "Updated" } else { "Saved" },
+            slug,
+            path.display()
+        );
+        let mut metadata = None;
+        if missing.is_empty() {
+            // Drop any stale connection made with the previous definition.
+            let was_connected = self
+                .manager
+                .read()
+                .await
+                .connected_servers()
+                .await
+                .contains(&slug);
+            if was_connected {
+                let _ = self
+                    .disconnect_server(McpToolInput {
+                        action: "disconnect".into(),
+                        server: Some(slug.clone()),
+                        ..Default::default()
+                    })
+                    .await;
+            }
+            let connected = self
+                .connect_server(
+                    McpToolInput {
+                        action: "connect".into(),
+                        server: Some(slug.clone()),
+                        ..Default::default()
+                    },
+                    &ctx.session_id,
+                )
+                .await;
+            let manager = self.manager.read().await;
+            let is_connected = manager.connected_servers().await.contains(&slug);
+            let tool_count = manager
+                .all_tools()
+                .await
+                .iter()
+                .filter(|(owner, _)| owner == &slug)
+                .count();
+            drop(manager);
+            match connected {
+                Ok(connect_output) => {
+                    if is_connected {
+                        output.push_str(&format!("Connected: yes ({tool_count} tools).\n\n"));
+                    } else {
+                        output.push_str("Connected: no.\n\n");
+                    }
+                    output.push_str(&connect_output.output);
+                    metadata = connect_output.metadata;
+                }
+                Err(error) => {
+                    output.push_str(&format!("Connected: no ({error:#}).\n"));
+                }
+            }
+        } else {
+            output.push_str("Connected: no (waiting for secrets).\n");
+            output.push_str(&waiting_message(&slug, &missing));
+            output.push('\n');
+        }
+        if !output.ends_with('\n') {
+            output.push('\n');
+        }
+        output.push_str(&connector_setup_line(&slug, &missing));
+        let mut result = ToolOutput::new(output).with_title(format!("MCP: Added {slug}"));
+        if let Some(metadata) = metadata {
+            result = result.with_metadata(metadata);
+        }
+        Ok(result)
+    }
+
+    async fn remove_server(&self, params: McpToolInput, session_id: &str) -> Result<ToolOutput> {
+        let raw_name = params
+            .server
+            .as_deref()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("'server' is required for remove action"))?;
+        let normalized = normalize_slug(raw_name).ok();
+        if raw_name == MANAGED_SERVER || normalized.as_deref() == Some(MANAGED_SERVER) {
+            anyhow::bail!("'composio' is managed by the Connectors page and cannot be removed here");
+        }
+        let path = user_mcp_config_path()?;
+        let mut root = read_raw_user_config(&path)?;
+        let mut removed_name = None;
+        for candidate in std::iter::once(raw_name.to_string()).chain(normalized) {
+            if remove_server_value(&mut root, &candidate)? {
+                removed_name = Some(candidate);
+                break;
+            }
+        }
+        let Some(name) = removed_name else {
+            return Ok(ToolOutput::new(format!(
+                "No saved MCP server named '{raw_name}' in {}. Nothing was removed.",
+                path.display()
+            ))
+            .with_title("MCP: Not found"));
+        };
+        write_json_atomic(&path, &root)?;
+
+        let was_connected = self
+            .manager
+            .read()
+            .await
+            .connected_servers()
+            .await
+            .contains(&name);
+        if was_connected {
+            self.disconnect_server(McpToolInput {
+                action: "disconnect".into(),
+                server: Some(name.clone()),
+                ..Default::default()
+            })
+            .await?;
+        }
+        self.manager.write().await.remove_server_config(&name);
+        crate::logging::event_info(
+            "MCP_LIFECYCLE",
+            vec![
+                ("phase", "connector_removed".to_string()),
+                ("server", name.clone()),
+                ("session_id", session_id.to_string()),
+            ],
+        );
+        let still_configured = self
+            .manager
+            .read()
+            .await
+            .load_fresh_config()
+            .servers
+            .contains_key(&name);
+        let mut output = format!(
+            "Removed MCP server '{name}' from {}{}.",
+            path.display(),
+            if was_connected { " and disconnected it" } else { "" }
+        );
+        if still_configured {
+            output.push_str(
+                " Note: another config source (project-local or Claude Code config) still defines this name.",
+            );
+        }
+        Ok(ToolOutput::new(output).with_title(format!("MCP: Removed {name}")))
+    }
+
     async fn connect_server(&self, params: McpToolInput, session_id: &str) -> Result<ToolOutput> {
         let server_name = params
             .server
@@ -868,7 +1508,7 @@ impl McpManagementTool {
 
         // Explicit command/URL is ad hoc. Otherwise use the named config,
         // including disabled entries, without changing persistent configuration.
-        let configured = self
+        let mut configured = self
             .manager
             .read()
             .await
@@ -876,6 +1516,42 @@ impl McpManagementTool {
             .servers
             .get(&server_name)
             .cloned();
+        if params.command.is_none() && params.url.is_none() {
+            // Connecting a configured server by name re-reads the config files
+            // and the live credential file, so a connector added (or a secret
+            // entered) after this session started is picked up without reload.
+            let fresh = self
+                .manager
+                .read()
+                .await
+                .load_fresh_config()
+                .servers
+                .remove(&server_name);
+            if let Some(fresh) = fresh {
+                self.manager
+                    .write()
+                    .await
+                    .set_server_config(&server_name, fresh.clone());
+                configured = Some(fresh);
+            }
+            if let Some(config) = &configured {
+                let vars = unresolved_credential_vars(config);
+                if !vars.is_empty() {
+                    let fields: Vec<String> = vars
+                        .iter()
+                        .map(|var| field_label(&server_name, var))
+                        .collect();
+                    return Ok(ToolOutput::new(format!(
+                        "Not connected: '{}' is still missing {}.\n{}\n{}",
+                        server_name,
+                        fields.join(", "),
+                        waiting_message(&server_name, &fields),
+                        connector_setup_line(&server_name, &fields)
+                    ))
+                    .with_title("MCP: Waiting for secrets"));
+                }
+            }
+        }
         let config = connection_config(&params, configured)?;
 
         let manager = self.manager.read().await;

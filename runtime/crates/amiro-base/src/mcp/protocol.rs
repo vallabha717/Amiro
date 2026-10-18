@@ -486,8 +486,15 @@ impl McpConfig {
     }
 
     fn expand_environment_variables(&mut self) {
-        let warnings =
-            self.expand_environment_variables_with(|variable| std::env::var(variable).ok());
+        // Process env first, then the live credential overlay
+        // (`$AMIRO_HOME/credential-env.json`), read fresh on every load so a
+        // newly saved vault secret resolves without restarting the runtime.
+        let overlay = crate::storage::read_credential_env();
+        let warnings = self.expand_environment_variables_with(|variable| {
+            std::env::var(variable)
+                .ok()
+                .or_else(|| overlay.get(variable).cloned())
+        });
         for warning in warnings {
             crate::logging::warn(&format!(
                 "MCP: Server '{}' references unset environment variable '{}'; leaving '${{{}}}' unexpanded",

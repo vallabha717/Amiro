@@ -10,7 +10,7 @@
 /// into a reflection prompt that a blind retry cannot satisfy. Catastrophic
 /// targets (`/`, `$HOME`, credential stores, device nodes) are denied outright.
 /// See issue #604.
-pub(super) fn destructive_command_refusal(
+pub(in crate::tool) fn destructive_command_refusal(
     command: &str,
     justification: Option<&str>,
     working_dir: Option<std::path::PathBuf>,

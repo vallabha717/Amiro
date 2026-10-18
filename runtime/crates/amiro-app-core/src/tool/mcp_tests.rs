@@ -335,3 +335,167 @@ async fn test_reload_empty_config() {
             || result.output.contains("Reloaded MCP config")
     );
 }
+
+// ---- persistent add / remove ----
+
+#[test]
+fn slug_and_placeholder_format() {
+    assert_eq!(normalize_slug("  My Linear_Server! ").unwrap(), "my-linear-server");
+    assert!(normalize_slug("!!!").is_err());
+    assert!(normalize_slug(&"a".repeat(41)).is_err());
+    assert_eq!(secret_field("API-Key").unwrap(), "api_key");
+    assert_eq!(
+        placeholder_var("my-linear", "api_key"),
+        "AMIRO_CRED_MCP_MY_LINEAR_API_KEY"
+    );
+}
+
+#[test]
+fn literal_secrets_are_rejected_but_placeholders_pass() {
+    assert!(looks_like_literal_secret("sk-abc", false));
+    assert!(looks_like_literal_secret("ghp_xxxxxxxx", false));
+    assert!(looks_like_literal_secret("xoxb-123", false));
+    assert!(looks_like_literal_secret("Bearer abcdefghijklmnopqrstuvwxyz", false));
+    assert!(looks_like_literal_secret("abcdefghijklmnopqrstuvwxyz0123456789", false));
+    assert!(!looks_like_literal_secret("Bearer ${AMIRO_CRED_MCP_X_TOKEN}", false));
+    assert!(!looks_like_literal_secret("application/json", false));
+    assert!(!looks_like_literal_secret("/home/user/some/long/path/to/directory", false));
+    assert!(!looks_like_literal_secret("mcp-server-sequential-thinking-extra", true));
+}
+
+fn add_params(json: Value) -> McpToolInput {
+    let mut value = json;
+    value["action"] = json!("add");
+    serde_json::from_value(value).unwrap()
+}
+
+#[test]
+fn build_entry_uses_placeholders_and_rejects_typed_secrets() {
+    let built = build_connector_entry(
+        "linear",
+        &add_params(json!({
+            "server": "linear",
+            "url": "https://mcp.linear.app/mcp",
+            "secrets": [{"key": "authorization", "header": "Authorization", "prefix": "Bearer "}]
+        })),
+    )
+    .unwrap();
+    assert_eq!(
+        built.entry["headers"]["Authorization"],
+        "Bearer ${AMIRO_CRED_MCP_LINEAR_AUTHORIZATION}"
+    );
+    assert_eq!(built.entry["type"], "http");
+    assert_eq!(built.secrets[0].0, "authorization");
+
+    let err = build_connector_entry(
+        "linear",
+        &add_params(json!({
+            "server": "linear",
+            "url": "https://mcp.linear.app/mcp",
+            "headers": {"Authorization": "Bearer abcdefghijklmnopqrstuvwxyz"}
+        })),
+    )
+    .err()
+    .expect("typed secret must be rejected");
+    assert!(err.to_string().contains("secrets"));
+
+    let stdio = build_connector_entry(
+        "gh",
+        &add_params(json!({
+            "server": "gh", "command": "npx", "args": ["-y", "some-mcp"],
+            "secrets": [{"key": "token", "env": "GITHUB_TOKEN"}]
+        })),
+    )
+    .unwrap();
+    assert_eq!(stdio.entry["env"]["GITHUB_TOKEN"], "${AMIRO_CRED_MCP_GH_TOKEN}");
+    assert!(stdio.is_stdio);
+}
+
+#[test]
+fn upsert_and_remove_preserve_other_entries_and_unknown_keys() {
+    let mut root = json!({
+        "mcpServers": {
+            "composio": {"type": "http", "url": "https://x", "headers": {"x-api-key": "${COMPOSIO_API_KEY}"}, "weird": [1, {"a": null}]},
+        },
+        "extra": {"keep": true}
+    });
+    let before = root.clone();
+    upsert_server_value(&mut root, "linear", json!({"url": "https://l"})).unwrap();
+    assert_eq!(root["mcpServers"]["composio"], before["mcpServers"]["composio"]);
+    assert_eq!(root["extra"], before["extra"]);
+    assert!(root.get("servers").is_none());
+    assert!(remove_server_value(&mut root, "linear").unwrap());
+    assert!(!remove_server_value(&mut root, "linear").unwrap());
+    assert_eq!(root, before);
+}
+
+#[cfg(unix)]
+#[test]
+fn atomic_write_is_0600_and_leaves_no_tmp_files() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("mcp.json");
+    write_json_atomic(&path, &json!({"servers": {}})).unwrap();
+    assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+    assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+}
+
+#[test]
+fn approval_classification() {
+    assert!(mcp_call_requires_approval(&json!({"action": "add"})));
+    assert!(mcp_call_requires_approval(&json!({"action": "remove"})));
+    assert!(mcp_call_requires_approval(&json!({"action": "connect", "command": "x"})));
+    assert!(!mcp_call_requires_approval(&json!({"action": "list"})));
+    assert!(!mcp_call_requires_approval(&json!({"action": "status"})));
+    assert!(!mcp_call_requires_approval(&json!({"action": "connect", "server": "a"})));
+}
+
+#[tokio::test]
+async fn add_without_secret_waits_then_remove_cleans_up() {
+    let _guard = crate::storage::lock_test_env();
+    let home = tempfile::tempdir().unwrap();
+    let previous = std::env::var_os("AMIRO_HOME");
+    crate::env::set_var("AMIRO_HOME", home.path());
+    let path = home.path().join("mcp.json");
+    fs::write(
+        &path,
+        r#"{"servers":{"composio":{"type":"http","url":"https://c.example/mcp"}},"extra":1}"#,
+    )
+    .unwrap();
+
+    let tool = create_test_tool();
+    let ctx = create_test_context();
+    let out = tool
+        .execute(
+            json!({"action":"add","server":"Linear","url":"https://mcp.linear.app/mcp",
+                   "secrets":[{"key":"authorization","header":"Authorization","prefix":"Bearer "}]}),
+            ctx.clone(),
+        )
+        .await;
+    let removed = tool
+        .execute(json!({"action":"remove","server":"linear"}), ctx.clone())
+        .await;
+    let refused = tool
+        .execute(json!({"action":"remove","server":"composio"}), ctx)
+        .await;
+    let saved_after = fs::read_to_string(&path).unwrap();
+
+    match previous {
+        Some(v) => crate::env::set_var("AMIRO_HOME", v),
+        None => crate::env::remove_var("AMIRO_HOME"),
+    }
+    let out = out.unwrap().output;
+    assert!(out.contains("Saved MCP server 'linear'"), "{out}");
+    assert!(out.contains("Waiting for the user to enter authorization"), "{out}");
+    assert!(out.trim_end().ends_with(
+        r#"CONNECTOR_SETUP {"missingSecrets":["authorization"],"server":"linear"}"#
+    ) || out.trim_end().ends_with(
+        r#"CONNECTOR_SETUP {"server":"linear","missingSecrets":["authorization"]}"#
+    ), "{out}");
+    assert!(removed.unwrap().output.contains("Removed MCP server 'linear'"));
+    assert!(refused.is_err());
+    let value: Value = serde_json::from_str(&saved_after).unwrap();
+    assert!(value["servers"].get("linear").is_none());
+    assert!(value["servers"].get("composio").is_some());
+    assert_eq!(value["extra"], 1);
+}

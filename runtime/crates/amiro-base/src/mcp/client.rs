@@ -197,6 +197,14 @@ impl McpClient {
         config: &McpServerConfig,
         working_dir: Option<&std::path::Path>,
     ) -> Result<Self> {
+        // A connector whose vault key has not been entered yet still carries
+        // its `${AMIRO_CRED_…}` placeholder. Dialing with it only earns a 401
+        // (or a crashed stdio server); say what is missing instead.
+        if let Some(var) = unresolved_credential(config) {
+            anyhow::bail!(
+                "MCP server '{name}' is waiting for a key ({var}). Add it on the Connectors page or in the secure card in chat."
+            );
+        }
         if let Some(transport) = config.remote_transport() {
             return Self::connect_remote(name, config, transport).await;
         }
@@ -753,5 +761,44 @@ done
 
         let reported = client.server_info().expect("server info").name;
         assert!(!reported.is_empty());
+    }
+}
+
+/// The first `${AMIRO_CRED_…}` reference still left unexpanded in `config`.
+pub fn unresolved_credential(config: &McpServerConfig) -> Option<String> {
+    let mut texts: Vec<&str> = vec![config.command.as_str()];
+    texts.extend(config.args.iter().map(String::as_str));
+    texts.extend(config.env.values().map(String::as_str));
+    texts.extend(config.headers.values().map(String::as_str));
+    if let Some(url) = &config.url {
+        texts.push(url.as_str());
+    }
+    texts.into_iter().find_map(|text| {
+        let start = text.find("${AMIRO_CRED_")?;
+        let rest = &text[start + 2..];
+        let end = rest.find('}')?;
+        Some(rest[..end].to_string())
+    })
+}
+
+#[cfg(test)]
+mod unresolved_credential_tests {
+    use super::*;
+
+    #[test]
+    fn finds_placeholders_left_unexpanded() {
+        let mut config: McpServerConfig =
+            serde_json::from_value(serde_json::json!({"url": "http://x/mcp"})).unwrap();
+        assert_eq!(unresolved_credential(&config), None);
+        config
+            .headers
+            .insert("Authorization".into(), "Bearer ${AMIRO_CRED_MCP_DEMO_AUTHORIZATION}".into());
+        assert_eq!(
+            unresolved_credential(&config).as_deref(),
+            Some("AMIRO_CRED_MCP_DEMO_AUTHORIZATION")
+        );
+        config.headers.insert("Authorization".into(), "Bearer real".into());
+        config.env.insert("HOME_DIR".into(), "${HOME}".into());
+        assert_eq!(unresolved_credential(&config), None);
     }
 }

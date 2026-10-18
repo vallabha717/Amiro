@@ -35,6 +35,10 @@ pub enum RuntimeCommand {
     /// tool's `reload` action, for clients (for example a backend that just
     /// wrote a new MCP server definition) that cannot call tools directly.
     McpReload,
+    /// Live MCP server status (every configured server, connected or not, plus
+    /// ad hoc connections) as structured data, without a model turn and
+    /// without taking the agent lock. Wire name: `mcp_status`.
+    McpStatus,
     Review,
     Judge,
     Subagent,
@@ -64,6 +68,14 @@ mod tests {
         assert_eq!(value, serde_json::json!("mcp_reload"));
         let parsed: RuntimeCommand = serde_json::from_value(value).unwrap();
         assert_eq!(parsed, RuntimeCommand::McpReload);
+    }
+
+    #[test]
+    fn mcp_status_round_trips_as_snake_case_wire_name() {
+        let value = serde_json::to_value(RuntimeCommand::McpStatus).unwrap();
+        assert_eq!(value, serde_json::json!("mcp_status"));
+        let parsed: RuntimeCommand = serde_json::from_value(value).unwrap();
+        assert_eq!(parsed, RuntimeCommand::McpStatus);
     }
 
     /// Existing wire names stay stable: this command surface is consumed by
