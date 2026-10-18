@@ -118,8 +118,9 @@ Node.js at all. Node is only a build-time and test-time dependency.
 
 - Configured STT/TTS providers, dictation, read-aloud, and voice
   fetching/preview (`/api/voice/settings`, `/api/tts/*`, `/api/stt/transcribe`).
-- Inline expressive voice stage above the composer (mesh waves, character eyes,
-  composer bar, header pill), not a full-page takeover.
+- Live voice mode (Vellum-style: streamed mic audio, server VAD and barge-in,
+  ElevenLabs Scribe + streaming TTS) in a voice room starring the agent's
+  plush mascot; see [docs/LIVE-VOICE.md](docs/LIVE-VOICE.md).
 
 **Connectors**
 
@@ -605,7 +606,9 @@ The living documents, worth reading in this order:
 | [`docs/settings-ui.md`](docs/settings-ui.md) | Simplified settings surfaces (credentials, workspace, memory, superpowers) and verification |
 | [`docs/search-runtime.md`](docs/search-runtime.md) | Configured-only search runtime routing |
 | [`docs/chat-titles.md`](docs/chat-titles.md) | Runtime title reuse and manual-title protection |
-| [`docs/VOICE-AND-SPEECH.md`](docs/VOICE-AND-SPEECH.md) | Voice and speech: configured STT/TTS, dictation, read-aloud, inline stage |
+| [`docs/VOICE-AND-SPEECH.md`](docs/VOICE-AND-SPEECH.md) | Voice and speech: configured STT/TTS, dictation, read-aloud, and the provider catalogs |
+| [`docs/LIVE-VOICE.md`](docs/LIVE-VOICE.md) | Live voice mode: hands-free ElevenLabs conversation, wire protocol, barge-in, phases, and the voice room |
+| [`docs/CHAT-UX-AND-SWARM.md`](docs/CHAT-UX-AND-SWARM.md) | Chat experience: session panel, tool filter, inline images, smooth streaming, and swarm agent panes |
 | [`docs/CREDENTIAL-VAULT.md`](docs/CREDENTIAL-VAULT.md) | Credential vault: encrypted store, metadata-only lists, brokered proxy |
 
 Everything else under `docs/`, including every `progress/` and `phases/`

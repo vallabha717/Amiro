@@ -1,9 +1,10 @@
 # Voice & Speech
 
 Vellum-inspired Voice & Speech subsystem for Amiro: text-to-speech narration,
-microphone dictation, and an expressive inline Voice Mode stage. This document
-describes the shipped architecture, the seven TTS providers and seven STT
-providers, the non-blocking inline UI, the HTTP surface, and how to test it.
+microphone dictation, and hands-free live voice mode. Live voice is documented
+in [LIVE-VOICE.md](LIVE-VOICE.md). This document describes the shipped
+architecture of the provider-based speech features, the seven TTS providers
+and seven STT providers, the HTTP surface, and how to test it.
 
 ## Overview & Architecture
 
@@ -14,22 +15,20 @@ and one encrypted credential store:
 | --- | --- | --- |
 | Admin Settings | `/admin/voice` (`src/app/(chat)/(admin)/admin/voice/page.tsx`) | Pick providers, models, voices, base URLs; store API keys; fetch live voice catalogs; preview voices; toggle Read Aloud. |
 | Composer Dictation | `src/components/prompt-input.tsx` | Mic button dictation using the configured STT provider (browser `SpeechRecognition` or server transcription). |
-| Per-Message & Auto Read Aloud | `src/components/message-parts.tsx`, `src/components/chat-bot.tsx` | A speaker action on each assistant message, plus an optional "speak the reply when the turn finishes" mode. |
-| Inline Expressive Voice Mode Stage | `src/components/chat-bot-voice.tsx`, `src/components/voice/*` | A live, hands-free voice conversation stage rendered inline above the composer. |
+| Per-Message & Auto Read Aloud | `src/components/message-parts.tsx`, `src/components/chat-bot.tsx` | A speaker action on each assistant message, plus an optional "speak the reply when the turn finishes" mode. Auto read-aloud is skipped while a live voice session is active. |
+| Live Voice Mode | `src/components/voice-room/*`, `src/lib/voice/*` | A live, hands-free voice conversation (ElevenLabs only), rendered inline above the composer. See [LIVE-VOICE.md](LIVE-VOICE.md). |
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│ AppHeader  ── VoiceSessionPill (status/controls while minimized)      │
+│ Chat thread (sidebar, header and text input stay interactive)        │
 │                                                                      │
-│ Chat thread (sidebar + header + text input stay interactive)         │
-│                                                                      │
-│ ┌──────────────────────────────────────────────────────────────────┐ │
-│ │ LiveVoiceStage  (src/components/chat-bot-voice.tsx)              │ │
-│ │   ├─ VoiceRoomEyes        (expressive eyes + Aura Dots body)     │ │
-│ │   ├─ VoiceMeshWaves / VoiceReactiveWaves (audio-reactive ribbon) │ │
-│ │   └─ ExpressionSelectorPill + mic/output/end controls            │ │
-│ └──────────────────────────────────────────────────────────────────┘ │
-│ [ prompt-input.tsx composer ]  ← VoiceComposerBar when minimized     │
+│ ┌────────────────────────────────────────────────────────────────┐   │
+│ │ VoiceRoom  (src/components/voice-room/voice-room.tsx)          │   │
+│ │   ├─ VoiceMascot  (plush; reacts to mic and speaker level)     │   │
+│ │   └─ mute, stop, minimize and end controls                     │   │
+│ └────────────────────────────────────────────────────────────────┘   │
+│ [ VoiceDock above the composer when minimized ]                      │
+│ [ prompt-input.tsx composer ]                                        │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -46,19 +45,18 @@ Data flow:
 - **Runtime state** lives in two Zustand stores:
   - `src/lib/ai/speech/read-aloud-store.ts` — the single-message read-aloud
     player (`useMessageReadAloudStore`).
-  - `src/lib/ai/speech/live-voice-store.ts` — the live session, phase machine,
-    amplitude channel, and mic capture controller (`useLiveVoiceStore`,
-    `useLiveVoiceController`).
-- **Motion primitives** live in `src/lib/ai/speech/live-voice-motion.ts` and are
-  deliberately React-free so the visuals and unit tests share one source of
-  truth.
+  - `src/lib/voice/voice-store.ts` — the live voice session, phase machine,
+    captions and mute state (`useVoiceStore`). Mic capture and playback live in
+    `src/lib/voice/pcm-capture.ts` and `src/lib/voice/tts-playback.ts`. See
+    [LIVE-VOICE.md](LIVE-VOICE.md).
 
 > Note on endpoint naming: the shipped routes are `GET/PUT /api/voice/settings`,
 > `POST /api/tts/voices`, `POST /api/tts/synthesize`, and
 > `POST /api/stt/transcribe` (see `routes()` in `backend/src/routes/voice.rs` and
 > the Node mirror `adapter/src/routes/voice.mjs`). Older shorthand references to
 > `/api/voice/voices`, `/api/voice/tts`, and `/api/voice/stt` map to those
-> three POST routes.
+> three POST routes. Live voice has its own routes under `/api/live-voice/*` (a
+ticket, a preflight and a WebSocket), documented in [LIVE-VOICE.md](LIVE-VOICE.md).
 
 ## Supported TTS & STT Providers
 
@@ -74,7 +72,7 @@ frontend fallback only fills in when the backend is unreachable.
 | id | Display name | Default model | Default voice | Base URL | Notes |
 | --- | --- | --- | --- | --- | --- |
 | `openai` | OpenAI Speech | `tts-1` | `alloy` | `https://api.openai.com/v1` | Models `tts-1`, `tts-1-hd`, `gpt-4o-mini-tts`. 11 voices. |
-| `elevenlabs` | ElevenLabs | `eleven_turbo_v2_5` | `21m00Tcm4TlvDq8ikWAM` | `https://api.elevenlabs.io` | `eleven_multilingual_v2`, `eleven_flash_v2_5`. Live voice catalog. |
+| `elevenlabs` | ElevenLabs | `eleven_turbo_v2_5` | `EXAVITQu4vr4xnSDxMaL` | `https://api.elevenlabs.io` | `eleven_multilingual_v2`, `eleven_flash_v2_5`. Live voice catalog. Live voice always uses ElevenLabs. |
 | `deepgram` | Deepgram Aura | `aura-2-thalia-en` | `aura-2-thalia-en` | `https://api.deepgram.com` | Shares its key with Deepgram STT. |
 | `fish-audio` | Fish Audio | `speech-1.5` | *(none; reference ID)* | `https://api.fish.audio` | Voice cloning reference IDs; live model list. |
 | `xai` | xAI Grok Voice | `grok-tts` | `eve` | `https://api.x.ai` | Voices `eve`, `ara`, `rex`, `sal`, `leo`. |
@@ -108,10 +106,12 @@ because synthesis and recognition happen in the browser:
 - **TTS**: `src/lib/ai/speech/read-aloud-store.ts` calls
   `window.speechSynthesis.speak(new SpeechSynthesisUtterance(text))`, honouring
   the configured speed as `utterance.rate`.
-- **STT**: `src/lib/ai/speech/live-voice-store.ts` prefers the browser's
-  `SpeechRecognition` / `webkitSpeechRecognition` for continuous interim
-  results, and only falls back to `MediaRecorder` + server transcription when
-  the provider is not `browser-native`.
+- **STT**: dictation in `src/components/prompt-input.tsx` uses the browser's
+  `SpeechRecognition` / `webkitSpeechRecognition` (continuous, final results
+  only) when the provider is `browser-native`. It falls back to `MediaRecorder`
+  and server transcription when the provider is anything else, or when
+  recognition is unavailable or fails to start. Live voice does not use
+  browser-native STT.
 
 ### OpenAI
 
@@ -185,112 +185,28 @@ contains a key, only a masked `apiKeyHint` like `••••1234` and a `config
 boolean. Key resolution order at synthesis/transcription time is: request key →
 namespaced slot → shared bare slot.
 
-## Inline Expressive Voice Mode UI (No Full-Page Blocking Drawer)
+## Live Voice Mode
 
-Voice Mode is **inline**. `ChatBotVoice` renders `null`; the stage and bar mount
-inside `src/components/prompt-input.tsx` directly above the composer
-(`src/components/chat-bot-voice.tsx` comment: "NO FULL-PAGE BLOCKING DRAWER").
-The sidebar, app header, chat thread, and text input remain fully interactive
-while voice is active.
+Live voice replaced the earlier inline Expressive Voice Mode stage. The stage
+files (`src/components/chat-bot-voice.tsx`, `src/components/voice/*`,
+`src/lib/ai/speech/live-voice-store.ts`, `src/lib/ai/speech/live-voice-motion.ts`)
+have been deleted. The current design is documented in
+[LIVE-VOICE.md](LIVE-VOICE.md). In brief:
 
-Session lifecycle:
-
-- `ChatBotVoice` calls `useLiveVoiceController()` and bidirectionally syncs
-  `appStore.voiceChat.isOpen` ↔ `useLiveVoiceStore.active`.
-- Keyboard: the configured `Shortcuts.toggleVoiceChat` toggles the session;
-  `Escape` minimizes an expanded stage (does not end it).
-- `prompt-input.tsx` listens for `amiro:voice-utterance`
-  (`LIVE_VOICE_UTTERANCE_EVENT`) and forwards to `sendMessage`; when a reply
-  finishes it mirrors the assistant text into the stage and auto-speaks it
-  (unless output is muted).
-
-### `LiveVoiceStage` (`src/components/chat-bot-voice.tsx`)
-
-Renders directly above the composer when `active && !minimized`. Structure:
-
-- **Background**: a bottom wave band (mesh or reactive spline, toggled by the
-  wave button) whose ink is `BAND_VOICE.listening` (white) while listening and
-  `BAND_VOICE.responding` (black) while replying.
-- **Top bar**: agent name + `liveVoicePhaseLabel`, the `ExpressionSelectorPill`
-  (hidden on small screens, shown in a second row instead), the wave-engine
-  toggle, captions toggle, minimize (chevron, `Esc`), and end (X).
-- **User speech pill** (`voice-ambient-user`): the interim/final transcript.
-- **Center**: `VoiceRoomEyes`.
-- **Lower zone**: word-by-word assistant captions with a highlighted current
-  word (~310 ms/word pacing), otherwise the phase caption.
-- **Bottom controls**: mic mute, speaker mute, and the hint
-  "Press Space to finalize turn • Esc to minimize".
-
-Amplitudes come from the store's imperative channel
-(`getLiveVoiceInputAmplitude` / `getLiveVoiceOutputAmplitude`) which are read
-inside each visual's own `requestAnimationFrame` loop, so audio frames never
-trigger React re-renders.
-
-### `VoiceRoomEyes` (`src/components/voice/voice-expressive-eyes.tsx`)
-
-The expressive character, built from the agent's Aura Dots identity:
-
-- **Identity**: `useAgentIdentity()` supplies `traits`, `accentHex`, `name`, and
-  `customImageUrl`; `toneForBg` derives foreground/wash tone. The body silhouette
-  is drawn from `bodyShape.svgPath` plus a `bodyLattice` dot field and
-  `bodyAccentDots`, giving each agent its own colour palette. When
-  `customImageUrl` is set, the character renders as a circular avatar instead.
-- **Phase-driven scaling** (`EYE_STATE_SCALE`): `idle` 0.9, `listening` 1.0,
-  `thinking` 0.68, `responding` 0.85, `reconnecting` 0.9.
-- **Thinking**: `VoiceThinkingIndicator` renders three pulsing dots
-  (`thinking` visual).
-- **Blinking**: an initial natural **double-blink** on entry, then random idle
-  blinks every 2500–6000 ms (`2500 + Math.random()*3500`), 140 ms per blink.
-- **Cursor parallax**: a `mousemove` listener translates the eyes by up to
-  ±6 px X / ±4 px Y.
-- **Poke to react**: clicking the character triggers a blink plus a wobble
-  (`scaleX/scaleY/rotate` spring) and calls `onPoke`.
-- **60 fps audio-reactive transforms**: `useReactiveEyes` runs the
-  `createAmplitudeSmoother` ballistics (listening: 70 ms attack / 300 ms
-  release; responding: 110 ms attack / 380 ms release) and writes `--eye-amp`
-  plus a per-phase `transform` every frame.
-- **Live expression pills** (`EXPRESSION_PRESETS`): `Auto`, `Attentive`,
-  `Happy`, `Curious`, `Focused`, `Wink`, `Sparkle`, `Zen`. `Auto` (the default,
-  `eyeStyleOverride === null`) lets the mood follow the phase/amplitude via
-  `toVoiceExpressionMood` (e.g. listening+quiet → `attentive`, thinking →
-  `focused`, responding+quiet → `speaking`); picking a preset pins the eye marks
-  (`buildExpressionMarks`) regardless of state.
-
-All motion respects `prefers-reduced-motion`.
-
-### `VoiceMeshWaves` & `VoiceReactiveWaves` (`src/components/voice/voice-waves.tsx`)
-
-Two interchangeable ribbon engines sharing the same `getAmplitude()` contract
-and `BAND_VOICE` inks:
-
-- **`VoiceMeshWaves`** — a woven oscilloscope filament ribbon drawn on **Canvas
-  2D**: 84 lines × 96 samples by default, each line displaced by a two-component
-  sine field (`meshDisplacement`) with time drift, wander, and a swirling warp
-  driven by the rolling amplitude history. The inline variant
-  (`MESH_INLINE_TUNING`) drops to 24 lines with wider spread for the compact bar
-  and pill.
-- **`VoiceReactiveWaves`** — a 3-layer **Catmull-Rom spline** wave (SVG paths).
-  Layers are `back` (62 ms period, gain 0.42), `mid` (40 ms, 0.54), and `front`
-  (24 ms, 0.36), each with its own sway. The `inline` placement multiplies gain
-  ×1.6 and sway ×1.5.
-
-Both use `createAmplitudeSmoother` (80 ms attack / 350 ms release) and a
-time-paced ring buffer (`createAmplitudeHistory`) so scroll speed stays honest
-to wall-clock time even across dropped frames, and both are dismissed under
-reduced motion.
-
-### `VoiceComposerBar` & `VoiceSessionPill` (`src/components/voice/voice-composer-bar.tsx`)
-
-Minimizing (`Esc` or the chevron) flips `useLiveVoiceStore.minimized`:
-
-- **`VoiceComposerBar`** replaces the stage with a 40–44 px (`h-10 sm:h-11`)
-  rounded bar above the composer, carrying the same mesh ribbon, mic mute,
-  output mute, end, and an expand tap target that calls `restoreRoom`. Current
-  phase is announced via an `aria-live` region.
-- **`VoiceSessionPill`** is rendered in `src/components/layouts/app-header.tsx`
-  while a session is active (any state, expanded or minimized). It is a compact
-  `h-8 w-48 sm:w-56` status pill with mic/output mute and end, and its center
-  button restores the full stage. It returns `null` when inactive.
+- **Hands-free, server-driven turns.** One WebSocket carries 16 kHz microphone
+  audio up. The server runs voice activity detection, ElevenLabs Scribe for
+  speech-to-text, and ElevenLabs streaming TTS for speech out. The agent's turn
+  runs through the normal chat stream, so it appears in the thread with its
+  tool calls and approvals.
+- **Barge-in.** Speaking over a reply cancels the turn and stops playback.
+- **Inline, not a takeover.** The room mounts above the composer
+  (`src/components/voice-room/voice-room.tsx`). The sidebar, header and text
+  input stay usable. Minimizing it leaves a dock above the composer.
+- **ElevenLabs only.** Live voice always uses ElevenLabs, with one key for
+  speech in and out. It does not use the STT or TTS provider chosen on this
+  page.
+- **Controls.** Cmd/Ctrl+Shift+I toggles the session. Space, M and Esc act
+  within the room. The full list is in [LIVE-VOICE.md](LIVE-VOICE.md).
 
 ## API Endpoints
 
@@ -319,26 +235,34 @@ four paths (five HTTP methods) against the same on-disk store.
 # credential masking, and the HTTP surface.
 cargo test --manifest-path backend/Cargo.toml --test voice
 
+# Rust live voice: VAD, segmenter, sanitizer, tickets, client frames.
+# The ElevenLabs smoke test is #[ignore]d; run it with ELEVENLABS_API_KEY set.
+cargo test --manifest-path backend/Cargo.toml live_voice
+
 # Node adapter mirror.
 node --test adapter/test/voice.test.mjs
 
-# Frontend units: settings API, read-aloud store, live-voice store, and UI.
+# Frontend units: settings API, read-aloud store, and live voice.
 npx vitest run \
   src/lib/backend/voice-api.test.ts \
   src/lib/ai/speech/read-aloud-store.test.ts \
-  src/lib/ai/speech/live-voice-store.test.ts \
-  src/components/voice/voice-ui.test.tsx
+  src/lib/voice
 ```
 
 Coverage highlights: `backend/tests/voice.rs` asserts all four paths (five HTTP methods) are
 auth-gated and round-trips a settings update with credential masking;
 `adapter/test/voice.test.mjs` drives the real handlers through a fake app/ctx
 and asserts URL normalization for 9Router/custom bases and streaming audio;
-`voice-ui.test.tsx` covers `VoiceComposerBar`/`VoiceSessionPill` rendering.
+`src/lib/voice/voice-store.test.ts` and `src/lib/voice/use-voice-chat-bridge.test.ts`
+cover the live voice phase machine, barge-in and the chat bridge.
 
 ## Current Limitations & Scope
 
-- **Turn-based STT/VAD -> Chat -> TTS pipeline**: Voice Mode runs a hands-free turn loop (browser `SpeechRecognition` or `MediaRecorder` + silence VAD + `/api/stt/transcribe` -> chat turn -> `/api/tts/synthesize` or `speechSynthesis`) so that all 7 TTS/STT providers and custom OpenAI/9Router endpoints work uniformly, rather than a provider-locked WebRTC full-duplex audio socket.
-- **Browser/OS speech & hardware capabilities**: `browser-native` TTS/STT relies on `window.speechSynthesis` and `SpeechRecognition`/`webkitSpeechRecognition`, whose offline availability, voice list, and error callbacks vary by browser and OS. Automated E2E verification runs in headless Chromium against mocked/local endpoints rather than physical microphone hardware or paid third-party cloud keys.
-- **Simulated output amplitude envelope**: Because browser `<audio>` elements and `window.speechSynthesis` do not expose cross-origin PCM frames to an `AnalyserNode` across all providers, the assistant's `"responding"` wave/eye amplitude uses a synchronized multi-sine speech envelope while audio is playing, whereas microphone input uses a live Web Audio `AnalyserNode` RMS loop (falling back to a gentle breathing envelope if mic access is unavailable).
+- **Live voice is a separate path**: hands-free live voice ([LIVE-VOICE.md](LIVE-VOICE.md))
+  uses server-side VAD over one WebSocket and ElevenLabs only. Dictation and
+  read-aloud remain turn-based (record, transcribe, then send; or synthesize per
+  message) and work with whichever providers are configured. Dictation and
+  read-aloud are not full-duplex audio channels, and the live path does not use
+  any provider's native realtime API.
+- **Browser/OS speech & hardware capabilities**: `browser-native` TTS/STT relies on `window.speechSynthesis` and `SpeechRecognition`/`webkitSpeechRecognition`, whose offline availability, voice list, and error callbacks vary by browser and OS. Automated E2E verification runs in headless Chromium against mocked/local endpoints rather than physical microphone hardware or paid third-party cloud keys. Live voice was checked with a fake microphone and a real ElevenLabs key (see [LIVE-VOICE.md](LIVE-VOICE.md)).
 - **Single-utterance TTS cap**: `/api/tts/synthesize` caps individual synthesis requests at `8,192` characters (`MAX_TTS_CHARS`) and `/api/stt/transcribe` caps audio uploads at `25 MB` (`MAX_AUDIO_BYTES`).
