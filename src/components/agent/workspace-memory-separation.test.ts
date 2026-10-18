@@ -11,10 +11,7 @@ const memorySource = readFileSync(
   "utf8",
 );
 const adapterAgentSource = readFileSync(
-  path.join(
-    import.meta.dirname,
-    "../../../adapter/src/routes/agent.mjs",
-  ),
+  path.join(import.meta.dirname, "../../../adapter/src/routes/agent.mjs"),
   "utf8",
 );
 const backendAgentSource = readFileSync(
@@ -31,10 +28,13 @@ describe("workspace and memory separation", () => {
     expect(workspaceSource).toContain("Memory lives in its own view");
   });
 
-  it("memory defaults to the creative map with inspector, cards one click away", () => {
-    expect(memorySource).toContain('useState<ViewMode>("split")');
+  it("memory defaults to readable entries, with the map available on demand", () => {
+    expect(memorySource).toContain('useState<ViewMode>("cards")');
     expect(memorySource).toContain('id: "cards"');
     expect(memorySource).toContain('label: "Map"');
+    expect(memorySource).toContain("LIST_PAGE_SIZE = 24");
+    expect(memorySource).toContain('data-testid="memory-list"');
+    expect(memorySource).toContain('data-testid="memory-load-more"');
     expect(memorySource).toContain("/api/agent/memory");
   });
 
