@@ -99,17 +99,18 @@ Node.js at all. Node is only a build-time and test-time dependency.
 - **Superpowers**: a searchable compact skill list over the runtime, project,
   and user-authored instruction sets, resolved server-side.
 - **Memory**: read-only list-first inspection of the runtime's own memory
-  graphs (24 per page, opt-in map), with a permanent read-only banner. There is
-  no second memory engine.
+  graphs (24 per page, opt-in map), reflecting the native read-only capability.
+  There is no second memory engine.
 - **Workspace**: files-only, admin-gated, allowlisted, realpath-contained file
-  navigation and preview. It never mixes in memory or skills (memory lives in
-  its own view), credential files and session logs are never exposed, and
-  `config.toml` is redacted before it leaves the backend.
+  navigation and preview of allowed subtrees. No memory or skill management
+  widgets (memory lives in its own view), credential files and session logs are
+  never exposed, and `config.toml` is redacted before it leaves the backend.
 - Credentials vault: secrets live encrypted at rest under
   `$AMIRO_HOME/protected/` (AES-256-GCM, key beside the file, not process
-  isolation); clients only ever see metadata plus a masked hint. A brokered
+  isolation); list responses carry metadata plus a masked hint, never values
+  (the entry form's show toggle only reveals the value being typed). A brokered
   proxy injects the secret server-side without exposing it to the model; see
-  `docs/COMPOSIO.md` and `docs/SECURITY-MODEL.md`.
+  `docs/CREDENTIAL-VAULT.md` and `docs/SECURITY-MODEL.md`.
 - OpenDots plush avatars whose tint follows the active sidebar theme, with
   `prefers-reduced-motion` respected.
 
@@ -496,14 +497,18 @@ success is worse than an honest error.
 - Text chat, streaming, history, runtime-sourced titles with manual-title
   protection, archives, export, uploads.
 - Full provider connection: OAuth, device code, API key, local endpoints.
+  The mechanisms are implemented; per-provider authorization still depends on
+  the external provider (for example, OpenAI network failures surface
+  explicitly rather than succeeding).
 - The model catalog, including distinguishing a live listing from the runtime's
   static fallback.
 - Agent identity, personality, skills, read-only memory (list-first, 24 per page),
   files-only workspace browsing.
 - Schedules end to end, including DST-correct timezone handling and run history.
 - Configured-provider search (native default plus keyless/free engines),
-  encrypted credentials vault (metadata-only clients, key beside the file),
-  Composio connectors with Tool Router MCP sync, and configured STT/TTS voice.
+  encrypted credentials vault (list responses are metadata-only, key beside the
+  file), Composio connectors with Tool Router MCP sync, and configured STT/TTS
+  voice.
 - The Tauri desktop shell, with the Rust backend and Rust runtime as sidecars.
 
 **Not enabled, and returns explicit unsupported errors rather than pretending**
@@ -532,6 +537,10 @@ success is worse than an honest error.
 - The setup is single-operator. Provider credentials are shared operator
   credentials, and this is not an isolated multi-tenant BYOK service. Adding
   untrusted users needs per-user credential and daemon isolation first.
+- External providers are the boundary for auth and availability: the OAuth,
+  device-code, API-key, and local-endpoint mechanisms are implemented, but each
+  provider still needs its own authorization and a reachable network (failures
+  surface explicitly).
 - The restrictions above are a **policy, not an OS sandbox**. Do not treat a
   passing web preview as proof of isolation.
 
@@ -596,6 +605,8 @@ The living documents, worth reading in this order:
 | [`docs/settings-ui.md`](docs/settings-ui.md) | Simplified settings surfaces (credentials, workspace, memory, superpowers) and verification |
 | [`docs/search-runtime.md`](docs/search-runtime.md) | Configured-only search runtime routing |
 | [`docs/chat-titles.md`](docs/chat-titles.md) | Runtime title reuse and manual-title protection |
+| [`docs/VOICE-AND-SPEECH.md`](docs/VOICE-AND-SPEECH.md) | Voice and speech: configured STT/TTS, dictation, read-aloud, inline stage |
+| [`docs/CREDENTIAL-VAULT.md`](docs/CREDENTIAL-VAULT.md) | Credential vault: encrypted store, metadata-only lists, brokered proxy |
 
 Everything else under `docs/`, including every `progress/` and `phases/`
 directory, is design history. Treat those as a record of what was decided, not as
