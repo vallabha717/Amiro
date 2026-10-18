@@ -10,6 +10,7 @@ import {
   FlaskConical,
   Loader2,
   Search,
+  RefreshCw,
   Wrench,
   XCircle,
   Zap,
@@ -32,6 +33,7 @@ import {
   PROVIDERS_KEY,
   selectProviders,
   testProviderModel,
+  syncProviderModels,
   type ProviderConfig,
   type ProviderTestResult,
 } from "@/lib/backend/provider-api";
@@ -59,10 +61,12 @@ function ProviderTest() {
   const id = searchParams.get("id");
   const modelParam = searchParams.get("model");
 
-  const { data: providers, isLoading } = useSWR<ProviderConfig[]>(
-    PROVIDERS_KEY,
-    selectProviders,
-  );
+  const {
+    data: providers,
+    isLoading,
+    error: loadError,
+    mutate,
+  } = useSWR<ProviderConfig[]>(PROVIDERS_KEY, selectProviders);
 
   const provider = useMemo(
     () => providers?.find((p) => p.id === id),
@@ -73,12 +77,17 @@ function ProviderTest() {
   const [filter, setFilter] = useState("");
   const [isRunning, setIsRunning] = useState(false);
   const [result, setResult] = useState<ProviderTestResult | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // Land on a usable model instead of an empty right pane when the card
   // linked here without naming one.
   useEffect(() => {
-    if (!selectedModel && provider?.models?.length) {
-      setSelectedModel(provider.models[0]);
+    if (
+      provider &&
+      (!selectedModel || !provider.models?.includes(selectedModel))
+    ) {
+      setSelectedModel(provider.models?.[0] ?? null);
     }
   }, [provider, selectedModel]);
 
@@ -93,16 +102,54 @@ function ProviderTest() {
     if (!id || !selectedModel) return;
     setIsRunning(true);
     setResult(null);
+    setActionError(null);
     try {
       setResult(await testProviderModel(id, selectedModel));
     } catch (e) {
+      setActionError(
+        e instanceof Error
+          ? e.message
+          : "The model test could not be completed. Try again.",
+      );
       handleErrorWithToast(e as Error);
     } finally {
       setIsRunning(false);
     }
   };
 
+  const refreshModels = async () => {
+    if (!id) return;
+    setIsRefreshing(true);
+    setActionError(null);
+    try {
+      await syncProviderModels(id);
+      await mutate();
+    } catch (e) {
+      setActionError(
+        e instanceof Error
+          ? e.message
+          : "Could not refresh models. Check the provider connection and try again.",
+      );
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   if (isLoading) return <PageSkeleton />;
+
+  if (loadError)
+    return (
+      <div className="p-8 max-w-4xl mx-auto w-full space-y-4">
+        <BackLink label={t("backToProviders")} />
+        <Alert variant="destructive">
+          <AlertTitle>Could not load provider models</AlertTitle>
+          <AlertDescription>
+            Check your connection and try again.
+          </AlertDescription>
+        </Alert>
+        <Button onClick={() => mutate()}>Try again</Button>
+      </div>
+    );
 
   if (!provider) {
     return (
@@ -118,22 +165,26 @@ function ProviderTest() {
 
   return (
     <ScrollArea className="h-full w-full">
-      <div className="pt-8 px-8 max-w-4xl mx-auto w-full pb-16 flex flex-col gap-6">
+      <div className="pt-8 px-4 sm:px-8 max-w-6xl mx-auto w-full pb-16 flex flex-col gap-6">
         <div>
           <BackLink label={t("backToProviders")} />
           <div className="flex items-center gap-3 mt-4">
             <div className="p-2.5 bg-background border rounded-xl text-primary shadow-sm">
-              <ModelProviderIcon provider={provider.provider} className="size-5" />
+              <ModelProviderIcon
+                provider={provider.provider}
+                className="size-5"
+              />
             </div>
             <div>
               <h1 className="text-2xl font-bold flex items-center gap-2">
-                {provider.name}
+                {provider.name} models
                 <Badge variant="secondary" className="text-[10px]">
                   {provider.provider}
                 </Badge>
               </h1>
               <p className="text-sm text-muted-foreground">
-                {t("modelTestDescription")}
+                Browse every model reported for this connection, select one,
+                then run a test.
               </p>
             </div>
           </div>
@@ -141,50 +192,116 @@ function ProviderTest() {
 
         <Separator />
 
-        <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+        {actionError && (
+          <Alert variant="destructive" role="alert">
+            <AlertTitle>Action could not be completed</AlertTitle>
+            <AlertDescription className="break-words">
+              {actionError}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
           {/* Model picker */}
           <div className="flex flex-col gap-3 min-w-0">
-            <h2 className="text-sm font-semibold text-muted-foreground">
-              {t("availableModels")} ({models.length})
-            </h2>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold">
+                {t("availableModels")}{" "}
+                <Badge variant="secondary">{models.length}</Badge>
+              </h2>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={refreshModels}
+                disabled={isRefreshing || isRunning}
+                data-testid="refresh-models"
+              >
+                <RefreshCw
+                  className={cn("size-4 mr-2", isRefreshing && "animate-spin")}
+                />
+                {isRefreshing ? "Refreshing..." : "Refresh models"}
+              </Button>
+            </div>
 
-            {models.length > 8 && (
+            {
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
                 <Input
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
                   placeholder={t("filterModels")}
-                  className="h-8 pl-7 text-xs"
+                  aria-label="Search available models"
+                  data-testid="filter-models"
+                  className="h-10 pl-8 text-sm"
                 />
               </div>
-            )}
+            }
 
-            <div className="flex flex-col gap-1.5 max-h-[420px] overflow-y-auto pr-1">
+            <p
+              className="text-xs text-muted-foreground"
+              aria-live="polite"
+              data-testid="model-list-count"
+            >
+              {filter
+                ? `${visibleModels.length} of ${models.length} models match your search`
+                : `${models.length} models listed. Select a model to test its response.`}
+            </p>
+            <div
+              className="flex flex-col divide-y border rounded-lg max-h-[560px] overflow-y-auto"
+              aria-label="Available models"
+              aria-busy={isRefreshing}
+            >
               {visibleModels.length === 0 ? (
-                <p className="text-sm text-muted-foreground italic p-2">
-                  {models.length === 0
-                    ? t("noModelsConfigured")
-                    : t("noModelsMatchFilter")}
-                </p>
+                <div className="p-6 space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    {models.length === 0
+                      ? t("noModelsConfigured")
+                      : t("noModelsMatchFilter")}
+                  </p>
+                  {filter && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setFilter("")}
+                    >
+                      Clear search
+                    </Button>
+                  )}
+                  {!models.length && (
+                    <p className="text-xs text-muted-foreground">
+                      Refresh the model list or check the provider credentials.
+                      A connected provider may not expose a model catalogue.
+                    </p>
+                  )}
+                </div>
               ) : (
                 visibleModels.map((model) => (
                   <button
                     key={model}
                     type="button"
+                    aria-pressed={selectedModel === model}
+                    disabled={isRunning}
                     onClick={() => {
                       setSelectedModel(model);
                       setResult(null);
                     }}
                     className={cn(
-                      "text-left text-sm rounded-md px-3 py-2 transition-colors truncate border",
+                      "text-left text-sm px-4 py-3 transition-colors flex items-start gap-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary disabled:opacity-50",
                       selectedModel === model
-                        ? "bg-primary/10 border-primary/40 font-medium"
-                        : "bg-secondary/50 border-transparent hover:bg-input",
+                        ? "bg-primary/10 font-medium"
+                        : "hover:bg-muted",
                     )}
                     data-testid="test-model-option"
                   >
-                    {model}
+                    <span className="font-mono break-all min-w-0 flex-1">
+                      {model}
+                    </span>
+                    {selectedModel === model && (
+                      <span className="text-xs flex items-center gap-1 shrink-0 text-primary">
+                        <CheckCircle2 className="size-3.5" />
+                        Selected
+                      </span>
+                    )}
                   </button>
                 ))
               )}
@@ -193,18 +310,26 @@ function ProviderTest() {
 
           {/* Result pane */}
           <div className="flex flex-col gap-4 min-w-0">
-            <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold">Test selected model</h2>
+            <p className="text-xs text-muted-foreground">
+              Runs a live response and tool-calling check. Provider usage
+              charges may apply.
+            </p>
+            <div className="flex flex-col gap-3 border rounded-lg p-4">
               <div className="min-w-0 flex-1">
                 <p className="text-xs text-muted-foreground">
                   {t("selectedModel")}
                 </p>
-                <p className="font-mono text-sm truncate">
+                <p
+                  className="font-mono text-sm break-all mt-1"
+                  data-testid="selected-test-model"
+                >
                   {selectedModel ?? "—"}
                 </p>
               </div>
               <Button
                 onClick={runTest}
-                disabled={!selectedModel || isRunning}
+                disabled={!selectedModel || isRunning || isRefreshing}
                 className="font-semibold shrink-0"
                 data-testid="run-model-test"
               >
@@ -213,7 +338,7 @@ function ProviderTest() {
                 ) : (
                   <FlaskConical className="size-4 mr-2" />
                 )}
-                {t("runTest")}
+                {isRunning ? "Testing model..." : "Run model test"}
               </Button>
             </div>
 

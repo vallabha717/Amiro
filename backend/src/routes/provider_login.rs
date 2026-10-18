@@ -37,6 +37,16 @@ fn completion_flag(provider: &str, input: &str) -> &'static str {
     }
 }
 
+fn completion_error(provider: &str, stderr: &str) -> String {
+    if provider == "openai" && stderr.contains("error sending request")
+        && stderr.contains("auth.openai.com/oauth/token")
+    {
+        return "This server could not establish a connection to OpenAI's OAuth token endpoint. Check the server's outbound network access and configured proxy. A manual callback cannot fix this network failure. Once connectivity is restored, start a new login flow.".into();
+    }
+    if stderr.trim().is_empty() { "Failed to complete login".into() }
+    else { stderr.trim().into() }
+}
+
 /// Static fallback only: used when the live engine catalog cannot be read.
 /// The live check in `can_start_oauth_flow` consults `auth status --json` so
 /// new engine OAuth providers work without editing this file.
@@ -359,11 +369,7 @@ async fn post_oauth_callback(
 
     if !output.status.success() {
         let err_text = String::from_utf8_lossy(&output.stderr);
-        let msg = if err_text.trim().is_empty() {
-            "Failed to complete login".to_string()
-        } else {
-            err_text.trim().to_string()
-        };
+        let msg = completion_error(&provider, &err_text);
         return Err(ApiError(StatusCode::BAD_REQUEST, msg));
     }
 
@@ -435,5 +441,13 @@ mod tests {
         for provider in ["openai", "antigravity", "google"] {
             assert_eq!(completion_flag(provider, "?code=x&state=y"), "--callback-url");
         }
+    }
+
+    #[test]
+    fn openai_transport_error_explains_server_network_boundary() {
+        let message = completion_error("openai", "error sending request for url (https://auth.openai.com/oauth/token)");
+        assert!(message.contains("outbound network"));
+        assert!(message.contains("manual callback cannot fix"));
+        assert_eq!(completion_error("openai", "OAuth state mismatch"), "OAuth state mismatch");
     }
 }

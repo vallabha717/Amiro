@@ -100,7 +100,7 @@ export const ProviderCard = memo(function ProviderCard({
         <div className="animate-pulse z-10 absolute inset-0 bg-background/50 flex items-center justify-center w-full h-full" />
       )}
 
-      <CardHeader className="flex items-center gap-1 mb-2">
+      <CardHeader className="flex flex-wrap items-center gap-1 mb-2">
         {isLoading && <Loader className="size-4 z-20 animate-spin mr-1" />}
 
         <ModelProviderIcon provider={provider} className="size-4 mr-1.5" />
@@ -125,19 +125,21 @@ export const ProviderCard = memo(function ProviderCard({
         <Tooltip>
           <TooltipTrigger asChild>
             {isLoading || !configured ? (
-              <div className="hidden sm:block">
-                <Button variant="ghost" size="icon" disabled>
-                  <FlaskConical className="size-3.5" />
+              <div>
+                <Button variant="outline" size="sm" disabled>
+                  <FlaskConical className="size-3.5 mr-1.5" />
+                  Models &amp; test
                 </Button>
               </div>
             ) : (
               <Link
                 href={`/admin/providers/test?id=${encodeURIComponent(id)}`}
-                className="cursor-pointer hidden sm:block"
+                className="cursor-pointer"
                 data-testid="provider-test-link"
               >
-                <Button variant="ghost" size="icon">
-                  <FlaskConical className="size-3.5" />
+                <Button variant="outline" size="sm">
+                  <FlaskConical className="size-3.5 mr-1.5" />
+                  Models &amp; test
                 </Button>
               </Link>
             )}
@@ -276,7 +278,9 @@ const ModelsList = memo(
           className="flex items-center gap-2 bg-secondary rounded-md p-2 hover:bg-input transition-colors"
           data-testid="provider-model-row"
         >
-          <p className="font-medium text-sm truncate flex-1 min-w-0">{model}</p>
+          <p className="font-medium text-sm break-all flex-1 min-w-0">
+            {model}
+          </p>
           <FlaskConical
             size={14}
             className="text-muted-foreground shrink-0"
