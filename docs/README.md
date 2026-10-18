@@ -17,8 +17,13 @@ retired compatibility harness kept only for contract tests.
 | Document | Description |
 |---|---|
 | [AMIRO-RUNTIME.md](AMIRO-RUNTIME.md) | **Primary source of truth.** Architecture, native backend and runtime bridges, authentication, provider and model catalogs, tools policy, folder browsing, security restrictions, and local execution. |
+| [COMPOSIO.md](COMPOSIO.md) | Connectors, Tool Router MCP sync, credential resolution, reload behaviour. |
+| [SECURITY-MODEL.md](SECURITY-MODEL.md) | Single-owner model, credentials vault, sandbox boundary, safe metadata. |
 | [RUST-RUNTIME.md](RUST-RUNTIME.md) | Details on the vendored `runtime/` workspace: building, crate breakdown, rebrand mappings, fork policy gates (telemetry and auto-update default-deny). |
 | [SCHEDULES.md](SCHEDULES.md) | Native scheduler documentation: once, cron, and interval timing, DST spring-forward and fall-back timezone validation, singleton OS advisory locking, and per-session saved model binding. |
+| [settings-ui.md](settings-ui.md) | Simplified settings surfaces (credentials, workspace, memory, superpowers) and their verification. |
+| [search-runtime.md](search-runtime.md) | Configured-only search runtime routing. |
+| [chat-titles.md](chat-titles.md) | Runtime title reuse and manual-title protection. |
 | [AGENT.md](AGENT.md) | Amiro Agent documentation: `/agent` hub, OpenDots plush mascots, sidebar habitat, customizer, two-way theme color synchronization, read-only memory, and allowlisted workspace. |
 | [_agent-visual-brief.md](_agent-visual-brief.md) | Visual design research, character references, and the decision record implementing OpenDots plush mascots. |
 | [_adapter-contract.md](_adapter-contract.md) | Specification for the retired Node compatibility harness (`adapter/`), used for running contract tests. |

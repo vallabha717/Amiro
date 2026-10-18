@@ -78,11 +78,17 @@ Node.js at all. Node is only a build-time and test-time dependency.
 - Multi-provider chat against the connected-provider model catalog, namespaced
   `provider:model` so a route is always pinned and never silently swapped.
 - Full provider catalog driven by the installed runtime: OAuth, device code, API
-  key, and local-endpoint mechanisms are all first class. A reference install
-  reports 55 providers and 140 models.
+  key, and local-endpoint mechanisms are all first class. Exact providers and
+  models vary by install.
 - OAuth eligibility is read from the live catalog (`canStartOauth`), so a new
   provider in the runtime works with no code change.
-- Streaming responses over SSE, thread history, titles, archives, and export.
+- Streaming responses over SSE, thread history, archives, and export. Thread
+  titles reuse the runtime's no-inference titles; a manually edited title
+  (`titleSource: manual`) is never overwritten.
+- Search through configured providers only: fresh installs seed provider-native
+  as the default plus keyless/free engines, agent websearch routes through the
+  same configured registry, and custom configs incompatible with runtime
+  validation are rejected.
 - A server-side folder picker, so choosing a workspace works in a plain browser
   with no native OS dialog. The chosen folder is pinned to the runtime session.
 
@@ -90,15 +96,34 @@ Node.js at all. Node is only a build-time and test-time dependency.
 
 - A customisable Agent: display name, tagline, persona sliders, portrait upload,
   and the sidebar theme.
-- **Superpowers**: the runtime, project, and user-authored instruction sets,
-  resolved server-side against the authenticated user's catalog.
-- **Memory**: read-only inspection of the runtime's own memory graphs. There is no
-  second memory engine.
-- **Workspace**: an admin-only, allowlisted, realpath-checked file browser for
-  runtime memory, skills, persona mirrors, and docs. Credential files and session
-  logs are never exposed, and `config.toml` is redacted before it leaves the backend.
+- **Superpowers**: a searchable compact skill list over the runtime, project,
+  and user-authored instruction sets, resolved server-side.
+- **Memory**: read-only list-first inspection of the runtime's own memory
+  graphs (24 per page, opt-in map), with a permanent read-only banner. There is
+  no second memory engine.
+- **Workspace**: files-only, admin-gated, allowlisted, realpath-contained file
+  navigation and preview. It never mixes in memory or skills (memory lives in
+  its own view), credential files and session logs are never exposed, and
+  `config.toml` is redacted before it leaves the backend.
+- Credentials vault: secrets live encrypted at rest under
+  `$AMIRO_HOME/protected/` (AES-256-GCM, key beside the file, not process
+  isolation); clients only ever see metadata plus a masked hint. A brokered
+  proxy injects the secret server-side without exposing it to the model; see
+  `docs/COMPOSIO.md` and `docs/SECURITY-MODEL.md`.
 - OpenDots plush avatars whose tint follows the active sidebar theme, with
   `prefers-reduced-motion` respected.
+
+**Voice**
+
+- Configured STT/TTS providers, dictation, read-aloud, and voice
+  fetching/preview (`/api/voice/settings`, `/api/tts/*`, `/api/stt/transcribe`).
+- Inline expressive voice stage above the composer (mesh waves, character eyes,
+  composer bar, header pill), not a full-page takeover.
+
+**Connectors**
+
+- Composio connectors page and Tool Router sync into runtime MCP, with
+  idle-session reload (`docs/COMPOSIO.md`).
 
 **Schedules**
 
@@ -113,11 +138,13 @@ Node.js at all. Node is only a build-time and test-time dependency.
 
 **Operations**
 
-- Admin surfaces for providers, search providers, usage, and users.
+- Admin surfaces for providers, search providers, Composio connectors,
+  credentials vault, voice settings, general/system, usage, and users.
 - Self-view usage stats, quota read from the runtime, and explicit labelling of
   shared-account scope instead of pretending per-user billing.
 - Password changes that take effect immediately, rate-limited sign-in, and
-  first-run owner setup. There is no registration.
+  first-run owner setup. This is single-owner with no registration, and tools
+  run with the owner's permissions by default.
 
 ---
 
@@ -422,7 +449,7 @@ the shim is not present there.
 
 ```sh
 # Frontend
-pnpm test            # vitest, 427 tests across 40 files
+pnpm test            # vitest
 pnpm check-types     # tsc --noEmit
 pnpm lint            # biome
 pnpm check           # lint:fix, then check-types, then test
@@ -440,6 +467,11 @@ node --test adapter/test/*.test.mjs
 pnpm build && scripts/start-native-ui-check.sh
 node scripts/verify-schedules-ui.mjs
 node scripts/verify-agent-color-sync.mjs
+node scripts/verify-search-ui.mjs # needs an existing admin@local session in AMIRO_TEST_HOME
+node scripts/verify-search-runtime.mjs
+node scripts/verify-runtime-titles.mjs
+node scripts/verify-settings-clarity.mjs
+node scripts/verify-settings-workflows.mjs
 ```
 
 The backend integration tests start real servers. They are reliable run serially
@@ -461,12 +493,17 @@ success is worse than an honest error.
 
 **Works**
 
-- Text chat, streaming, history, titles, archives, export, uploads.
+- Text chat, streaming, history, runtime-sourced titles with manual-title
+  protection, archives, export, uploads.
 - Full provider connection: OAuth, device code, API key, local endpoints.
 - The model catalog, including distinguishing a live listing from the runtime's
   static fallback.
-- Agent identity, personality, skills, memory inspection, workspace browsing.
+- Agent identity, personality, skills, read-only memory (list-first, 24 per page),
+  files-only workspace browsing.
 - Schedules end to end, including DST-correct timezone handling and run history.
+- Configured-provider search (native default plus keyless/free engines),
+  encrypted credentials vault (metadata-only clients, key beside the file),
+  Composio connectors with Tool Router MCP sync, and configured STT/TTS voice.
 - The Tauri desktop shell, with the Rust backend and Rust runtime as sidecars.
 
 **Not enabled, and returns explicit unsupported errors rather than pretending**
@@ -475,7 +512,9 @@ success is worse than an honest error.
   permissions; set `AMIRO_TOOL_PROFILE=none` to run chat without tools.
 - Per-action permission prompts. The runtime's api-bridge does not advertise the
   `permissions` capability, so a client waiting for a prompt would wait forever.
-- MCP tool execution and authorization.
+- MCP tool authorization. Servers are configured via `/api/mcp/*` and Composio
+  Tool Router sync reloads idle sessions; there is no per-action authorization
+  prompt.
 - Checkpoint restore.
 - Legacy skill generation.
 - Remote URL ingestion for uploads.
@@ -550,8 +589,13 @@ The living documents, worth reading in this order:
 | [`docs/RUST-RUNTIME.md`](docs/RUST-RUNTIME.md) | The vendored runtime: provenance, crates, build |
 | [`docs/skills/README.md`](docs/skills/README.md) | Skill discovery, activation, authoring, and safety |
 | [`docs/testing/README.md`](docs/testing/README.md) | The test architecture, config, artifacts, and CI |
+| [`docs/COMPOSIO.md`](docs/COMPOSIO.md) | Connectors, Tool Router MCP sync, credential resolution, reload behaviour |
+| [`docs/SECURITY-MODEL.md`](docs/SECURITY-MODEL.md) | Single-owner model, credentials vault, sandbox boundary, safe metadata |
 | [`src-tauri/SIDECAR-LIMITATIONS.md`](src-tauri/SIDECAR-LIMITATIONS.md) | Desktop packaging status, honestly |
 | [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) | Attribution for the vendored runtime and agent artwork |
+| [`docs/settings-ui.md`](docs/settings-ui.md) | Simplified settings surfaces (credentials, workspace, memory, superpowers) and verification |
+| [`docs/search-runtime.md`](docs/search-runtime.md) | Configured-only search runtime routing |
+| [`docs/chat-titles.md`](docs/chat-titles.md) | Runtime title reuse and manual-title protection |
 
 Everything else under `docs/`, including every `progress/` and `phases/`
 directory, is design history. Treat those as a record of what was decided, not as
