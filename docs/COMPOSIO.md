@@ -1,13 +1,63 @@
 # Composio Tool Router MCP
 
-How the Amiro runtime loads a large remote MCP server such as Composio's
-Tool Router (`https://app.composio.dev/tool_router/v3/<session>/mcp`,
+How Amiro connects Composio: the backend routes and UI that store the key and
+manage connections, how the runtime loads a large remote MCP server such as
+Composio's Tool Router (`https://backend.composio.dev/tool_router/v3/<session>/mcp`,
 Streamable HTTP, `x-api-key` header), what happens when a server exposes
 hundreds of tools, and how the backend triggers a reload after writing
 `mcp.json`.
 
-Everything below is implemented in `runtime/crates`. No backend or web-frontend
-changes are required to use it.
+## 0. Backend and UI (what a user and an operator touch)
+
+**Key resolution** (`backend/src/composio_config.rs`), first match wins:
+the encrypted credential store (reported as source `ui`), then
+`COMPOSIO_API_KEY` from the environment or `.env` (`env`), then
+`composio.api_key` in `~/.amiro/amiro.toml` (`toml`). Override the API origin
+for tests with `AMIRO_COMPOSIO_BASE_URL`.
+
+**Routes** (`backend/src/routes/composio.rs`). All need a session. Mutating
+routes need the owner (admin) role.
+
+| Route | Purpose |
+| --- | --- |
+| `GET/PUT/DELETE /api/composio/config` | key status (`configured`, `source`, `apiKeyHint`), validate and store a key, remove the UI key |
+| `GET /api/composio/toolkits` | searchable, paged toolkit catalog with the caller's connection state |
+| `GET /api/composio/connections` | the caller's connected accounts |
+| `POST /api/composio/connect` | start OAuth for a toolkit, returns a redirect URL |
+| `GET /api/composio/connections/{id}/status` | poll a connection, syncs on ACTIVE |
+| `DELETE /api/composio/connections/{id}` | disconnect and re-sync |
+| `POST /api/composio/sync` | write `mcp.json` and reload idle sessions |
+
+Composio's `user_id` is the Amiro user id. The key is never returned, only a
+last-four hint. Upstream error bodies are not echoed to clients. A key is
+validated against Composio before it is stored.
+
+**What sync writes.** A `composio` Streamable HTTP entry in
+`$AMIRO_RUNTIME_HOME/mcp.json` whose `x-api-key` header is the placeholder
+`${COMPOSIO_API_KEY}`. The real key never touches that file. The backend
+injects it into the runtime's environment when it spawns the runtime, then
+sends `McpReload` to idle sessions. The Tool Router session is created with
+`{"enable": [...]}` (the field name is `enable`, not `enabled`).
+
+**UI.** `/connectors`. With no key it shows only a setup card with a guide
+link and a paste field. With a key it shows the toolkit grid with Connect,
+Disconnect and an All/Connected filter. Locale strings exist in all 7 locales.
+
+**Tests.** `backend/tests/composio.rs` (10 tests, in-process mock Composio with
+strict request shapes), `src/lib/ai/composio/connect-flow.test.ts`.
+
+**Limitations.**
+- Changing the key restarts the backend-owned runtime bridge and drops
+  in-flight turns.
+- If the runtime is supervised externally, set `COMPOSIO_API_KEY` in the
+  runtime's own environment. Amiro cannot inject it there.
+- Connections belong to the Composio `user_id`. Accounts connected under other
+  ids in the same Composio project are not visible to Amiro users.
+- Amiro's built-in `gmail` tool is separate. A plain "check my mail" prompt can
+  pick it, and it fails unless Google is configured. Ask for Composio Gmail
+  explicitly, or leave the built-in tool unconfigured.
+
+The sections below describe the runtime side, implemented in `runtime/crates`.
 
 ## 1. `mcp.json` schema for a Streamable HTTP server
 
