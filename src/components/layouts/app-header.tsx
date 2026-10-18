@@ -21,10 +21,18 @@ import { useTranslations } from "next-intl";
 import { TextShimmer } from "ui/text-shimmer";
 import { buildReturnUrl } from "lib/admin/navigation-utils";
 import { BackButton } from "@/components/layouts/back-button";
+import { VoiceSessionPill } from "@/components/voice/voice-composer-bar";
+import { useLiveVoiceStore } from "@/lib/ai/speech/live-voice-store";
+import { cn } from "@/lib/utils";
 
 export function AppHeader() {
   const t = useTranslations();
   const appStoreMutate = appStore((state) => state.mutate);
+  const voiceActive = useLiveVoiceStore((s) => s.active);
+  const voiceMinimized = useLiveVoiceStore((s) => s.minimized);
+  const startSession = useLiveVoiceStore((s) => s.startSession);
+  const restoreRoom = useLiveVoiceStore((s) => s.restoreRoom);
+  const minimizeRoom = useLiveVoiceStore((s) => s.minimizeRoom);
   const { toggleSidebar, open } = useSidebar();
   const currentPaths = usePathname();
   const searchParams = useSearchParams();
@@ -102,6 +110,8 @@ export function AppHeader() {
 
       {componentByPage}
       <div className="flex-1" />
+      {/* Live Voice session pill in header when active */}
+      <VoiceSessionPill className="mr-2" />
       {showActionButtons && (
         <div className="flex items-center gap-2">
           <Tooltip>
@@ -109,14 +119,21 @@ export function AppHeader() {
               <Button
                 size={"icon"}
                 variant={"ghost"}
-                className="bg-secondary/40"
+                data-testid="header-voice-mode-button"
+                className={cn(
+                  "bg-secondary/40",
+                  voiceActive && "bg-primary text-primary-foreground hover:bg-primary/90",
+                )}
                 onClick={() => {
-                  appStoreMutate((state) => ({
-                    voiceChat: {
-                      ...state.voiceChat,
-                      isOpen: true,
-                    },
-                  }));
+                  if (voiceActive) {
+                    if (voiceMinimized) {
+                      restoreRoom();
+                    } else {
+                      minimizeRoom();
+                    }
+                  } else {
+                    startSession();
+                  }
                 }}
               >
                 <AudioWaveformIcon className="size-4" />

@@ -1,657 +1,492 @@
 "use client";
 
-import { getToolName, isToolUIPart, TextPart } from "ai";
-import { DEFAULT_VOICE_TOOLS, UIMessageWithCompleted } from "lib/ai/speech";
-
+import { useEffect, useMemo, useState } from "react";
 import {
-  OPENAI_VOICE,
-  useOpenAIVoiceChat as OpenAIVoiceChat,
-} from "lib/ai/speech/open-ai/use-voice-chat.openai";
-import { cn, groupBy } from "lib/utils";
-import {
-  CheckIcon,
-  Loader,
-  MicIcon,
-  MicOffIcon,
-  PhoneIcon,
-  Settings2Icon,
-  TriangleAlertIcon,
-  XIcon,
-  MessagesSquareIcon,
-  MessageSquareMoreIcon,
-  WrenchIcon,
-  ChevronRight,
+  ChevronDown,
+  Mic,
+  MicOff,
+  Subtitles,
+  Volume2,
+  VolumeX,
+  Waves,
+  X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
-import { safe } from "ts-safe";
-import { Alert, AlertDescription, AlertTitle } from "ui/alert";
-import { Button } from "ui/button";
-
-import { Drawer, DrawerContent, DrawerPortal, DrawerTitle } from "ui/drawer";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuPortal,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-} from "ui/dropdown-menu";
-import { GeminiIcon } from "ui/gemini-icon";
-import { MessageLoading } from "ui/message-loading";
-import { OpenAIIcon } from "ui/openai-icon";
-import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
-import { ToolMessagePart } from "./message-parts";
-
-import { EnabledTools, EnabledToolsDropdown } from "./enabled-tools-dropdown";
+import { motion } from "framer-motion";
 import { appStore } from "@/app/store";
 import { useShallow } from "zustand/shallow";
-import { useTranslations } from "next-intl";
-import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "ui/dialog";
-import JsonView from "ui/json-view";
-import { isShortcutEvent, Shortcuts } from "lib/keyboard-shortcuts";
-import { ChatMention } from "app-types/chat";
+import {
+  getCharacterComponents,
+  toneForBg,
+} from "@/lib/agent/character-catalog";
+import { useAgentIdentity } from "@/hooks/queries/use-agent-identity";
+import {
+  type LiveVoicePhase,
+  liveVoicePhaseLabel,
+  toVoiceAvatarVisual,
+  toVoiceExpressionMood,
+} from "@/lib/ai/speech/live-voice-motion";
+import {
+  getLiveVoiceInputAmplitude,
+  getLiveVoiceOutputAmplitude,
+  useLiveVoiceController,
+  useLiveVoiceStore,
+} from "@/lib/ai/speech/live-voice-store";
+import { cn } from "@/lib/utils";
+import { isShortcutEvent, Shortcuts } from "@/lib/keyboard-shortcuts";
+import {
+  ExpressionSelectorPill,
+  VoiceRoomEyes,
+} from "./voice/voice-expressive-eyes";
+import {
+  BAND_VOICE,
+  VoiceMeshWaves,
+  VoiceReactiveWaves,
+} from "./voice/voice-waves";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
-const prependTools: EnabledTools[] = [
-  {
-    groupName: "Browser",
-    tools: DEFAULT_VOICE_TOOLS.map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-    })),
-  },
-];
-
-export function ChatBotVoice() {
-  const t = useTranslations("Chat");
-  const [appStoreMutate, voiceChat, model, allowedMcpServers, mcpList] =
-    appStore(
-      useShallow((state) => [
-        state.mutate,
-        state.voiceChat,
-        state.chatModel,
-        state.allowedMcpServers,
-        state.mcpList,
-      ]),
-    );
-
-  const [isClosing, setIsClosing] = useState(false);
-  const startAudio = useRef<HTMLAudioElement>(null);
-  const [useCompactView, setUseCompactView] = useState(true);
-
-  const toolMentions = useMemo<ChatMention[]>(() => {
-    if (!allowedMcpServers) return [];
-    return mcpList
-      .filter((v) => {
-        return (
-          v.id in allowedMcpServers && allowedMcpServers[v.id]?.tools?.length
-        );
-      })
-      .flatMap((v) => {
-        const tools = allowedMcpServers[v.id].tools;
-        return tools.map((tool) => {
-          const toolInfo = v.toolInfo.find((t) => t.name === tool);
-          const mention: ChatMention = {
-            type: "mcpTool",
-            serverName: v.name,
-            serverId: v.id,
-            name: tool,
-            description: toolInfo?.description ?? "",
-          };
-          return mention;
-        });
-      });
-  }, [mcpList, allowedMcpServers]);
-
-  const {
-    isListening,
-    isAssistantSpeaking,
-    isLoading,
-    isActive,
-    isUserSpeaking,
-    messages,
-    error,
-    start,
-    startListening,
-    stop,
-    stopListening,
-  } = OpenAIVoiceChat({
-    toolMentions,
-    ...voiceChat.options.providerOptions,
-  });
-
-  const startWithSound = useCallback(() => {
-    if (!startAudio.current) {
-      startAudio.current = new Audio("/sounds/start_voice.ogg");
-    }
-    start().then(() => {
-      startAudio.current?.play().catch(() => {});
-    });
-  }, [start]);
-
-  const endVoiceChat = useCallback(async () => {
-    setIsClosing(true);
-    await safe(() => stop());
-    setIsClosing(false);
-    appStoreMutate({
-      voiceChat: {
-        ...voiceChat,
-        isOpen: false,
-      },
-    });
-  }, [messages, model]);
-
-  const statusMessage = useMemo(() => {
-    if (isLoading) {
-      return (
-        <p className="fade-in animate-in duration-3000" key="start">
-          {t("VoiceChat.preparing")}
-        </p>
-      );
-    }
-    if (!isActive)
-      return (
-        <p className="fade-in animate-in duration-3000" key="start">
-          {t("VoiceChat.startVoiceChat")}
-        </p>
-      );
-    if (!isListening)
-      return (
-        <p className="fade-in animate-in duration-3000" key="stop">
-          {t("VoiceChat.yourMicIsOff")}
-        </p>
-      );
-    if (!isAssistantSpeaking && messages.length === 0) {
-      return (
-        <p className="fade-in animate-in duration-3000" key="ready">
-          {t("VoiceChat.readyWhenYouAreJustStartTalking")}
-        </p>
-      );
-    }
-    if (isUserSpeaking && useCompactView) {
-      return <MessageLoading className="text-muted-foreground" />;
-    }
-    if (!isAssistantSpeaking && !isUserSpeaking) {
-      return (
-        <p className="delayed-fade-in" key="ready">
-          {t("VoiceChat.readyWhenYouAreJustStartTalking")}
-        </p>
-      );
-    }
-  }, [
-    isAssistantSpeaking,
-    isUserSpeaking,
-    isActive,
-    isLoading,
-    isListening,
-    messages.length,
-    useCompactView,
-  ]);
-
-  const mcpTools = useMemo<EnabledTools[]>(() => {
-    const mcpMentions = toolMentions.filter(
-      (v) => v.type === "mcpTool",
-    ) as Extract<ChatMention, { type: "mcpTool" }>[];
-
-    const groupByServer = groupBy(mcpMentions, "serverName");
-    return Object.entries(groupByServer).map(([serverName, tools]) => {
-      return {
-        groupName: serverName,
-        tools: tools.map((v) => ({
-          name: v.name,
-          description: v.description,
-        })),
-      };
-    });
-  }, [toolMentions]);
-
-  const tools = useMemo<EnabledTools[]>(() => {
-    return [...prependTools, ...mcpTools];
-  }, [prependTools, mcpTools]);
-
-  useEffect(() => {
-    return () => {
-      if (isActive) {
-        stop();
-      }
-    };
-  }, [voiceChat.options, isActive]);
-
-  useEffect(() => {
-    if (voiceChat.isOpen) {
-      // startWithSound();
-    } else if (isActive) {
-      stop();
-    }
-  }, [voiceChat.isOpen]);
-
-  useEffect(() => {
-    if (error && isActive) {
-      toast.error(error.message);
-      stop();
-    }
-  }, [error]);
-
-  useEffect(() => {
-    if (voiceChat.isOpen) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const isVoiceChatEvent = isShortcutEvent(e, Shortcuts.toggleVoiceChat);
-      if (isVoiceChatEvent) {
-        e.preventDefault();
-        e.stopPropagation();
-        appStoreMutate((prev) => ({
-          voiceChat: {
-            ...prev.voiceChat,
-            isOpen: true,
-          },
-        }));
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [voiceChat.isOpen]);
-
-  return (
-    <Drawer dismissible={false} open={voiceChat.isOpen} direction="top">
-      <DrawerPortal>
-        <DrawerContent className="max-h-[100vh]! h-full border-none! rounded-none! flex flex-col bg-card">
-          <div className="w-full h-full flex flex-col ">
-            <div
-              className="w-full flex p-6 gap-2"
-              style={{
-                userSelect: "text",
-              }}
-            >
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant={"secondary"}
-                    size={"icon"}
-                    onClick={() => setUseCompactView(!useCompactView)}
-                  >
-                    {useCompactView ? (
-                      <MessageSquareMoreIcon />
-                    ) : (
-                      <MessagesSquareIcon />
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {useCompactView
-                    ? t("VoiceChat.compactDisplayMode")
-                    : t("VoiceChat.conversationDisplayMode")}
-                </TooltipContent>
-              </Tooltip>
-
-              <EnabledToolsDropdown align="start" side="bottom" tools={tools} />
-
-              <DrawerTitle className="ml-auto">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant={"ghost"} size={"icon"}>
-                      <Settings2Icon className="text-foreground size-5" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    side="left"
-                    className="min-w-40"
-                    align="start"
-                  >
-                    <DropdownMenuGroup className="cursor-pointer">
-                      <DropdownMenuSub>
-                        <DropdownMenuSubTrigger
-                          className="flex items-center gap-2 cursor-pointer"
-                          icon=""
-                        >
-                          <OpenAIIcon className="size-3.5 stroke-none fill-foreground" />
-                          Open AI
-                        </DropdownMenuSubTrigger>
-                        <DropdownMenuPortal>
-                          <DropdownMenuSubContent>
-                            {Object.entries(OPENAI_VOICE).map(
-                              ([key, value]) => (
-                                <DropdownMenuItem
-                                  className="cursor-pointer flex items-center justify-between"
-                                  onClick={() =>
-                                    appStoreMutate({
-                                      voiceChat: {
-                                        ...voiceChat,
-                                        options: {
-                                          provider: "openai",
-                                          providerOptions: {
-                                            voice: value,
-                                          },
-                                        },
-                                      },
-                                    })
-                                  }
-                                  key={key}
-                                >
-                                  {key}
-
-                                  {value ===
-                                    voiceChat.options.providerOptions
-                                      ?.voice && (
-                                    <CheckIcon className="size-3.5" />
-                                  )}
-                                </DropdownMenuItem>
-                              ),
-                            )}
-                          </DropdownMenuSubContent>
-                        </DropdownMenuPortal>
-                      </DropdownMenuSub>
-                      <DropdownMenuSub>
-                        <DropdownMenuSub>
-                          <DropdownMenuSubTrigger
-                            className="flex items-center gap-2 text-muted-foreground"
-                            icon=""
-                          >
-                            <GeminiIcon className="size-3.5" />
-                            Gemini
-                          </DropdownMenuSubTrigger>
-                          <DropdownMenuPortal>
-                            <DropdownMenuSubContent>
-                              <div className="text-xs text-muted-foreground p-6">
-                                Not Implemented Yet
-                              </div>
-                            </DropdownMenuSubContent>
-                          </DropdownMenuPortal>
-                        </DropdownMenuSub>
-                      </DropdownMenuSub>
-                    </DropdownMenuGroup>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </DrawerTitle>
-            </div>
-            <div className="flex-1 min-h-0 mx-auto w-full">
-              {error ? (
-                <div className="max-w-3xl mx-auto">
-                  <Alert variant={"destructive"}>
-                    <TriangleAlertIcon className="size-4 " />
-                    <AlertTitle className="">Error</AlertTitle>
-                    <AlertDescription>{error.message}</AlertDescription>
-
-                    <AlertDescription className="my-4 ">
-                      <p className="text-muted-foreground ">
-                        {t("VoiceChat.pleaseCloseTheVoiceChatAndTryAgain")}
-                      </p>
-                    </AlertDescription>
-                  </Alert>
-                </div>
-              ) : null}
-              {isLoading ? (
-                <div className="flex-1"></div>
-              ) : (
-                <div className="h-full w-full">
-                  {useCompactView ? (
-                    <CompactMessageView messages={messages} />
-                  ) : (
-                    <ConversationView messages={messages} />
-                  )}
-                </div>
-              )}
-            </div>
-            <div className="relative w-full p-6 flex items-center justify-center gap-4">
-              <div className="text-sm text-muted-foreground absolute -top-5 left-0 w-full justify-center flex items-center">
-                {statusMessage}
-              </div>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant={"secondary"}
-                    size={"icon"}
-                    disabled={isClosing || isLoading}
-                    onClick={() => {
-                      if (!isActive) {
-                        startWithSound();
-                      } else if (isListening) {
-                        stopListening();
-                      } else {
-                        startListening();
-                      }
-                    }}
-                    className={cn(
-                      "rounded-full p-6 transition-colors duration-300",
-
-                      isLoading
-                        ? "bg-accent-foreground text-accent animate-pulse"
-                        : !isActive
-                          ? "bg-green-500/10 text-green-500 hover:bg-green-500/30"
-                          : !isListening
-                            ? "bg-destructive/30 text-destructive hover:bg-destructive/10"
-                            : isUserSpeaking
-                              ? "bg-input text-foreground"
-                              : "",
-                    )}
-                  >
-                    {isLoading || isClosing ? (
-                      <Loader className="size-6 animate-spin" />
-                    ) : !isActive ? (
-                      <PhoneIcon className="size-6 fill-green-500 stroke-none" />
-                    ) : isListening ? (
-                      <MicIcon
-                        className={`size-6 ${isUserSpeaking ? "text-primary" : "text-muted-foreground transition-colors duration-300"}`}
-                      />
-                    ) : (
-                      <MicOffIcon className="size-6" />
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {!isActive
-                    ? t("VoiceChat.startConversation")
-                    : isListening
-                      ? t("VoiceChat.closeMic")
-                      : t("VoiceChat.openMic")}
-                </TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant={"secondary"}
-                    size={"icon"}
-                    className="rounded-full p-6"
-                    disabled={isLoading || isClosing}
-                    onClick={endVoiceChat}
-                  >
-                    <XIcon className="text-foreground size-6" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{t("VoiceChat.endConversation")}</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-          </div>
-        </DrawerContent>
-      </DrawerPortal>
-    </Drawer>
-  );
+export interface LiveVoiceStageProps {
+  phase?: LiveVoicePhase;
+  partialTranscript?: string;
+  finalTranscript?: string;
+  assistantTranscript?: string;
+  className?: string;
+  onSendUtterance?: (text: string) => void;
 }
 
-function ConversationView({
-  messages,
-}: { messages: UIMessageWithCompleted[] }) {
-  const ref = useRef<HTMLDivElement>(null);
+/**
+ * LiveVoiceStage
+ *
+ * The creative, expressive inline Voice Mode stage inspired by Vellum.
+ * Renders directly above the composer without blocking the sidebar, header, or chat thread.
+ */
+export function LiveVoiceStage({
+  phase: propPhase,
+  partialTranscript: propPartial,
+  finalTranscript: propFinal,
+  assistantTranscript: propAssistant,
+  className,
+}: LiveVoiceStageProps) {
+  const { data: identity } = useAgentIdentity();
+  const storePhase = useLiveVoiceStore((s) => s.phase);
+  const phase = propPhase ?? storePhase;
+  const muted = useLiveVoiceStore((s) => s.muted);
+  const outputMuted = useLiveVoiceStore((s) => s.outputMuted);
+  const assistantAudioActive = useLiveVoiceStore((s) => s.assistantAudioActive);
+  const storePartial = useLiveVoiceStore((s) => s.partialTranscript);
+  const partialTranscript = propPartial ?? storePartial;
+  const storeFinal = useLiveVoiceStore((s) => s.finalTranscript);
+  const finalTranscript = propFinal ?? storeFinal;
+  const storeAssistant = useLiveVoiceStore((s) => s.assistantTranscript);
+  const assistantTranscript = propAssistant ?? storeAssistant;
+  const waveEngine = useLiveVoiceStore((s) => s.waveEngine);
+  const showCaptions = useLiveVoiceStore((s) => s.showCaptions);
+  const eyeStyleOverride = useLiveVoiceStore((s) => s.eyeStyleOverride);
 
+  const toggleMuted = useLiveVoiceStore((s) => s.toggleMuted);
+  const toggleOutputMuted = useLiveVoiceStore((s) => s.toggleOutputMuted);
+  const endSession = useLiveVoiceStore((s) => s.endSession);
+  const minimizeRoom = useLiveVoiceStore((s) => s.minimizeRoom);
+  const setWaveEngine = useLiveVoiceStore((s) => s.setWaveEngine);
+  const setShowCaptions = useLiveVoiceStore((s) => s.setShowCaptions);
+  const setEyeStyleOverride = useLiveVoiceStore((s) => s.setEyeStyleOverride);
+
+  const components = useMemo(() => getCharacterComponents(), []);
+  const traits =
+    identity?.traits ??
+    (components.bodyShapes[0] && components.eyeStyles[0] && components.colors[0]
+      ? {
+          bodyShape: components.bodyShapes[0].id,
+          eyeStyle: components.eyeStyles[0].id,
+          color: components.colors[0].id,
+        }
+      : { bodyShape: "classic", eyeStyle: "curious", color: "blue" });
+
+  const bg = identity?.accentHex ?? "#1e293b";
+  const tone = toneForBg(bg);
+
+  const visual = toVoiceAvatarVisual(phase, assistantAudioActive, muted);
+
+  const currentAmplitude = visual === "responding"
+    ? getLiveVoiceOutputAmplitude()
+    : getLiveVoiceInputAmplitude();
+
+  const mood = eyeStyleOverride ?? toVoiceExpressionMood(visual, muted, currentAmplitude);
+
+  const replying = assistantAudioActive || phase === "speaking";
+  const micLive = phase === "listening" && !muted;
+  const ink = replying ? BAND_VOICE.responding : BAND_VOICE.listening;
+
+  const getBandAmplitude = replying
+    ? getLiveVoiceOutputAmplitude
+    : micLive
+      ? getLiveVoiceInputAmplitude
+      : () => 0;
+
+  // Track word highlight index during assistant playback
+  const [spokenWordIndex, setSpokenWordIndex] = useState(0);
   useEffect(() => {
-    if (ref.current) {
-      ref.current.scrollTo({
-        top: ref.current.scrollHeight,
-        behavior: "smooth",
-      });
+    if (!replying || !assistantTranscript) {
+      setSpokenWordIndex(0);
+      return;
     }
-  }, [messages.length]);
+    const words = assistantTranscript.trim().split(/\s+/);
+    if (words.length === 0) return;
+
+    // Approximate conversational pacing ~3.2 words / sec
+    const interval = setInterval(() => {
+      setSpokenWordIndex((prev) => {
+        if (prev < words.length - 1) return prev + 1;
+        return prev;
+      });
+    }, 310);
+
+    return () => clearInterval(interval);
+  }, [replying, assistantTranscript]);
+
+  const assistantWords = useMemo(() => {
+    if (!assistantTranscript) return [];
+    return assistantTranscript.trim().split(/\s+/);
+  }, [assistantTranscript]);
+
+  const displayedUserSpeech = partialTranscript || finalTranscript;
+
   return (
-    <div className="select-text w-full overflow-y-auto h-full" ref={ref}>
-      <div className="max-w-4xl mx-auto flex flex-col px-6 gap-6 pb-44 min-h-0 min-w-0">
-        {messages.map((message) => (
+    <motion.div
+      initial={{ opacity: 0, y: 12, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 12, scale: 0.98 }}
+      transition={{ duration: 0.28, ease: "easeOut" }}
+      data-testid="voice-room"
+      className={cn(
+        "relative mb-3 flex w-full flex-col overflow-hidden rounded-2xl border border-black/10 shadow-xl transition-colors duration-300 dark:border-white/10",
+        className,
+      )}
+      style={{
+        backgroundColor: bg,
+        color: tone.fg,
+        minHeight: "360px",
+        maxHeight: "440px",
+      }}
+    >
+      {/* Wave band across the stage */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-44 overflow-hidden opacity-90">
+        {waveEngine === "mesh" ? (
+          <VoiceMeshWaves
+            getAmplitude={getBandAmplitude}
+            color={ink.color}
+            peakOpacity={ink.peakOpacity}
+            placement="bottom"
+            tuning={{ opacityKnee: ink.opacityKnee }}
+          />
+        ) : (
+          <VoiceReactiveWaves
+            getAmplitude={getBandAmplitude}
+            color={ink.color}
+            peakOpacity={ink.peakOpacity}
+            placement="bottom"
+          />
+        )}
+      </div>
+
+      {/* Top Bar: Agent Info + Expression Pill + Utility Toggles + Minimize & Close */}
+      <div className="relative z-20 flex w-full flex-wrap items-center justify-between gap-2 p-3 sm:px-4">
+        {/* Left: Agent chip & phase */}
+        <div className="flex items-center gap-2">
           <div
-            key={message.id}
-            className={cn(
-              "flex px-4 py-3",
-              message.role == "user" &&
-                "ml-auto max-w-2xl text-foreground rounded-2xl w-fit bg-input/40",
-            )}
+            className="flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold shadow-sm"
+            style={{ backgroundColor: tone.wash, color: tone.fg }}
           >
-            {!message.completed ? (
-              <MessageLoading
-                className={cn(
-                  message.role == "user"
-                    ? "text-muted-foreground"
-                    : "text-foreground",
-                )}
-              />
-            ) : (
-              (message.parts ?? []).map((part, index) => {
-                if (part.type === "text") {
-                  if (!part.text) {
-                    return (
-                      <MessageLoading
-                        key={index}
-                        className={cn(
-                          message.role == "user"
-                            ? "text-muted-foreground"
-                            : "text-foreground",
-                        )}
-                      />
-                    );
-                  }
-                  return (
-                    <p key={index}>
-                      {(part.text || "...")
-                        ?.trim()
-                        .split(" ")
-                        .map((word, wordIndex) => (
-                          <span
-                            key={wordIndex}
-                            className="animate-in fade-in duration-3000"
-                          >
-                            {word}{" "}
-                          </span>
-                        ))}
-                    </p>
-                  );
-                } else if (isToolUIPart(part)) {
-                  return (
-                    <ToolMessagePart
-                      key={index}
-                      part={part}
-                      showActions={false}
-                      messageId={message.id}
-                      isLast={part.state.startsWith("input")}
-                    />
-                  );
-                }
-                return <p key={index}>{part.type} unknown part</p>;
-              })
-            )}
+            {identity?.name?.[0] ?? "A"}
           </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function CompactMessageView({
-  messages,
-}: {
-  messages: UIMessageWithCompleted[];
-}) {
-  const { toolParts, textPart } = useMemo(() => {
-    const toolParts = messages
-      .filter((msg) => msg.parts?.some(isToolUIPart))
-      .map((msg) => msg.parts?.find(isToolUIPart));
-
-    const textPart = messages.findLast((msg) => msg.role === "assistant")
-      ?.parts?.[0] as TextPart;
-    return { toolParts, textPart };
-  }, [messages]);
-
-  return (
-    <div className="relative w-full h-full overflow-hidden">
-      <div className="absolute bottom-6 max-h-[80vh] overflow-y-auto left-6 z-10 flex-col gap-2 hidden md:flex">
-        {toolParts.map((toolPart, index) => {
-          const isExecuting = toolPart?.state.startsWith("input");
-          if (!toolPart) return null;
-          return (
-            <Dialog key={index}>
-              <DialogTrigger asChild>
-                <div className="animate-in slide-in-from-bottom-2 fade-in duration-3000 max-w-xs w-full">
-                  <Button
-                    variant={"outline"}
-                    size={"icon"}
-                    className="w-full bg-card flex items-center gap-2 px-2 text-xs text-muted-foreground"
-                  >
-                    <WrenchIcon className="size-3.5" />
-                    <span className="text-sm font-bold min-w-0 truncate mr-auto">
-                      {getToolName(toolPart)}
-                    </span>
-                    {isExecuting ? (
-                      <Loader className="size-3.5 animate-spin" />
-                    ) : (
-                      <ChevronRight className="size-3.5" />
-                    )}
-                  </Button>
-                </div>
-              </DialogTrigger>
-              <DialogContent className="z-50 md:max-w-2xl! max-h-[80vh] overflow-y-auto p-8">
-                <DialogTitle>{getToolName(toolPart)}</DialogTitle>
-                <div className="flex flex-row gap-4 text-sm ">
-                  <div className="w-1/2 min-w-0 flex flex-col">
-                    <div className="flex items-center gap-2 mb-2 pt-2 pb-1 z-10">
-                      <h5 className="text-muted-foreground text-sm font-medium">
-                        Inputs
-                      </h5>
-                    </div>
-                    <JsonView data={toolPart.input} />
-                  </div>
-
-                  <div className="w-1/2 min-w-0 pl-4 flex flex-col">
-                    <div className="flex items-center gap-2 mb-4 pt-2 pb-1  z-10">
-                      <h5 className="text-muted-foreground text-sm font-medium">
-                        Outputs
-                      </h5>
-                    </div>
-                    <JsonView
-                      data={
-                        toolPart.state === "output-available"
-                          ? toolPart.output
-                          : toolPart.state == "output-error"
-                            ? toolPart.errorText
-                            : {}
-                      }
-                    />
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
-          );
-        })}
-      </div>
-
-      {/* Current Message - Prominent */}
-      {textPart && (
-        <div className="w-full mx-auto h-full max-h-[80vh] overflow-y-auto px-4 lg:max-w-4xl flex-1 flex items-center">
-          <div className="animate-in fade-in-50 duration-1000">
-            <p className="text-2xl md:text-3xl lg:text-4xl font-semibold leading-tight tracking-wide">
-              {textPart.text?.split(" ").map((word, wordIndex) => (
-                <span
-                  key={wordIndex}
-                  className="animate-in fade-in duration-5000"
-                >
-                  {word}{" "}
-                </span>
-              ))}
-            </p>
+          <div className="flex flex-col">
+            <span className="text-xs font-semibold leading-tight tracking-wide">
+              {identity?.name ?? "Amiro"}
+            </span>
+            <span
+              className="text-[10px] leading-tight opacity-75"
+              style={{ color: tone.fgMuted }}
+            >
+              {liveVoicePhaseLabel(phase, muted, assistantAudioActive)}
+            </span>
           </div>
         </div>
-      )}
-    </div>
+
+        {/* Center: Expression selector */}
+        <div className="hidden sm:block">
+          <ExpressionSelectorPill
+            currentOverride={eyeStyleOverride}
+            onSelect={setEyeStyleOverride}
+          />
+        </div>
+
+        {/* Right: Wave toggle + Captions toggle + Minimize + End */}
+        <div className="flex items-center gap-1">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                data-testid="voice-wave-toggle-button"
+                onClick={() =>
+                  setWaveEngine(waveEngine === "mesh" ? "reactive" : "mesh")
+                }
+                aria-label={`Switch to ${waveEngine === "mesh" ? "spline" : "mesh"} waves`}
+                className="flex h-7 w-7 items-center justify-center rounded-lg bg-black/15 text-xs transition-colors hover:bg-black/25 dark:bg-white/10 dark:hover:bg-white/20"
+              >
+                <Waves className="h-3.5 w-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              Engine: {waveEngine === "mesh" ? "Oscilloscope Mesh" : "Spline Wave"}
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                data-testid="voice-captions-toggle-button"
+                onClick={() => setShowCaptions(!showCaptions)}
+                aria-label={showCaptions ? "Hide captions" : "Show captions"}
+                className={cn(
+                  "flex h-7 w-7 items-center justify-center rounded-lg text-xs transition-colors",
+                  showCaptions
+                    ? "bg-white/25 text-white"
+                    : "bg-black/15 opacity-60 hover:opacity-100 dark:bg-white/10",
+                )}
+              >
+                <Subtitles className="h-3.5 w-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {showCaptions ? "Captions on" : "Captions off"}
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                data-testid="voice-minimize-button"
+                onClick={minimizeRoom}
+                aria-label="Minimize to composer bar"
+                className="flex h-7 w-7 items-center justify-center rounded-lg bg-black/15 transition-colors hover:bg-black/25 dark:bg-white/10 dark:hover:bg-white/20"
+              >
+                <ChevronDown className="h-4 w-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Minimize (Esc)</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                data-testid="voice-end-button"
+                onClick={endSession}
+                aria-label="End voice session"
+                className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-500/85 text-white transition-colors hover:bg-red-600"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">End Voice Mode</TooltipContent>
+          </Tooltip>
+        </div>
+      </div>
+
+      {/* Mobile-only expression selector row */}
+      <div className="relative z-20 flex justify-center px-2 sm:hidden">
+        <ExpressionSelectorPill
+          currentOverride={eyeStyleOverride}
+          onSelect={setEyeStyleOverride}
+        />
+      </div>
+
+      {/* Upper Zone: User live speech pill */}
+      <div className="relative z-10 flex min-h-[44px] items-center justify-center px-4 pt-1">
+        {showCaptions && displayedUserSpeech && (
+          <div
+            data-testid="voice-ambient-user"
+            className="max-w-[85%] rounded-full bg-black/25 px-4 py-1.5 text-center text-xs font-medium tracking-wide shadow-sm backdrop-blur-md dark:bg-black/40"
+            style={{ color: tone.fg }}
+          >
+            <span className="opacity-90">{displayedUserSpeech}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Center Zone: Character Eyes & Aura Avatar */}
+      <div className="relative z-10 my-auto flex flex-1 items-center justify-center py-2">
+        <VoiceRoomEyes
+          visual={visual}
+          mood={mood}
+          tone={tone}
+          components={components}
+          traits={traits}
+          customImageUrl={identity?.customImageUrl}
+          getAmplitude={getBandAmplitude}
+        />
+      </div>
+
+      {/* Lower Zone: Ambient word-by-word assistant response or status caption */}
+      <div className="relative z-10 flex min-h-[48px] items-center justify-center px-6 pb-2 text-center">
+        {showCaptions && assistantWords.length > 0 && replying ? (
+          <div
+            data-testid="voice-ambient-assistant"
+            className="flex max-w-lg flex-wrap items-center justify-center gap-1 text-sm font-medium leading-relaxed drop-shadow-sm"
+          >
+            {assistantWords.map((word, index) => {
+              const isSpoken = index <= spokenWordIndex;
+              const isCurrent = index === spokenWordIndex;
+              return (
+                <span
+                  key={`${word}-${index}`}
+                  className={cn(
+                    "transition-all duration-150",
+                    isCurrent
+                      ? "rounded bg-white/30 px-1 py-0.5 font-semibold text-white shadow-sm dark:bg-white/20"
+                      : isSpoken
+                        ? "opacity-95"
+                        : "opacity-45",
+                  )}
+                >
+                  {word}
+                </span>
+              );
+            })}
+          </div>
+        ) : (
+          <div
+            data-testid="voice-ambient-assistant"
+            className="text-xs font-medium tracking-wide opacity-80"
+            style={{ color: tone.fgMuted }}
+          >
+            {liveVoicePhaseLabel(phase, muted, assistantAudioActive)}
+          </div>
+        )}
+      </div>
+
+      {/* Bottom Controls Row */}
+      <div className="relative z-20 flex w-full items-center justify-between border-t border-black/5 bg-black/10 px-4 py-2 backdrop-blur-sm dark:border-white/5 dark:bg-black/20">
+        <div className="flex items-center gap-2">
+          {/* Mic Mute Button */}
+          <button
+            type="button"
+            data-testid="voice-mute-button"
+            onClick={toggleMuted}
+            aria-label={muted ? "Unmute microphone" : "Mute microphone"}
+            className={cn(
+              "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-all",
+              muted
+                ? "bg-red-500/25 text-red-200 hover:bg-red-500/35"
+                : "bg-black/15 hover:bg-black/25 dark:bg-white/10 dark:hover:bg-white/20",
+            )}
+          >
+            {muted ? (
+              <MicOff className="h-3.5 w-3.5" />
+            ) : (
+              <Mic className="h-3.5 w-3.5" />
+            )}
+            <span>{muted ? "Mic muted" : "Mute mic"}</span>
+          </button>
+
+          {/* Assistant Audio Mute Button */}
+          <button
+            type="button"
+            data-testid="voice-output-mute-button"
+            onClick={toggleOutputMuted}
+            aria-label={outputMuted ? "Unmute speaker" : "Mute speaker"}
+            className={cn(
+              "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-all",
+              outputMuted
+                ? "bg-red-500/25 text-red-200 hover:bg-red-500/35"
+                : "bg-black/15 hover:bg-black/25 dark:bg-white/10 dark:hover:bg-white/20",
+            )}
+          >
+            {outputMuted ? (
+              <VolumeX className="h-3.5 w-3.5" />
+            ) : (
+              <Volume2 className="h-3.5 w-3.5" />
+            )}
+            <span>{outputMuted ? "Speaker muted" : "Mute speaker"}</span>
+          </button>
+        </div>
+
+        <div className="text-[11px] opacity-70">
+          <span>Press Space to finalize turn • Esc to minimize</span>
+        </div>
+      </div>
+    </motion.div>
   );
+}
+
+/**
+ * ChatBotVoice
+ *
+ * The non-blocking controller and synchronizer for Amiro's Voice Mode.
+ * NO FULL-PAGE BLOCKING DRAWER! Synchronizes appStore.voiceChat.isOpen with useLiveVoiceStore.
+ */
+export function ChatBotVoice() {
+  const [appStoreMutate, voiceChatOpen] = appStore(
+    useShallow((state) => [state.mutate, state.voiceChat.isOpen]),
+  );
+
+  const active = useLiveVoiceStore((s) => s.active);
+  const startSession = useLiveVoiceStore((s) => s.startSession);
+  const endSession = useLiveVoiceStore((s) => s.endSession);
+
+  // Mount the live voice audio capture, RMS meters, VAD, STT, and read-aloud controller
+  useLiveVoiceController();
+
+  // Sync appStore.voiceChat.isOpen -> useLiveVoiceStore.active
+  useEffect(() => {
+    if (voiceChatOpen && !active) {
+      startSession();
+    } else if (!voiceChatOpen && active) {
+      endSession();
+    }
+  }, [voiceChatOpen, active, startSession, endSession]);
+
+  // Sync useLiveVoiceStore.active -> appStore.voiceChat.isOpen
+  useEffect(() => {
+    if (active !== voiceChatOpen) {
+      appStoreMutate((prev) => ({
+        voiceChat: {
+          ...prev.voiceChat,
+          isOpen: active,
+        },
+      }));
+    }
+  }, [active, voiceChatOpen, appStoreMutate]);
+
+  // Keyboard shortcut listeners (toggle voice chat, Escape to minimize)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isShortcutEvent(e, Shortcuts.toggleVoiceChat)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const live = useLiveVoiceStore.getState();
+        if (live.active) {
+          live.endSession();
+        } else {
+          live.startSession();
+        }
+        return;
+      }
+
+      if (e.key === "Escape") {
+        const live = useLiveVoiceStore.getState();
+        if (live.active && !live.minimized) {
+          e.preventDefault();
+          live.minimizeRoom();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // No full page Drawer! Voice Stage renders inline above the composer in prompt-input.
+  return null;
 }
