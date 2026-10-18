@@ -24,20 +24,53 @@ fn env_file_path(state: &AppState, provider_id: &str) -> std::path::PathBuf {
         .join(format!("{provider_id}.env"))
 }
 
-async fn run_cli_json(state: &AppState, args: &[&str]) -> Option<Value> {
+fn runtime_command(state: &AppState) -> Command {
     let mut cmd = Command::new(&state.runtime_bin);
-    cmd.args(args);
-    cmd.env("AMIRO_HOME", &state.home);
+    // The engine resolves AMIRO_HOME before AMIRO_RUNTIME_HOME. The backend's
+    // own home is a separate store, not the running engine's credential home.
+    cmd.env("AMIRO_HOME", &state.runtime_home);
     cmd.env("AMIRO_RUNTIME_HOME", &state.runtime_home);
+    cmd.kill_on_drop(true);
+    cmd
+}
+
+async fn run_cli_json(state: &AppState, args: &[&str]) -> Option<Value> {
+    let mut cmd = runtime_command(state);
+    cmd.args(args);
     cmd.stdout(Stdio::piped()).stderr(Stdio::null());
 
-    let output = cmd.output().await.ok()?;
+    let output = tokio::time::timeout(std::time::Duration::from_secs(15), cmd.output())
+        .await.ok()?.ok()?;
     if output.status.success() {
         let text = String::from_utf8_lossy(&output.stdout);
         serde_json::from_str(text.trim()).ok()
     } else {
         None
     }
+}
+
+fn accepts_single_api_key(auth_kind: &str, id: &str) -> bool {
+    // These CLI commands need region/endpoint/model setup or a device login,
+    // rather than the single secret line supported by this HTTP endpoint.
+    mechanism_of(auth_kind, id) == "api-key"
+        && !matches!(id, "bedrock" | "azure" | "jcode" | "amiro")
+}
+
+async fn can_accept_api_key(state: &AppState, provider_id: &str) -> bool {
+    for args in [["auth", "status", "--json"], ["provider", "list", "--json"]] {
+        if let Some(catalog) = run_cli_json(state, &args).await {
+            if let Some(entry) = catalog.get("providers").and_then(Value::as_array)
+                .and_then(|entries| entries.iter().find(|entry| {
+                    entry.get("id").and_then(Value::as_str) == Some(provider_id)
+                })) {
+                return accepts_single_api_key(
+                    entry.get("auth_kind").and_then(Value::as_str).unwrap_or(""),
+                    provider_id,
+                );
+            }
+        }
+    }
+    false
 }
 
 /// Map the engine's `auth_kind` to the machine `mechanism` the web UI groups
@@ -167,7 +200,7 @@ async fn get_provider_catalog(
             );
             obj.insert(
                 "canAcceptApiKey".to_string(),
-                json!(mechanism == "api-key"),
+                json!(accepts_single_api_key(&auth_kind, &id)),
             );
             let status = obj
                 .get("status")
@@ -184,10 +217,10 @@ async fn get_provider_catalog(
     if result_providers.is_empty() {
         // Fallback standard catalog if CLI didn't respond
         let default_providers = json!([
-            { "id": "openai", "name": "OpenAI", "mechanism": "api-key", "status": "not_configured" },
+            { "id": "openai-api", "name": "OpenAI", "mechanism": "api-key", "status": "not_configured" },
             { "id": "anthropic-api", "name": "Anthropic", "mechanism": "api-key", "status": "not_configured" },
             { "id": "openrouter", "name": "OpenRouter", "mechanism": "api-key", "status": "not_configured" },
-            { "id": "gemini", "name": "Google Gemini", "mechanism": "api-key", "status": "not_configured" },
+            { "id": "gemini-api", "name": "Google Gemini", "mechanism": "api-key", "status": "not_configured" },
             { "id": "groq", "name": "Groq", "mechanism": "api-key", "status": "not_configured" },
             { "id": "openai-compatible", "name": "OpenAI Compatible", "mechanism": "api-key", "status": "not_configured" }
         ]);
@@ -226,6 +259,9 @@ async fn post_provider_api_key(
     if raw_key.len() > 4096 {
         return Err(ApiError(StatusCode::BAD_REQUEST, "apiKey too long".to_string()));
     }
+    if raw_key.contains(['\r', '\n']) {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "apiKey must be a single line".to_string()));
+    }
 
     let api_base = body
         .get("apiBase")
@@ -234,9 +270,16 @@ async fn post_provider_api_key(
         .map(|s| s.trim())
         .unwrap_or("");
 
-    let mut cmd = Command::new(&state.runtime_bin);
-    cmd.env("AMIRO_HOME", &state.home);
-    cmd.env("AMIRO_RUNTIME_HOME", &state.runtime_home);
+    if provider_id != "openai-compatible" && !api_base.is_empty() {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "apiBase is only supported for openai-compatible".to_string()));
+    }
+    if !can_accept_api_key(&state, &provider_id).await {
+        return Err(ApiError(StatusCode::BAD_REQUEST, format!(
+            "Provider '{provider_id}' does not support single-key setup. Use its OAuth or terminal setup flow."
+        )));
+    }
+
+    let mut cmd = runtime_command(&state);
 
     if provider_id == "openai-compatible" {
         if api_base.is_empty() {
@@ -272,7 +315,10 @@ async fn post_provider_api_key(
         }
     }
 
-    let output = child.wait_with_output().await.map_err(|e| {
+    let output = tokio::time::timeout(
+        std::time::Duration::from_secs(30), child.wait_with_output()
+    ).await.map_err(|_| ApiError(StatusCode::GATEWAY_TIMEOUT, "API key setup timed out".to_string()))?
+    .map_err(|e| {
         ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
     })?;
 
@@ -334,4 +380,131 @@ pub fn routes() -> Router<AppState> {
             "/api/providers/{id}/credentials",
             delete(delete_provider_credentials),
         )
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    struct Fixture(AppState);
+
+    impl Fixture {
+        fn new(script: &str) -> Self {
+            let root = std::env::temp_dir().join(format!("amiro-provider-test-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir_all(&root).unwrap();
+            let state = AppState {
+                home: root.join("backend"),
+                runtime_home: root.join("runtime"),
+                runtime_socket: root.join("runtime/api.sock"),
+                workspace: root.join("workspace"),
+                runtime_bin: root.join("stub-runtime"),
+                token: "test-token".to_string(),
+                store: Arc::new(tokio::sync::Mutex::new(())),
+            };
+            std::fs::write(&state.runtime_bin, format!("#!/bin/sh\nset -eu\n{script}\n")).unwrap();
+            std::fs::set_permissions(&state.runtime_bin, std::fs::Permissions::from_mode(0o700)).unwrap();
+            Self(state)
+        }
+    }
+
+    use std::sync::Arc;
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(self.0.runtime_bin.parent().unwrap());
+        }
+    }
+
+    fn admin() -> AuthUser {
+        AuthUser(json!({ "role": "admin", "id": "admin" }))
+    }
+
+    #[tokio::test]
+    async fn runtime_commands_use_engine_home_not_backend_home() {
+        let fixture = Fixture::new("printf '{\"home\":\"%s\",\"runtimeHome\":\"%s\"}' \"$AMIRO_HOME\" \"$AMIRO_RUNTIME_HOME\"");
+        let response = run_cli_json(&fixture.0, &["auth", "status", "--json"]).await.unwrap();
+        assert_eq!(response["home"], fixture.0.runtime_home.to_str().unwrap());
+        assert_eq!(response["runtimeHome"], fixture.0.runtime_home.to_str().unwrap());
+        assert_ne!(fixture.0.home, fixture.0.runtime_home);
+    }
+
+    #[test]
+    fn single_key_capabilities_exclude_oauth_and_multi_prompt_setup() {
+        for id in ["openai-api", "anthropic-api", "gemini-api", "groq", "openai-compatible"] {
+            assert!(accepts_single_api_key("API key", id), "{id}");
+        }
+        for id in ["bedrock", "azure", "amiro", "jcode"] {
+            assert!(!accepts_single_api_key("API key", id), "{id}");
+        }
+        assert!(!accepts_single_api_key("OAuth", "openai"));
+        assert!(!accepts_single_api_key("Device code", "copilot"));
+    }
+
+    #[tokio::test]
+    async fn oauth_key_request_never_invokes_login() {
+        let fixture = Fixture::new("test \"$1\" = auth\nprintf '%s' '{\"providers\":[{\"id\":\"openai\",\"auth_kind\":\"OAuth\"}]}'");
+        let error = post_provider_api_key(State(fixture.0.clone()), admin(), Path("openai".to_string()), Json(json!({"apiKey":"test-key"}))).await.unwrap_err();
+        assert_eq!(error.0, StatusCode::BAD_REQUEST);
+        assert!(error.1.contains("single-key setup"));
+    }
+
+    #[tokio::test]
+    async fn named_compatible_key_is_piped_into_engine_home() {
+        let fixture = Fixture::new(r#"if [ "$1" = auth ]; then
+printf '%s' '{"providers":[{"id":"groq","auth_kind":"API key"}]}'
+else
+test "$1" = login
+test "$2" = groq
+test "$3" = --no-validate
+test "$#" = 3
+IFS= read -r key
+mkdir -p "$AMIRO_HOME/config/jcode"
+printf '%s' "$key" > "$AMIRO_HOME/config/jcode/groq.env"
+fi"#);
+        let response = post_provider_api_key(State(fixture.0.clone()), admin(), Path("groq".to_string()), Json(json!({"apiKey":"test-key"}))).await.unwrap();
+        assert_eq!(response.0["ok"], true);
+        assert_eq!(std::fs::read_to_string(env_file_path(&fixture.0, "groq")).unwrap(), "test-key");
+        assert!(!fixture.0.home.exists());
+    }
+
+    #[tokio::test]
+    async fn custom_compatible_uses_explicit_key_and_base_flags() {
+        let fixture = Fixture::new(r#"if [ "$1" = auth ]; then
+printf '%s' '{"providers":[{"id":"openai-compatible","auth_kind":"API key"}]}'
+else
+test "$1" = login
+test "$2" = openai-compatible
+test "$3" = --api-base
+test "$4" = https://example.test/v1
+test "$5" = --api-key
+test "$6" = test-key
+test "$7" = --no-validate
+test "$#" = 7
+fi"#);
+        let response = post_provider_api_key(State(fixture.0.clone()), admin(), Path("openai-compatible".to_string()), Json(json!({"apiKey":"test-key", "apiBase":"https://example.test/v1"}))).await.unwrap();
+        assert_eq!(response.0["ok"], true);
+    }
+
+    #[tokio::test]
+    async fn fallback_uses_api_key_provider_ids_not_oauth_ids() {
+        let fixture = Fixture::new("exit 1");
+        let response = get_provider_catalog(State(fixture.0.clone()), admin()).await.unwrap();
+        let ids: Vec<&str> = response.0["providers"].as_array().unwrap().iter()
+            .filter_map(|entry| entry["id"].as_str()).collect();
+        assert!(ids.contains(&"openai-api"));
+        assert!(ids.contains(&"gemini-api"));
+        assert!(!ids.contains(&"openai"));
+        assert!(!ids.contains(&"gemini"));
+    }
+
+    #[tokio::test]
+    async fn invalid_key_or_ignored_base_is_rejected_before_cli() {
+        let fixture = Fixture::new("exit 1");
+        for body in [json!({"apiKey":"first\nsecond"}), json!({"apiKey":"first\rsecond"}), json!({"apiKey":"test-key", "apiBase":"https://example.test/v1"})] {
+            let error = post_provider_api_key(State(fixture.0.clone()), admin(), Path("groq".to_string()), Json(body)).await.unwrap_err();
+            assert_eq!(error.0, StatusCode::BAD_REQUEST);
+            assert!(error.1.contains("single line") || error.1.contains("apiBase is only"));
+        }
+    }
 }
