@@ -246,6 +246,7 @@ async fn chat_handler(
     let user_text = extract_text(&message);
     let tool_results = extract_tool_results(&message);
     let (images, extra_text) = split_attachments(body.get("attachments"));
+    let attachments_raw = body.get("attachments").cloned();
     let prompt = std::iter::once(user_text.clone())
         .chain(extra_text)
         .filter(|part| !part.is_empty())
@@ -373,6 +374,12 @@ async fn chat_handler(
                 ));
             }
         }
+        // Best-effort: also keep a copy of sent files in the agent's workspace.
+        let saved_attachments =
+            crate::agent_home::save_chat_attachments(&state_for_stream, attachments_raw.as_ref()).await;
+        if let Some(note) = crate::agent_home::attachment_reminder(&saved_attachments) {
+            reminder_blocks.push(note);
+        }
         let reminder = reminder_blocks
             .into_iter()
             .filter(|b| !b.trim().is_empty())
@@ -428,7 +435,9 @@ async fn chat_handler(
         } else {
             patch["workingDir"] = json!(working_dir);
         }
-        if previous_session.is_none() {
+        if entry.as_ref().and_then(|e| e.get("heartbeat")).and_then(|v| v.as_bool()) == Some(true) {
+            patch["unread"] = json!(false);
+        } else if previous_session.is_none() {
             patch["title"] = json!(derive_title(&user_text));
             patch["titleSource"] = json!("runtime");
             patch["createdAt"] = json!(now);

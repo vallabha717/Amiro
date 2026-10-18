@@ -3,7 +3,10 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const workspaceSource = readFileSync(
-  path.join(import.meta.dirname, "agent-workspace-view.tsx"),
+  path.join(
+    import.meta.dirname,
+    "../workspace-browser/workspace-browser.tsx",
+  ),
   "utf8",
 );
 const memorySource = readFileSync(
@@ -23,9 +26,8 @@ describe("workspace and memory separation", () => {
   it("workspace is files only: no memory card, no memory quick-jump", () => {
     expect(workspaceSource).not.toContain("MemorySummaryCard");
     expect(workspaceSource).not.toContain("Memory snapshot");
-    expect(workspaceSource).not.toContain("showMemoryCard");
     expect(workspaceSource).not.toContain('"memory/global.json"');
-    expect(workspaceSource).toContain("Memory lives in its own view");
+    expect(workspaceSource).not.toContain("/api/agent/memory");
   });
 
   it("memory defaults to a readable map, with cards available on demand", () => {

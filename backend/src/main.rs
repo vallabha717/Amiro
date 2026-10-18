@@ -305,10 +305,16 @@ async fn main() -> anyhow::Result<()> {
     // Export vault secrets to the runtime's credential-env.json so `${VAR}`
     // placeholders in mcp.json resolve without a runtime restart.
     backend::credentials::sync_runtime_credential_env_logged(&state);
+    // Ship the agent's built-in skills (agent-skills/) into the runtime.
+    backend::routes::skills::install_bundled_skills(&state);
 
     // Keep the runtime alive while the app is open and recover it if its daemon
     // exits after the idle timeout, so the first chat after a pause still works.
     backend::runtime::spawn_supervisor(state.clone());
+
+    // The owner's agent home (SOUL/USER/NOW/HEARTBEAT, first-run BOOTSTRAP).
+    backend::agent_home::seed(&state).await;
+    backend::agent::ensure_owner_identity_file(&state).await;
 
     let out_dir: PathBuf = state.out_dir();
     tracing::info!(
@@ -327,6 +333,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(backend::swarm::router())
         .merge(backend::models::router())
         .merge(backend::agent::router())
+        .merge(backend::heartbeat::router())
         .merge(backend::routes::router())
         // Unknown API paths answer as JSON, never as the UI shell.
         .route(
@@ -372,9 +379,11 @@ async fn main() -> anyhow::Result<()> {
     }
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     // A process that cannot bind its listener must never start background work.
+    let heartbeat = backend::heartbeat::spawn_heartbeat(state.clone());
     let scheduler = backend::schedules::spawn_scheduler(state);
     tracing::info!(addr=%addr, "listening");
     axum::serve(listener, app).await?;
     scheduler.abort();
+    heartbeat.abort();
     Ok(())
 }

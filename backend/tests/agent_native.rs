@@ -458,8 +458,10 @@ async fn persona_mirrors_are_written_under_the_user_directory_only() {
     let dir = fixture.state.workspace.join("users").join(ADMIN_ID);
     let identity_md = std::fs::read_to_string(dir.join("IDENTITY.md")).unwrap();
     assert!(identity_md.contains("**Name:** Nova"));
-    let soul_md = std::fs::read_to_string(dir.join("SOUL.md")).unwrap();
-    assert!(soul_md.contains("You are **Nova**"));
+    assert!(!dir.join("SOUL.md").exists());
+    let root_identity = std::fs::read_to_string(fixture.state.workspace.join("IDENTITY.md")).unwrap();
+    assert!(root_identity.contains("You are **Nova**"));
+    assert!(root_identity.contains("## Personality"));
     let overlay = std::fs::read_to_string(dir.join("prompt-overlay.md")).unwrap();
     assert!(overlay.starts_with("# Agent Identity & Persona (Nova / @nova)"));
 
@@ -975,7 +977,7 @@ async fn workspace_persona_root_exposes_the_users_own_mirrors() {
         .map(|e| e["name"].as_str().unwrap())
         .collect();
     assert!(names.contains(&"IDENTITY.md"));
-    assert!(names.contains(&"SOUL.md"));
+    assert!(!names.contains(&"users"));
     assert!(names.contains(&"prompt-overlay.md"));
 
     let (status, file) = call(

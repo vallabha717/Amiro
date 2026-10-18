@@ -301,6 +301,8 @@ async fn list_threads(State(state): State<AppState>, user: AuthUser) -> Result<J
             "lastMessageAt": e.get("lastMessageAt").or_else(|| e.get("createdAt")).cloned().unwrap_or(json!(crate::state::now_iso())),
             "archived": e.get("archived").and_then(|v| v.as_bool()).unwrap_or(false),
             "workingDir": e.get("workingDir").and_then(|v| v.as_str()).unwrap_or_else(|| state.workspace.to_str().unwrap_or("")),
+            "heartbeat": e.get("heartbeat").and_then(|v| v.as_bool()).unwrap_or(false),
+            "unread": e.get("unread").and_then(|v| v.as_bool()).unwrap_or(false),
         }))
     }).collect();
     list.sort_by(|a,b| a["id"].as_str().cmp(&b["id"].as_str()));
@@ -336,7 +338,12 @@ async fn get_thread(State(state): State<AppState>, user: AuthUser, Path(id): Pat
             })?
     };
     let messages = thread_messages(&entry, &id, session_id, &history);
+    // Opening a thread reads it.
+    if entry.get("unread").and_then(Value::as_bool) == Some(true) {
+        let _ = upsert_entry(&state, &id, json!({"unread": false})).await;
+    }
     Ok(Json(json!({
+        "heartbeat": entry.get("heartbeat").and_then(Value::as_bool).unwrap_or(false),
         "id": id,
         "title": entry.get("title").and_then(|v| v.as_str()).unwrap_or("New Chat"),
         "userId": entry.get("userId").and_then(|v| v.as_str()).unwrap_or(""),

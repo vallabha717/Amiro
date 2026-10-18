@@ -216,30 +216,25 @@ check(
   String(sidebarMotion),
 );
 
-// --- Workspace: read-only, no absolute host paths --------------------------
+// --- Workspace: the agent's own files, no absolute host paths ---------------
 await page.goto(`${BASE}/agent/workspace/`, { waitUntil: "domcontentloaded" });
 await page
-  .locator('[data-testid="workspace-root-tabs"]')
+  .locator('[data-testid="workspace-browser"]')
   .waitFor({ timeout: 30000 });
+await page.waitForTimeout(800);
 const workspaceText = await page.locator("body").innerText();
 check(
   "workspace view exposes no absolute host paths",
   !/(\/root\/|\/home\/|\\Users\\|[A-Za-z]:\\\\)/.test(workspaceText),
   workspaceText.match(/(\/root\/[^\s]*|\/home\/[^\s]*)/)?.[0] || "none",
 );
-check(
-  "workspace view says it is read-only",
-  /read[- ]only|view[- ]only/i.test(workspaceText),
-);
 check("workspace view uses Amiro branding", !/jcode/i.test(workspaceText));
-const rootTabLabels = await page
-  .locator('[data-testid="workspace-root-tabs"] button')
-  .allInnerTexts();
 check(
-  "workspace roots are Memory, Persona, Project",
-  JSON.stringify(rootTabLabels.map((t) => t.trim())) ===
-    JSON.stringify(["Memory", "Persona", "Project"]),
-  rootTabLabels.join(" | "),
+  "workspace view is the agent's own files, not developer roots",
+  /Files your agent reads and writes/.test(workspaceText) &&
+    !/Runtime|Project/.test(
+      await page.locator('[data-testid="workspace-browser"]').innerText(),
+    ),
 );
 
 // --- Personality presets -----------------------------------------------------

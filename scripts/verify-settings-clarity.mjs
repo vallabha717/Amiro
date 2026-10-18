@@ -59,7 +59,7 @@ try {
     const page = await context.newPage();
     for (const [name, route, ready] of [
       ["credentials", "/admin/credentials", "credentials-add-button"],
-      ["workspace", "/agent/workspace", "workspace-search-input"],
+      ["workspace", "/agent/workspace", "workspace-search"],
       ["memory", "/agent/memory", "memory-search-input"],
       ["superpowers", "/agent/superpowers", "superpowers-search-input"],
     ]) {

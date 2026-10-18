@@ -1,8 +1,10 @@
 pub mod agent;
+pub mod agent_home;
 pub mod auth;
 pub mod chat;
 pub mod composio_config;
 pub mod credentials;
+pub mod heartbeat;
 pub mod models;
 pub mod runtime;
 pub mod schedules;

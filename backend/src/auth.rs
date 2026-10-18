@@ -378,6 +378,12 @@ async fn setup(
             .ok_or_else(|| failure(StatusCode::INTERNAL_SERVER_ERROR, "account has no id"))?,
     )
     .await?;
+    // Seed the agent home (SOUL/USER/NOW/HEARTBEAT, first-run BOOTSTRAP).
+    let seed_state = state.clone();
+    tokio::spawn(async move {
+        crate::agent_home::seed(&seed_state).await;
+        crate::agent::ensure_owner_identity_file(&seed_state).await;
+    });
     Ok(Json(json!({"user":public_user(&user),"token":token})))
 }
 

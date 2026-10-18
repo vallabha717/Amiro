@@ -178,45 +178,16 @@ try {
   );
 
   await page.goto(base + "/agent/workspace", { waitUntil: "networkidle" });
-  await page
-    .getByRole("button", { name: "Open file config.toml", exact: true })
-    .click();
-  await page.getByTestId("workspace-file-details").waitFor();
-  const fileResponse = await fetch(
-    base + "/api/agent/workspace/file?root=runtime&path=config.toml",
-    { headers },
-  );
-  assert.equal(fileResponse.status, 200);
-  const filePayload = await fileResponse.json();
-  assert.equal(filePayload.readOnly, true);
-  const fileLine = filePayload.content
-    .split("\n")
-    .find((line) => line.trim() && !line.trim().startsWith("#"));
-  assert(fileLine, "Real runtime config has content");
-  assert(
-    (await page.locator("main").innerText()).includes(fileLine),
-    "Selected preview matches public file API content",
-  );
-  assert.equal(
-    await page.getByTestId("workspace-edit-button").count(),
-    0,
-    "Native workspace does not advertise editing",
-  );
-  const write = await fetch(base + "/api/agent/workspace/file", {
-    method: "PUT",
+  await page.getByTestId("workspace-browser").waitFor();
+  const treeResponse = await fetch(base + "/api/workspace/tree?path=", {
     headers,
-    body: JSON.stringify({
-      root: "runtime",
-      path: "config.toml",
-      content: "unsafe-write",
-    }),
   });
-  assert.equal(write.status, 501, "Native file preview remains read-only");
-  await page.getByTestId("workspace-search-input").fill("no-match-clarity");
-  assert.equal(await page.getByTestId("workspace-entry").count(), 0);
-  console.log(
-    "PASS workspace real file selection, search and honest read-only boundary",
-  );
+  assert.equal(treeResponse.status, 200);
+  const escape = await fetch(base + "/api/workspace/file?path=../config.toml", {
+    headers,
+  });
+  assert.equal(escape.status, 403, "Workspace rejects path traversal");
+  console.log("PASS workspace tree API and containment");
 
   await page.goto(base + "/agent/memory", { waitUntil: "networkidle" });
   await page.getByTestId("memory-search-input").waitFor();

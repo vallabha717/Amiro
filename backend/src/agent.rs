@@ -463,7 +463,7 @@ pub fn persona_fingerprint(identity: &Value) -> String {
     hex::encode(digest).chars().take(16).collect()
 }
 
-fn sanitize_user_id(user_id: Option<&str>) -> Option<String> {
+pub(crate) fn sanitize_user_id(user_id: Option<&str>) -> Option<String> {
     let s = user_id.unwrap_or("").trim();
     let safe: String = s
         .chars()
@@ -744,7 +744,69 @@ fn under_base(base: &Path, candidate: &Path) -> bool {
     candidate == base || candidate.starts_with(base)
 }
 
+fn sliders_to_lines(s: &Value) -> Vec<String> {
+    let n = |k: &str| -> i64 { s.get(k).and_then(|v| v.as_i64()).unwrap_or(50) };
+    let lean = |value: i64, high: &str, low: &str| -> String {
+        // `value` is the percentage toward `high`.
+        if value >= 50 {
+            format!("Leans {high} ({value}%) over {low}")
+        } else {
+            format!("Leans {low} ({}%) over {high}", 100 - value)
+        }
+    };
+    vec![
+        lean(n("companionCoworker"), "coworker", "companion"),
+        lean(n("genzBoomer"), "classic", "Gen Z"),
+        lean(n("executeCollaborate"), "collaborating", "executing independently"),
+        lean(n("playfulSerious"), "serious", "playful"),
+        lean(n("politeUnfiltered"), "unfiltered", "polite"),
+    ]
+}
+
+/// The generated `IDENTITY.md` (workspace root): name, handle, tagline, and
+/// plain-language personality calibration from the Personality page sliders.
+pub(crate) fn build_identity_md(
+    name: &str,
+    handle: &str,
+    tagline: &str,
+    personality: &str,
+    sliders: &Value,
+) -> String {
+    let mut out = String::from(
+        "_ Generated from the Personality page. Edit it there; changes here are overwritten.\n\n",
+    );
+    out.push_str(&format!(
+        "# IDENTITY.md\n\n- **Name:** {name}\n- **Handle:** {handle}\n- **Tagline:** {tagline}\n\nYou are **{name}** ({handle}), a Personal Intelligence running on Amiro.\n\n## Personality\n\n"
+    ));
+    for line in sliders_to_lines(sliders) {
+        out.push_str(&format!("- {line}\n"));
+    }
+    if !personality.trim().is_empty() {
+        out.push_str(&format!("\nIn short: {}\n", personality.trim()));
+    }
+    out
+}
+
 /// `syncPersonaFiles` -- never fails the request; failures are logged only.
+/// Write the owner's IDENTITY.md at the workspace root if it is missing, from
+/// the saved identity (or the defaults). Without it a new agent would not know
+/// its own name until someone saved the Personality page.
+pub async fn ensure_owner_identity_file(state: &AppState) {
+    if tokio::fs::try_exists(state.workspace.join("IDENTITY.md")).await.unwrap_or(false) {
+        return;
+    }
+    let Some(owner) = crate::agent_home::owner_user(state).await else {
+        return;
+    };
+    let Some(uid) = owner.get("id").and_then(Value::as_str).map(str::to_string) else {
+        return;
+    };
+    match get_agent_identity(state, Some(&uid)).await {
+        Ok(identity) => sync_persona_files(state, &identity, Some(&uid)).await,
+        Err(err) => tracing::warn!(error = %err.1, "could not load identity for IDENTITY.md"),
+    }
+}
+
 async fn sync_persona_files(state: &AppState, identity: &Value, user_id: Option<&str>) {
     if let Err(err) = sync_persona_files_inner(state, identity, user_id).await {
         tracing::warn!(error = %err, "failed to sync persona markdown files");
@@ -825,33 +887,18 @@ async fn sync_persona_files_inner(
     let personality = js_string_or(identity.get("personalitySummary"), "");
     let updated_at = js_string_or(identity.get("updatedAt"), "");
 
-    let identity_md = format!(
-        "# Identity\n\n- **Name:** {name}\n- **Handle:** {handle}\n- **Tagline:** {tagline}\n- **Personality:** {personality}\n- **Avatar:** {} · {} · {} ({accent_hex})\n- **Updated:** {updated_at}\n",
-        js_string_or(traits.get("bodyShape"), DEFAULT_BODY_SHAPE),
-        js_string_or(traits.get("eyeStyle"), DEFAULT_EYE_STYLE),
-        js_string_or(traits.get("color"), DEFAULT_COLOR),
-    );
-
     let s = normalize_sliders(identity.get("sliders").unwrap_or(&Value::Null));
-    let n = |k: &str| -> i64 { s.get(k).and_then(|v| v.as_i64()).unwrap_or(50) };
-    let c = n("companionCoworker");
-    let g = n("genzBoomer");
-    let e = n("executeCollaborate");
-    let p = n("playfulSerious");
-    let u = n("politeUnfiltered");
-    let soul_md = format!(
-        "# Soul & Behavioral Calibration\n\nYou are **{name}** ({handle}), a Personal Intelligence running on the Amiro runtime.\n\n## Voice & Trait Calibration\n- **Role ({}):** {}% Companion / {c}% Coworker\n- **Generation Tone:** {}% Gen Z / {g}% Classic\n- **Autonomy ({}):** {}% Independent / {e}% Collaborative\n- **Demeanor:** {}% Playful / {p}% Serious\n- **Candor:** {}% Polite / {u}% Unfiltered\n\n## Operating Principles\n- Stay direct, grounded in verified measurements, and aligned with your guardian's goals.\n- Draw on Amiro's local runtime memory graph and installed Superpowers (skills) whenever relevant.\n",
-        if c >= 50 { "Coworker-leaning" } else { "Companion-leaning" },
-        100 - c,
-        100 - g,
-        if e <= 50 { "Execute Independently" } else { "Collaborative" },
-        100 - e,
-        100 - p,
-        100 - u,
+    let identity_md = build_identity_md(
+        &name,
+        &handle,
+        &tagline,
+        &personality,
+        &s,
     );
+    let _ = (&accent_hex, &updated_at, &traits);
 
     // Guard each target against symlinks: remove any existing symlink before write.
-    for name in ["IDENTITY.md", "SOUL.md", "prompt-overlay.md"] {
+    for name in ["IDENTITY.md", "prompt-overlay.md"] {
         let p = ws_dir.join(name);
         if let Ok(md) = tokio::fs::symlink_metadata(&p).await {
             if md.file_type().is_symlink() {
@@ -859,12 +906,29 @@ async fn sync_persona_files_inner(
             }
         }
     }
-    tokio::fs::write(ws_dir.join("IDENTITY.md"), identity_md)
+    tokio::fs::write(ws_dir.join("IDENTITY.md"), &identity_md)
         .await
         .map_err(|e| e.to_string())?;
-    tokio::fs::write(ws_dir.join("SOUL.md"), soul_md)
-        .await
-        .map_err(|e| e.to_string())?;
+
+    // The owner's agent home is the workspace root: IDENTITY.md there is the one
+    // file owned by the Personality page, always regenerated. SOUL.md is the
+    // agent's own and is only seeded (never overwritten) by `agent_home`.
+    let is_owner = match crate::agent_home::owner_user(state).await {
+        Some(owner) => owner.get("id").and_then(Value::as_str) == Some(uid.as_str()),
+        None => true,
+    };
+    if is_owner {
+        let root_identity = base_ws.join("IDENTITY.md");
+        if let Ok(md) = tokio::fs::symlink_metadata(&root_identity).await {
+            if md.file_type().is_symlink() {
+                let _ = tokio::fs::remove_file(&root_identity).await;
+            }
+        }
+        tokio::fs::write(&root_identity, &identity_md)
+            .await
+            .map_err(|e| e.to_string())?;
+        crate::agent_home::seed(state).await;
+    }
 
     // Per-user overlay only. Intentionally NOT the global home/prompt-overlay.md,
     // which would allow cross-user prompt injection.
@@ -1430,7 +1494,7 @@ fn split_rel_parts(rel: &str) -> Vec<&str> {
     rel.split(['/', '\\']).filter(|p| !p.is_empty()).collect()
 }
 
-fn is_blocked_workspace_path(rel_path: &str) -> bool {
+pub(crate) fn is_blocked_workspace_path(rel_path: &str) -> bool {
     for part in split_rel_parts(rel_path) {
         if BLOCKED_WORKSPACE_NAMES.contains(&part) {
             return true;
@@ -2742,8 +2806,18 @@ mod tests {
         let dir = state.workspace.join("users").join("user-1");
         let identity_md = std::fs::read_to_string(dir.join("IDENTITY.md")).unwrap();
         assert!(identity_md.contains("**Name:** Nova"));
-        let soul_md = std::fs::read_to_string(dir.join("SOUL.md")).unwrap();
-        assert!(soul_md.contains("You are **Nova** (@nova)"));
+        // SOUL.md belongs to the agent now; the persona sync never writes it per user.
+        assert!(!dir.join("SOUL.md").exists());
+        // IDENTITY.md is generated at the workspace root with plain-language traits.
+        let root_identity = std::fs::read_to_string(state.workspace.join("IDENTITY.md")).unwrap();
+        assert!(root_identity.starts_with("_ Generated from the Personality page."));
+        assert!(root_identity.contains("**Name:** Nova"));
+        assert!(root_identity.contains("## Personality"));
+        assert!(root_identity.contains("Leans coworker (65%) over companion"));
+        assert!(root_identity.contains("Leans Gen Z (58%) over classic"));
+        assert!(root_identity.contains("Leans executing independently (65%) over collaborating"));
+        assert!(root_identity.contains("Leans serious (55%) over playful"));
+        assert!(root_identity.contains("Leans unfiltered (60%) over polite"));
         let overlay = std::fs::read_to_string(dir.join("prompt-overlay.md")).unwrap();
         assert!(overlay.starts_with("# Agent Identity & Persona (Nova / @nova)"));
 

@@ -69,6 +69,15 @@ fn runtime_env(state: &AppState) -> HashMap<OsString, OsString> {
     let home = runtime_home(state).to_string_lossy().to_string();
     env.insert("AMIRO_HOME".into(), OsString::from(&home));
     env.insert("AMIRO_RUNTIME_HOME".into(), OsString::from(&home));
+    // The owner's agent home is the workspace root; the runtime loads
+    // IDENTITY/SOUL/USER/NOW/BOOTSTRAP.md from here into every turn.
+    let _ = std::fs::create_dir_all(&state.workspace);
+    let agent_home = std::fs::canonicalize(&state.workspace)
+        .unwrap_or_else(|_| state.workspace.clone());
+    env.insert(
+        "AMIRO_AGENT_HOME".into(),
+        OsString::from(agent_home.to_string_lossy().to_string()),
+    );
     env.insert(
         "AMIRO_RUNTIME_DIR".into(),
         OsString::from(runtime_dir(state).to_string_lossy().to_string()),
@@ -657,6 +666,22 @@ impl McpReloadOutcome {
 /// interrupted by an MCP reload.
 fn session_is_busy(status: &str) -> bool {
     matches!(status, "running" | "processing" | "busy" | "generating")
+}
+
+/// True when any runtime session is mid-turn (used to keep background turns
+/// such as the heartbeat out of the owner's way). A missing runtime is not busy.
+pub async fn any_session_busy(state: &AppState) -> bool {
+    if !socket_ready(&state.runtime_socket) {
+        return false;
+    }
+    let state = state.clone();
+    blocking("any_session_busy", move || {
+        let client = connect_client(&state, false)?;
+        let sessions = client.list_sessions().map_err(runtime_error)?;
+        Ok(sessions.iter().any(|session| session_is_busy(&session.status)))
+    })
+    .await
+    .unwrap_or(false)
 }
 
 /// Ask every idle runtime session to reload MCP config through the supported
@@ -1387,6 +1412,7 @@ mod tests {
             assert!(!name.starts_with("OPENAI_COMPAT_"), "host provider var leaked: {name}");
         }
         assert!(env.contains_key(std::ffi::OsStr::new("AMIRO_HOME")));
+        assert!(env.contains_key(std::ffi::OsStr::new("AMIRO_AGENT_HOME")));
         assert!(env.contains_key(std::ffi::OsStr::new("AMIRO_API_SOCKET")));
     }
 
