@@ -407,12 +407,17 @@ async fn chat_handler(
             }
         }
 
+        let turn_started = std::time::Instant::now();
+        let mut tool_count: u64 = 0;
         let mut guard = CancelGuard::new(state_for_stream.clone(), session.session_id.clone());
         let mut updates = turn.updates;
-        let text_id = uuid::Uuid::new_v4().to_string();
-        let reasoning_id = uuid::Uuid::new_v4().to_string();
+        let mut text_id = uuid::Uuid::new_v4().to_string();
+        let mut reasoning_id = uuid::Uuid::new_v4().to_string();
         let mut text_open = false;
         let mut reasoning_open = false;
+        let mut tool_inputs: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        let mut tool_names: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        let mut tool_input_emitted: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut usage: Option<TurnUsage> = None;
         let mut failed = false;
         let mut stopped_message: Option<String> = None;
@@ -424,7 +429,12 @@ async fn chat_handler(
                     use amiro_sdk::ApiEvent;
                     match event {
                         ApiEvent::TextDelta { text, .. } | ApiEvent::TextReplace { text, .. } => {
+                            if reasoning_open {
+                                yield frame(json!({"type": "reasoning-end", "id": reasoning_id}));
+                                reasoning_open = false;
+                            }
                             if !text_open {
+                                text_id = uuid::Uuid::new_v4().to_string();
                                 yield frame(json!({"type": "text-start", "id": text_id}));
                                 text_open = true;
                             }
@@ -438,6 +448,7 @@ async fn chat_handler(
                         }
                         ApiEvent::ReasoningDelta { text, .. } => {
                             if !reasoning_open {
+                                reasoning_id = uuid::Uuid::new_v4().to_string();
                                 yield frame(json!({"type": "reasoning-start", "id": reasoning_id}));
                                 reasoning_open = true;
                             }
@@ -450,19 +461,71 @@ async fn chat_handler(
                             }
                         }
                         ApiEvent::ToolStart { call_id, name, .. } => {
+                            if reasoning_open {
+                                yield frame(json!({"type": "reasoning-end", "id": reasoning_id}));
+                                reasoning_open = false;
+                            }
+                            if text_open {
+                                yield frame(json!({"type": "text-end", "id": text_id}));
+                                text_open = false;
+                            }
+                            tool_names.insert(call_id.clone(), name.clone());
                             yield frame(json!({"type": "tool-input-start", "toolCallId": call_id, "toolName": name}));
                         }
                         ApiEvent::ToolInputDelta { call_id, delta, .. } => {
+                            tool_inputs.entry(call_id.clone()).or_default().push_str(&delta);
                             yield frame(json!({"type": "tool-input-delta", "toolCallId": call_id, "inputTextDelta": delta}));
                         }
-                        ApiEvent::ToolCall { call_id, name, input, .. } => {
-                            yield frame(json!({"type": "tool-input-available", "toolCallId": call_id, "toolName": name, "input": input}));
+                        ApiEvent::ToolExec { call_id, name, .. } => {
+                            if reasoning_open {
+                                yield frame(json!({"type": "reasoning-end", "id": reasoning_id}));
+                                reasoning_open = false;
+                            }
+                            if text_open {
+                                yield frame(json!({"type": "text-end", "id": text_id}));
+                                text_open = false;
+                            }
+                            tool_names.insert(call_id.clone(), name.clone());
+                            let raw_input = tool_inputs.get(&call_id).map(|s| s.as_str()).unwrap_or("");
+                            let parsed_input: Value = serde_json::from_str(raw_input).unwrap_or_else(|_| json!({}));
+                            yield frame(json!({"type": "tool-input-available", "toolCallId": call_id, "toolName": name, "input": parsed_input}));
+                            tool_input_emitted.insert(call_id);
+                            tool_count += 1;
                         }
-                        ApiEvent::ToolDone { call_id, output, error, .. } => {
+                        ApiEvent::ToolCall { call_id, name, input, .. } => {
+                            if reasoning_open {
+                                yield frame(json!({"type": "reasoning-end", "id": reasoning_id}));
+                                reasoning_open = false;
+                            }
+                            if text_open {
+                                yield frame(json!({"type": "text-end", "id": text_id}));
+                                text_open = false;
+                            }
+                            tool_names.insert(call_id.clone(), name.clone());
+                            yield frame(json!({"type": "tool-input-available", "toolCallId": call_id, "toolName": name, "input": input}));
+                            tool_input_emitted.insert(call_id);
+                            tool_count += 1;
+                        }
+                        ApiEvent::ToolDone { call_id, name, output, error, .. } => {
+                            if !tool_input_emitted.contains(&call_id) {
+                                let tool_name = tool_names.get(&call_id).cloned().unwrap_or_else(|| name.clone());
+                                if !tool_names.contains_key(&call_id) {
+                                    yield frame(json!({"type": "tool-input-start", "toolCallId": call_id, "toolName": tool_name}));
+                                }
+                                let raw_input = tool_inputs.get(&call_id).map(|s| s.as_str()).unwrap_or("");
+                                let parsed_input: Value = serde_json::from_str(raw_input).unwrap_or_else(|_| json!({}));
+                                yield frame(json!({"type": "tool-input-available", "toolCallId": call_id, "toolName": tool_name, "input": parsed_input}));
+                                tool_input_emitted.insert(call_id.clone());
+                                tool_count += 1;
+                            }
+                            let parsed_output = match serde_json::from_str::<Value>(&output) {
+                                Ok(v) if v.is_object() || v.is_array() => v,
+                                _ => Value::String(output),
+                            };
                             if let Some(error) = error {
                                 yield frame(json!({"type": "tool-output-error", "toolCallId": call_id, "errorText": error}));
                             } else {
-                                yield frame(json!({"type": "tool-output-available", "toolCallId": call_id, "output": output}));
+                                yield frame(json!({"type": "tool-output-available", "toolCallId": call_id, "output": parsed_output}));
                             }
                         }
                         ApiEvent::TokenUsage { input, output, cache_read_input, .. } => {
@@ -508,7 +571,12 @@ async fn chat_handler(
         yield frame(json!({"type": "finish-step"}));
 
         let _ = failed;
-        let mut metadata = json!({"chatModel": chat_model, "model": requested_model});
+        let mut metadata = json!({
+            "chatModel": chat_model,
+            "model": requested_model,
+            "durationMs": turn_started.elapsed().as_millis() as u64,
+            "toolCount": tool_count,
+        });
         if let Some(usage) = usage_metadata(usage) {
             metadata["usage"] = usage;
         }
@@ -596,19 +664,30 @@ async fn chat_temporary(
             }
         };
         let _ = uid;
+        let turn_started = std::time::Instant::now();
+        let mut tool_count: u64 = 0;
         let mut updates = turn.updates;
         yield frame(json!({"type": "start-step"}));
-        let text_id = uuid::Uuid::new_v4().to_string();
-        let reasoning_id = uuid::Uuid::new_v4().to_string();
+        let mut text_id = uuid::Uuid::new_v4().to_string();
+        let mut reasoning_id = uuid::Uuid::new_v4().to_string();
         let mut text_open = false;
         let mut reasoning_open = false;
+        let mut tool_inputs: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        let mut tool_names: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        let mut tool_input_emitted: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut usage: Option<TurnUsage> = None;
         while let Some(update) = updates.recv().await {
             match update {
                 TurnUpdate::Event(event) => {
                     use amiro_sdk::ApiEvent;
                     match event {
                         ApiEvent::TextDelta { text, .. } | ApiEvent::TextReplace { text, .. } => {
+                            if reasoning_open {
+                                yield frame(json!({"type": "reasoning-end", "id": reasoning_id}));
+                                reasoning_open = false;
+                            }
                             if !text_open {
+                                text_id = uuid::Uuid::new_v4().to_string();
                                 yield frame(json!({"type": "text-start", "id": text_id}));
                                 text_open = true;
                             }
@@ -622,6 +701,7 @@ async fn chat_temporary(
                         }
                         ApiEvent::ReasoningDelta { text, .. } => {
                             if !reasoning_open {
+                                reasoning_id = uuid::Uuid::new_v4().to_string();
                                 yield frame(json!({"type": "reasoning-start", "id": reasoning_id}));
                                 reasoning_open = true;
                             }
@@ -632,6 +712,82 @@ async fn chat_temporary(
                                 yield frame(json!({"type": "reasoning-end", "id": reasoning_id}));
                                 reasoning_open = false;
                             }
+                        }
+                        ApiEvent::ToolStart { call_id, name, .. } => {
+                            if reasoning_open {
+                                yield frame(json!({"type": "reasoning-end", "id": reasoning_id}));
+                                reasoning_open = false;
+                            }
+                            if text_open {
+                                yield frame(json!({"type": "text-end", "id": text_id}));
+                                text_open = false;
+                            }
+                            tool_names.insert(call_id.clone(), name.clone());
+                            yield frame(json!({"type": "tool-input-start", "toolCallId": call_id, "toolName": name}));
+                        }
+                        ApiEvent::ToolInputDelta { call_id, delta, .. } => {
+                            tool_inputs.entry(call_id.clone()).or_default().push_str(&delta);
+                            yield frame(json!({"type": "tool-input-delta", "toolCallId": call_id, "inputTextDelta": delta}));
+                        }
+                        ApiEvent::ToolExec { call_id, name, .. } => {
+                            if reasoning_open {
+                                yield frame(json!({"type": "reasoning-end", "id": reasoning_id}));
+                                reasoning_open = false;
+                            }
+                            if text_open {
+                                yield frame(json!({"type": "text-end", "id": text_id}));
+                                text_open = false;
+                            }
+                            tool_names.insert(call_id.clone(), name.clone());
+                            let raw_input = tool_inputs.get(&call_id).map(|s| s.as_str()).unwrap_or("");
+                            let parsed_input: Value = serde_json::from_str(raw_input).unwrap_or_else(|_| json!({}));
+                            yield frame(json!({"type": "tool-input-available", "toolCallId": call_id, "toolName": name, "input": parsed_input}));
+                            tool_input_emitted.insert(call_id);
+                            tool_count += 1;
+                        }
+                        ApiEvent::ToolCall { call_id, name, input, .. } => {
+                            if reasoning_open {
+                                yield frame(json!({"type": "reasoning-end", "id": reasoning_id}));
+                                reasoning_open = false;
+                            }
+                            if text_open {
+                                yield frame(json!({"type": "text-end", "id": text_id}));
+                                text_open = false;
+                            }
+                            tool_names.insert(call_id.clone(), name.clone());
+                            yield frame(json!({"type": "tool-input-available", "toolCallId": call_id, "toolName": name, "input": input}));
+                            tool_input_emitted.insert(call_id);
+                            tool_count += 1;
+                        }
+                        ApiEvent::ToolDone { call_id, name, output, error, .. } => {
+                            if !tool_input_emitted.contains(&call_id) {
+                                let tool_name = tool_names.get(&call_id).cloned().unwrap_or_else(|| name.clone());
+                                if !tool_names.contains_key(&call_id) {
+                                    yield frame(json!({"type": "tool-input-start", "toolCallId": call_id, "toolName": tool_name}));
+                                }
+                                let raw_input = tool_inputs.get(&call_id).map(|s| s.as_str()).unwrap_or("");
+                                let parsed_input: Value = serde_json::from_str(raw_input).unwrap_or_else(|_| json!({}));
+                                yield frame(json!({"type": "tool-input-available", "toolCallId": call_id, "toolName": tool_name, "input": parsed_input}));
+                                tool_input_emitted.insert(call_id.clone());
+                                tool_count += 1;
+                            }
+                            let parsed_output = match serde_json::from_str::<Value>(&output) {
+                                Ok(v) if v.is_object() || v.is_array() => v,
+                                _ => Value::String(output),
+                            };
+                            if let Some(error) = error {
+                                yield frame(json!({"type": "tool-output-error", "toolCallId": call_id, "errorText": error}));
+                            } else {
+                                yield frame(json!({"type": "tool-output-available", "toolCallId": call_id, "output": parsed_output}));
+                            }
+                        }
+                        ApiEvent::TokenUsage { input, output, cache_read_input, .. } => {
+                            let read = cache_read_input.unwrap_or(0);
+                            usage = Some(TurnUsage {
+                                prompt_tokens: input + read,
+                                completion_tokens: output,
+                                total_tokens: input + read + output,
+                            });
                         }
                         ApiEvent::TurnStopped { message, .. } => {
                             yield frame(json!({"type": "error", "errorText": message}));
@@ -645,7 +801,10 @@ async fn chat_temporary(
                 TurnUpdate::Error(message) => {
                     yield frame(json!({"type": "error", "errorText": message}));
                 }
-                TurnUpdate::Done(_) => break,
+                TurnUpdate::Done(turn_usage) => {
+                    usage = turn_usage.or(usage);
+                    break;
+                }
             }
         }
         if text_open {
@@ -655,7 +814,16 @@ async fn chat_temporary(
             yield frame(json!({"type": "reasoning-end", "id": reasoning_id}));
         }
         yield frame(json!({"type": "finish-step"}));
-        yield frame(json!({"type": "finish"}));
+        let mut metadata = json!({
+            "chatModel": chat_model,
+            "model": requested_model,
+            "durationMs": turn_started.elapsed().as_millis() as u64,
+            "toolCount": tool_count,
+        });
+        if let Some(usage) = usage_metadata(usage) {
+            metadata["usage"] = usage;
+        }
+        yield frame(json!({"type": "finish", "messageMetadata": metadata}));
         yield done_frame();
 
         // A temporary chat leaves nothing behind: the session is archived once

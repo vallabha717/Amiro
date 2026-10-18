@@ -73,30 +73,164 @@ function roleFor(role) {
   return role === 'user' ? 'user' : 'assistant';
 }
 
+function extractThinkingAndText(content) {
+  const thinkings = [];
+  const openTag = '<thinking>';
+  const closeTag = '</thinking>';
+  let remaining = '';
+  let rest = String(content || '');
+
+  while (true) {
+    const startIdx = rest.indexOf(openTag);
+    if (startIdx === -1) {
+      remaining += rest;
+      break;
+    }
+    remaining += rest.slice(0, startIdx);
+    const afterOpen = rest.slice(startIdx + openTag.length);
+    const endIdx = afterOpen.indexOf(closeTag);
+    if (endIdx === -1) {
+      thinkings.push(afterOpen.trim());
+      break;
+    }
+    thinkings.push(afterOpen.slice(0, endIdx).trim());
+    rest = afterOpen.slice(endIdx + closeTag.length);
+  }
+  return { thinkings, remaining };
+}
+
 // Translate runtime HistoryMessage[] -> the frontend's persisted message shape
 // {id, threadId, role, parts, metadata?, createdAt}.
 export function historyToMessages(threadId, sessionId, history) {
-  return (history || []).map((m, index) => {
-    const parts = [{ type: 'text', text: m.content ?? '' }];
-    const msg = {
-      id: messageId(sessionId, index),
-      threadId,
-      role: roleFor(m.role),
-      parts,
-      createdAt: new Date().toISOString(),
-    };
-    if (m.response_stats) {
-      msg.metadata = {
-        usage: {
-          promptTokens: m.response_stats.input_tokens,
-          completionTokens: m.response_stats.output_tokens,
-          totalTokens:
-            (m.response_stats.input_tokens || 0) + (m.response_stats.output_tokens || 0),
-        },
+  const messages = [];
+  const list = history || [];
+  let i = 0;
+  while (i < list.length) {
+    const m = list[i];
+    if (m && m.role === 'user') {
+      const parts = [{ type: 'text', text: m.content ?? '' }];
+      const msg = {
+        id: messageId(sessionId, i),
+        threadId,
+        role: 'user',
+        parts,
+        createdAt: new Date().toISOString(),
       };
+      if (m.response_stats) {
+        const stats = m.response_stats;
+        const input = stats.input_tokens || 0;
+        const output = stats.output_tokens || 0;
+        const metadata = {
+          usage: {
+            promptTokens: input,
+            completionTokens: output,
+            totalTokens: input + output,
+          },
+        };
+        if (typeof stats.duration_secs === 'number') {
+          metadata.durationMs = Math.round(stats.duration_secs * 1000);
+        }
+        msg.metadata = metadata;
+      }
+      messages.push(msg);
+      i++;
+    } else {
+      const start = i;
+      const firstId = messageId(sessionId, start);
+      const parts = [];
+      let turnStats = null;
+      let hasTools = false;
+
+      while (i < list.length) {
+        const row = list[i];
+        if (!row || row.role === 'user') {
+          break;
+        }
+        if (row.response_stats) {
+          turnStats = row.response_stats;
+        }
+        const content = row.content ?? '';
+        if (row.role === 'tool') {
+          hasTools = true;
+          if (parts.length === 1 && parts[0].type === 'text' && parts[0].text === '') {
+            parts.pop();
+          }
+          const td = row.tool_data;
+          const callId = td && td.id ? String(td.id) : `call_${i}`;
+          const name = td && td.name ? String(td.name) : 'tool';
+          const input = td && td.input !== undefined ? td.input : {};
+          let parsedOutput = content;
+          if (typeof content === 'string') {
+            try {
+              const p = JSON.parse(content);
+              if (p !== null && typeof p === 'object') {
+                parsedOutput = p;
+              }
+            } catch {
+              /* keep string */
+            }
+          }
+          parts.push({
+            type: `tool-${name}`,
+            toolCallId: callId,
+            toolName: name,
+            state: 'output-available',
+            input,
+            output: parsedOutput,
+          });
+        } else {
+          const { thinkings, remaining } = extractThinkingAndText(content);
+          for (const t of thinkings) {
+            parts.push({
+              type: 'reasoning',
+              text: t,
+            });
+          }
+          if (remaining.trim()) {
+            parts.push({
+              type: 'text',
+              text: content.includes('<thinking>') ? remaining.trim() : content,
+            });
+          } else if (!hasTools && parts.length === 0) {
+            parts.push({
+              type: 'text',
+              text: content,
+            });
+          }
+        }
+        i++;
+      }
+
+      if (parts.length === 0) {
+        parts.push({ type: 'text', text: '' });
+      }
+
+      const msg = {
+        id: firstId,
+        threadId,
+        role: 'assistant',
+        parts,
+        createdAt: new Date().toISOString(),
+      };
+      if (turnStats) {
+        const input = turnStats.input_tokens || 0;
+        const output = turnStats.output_tokens || 0;
+        const metadata = {
+          usage: {
+            promptTokens: input,
+            completionTokens: output,
+            totalTokens: input + output,
+          },
+        };
+        if (typeof turnStats.duration_secs === 'number') {
+          metadata.durationMs = Math.round(turnStats.duration_secs * 1000);
+        }
+        msg.metadata = metadata;
+      }
+      messages.push(msg);
     }
-    return msg;
-  });
+  }
+  return messages;
 }
 
 // Session-scoped read on an attached connection. Failures propagate (no silent

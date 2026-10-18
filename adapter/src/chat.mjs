@@ -198,11 +198,16 @@ async function enforceToolPolicy(ctx, client, threadId, sessionId, _entry) {
 // Stream one runtime turn into the SSE response until `turn_done`/`turn_stopped`
 // or timeout. Returns the collected usage (if any).
 async function streamTurn({ sse, client, sessionId, allowTools, iterator }) {
-  const textId = crypto.randomUUID();
-  const reasoningId = crypto.randomUUID();
+  const turnStarted = Date.now();
+  let toolCount = 0;
+  let textId = crypto.randomUUID();
+  let reasoningId = crypto.randomUUID();
   let textOpen = false;
   let reasoningOpen = false;
   let usage = null;
+  const toolInputs = new Map();
+  const toolNames = new Map();
+  const toolInputEmitted = new Set();
 
   const iter = iterator || await client.events(sessionId);
   const closeText = () => {
@@ -217,6 +222,10 @@ async function streamTurn({ sse, client, sessionId, allowTools, iterator }) {
       reasoningOpen = false;
     }
   };
+  const closeBeforeTools = () => {
+    closeReasoning();
+    closeText();
+  };
 
   let timedOut = false;
   const consume = (async () => {
@@ -224,14 +233,12 @@ async function streamTurn({ sse, client, sessionId, allowTools, iterator }) {
       if (ev && ev.session_id && ev.session_id !== sessionId) continue;
       switch (ev.ev) {
         case 'text_delta':
-          if (!textOpen) {
-            sse.textStart(textId);
-            textOpen = true;
-          }
-          sse.textDelta(textId, ev.text || '');
-          break;
         case 'text_replace':
+          if (reasoningOpen) {
+            closeReasoning();
+          }
           if (!textOpen) {
+            textId = crypto.randomUUID();
             sse.textStart(textId);
             textOpen = true;
           }
@@ -242,6 +249,7 @@ async function streamTurn({ sse, client, sessionId, allowTools, iterator }) {
           break;
         case 'reasoning_delta':
           if (!reasoningOpen) {
+            reasoningId = crypto.randomUUID();
             sse.reasoningStart(reasoningId);
             reasoningOpen = true;
           }
@@ -251,18 +259,72 @@ async function streamTurn({ sse, client, sessionId, allowTools, iterator }) {
           closeReasoning();
           break;
         case 'tool_start':
+          closeBeforeTools();
+          toolNames.set(ev.call_id, ev.name);
           sse.toolInputStart(ev.call_id, ev.name);
           break;
         case 'tool_input_delta':
+          toolInputs.set(ev.call_id, (toolInputs.get(ev.call_id) || '') + (ev.delta || ''));
           sse.toolInputDelta(ev.call_id, ev.delta || '');
           break;
+        case 'tool_exec': {
+          closeBeforeTools();
+          toolNames.set(ev.call_id, ev.name);
+          const raw = toolInputs.get(ev.call_id) || '';
+          let parsed = {};
+          if (raw.trim()) {
+            try {
+              parsed = JSON.parse(raw);
+            } catch {
+              parsed = {};
+            }
+          }
+          sse.toolInputAvailable(ev.call_id, ev.name, parsed);
+          toolInputEmitted.add(ev.call_id);
+          toolCount++;
+          break;
+        }
         case 'tool_call':
+          closeBeforeTools();
+          toolNames.set(ev.call_id, ev.name);
           sse.toolInputAvailable(ev.call_id, ev.name, ev.input);
+          toolInputEmitted.add(ev.call_id);
+          toolCount++;
           break;
-        case 'tool_done':
+        case 'tool_done': {
+          if (!toolInputEmitted.has(ev.call_id)) {
+            const toolName = toolNames.get(ev.call_id) || ev.name;
+            if (!toolNames.has(ev.call_id)) {
+              sse.toolInputStart(ev.call_id, toolName);
+            }
+            const raw = toolInputs.get(ev.call_id) || '';
+            let parsed = {};
+            if (raw.trim()) {
+              try {
+                parsed = JSON.parse(raw);
+              } catch {
+                parsed = {};
+              }
+            }
+            sse.toolInputAvailable(ev.call_id, toolName, parsed);
+            toolInputEmitted.add(ev.call_id);
+            toolCount++;
+          }
+          let parsedOutput = ev.output;
+          if (typeof ev.output === 'string') {
+            try {
+              const p = JSON.parse(ev.output);
+              if (p !== null && typeof p === 'object') {
+                parsedOutput = p;
+              }
+            } catch {
+              /* keep string */
+            }
+          }
           if (ev.error) sse.toolOutputError(ev.call_id, ev.error);
-          else sse.toolOutputAvailable(ev.call_id, ev.output);
+          else sse.toolOutputAvailable(ev.call_id, parsedOutput);
           break;
+        }
         case 'token_usage':
           usage = {
             promptTokens: ev.input,
@@ -317,7 +379,11 @@ async function streamTurn({ sse, client, sessionId, allowTools, iterator }) {
   }
   closeReasoning();
   closeText();
-  return usage;
+  return {
+    usage,
+    durationMs: Date.now() - turnStarted,
+    toolCount,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -513,7 +579,7 @@ export function register(app, ctx) {
         }
 
         sse.startStep();
-        const usage = await streamTurn({ ctx, sse, client, sessionId, allowTools: hasTools, iterator });
+        const turnResult = await streamTurn({ ctx, sse, client, sessionId, allowTools: hasTools, iterator });
         sse.finishStep();
 
         await upsertEntry(ctx.store, home, threadId, {
@@ -521,7 +587,14 @@ export function register(app, ctx) {
           title: entry.title && entry.title !== 'New Chat' ? entry.title : deriveTitle(userText),
         });
 
-        sse.finish(usage ? { usage, chatModel: cm, model: requestedModel } : { chatModel: cm, model: requestedModel });
+        const messageMetadata = {
+          chatModel: cm,
+          model: requestedModel,
+          durationMs: turnResult.durationMs,
+          toolCount: turnResult.toolCount,
+          ...(turnResult.usage ? { usage: turnResult.usage } : {}),
+        };
+        sse.finish(messageMetadata);
         sse.done();
       });
     } catch (err) {
@@ -566,9 +639,16 @@ export function register(app, ctx) {
               ctx.log('warn', 'daemon was still busy; re-sending the message', { threadId: null, sessionId, ...info }),
           });
           sse.startStep();
-          await streamTurn({ ctx, sse, client, sessionId, allowTools: toolsEnabled(), iterator });
+          const turnResult = await streamTurn({ ctx, sse, client, sessionId, allowTools: toolsEnabled(), iterator });
           sse.finishStep();
-          sse.finish(null);
+          const messageMetadata = {
+            chatModel: cm,
+            model: requestedModel,
+            durationMs: turnResult.durationMs,
+            toolCount: turnResult.toolCount,
+            ...(turnResult.usage ? { usage: turnResult.usage } : {}),
+          };
+          sse.finish(messageMetadata);
           sse.done();
         } finally {
           try {

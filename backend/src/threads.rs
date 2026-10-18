@@ -82,27 +82,160 @@ fn parse_msg_id(id: &str) -> Option<(usize, String)> {
     Some((idx, sid.to_string()))
 }
 
-pub fn history_to_messages(thread_id: &str, session_id: &str, history: &[Value]) -> Vec<Value> {
-    history.iter().enumerate().map(|(i, m)| {
-        let content = m.get("content").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let role = match m.get("role").and_then(|v| v.as_str()).unwrap_or("assistant") {
-            "user" => "user",
-            _ => "assistant",
-        };
-        let mut msg = json!({
-            "id": history_msg_id(session_id, i),
-            "threadId": thread_id,
-            "role": role,
-            "parts": [{"type":"text","text": content}],
-            "createdAt": crate::state::now_iso(),
-        });
-        if let Some(stats) = m.get("response_stats") {
-            let input = stats.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-            let output = stats.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-            msg["metadata"] = json!({"usage":{"promptTokens": input, "completionTokens": output, "totalTokens": input+output}});
+fn extract_thinking_and_text(content: &str) -> (Vec<String>, String) {
+    let mut thinkings = Vec::new();
+    let mut remaining = String::new();
+    let mut rest = content;
+    let open_tag = "<thinking>";
+    let close_tag = "</thinking>";
+
+    while let Some(start_idx) = rest.find(open_tag) {
+        remaining.push_str(&rest[..start_idx]);
+        let after_open = &rest[start_idx + open_tag.len()..];
+        if let Some(end_idx) = after_open.find(close_tag) {
+            let thinking = &after_open[..end_idx];
+            thinkings.push(thinking.trim().to_string());
+            rest = &after_open[end_idx + close_tag.len()..];
+        } else {
+            thinkings.push(after_open.trim().to_string());
+            rest = "";
+            break;
         }
-        msg
-    }).collect()
+    }
+    remaining.push_str(rest);
+    (thinkings, remaining)
+}
+
+pub fn history_to_messages(thread_id: &str, session_id: &str, history: &[Value]) -> Vec<Value> {
+    let mut messages: Vec<Value> = Vec::new();
+    let mut i = 0;
+    while i < history.len() {
+        let m = &history[i];
+        let role = m.get("role").and_then(|v| v.as_str()).unwrap_or("assistant");
+        if role == "user" {
+            let content = m.get("content").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let mut msg = json!({
+                "id": history_msg_id(session_id, i),
+                "threadId": thread_id,
+                "role": "user",
+                "parts": [{"type": "text", "text": content}],
+                "createdAt": crate::state::now_iso(),
+            });
+            if let Some(stats) = m.get("response_stats") {
+                let input = stats.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                let output = stats.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                let mut meta = json!({
+                    "usage": {
+                        "promptTokens": input,
+                        "completionTokens": output,
+                        "totalTokens": input + output,
+                    }
+                });
+                if let Some(duration_secs) = stats.get("duration_secs").and_then(|v| v.as_f64()) {
+                    meta["durationMs"] = json!((duration_secs * 1000.0).round() as u64);
+                }
+                msg["metadata"] = meta;
+            }
+            messages.push(msg);
+            i += 1;
+        } else {
+            let start = i;
+            let first_id = history_msg_id(session_id, start);
+            let mut parts: Vec<Value> = Vec::new();
+            let mut turn_stats: Option<&Value> = None;
+            let mut has_tools = false;
+
+            while i < history.len() {
+                let row = &history[i];
+                let row_role = row.get("role").and_then(|v| v.as_str()).unwrap_or("assistant");
+                if row_role == "user" {
+                    break;
+                }
+                if let Some(stats) = row.get("response_stats") {
+                    turn_stats = Some(stats);
+                }
+                let content = row.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                if row_role == "tool" {
+                    has_tools = true;
+                    if parts.len() == 1 && parts[0].get("type").and_then(|t| t.as_str()) == Some("text") {
+                        if parts[0].get("text").and_then(|t| t.as_str()) == Some("") {
+                            parts.pop();
+                        }
+                    }
+                    let (call_id, name, input) = if let Some(td) = row.get("tool_data").filter(|v| !v.is_null()) {
+                        let id = td.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let name = td.get("name").and_then(|v| v.as_str()).unwrap_or("tool").to_string();
+                        let input = td.get("input").cloned().unwrap_or(json!({}));
+                        (id, name, input)
+                    } else {
+                        (format!("call_{i}"), "tool".to_string(), json!({}))
+                    };
+                    let part_type = format!("tool-{name}");
+                    let parsed_output = match serde_json::from_str::<Value>(content) {
+                        Ok(v) if v.is_object() || v.is_array() => v,
+                        _ => Value::String(content.to_string()),
+                    };
+                    parts.push(json!({
+                        "type": part_type,
+                        "toolCallId": call_id,
+                        "toolName": name,
+                        "state": "output-available",
+                        "input": input,
+                        "output": parsed_output,
+                    }));
+                } else {
+                    let (thinkings, remaining) = extract_thinking_and_text(content);
+                    for t in thinkings {
+                        parts.push(json!({
+                            "type": "reasoning",
+                            "text": t,
+                        }));
+                    }
+                    if !remaining.trim().is_empty() {
+                        parts.push(json!({
+                            "type": "text",
+                            "text": if !content.contains("<thinking>") { content.to_string() } else { remaining.trim().to_string() },
+                        }));
+                    } else if !has_tools && parts.is_empty() {
+                        parts.push(json!({
+                            "type": "text",
+                            "text": content.to_string(),
+                        }));
+                    }
+                }
+                i += 1;
+            }
+
+            if parts.is_empty() {
+                parts.push(json!({"type": "text", "text": ""}));
+            }
+
+            let mut msg = json!({
+                "id": first_id,
+                "threadId": thread_id,
+                "role": "assistant",
+                "parts": parts,
+                "createdAt": crate::state::now_iso(),
+            });
+            if let Some(stats) = turn_stats {
+                let input = stats.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                let output = stats.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                let mut meta = json!({
+                    "usage": {
+                        "promptTokens": input,
+                        "completionTokens": output,
+                        "totalTokens": input + output,
+                    }
+                });
+                if let Some(duration_secs) = stats.get("duration_secs").and_then(|v| v.as_f64()) {
+                    meta["durationMs"] = json!((duration_secs * 1000.0).round() as u64);
+                }
+                msg["metadata"] = meta;
+            }
+            messages.push(msg);
+        }
+    }
+    messages
 }
 
 /// In-app reminders do not need a model or a runtime session. Keep their
@@ -351,5 +484,60 @@ mod reminder_tests {
             thread_messages(&json!({}), "thread-1", "session-1", &history)[0]["id"],
             "msg_0_session-1"
         );
+    }
+
+    #[test]
+    fn history_folds_assistant_and_tool_rows_preserving_reasoning_and_tools() {
+        let history = [
+            json!({"role": "user", "content": "Calculate 2+2"}),
+            json!({
+                "role": "assistant",
+                "content": "<thinking>\nI need to use calculator\n</thinking>\nRunning tool...",
+            }),
+            json!({
+                "role": "tool",
+                "content": "{\"result\": 4}",
+                "tool_data": {
+                    "id": "calc-1",
+                    "name": "calculator",
+                    "input": {"expr": "2+2"}
+                }
+            }),
+            json!({
+                "role": "assistant",
+                "content": "The answer is 4.",
+                "response_stats": {
+                    "input_tokens": 100,
+                    "output_tokens": 50,
+                    "duration_secs": 1.25
+                }
+            }),
+        ];
+        let msgs = history_to_messages("t1", "s1", &history);
+        assert_eq!(msgs.len(), 2);
+        assert_eq!(msgs[0]["role"], "user");
+        assert_eq!(msgs[0]["parts"][0]["text"], "Calculate 2+2");
+
+        assert_eq!(msgs[1]["id"], "msg_1_s1");
+        assert_eq!(msgs[1]["role"], "assistant");
+        let parts = msgs[1]["parts"].as_array().unwrap();
+        assert_eq!(parts.len(), 4);
+        assert_eq!(parts[0]["type"], "reasoning");
+        assert_eq!(parts[0]["text"], "I need to use calculator");
+        assert_eq!(parts[1]["type"], "text");
+        assert_eq!(parts[1]["text"], "Running tool...");
+        assert_eq!(parts[2]["type"], "tool-calculator");
+        assert_eq!(parts[2]["toolCallId"], "calc-1");
+        assert_eq!(parts[2]["toolName"], "calculator");
+        assert_eq!(parts[2]["state"], "output-available");
+        assert_eq!(parts[2]["input"]["expr"], "2+2");
+        assert_eq!(parts[2]["output"]["result"], 4);
+        assert_eq!(parts[3]["type"], "text");
+        assert_eq!(parts[3]["text"], "The answer is 4.");
+
+        assert_eq!(msgs[1]["metadata"]["usage"]["promptTokens"], 100);
+        assert_eq!(msgs[1]["metadata"]["usage"]["completionTokens"], 50);
+        assert_eq!(msgs[1]["metadata"]["usage"]["totalTokens"], 150);
+        assert_eq!(msgs[1]["metadata"]["durationMs"], 1250);
     }
 }

@@ -2147,6 +2147,12 @@ impl BridgeState {
                                     .unwrap_or(None),
                                 role: m["role"].as_str().unwrap_or("").to_string(),
                                 content: m["content"].as_str().unwrap_or("").to_string(),
+                                tool_calls: serde_json::from_value(m["tool_calls"].clone()).unwrap_or(None),
+                                tool_data: if m["tool_data"].is_null() {
+                                    None
+                                } else {
+                                    Some(m["tool_data"].clone())
+                                },
                             })
                             .collect()
                     })
@@ -3567,6 +3573,8 @@ impl BridgeState {
                     response_stats: None,
                     role: role.to_string(),
                     content,
+                    tool_calls: None,
+                    tool_data: None,
                 })
             })
             .take(limit)
