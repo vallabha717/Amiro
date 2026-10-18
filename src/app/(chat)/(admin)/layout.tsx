@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   BarChart3,
   Cpu,
+  KeyRound,
   Puzzle,
   Search,
   SlidersHorizontal,
@@ -35,6 +36,15 @@ const ADMIN_SECTIONS: AdminSection[] = [
     icon: SlidersHorizontal,
     testId: "admin-sidebar-link-general",
     isActive: (p) => p === "/admin/general" || p.startsWith("/admin/general/"),
+  },
+  {
+    id: "credentials",
+    title: "Credentials",
+    subtitle: "Encrypted secrets and agent environment variables",
+    href: "/admin/credentials",
+    icon: KeyRound,
+    testId: "admin-sidebar-link-credentials",
+    isActive: (p) => p.startsWith("/admin/credentials"),
   },
   {
     id: "providers",

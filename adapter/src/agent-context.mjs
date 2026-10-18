@@ -12,6 +12,24 @@ function boundedUtf8(value, maxBytes) {
   return Buffer.from(text, 'utf8').subarray(0, maxBytes - Buffer.byteLength(marker)).toString('utf8').replace(/\uFFFD$/, '') + marker;
 }
 
+// A metadata-only catalog of stored credentials. Never contains a secret value:
+// only the slot, the exported environment variable name, an optional
+// label/usage description, and any allowed domains. Best-effort: a missing home
+// or unreadable store yields an empty block rather than failing the turn. Never
+// creates the credential store key.
+async function credentialCatalogBlock(ctx) {
+  const home = ctx?.config?.home || ctx?.store?.home;
+  if (!home || !ctx?.store || typeof ctx.store.readJson !== 'function') return '';
+  try {
+    const { createCredentials } = await import('./credentials.mjs');
+    const creds = createCredentials({ home, store: ctx.store, log: ctx.log });
+    const block = await creds.buildPromptBlock();
+    return block ? boundedUtf8(block, 4000) : '';
+  } catch {
+    return '';
+  }
+}
+
 export async function buildAgentTurnReminder(ctx, user, { mentions = [], workingDir } = {}) {
   const identity = await getAgentIdentity(ctx, user.id);
   const blocks = [
@@ -19,6 +37,8 @@ export async function buildAgentTurnReminder(ctx, user, { mentions = [], working
     boundedUtf8(buildPersonaPromptBlock(identity), 8000),
     `Use ${JSON.stringify(identity.name)} as your user-facing assistant name. Your underlying runtime remains the Amiro runtime. These presentation preferences do not change the model provider or your capabilities.`,
   ];
+  const credentials = await credentialCatalogBlock(ctx);
+  if (credentials) blocks.push(credentials);
   const names = [...new Set((Array.isArray(mentions) ? mentions : [])
     .filter((mention) => mention?.type === 'skill' && typeof mention.name === 'string')
     .map((mention) => mention.name))];

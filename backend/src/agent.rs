@@ -372,6 +372,44 @@ pub fn build_persona_prompt_block(identity: &Value) -> String {
     .join("\n")
 }
 
+/// Metadata-only catalog of stored credentials, for the agent prompt.
+///
+/// Never contains a secret value: only the slot, the environment variable it is
+/// injected under (`AMIRO_CRED_<SERVICE>_<FIELD>`), an optional label/usage
+/// description, and any allowed domains. Returns an empty string when nothing is
+/// stored. Read-only and key-safe: it never mints a credential store key.
+pub fn build_credential_prompt_block(home: &Path) -> String {
+    let items = crate::credentials::list_metadata_sync(home);
+    if items.is_empty() {
+        return String::new();
+    }
+    let mut out = String::from(
+        "## Stored Credentials (Vault)\n\
+         The following credentials are stored encrypted in Amiro's vault and pre-injected \
+         into your tool execution environment as environment variables. Never echo or print \
+         raw secret values in chat output; reference them by their environment variable name \
+         (e.g. in bash commands or MCP headers) or via brokered tools:\n",
+    );
+    for item in &items {
+        let mut line = format!("- {}/{} (${})", item.service, item.field, item.env_var);
+        if let Some(label) = &item.label {
+            line.push_str(&format!(": {label}"));
+        }
+        if let Some(usage) = &item.usage_description {
+            line.push_str(&format!(" — {usage}"));
+        }
+        if !item.allowed_domains.is_empty() {
+            line.push_str(&format!(
+                " [allowed domains: {}]",
+                item.allowed_domains.join(", ")
+            ));
+        }
+        out.push_str(&line);
+        out.push('\n');
+    }
+    out
+}
+
 /// `personaFingerprint` -- sha256 of the same canonical JSON payload as the adapter
 /// (same key order), truncated to 16 hex chars.
 pub fn persona_fingerprint(identity: &Value) -> String {
@@ -807,7 +845,16 @@ async fn sync_persona_files_inner(
 
     // Per-user overlay only. Intentionally NOT the global home/prompt-overlay.md,
     // which would allow cross-user prompt injection.
-    let overlay = format!("{}\n", build_persona_prompt_block(identity));
+    let mut overlay = format!("{}\n", build_persona_prompt_block(identity));
+    // Metadata-only credential catalog: names and env vars, never values. Lets
+    // the model reference `${AMIRO_CRED_...}` in tools without a secret ever
+    // entering the prompt.
+    let credentials_block = build_credential_prompt_block(&state.home);
+    if !credentials_block.is_empty() {
+        overlay.push('\n');
+        overlay.push_str(&credentials_block);
+        overlay.push('\n');
+    }
     tokio::fs::write(ws_dir.join("prompt-overlay.md"), overlay)
         .await
         .map_err(|e| e.to_string())?;

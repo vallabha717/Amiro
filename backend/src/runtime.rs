@@ -17,7 +17,8 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use amiro_sdk::{
-    AmiroClient, ApiEvent, ConnectOptions, CreateSessionOptions, RunOptions, ToolConfiguration,
+    AmiroClient, ApiEvent, ConnectOptions, CreateSessionOptions, RunOptions, RuntimeCommand,
+    ToolConfiguration,
 };
 use axum::http::StatusCode;
 use serde_json::Value;
@@ -102,6 +103,20 @@ fn runtime_env(state: &AppState) -> HashMap<OsString, OsString> {
         "JCODE_NO_TELEMETRY",
     ] {
         env.remove(&OsString::from(legacy));
+    }
+    // The runtime expands `${COMPOSIO_API_KEY}` in MCP headers, so the mcp.json
+    // written by the Composio sync never has to carry the plaintext key. Supply
+    // the resolved key (encrypted store > env > toml) to every runtime child.
+    if let Some(key) = crate::composio_config::resolve_key_sync(&state.home) {
+        env.insert("COMPOSIO_API_KEY".into(), OsString::from(key));
+    }
+    // Every stored credential is also exported as `AMIRO_CRED_<SERVICE>_<FIELD>`
+    // (plus well-known aliases such as `GITHUB_TOKEN`). The model can then
+    // reference `${AMIRO_CRED_...}` in bash commands, `mcp.json` headers, or a
+    // custom search provider's `header_env` without the raw value ever reaching
+    // its prompt or transcript.
+    for (name, value) in crate::credentials::runtime_env_vars_sync(&state.home) {
+        env.insert(OsString::from(name), OsString::from(value));
     }
     env
 }
@@ -329,6 +344,22 @@ fn restart_bridge_blocking(state: &AppState) -> Result<(), ApiError> {
     stop_spawned_bridge();
     remove_stale_socket(&state.runtime_socket);
     ensure_bridge_blocking(state)
+}
+
+/// Restart the backend-owned runtime bridge so a changed environment (for
+/// example a new `COMPOSIO_API_KEY`) is inherited by a fresh runtime process.
+/// Returns `true` when a restart was applied. A no-op when this backend did not
+/// start the runtime: an externally supervised runtime owns its own environment,
+/// which is documented in the credential-store report.
+pub fn restart_for_env_change(state: &AppState) -> bool {
+    let owned = bridge_child_slot()
+        .lock()
+        .map(|slot| slot.is_some())
+        .unwrap_or(false);
+    if !owned {
+        return false;
+    }
+    restart_bridge_blocking(state).is_ok()
 }
 
 /// Keep the runtime alive and recover it when it dies.
@@ -606,10 +637,75 @@ pub async fn attach_session(
     .await
 }
 
-/// Tool configuration for the default, untrusted profile: no tools at all.
-/// A client may never widen its own access; only a trusted operator deployment
-/// (`AMIRO_TRUSTED_OPERATOR=1` with `AMIRO_TOOL_PROFILE=full`) inherits the
-/// daemon defaults.
+/// Result of asking every idle runtime session to reload its MCP config.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct McpReloadOutcome {
+    /// Sessions that acknowledged a successful reload.
+    pub reloaded_sessions: usize,
+    /// Sessions that were mid-turn and were deliberately left alone.
+    pub skipped_busy: usize,
+}
+
+impl McpReloadOutcome {
+    /// Whether at least one session actually reloaded.
+    pub fn reloaded(&self) -> bool {
+        self.reloaded_sessions > 0
+    }
+}
+
+/// A session status string that means the daemon is mid-turn and must not be
+/// interrupted by an MCP reload.
+fn session_is_busy(status: &str) -> bool {
+    matches!(status, "running" | "processing" | "busy" | "generating")
+}
+
+/// Ask every idle runtime session to reload MCP config through the supported
+/// `McpReload` runtime command (no debug socket, no model turn).
+///
+/// Busy sessions are skipped: the daemon rejects a reload mid-turn, so there is
+/// nothing to wait for and the config change is already durable. A missing
+/// runtime or bridge is a no-op, never an error.
+pub async fn reload_mcp_idle_sessions(state: &AppState) -> McpReloadOutcome {
+    if !socket_ready(&state.runtime_socket) {
+        return McpReloadOutcome::default();
+    }
+    let state = state.clone();
+    blocking("reload_mcp", move || Ok(reload_mcp_blocking(&state)))
+        .await
+        .unwrap_or_default()
+}
+
+fn reload_mcp_blocking(state: &AppState) -> McpReloadOutcome {
+    let mut outcome = McpReloadOutcome::default();
+    let Ok(client) = connect_client(state, false) else {
+        return outcome;
+    };
+    let Ok(sessions) = client.list_sessions() else {
+        return outcome;
+    };
+    for session in sessions {
+        if session_is_busy(&session.status) {
+            outcome.skipped_busy += 1;
+            continue;
+        }
+        match client.runtime_command(&session.session_id, RuntimeCommand::McpReload, Vec::new()) {
+            Ok(_) => outcome.reloaded_sessions += 1,
+            Err(error) => {
+                // A session can become busy between listing and reloading; the
+                // daemon reports it as an error rather than a result.
+                if error.to_string().to_ascii_lowercase().contains("busy") {
+                    outcome.skipped_busy += 1;
+                }
+            }
+        }
+    }
+    outcome
+}
+
+/// Tool configuration that exposes no tools. Retained for the internal
+/// non-tool helper turns (thread-title generation) and for the explicit
+/// `AMIRO_TOOL_PROFILE=none` opt-out, never applied to a normal owner turn by
+/// default.
 pub fn no_tools() -> ToolConfiguration {
     ToolConfiguration {
         enabled: Some(Vec::new()),
@@ -618,13 +714,43 @@ pub fn no_tools() -> ToolConfiguration {
     }
 }
 
-/// Whether this deployment runs with the runtime's own tool defaults.
+/// Whether a session runs with the runtime's own tool defaults.
+///
+/// Amiro is a single-owner app that is meant to run inside a VM or sandbox:
+/// the sandbox, not a flag, is the boundary. Tools are therefore on by default
+/// and run with the owner's own permissions. `AMIRO_TOOL_PROFILE=none` is the
+/// one supported opt-out for people who want chat without tools.
 pub fn expose_tools() -> bool {
-    std::env::var("AMIRO_TRUSTED_OPERATOR").as_deref() == Ok("1")
-        && std::env::var("AMIRO_TOOL_PROFILE").as_deref() == Ok("full")
+    !matches!(
+        std::env::var("AMIRO_TOOL_PROFILE").as_deref(),
+        Ok("none")
+    )
 }
 
 /// Runtime history for a session, as the frontend message shape's source rows.
+pub async fn session_titles(state: &AppState) -> Result<std::collections::HashMap<String, String>, ApiError> {
+    ensure_bridge(state).await?;
+    let state = state.clone();
+    blocking("session_titles", move || {
+        let client = connect_client(&state, false)?;
+        Ok(client.list_sessions().map_err(runtime_error)?.into_iter()
+            .filter_map(|session| session.title.map(|title| (session.session_id, title)))
+            .collect())
+    }).await
+}
+
+/// Read the runtime's effective title, which already honors explicit renames.
+/// Attaching reads session metadata, it does not submit an inference turn.
+pub async fn session_title(state: &AppState, session_id: &str) -> Result<Option<String>, ApiError> {
+    ensure_bridge(state).await?;
+    let state = state.clone();
+    let session_id = session_id.to_string();
+    blocking("session_title", move || {
+        let client = connect_client(&state, false)?;
+        Ok(client.attach_session(&session_id).map_err(runtime_error)?.title)
+    }).await
+}
+
 pub async fn get_history(state: &AppState, session_id: &str) -> Result<Vec<Value>, ApiError> {
     ensure_bridge(state).await?;
     let state = state.clone();
@@ -1152,5 +1278,21 @@ mod tests {
         }
         assert!(env.contains_key(std::ffi::OsStr::new("AMIRO_HOME")));
         assert!(env.contains_key(std::ffi::OsStr::new("AMIRO_API_SOCKET")));
+    }
+
+    #[test]
+    fn only_mid_turn_statuses_are_busy_for_reload() {
+        for busy in ["running", "processing", "busy", "generating"] {
+            assert!(session_is_busy(busy), "{busy} should be skipped");
+        }
+        for idle in ["idle", "attached", "closed", "ready", ""] {
+            assert!(!session_is_busy(idle), "{idle} should be reloaded");
+        }
+        assert!(!McpReloadOutcome::default().reloaded());
+        assert!(McpReloadOutcome {
+            reloaded_sessions: 1,
+            skipped_busy: 3,
+        }
+        .reloaded());
     }
 }

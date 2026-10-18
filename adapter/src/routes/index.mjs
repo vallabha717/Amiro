@@ -3,6 +3,7 @@
 import * as admin from './admin.mjs';
 import * as archive from './archive.mjs';
 import * as checkpoint from './checkpoint.mjs';
+import * as credentials from './credentials.mjs';
 import * as exportRoutes from './export.mjs';
 import * as github from './github.mjs';
 import * as mcp from './mcp.mjs';
@@ -21,6 +22,7 @@ export function registerRoutes(app, ctx) {
   admin.register(app, ctx);
   archive.register(app, ctx);
   checkpoint.register(app, ctx);
+  credentials.register(app, ctx);
   exportRoutes.register(app, ctx);
   github.register(app, ctx);
   mcp.register(app, ctx);

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, PlugZap, Puzzle } from "lucide-react";
+import { ArrowRight, KeyRound, PlugZap, Puzzle } from "lucide-react";
 import { ScrollArea } from "ui/scroll-area";
 import { Card, CardDescription, CardHeader, CardTitle } from "ui/card";
 
@@ -34,6 +34,29 @@ export default function AdminIntegrationsPage() {
                   <CardTitle className="text-base">App Connectors</CardTitle>
                   <CardDescription>
                     Browse and connect OAuth app toolkits and API credentials.
+                  </CardDescription>
+                </div>
+                <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
+              </CardHeader>
+            </Card>
+          </Link>
+
+          <Link
+            href="/admin/credentials"
+            data-testid="admin-integrations-credentials-link"
+          >
+            <Card className="cursor-pointer transition-colors hover:bg-accent/40">
+              <CardHeader className="flex flex-row items-center gap-3 space-y-0">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-background/40">
+                  <KeyRound className="size-5 text-muted-foreground" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <CardTitle className="text-base">
+                    Credentials &amp; Secret Vault
+                  </CardTitle>
+                  <CardDescription>
+                    Encrypted API keys, tokens, and agent environment variable
+                    bindings ($AMIRO_CRED_*).
                   </CardDescription>
                 </div>
                 <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
