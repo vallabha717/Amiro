@@ -28,7 +28,6 @@ import {
   Search,
   Settings2,
   ShieldAlert,
-  Sparkles,
   X,
   PanelLeftClose,
   PanelLeftOpen,
@@ -79,6 +78,7 @@ interface WorkspaceFileResponse {
   ext: string;
   language: string;
   writable: boolean;
+  readOnly?: boolean;
   truncated: boolean;
   content: string;
 }
@@ -168,16 +168,8 @@ function isJsonLike(path: string, language: string): boolean {
   return lower.endsWith(".json") || language.toLowerCase() === "json";
 }
 
-{}
-
 // Workspace is files only. Memory has its own view at /agent/memory and is
 // never rendered inside the workspace browser.
-const QUICK_JUMP_FILES: Array<{ path: string; label: string }> = [
-  { path: "IDENTITY.md", label: "IDENTITY.md" },
-  { path: "SOUL.md", label: "SOUL.md" },
-  { path: "prompt-overlay.md", label: "prompt-overlay.md" },
-  { path: "config.toml", label: "config.toml" },
-];
 
 // ---------------------------------------------------------------------------
 // Markdown formatted renderer (lightweight, no extra deps)
@@ -557,6 +549,17 @@ export function AgentWorkspaceView() {
 
   const roots = listing?.roots ?? [];
   const entries = listing?.entries ?? [];
+  const activeRootInfo = roots.find((r) => r.id === activeRoot) ?? null;
+
+  // The native backend is permanently read-only: file.writable is always
+  // false, listing.readOnly is always true, and PUT returns 501. Never show
+  // edit/save affordances when read-only; the save path below only exists so
+  // a future writable backend still surfaces permission errors correctly.
+  const readOnly =
+    file ? (file.readOnly ?? !file.writable) : (listing?.readOnly ?? true);
+  const canEdit = Boolean(
+    file?.writable && !readOnly && listing && listing.readOnly !== true,
+  );
 
   // Filter + sort entries
   const filteredEntries = React.useMemo(() => {
@@ -602,11 +605,6 @@ export function AgentWorkspaceView() {
     }
   };
 
-  const handleQuickJump = (path: string) => {
-    setSelectedPath(path);
-    if (window.innerWidth < 1024) setSidebarOpen(false);
-  };
-
   const handleCopy = async () => {
     if (!file?.content) return;
     try {
@@ -640,9 +638,11 @@ export function AgentWorkspaceView() {
         const msg =
           payload.error ||
           payload.message ||
-          (res.status === 403
-            ? "Admin privileges required or file is read-only"
-            : "Save failed");
+          (res.status === 501
+            ? "Workspace is read-only"
+            : res.status === 403
+              ? "Admin privileges required or file is read-only"
+              : "Save failed");
         throw new Error(msg);
       }
       const data = (await res.json().catch(() => ({}))) as {
@@ -712,100 +712,99 @@ export function AgentWorkspaceView() {
       }}
       className="flex min-h-0 flex-1 flex-col gap-4 bg-background p-4 sm:p-6"
     >
-      {/* Compact Header Card — title + one-line Amiro description + segmented root tabs + quick-jump pills */}
-      <div className="rounded-xl border bg-card px-4 py-4 shadow-sm sm:px-5 sm:py-5">
-        <div className="mx-auto w-full max-w-[1600px]">
-          <Link
-            href="/agent"
-            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+      {/* Short header like Providers / Usage: title + one-line description */}
+      <div>
+        <Link
+          href="/agent"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ArrowLeft className="size-3.5" />
+          Back to Agent
+        </Link>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <h1 className="text-2xl font-bold tracking-tight">
+            Agent Workspace
+          </h1>
+          <Badge variant="outline" className="text-muted-foreground">
+            Read-only preview
+          </Badge>
+        </div>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          Browse your agent files. Memory lives in its own view.
+        </p>
+
+        {/* Root switcher */}
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <div
+            data-testid="workspace-root-tabs"
+            className="inline-flex rounded-xl border bg-muted/40 p-1"
+            role="tablist"
+            aria-label="Workspace roots"
           >
-            <ArrowLeft className="size-3.5" />
-            Back to Agent
-          </Link>
-
-          <div className="mt-3 flex flex-col gap-4">
-            <div>
-              <h1
-                className="font-brand text-[22px] font-semibold tracking-[-0.02em] sm:text-[24px]"
-                style={{ fontFamily: "var(--font-fraunces)" }}
-              >
-                Agent Workspace
-              </h1>
-              <p className="mt-1 max-w-3xl truncate text-sm leading-5 text-muted-foreground">
-                Browse your agent files. Memory lives in its own view.
-              </p>
-            </div>
-
-            {/* Root switcher */}
-            <div className="flex flex-wrap items-center gap-3">
-              <div
-                data-testid="workspace-root-tabs"
-                className="inline-flex rounded-xl border bg-muted/40 p-1"
-                role="tablist"
-                aria-label="Workspace roots"
-              >
-                {roots.length === 0 && !listingLoading ? (
-                  <span className="px-3 py-1.5 text-xs text-muted-foreground">
-                    {isListingForbidden
-                      ? "Admin required"
-                      : "Nothing to show here"}
-                  </span>
-                ) : listingLoading && roots.length === 0 ? (
-                  <>
-                    <Skeleton className="h-7 w-20 rounded-lg" />
-                    <Skeleton className="h-7 w-20 rounded-lg" />
-                    <Skeleton className="h-7 w-24 rounded-lg" />
-                  </>
-                ) : (
-                  roots.map((root) => {
-                    const active = root.id === activeRoot;
-                    return (
-                      <button
-                        key={root.id}
-                        type="button"
-                        role="tab"
-                        aria-selected={active}
-                        aria-label={`Select workspace root: ${root.label}`}
-                        onClick={() => handleSelectRoot(root.id)}
-                        className={cn(
-                          "rounded-lg px-3.5 py-1.5 text-sm font-medium transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                          active
-                            ? "bg-background text-foreground shadow-sm ring-1 ring-border"
-                            : "text-muted-foreground hover:text-foreground",
-                        )}
-                      >
-                        {root.label}
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            {/* Quick jump pills */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
-                <Sparkles className="size-3.5" />
-                Quick jump
+            {roots.length === 0 && !listingLoading ? (
+              <span className="px-3 py-1.5 text-xs text-muted-foreground">
+                {isListingForbidden
+                  ? "Admin required"
+                  : "Nothing to show here"}
               </span>
-              {QUICK_JUMP_FILES.map((f) => (
-                <button
-                  key={f.path}
-                  type="button"
-                  aria-label={`Jump to file ${f.label}`}
-                  onClick={() => handleQuickJump(f.path)}
-                  className="inline-flex items-center gap-1.5 rounded-full border bg-card px-3 py-1 text-xs font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <span className="size-1.5 rounded-full bg-primary/60" />
-                  {f.label}
-                </button>
-              ))}
-            </div>
+            ) : listingLoading && roots.length === 0 ? (
+              <>
+                <Skeleton className="h-7 w-20 rounded-lg" />
+                <Skeleton className="h-7 w-20 rounded-lg" />
+                <Skeleton className="h-7 w-24 rounded-lg" />
+              </>
+            ) : (
+              roots.map((root) => {
+                const active = root.id === activeRoot;
+                return (
+                  <button
+                    key={root.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    aria-label={`Select workspace root: ${root.label}`}
+                    onClick={() => handleSelectRoot(root.id)}
+                    className={cn(
+                      "rounded-lg px-3.5 py-1.5 text-sm font-medium transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      active
+                        ? "bg-background text-foreground shadow-sm ring-1 ring-border"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {root.label}
+                  </button>
+                );
+              })
+            )}
           </div>
         </div>
+
+        {/* Technical root metadata hidden behind disclosure */}
+        <details
+          data-testid="workspace-root-details"
+          className="mt-2 max-w-3xl rounded-lg border bg-card px-3 py-2 text-xs text-muted-foreground"
+        >
+          <summary className="cursor-pointer font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            Root details
+          </summary>
+          <div className="mt-2 space-y-1 font-mono tabular-nums">
+            <div>
+              Root: {activeRootInfo?.label ?? activeRoot ?? "—"}
+              {activeRootInfo?.id ? ` (${activeRootInfo.id})` : ""}
+            </div>
+            {activeRootInfo?.description ? (
+              <div className="font-sans">{activeRootInfo.description}</div>
+            ) : null}
+            <div>Path: {currentPath || "/"}</div>
+            <div>
+              {filteredEntries.length} items
+              {listing?.readOnly ? " · read-only" : ""}
+            </div>
+          </div>
+        </details>
       </div>
 
-      {/* Main two-pane grid — 320px tree card + viewer card, rounded-xl bordered cards */}
+      {/* Main two-pane grid — file navigation + preview */}
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[320px_1fr]">
         {/* Mobile toolbar */}
         <div className="flex items-center gap-2 rounded-xl border bg-card px-3 py-2 shadow-sm lg:hidden">
@@ -832,7 +831,7 @@ export function AgentWorkspaceView() {
           ) : null}
         </div>
 
-        {/* Left pane */}
+        {/* Left pane: file navigation */}
         <AnimatePresence initial={false}>
           {(sidebarOpen || true) && (
             <motion.aside
@@ -904,7 +903,7 @@ export function AgentWorkspaceView() {
                 </div>
               </div>
 
-              {/* Breadcrumbs */}
+              {/* Directory breadcrumbs */}
               <nav
                 aria-label="Workspace breadcrumbs"
                 className="flex items-center gap-1 border-b bg-muted/20 px-3 py-2 text-xs"
@@ -937,12 +936,6 @@ export function AgentWorkspaceView() {
                     </button>
                   </React.Fragment>
                 ))}
-                <div className="ml-auto hidden items-center gap-1 text-[11px] text-muted-foreground sm:flex">
-                  <Clock3 className="size-3" />
-                  <span className="truncate font-mono tabular-nums">
-                    {currentPath || "/"}
-                  </span>
-                </div>
               </nav>
 
               {/* Entry list */}
@@ -1105,7 +1098,7 @@ export function AgentWorkspaceView() {
           )}
         </AnimatePresence>
 
-        {/* Right pane — viewer card */}
+        {/* Right pane — file preview */}
         <section className="flex min-h-[420px] min-w-0 flex-col overflow-hidden rounded-xl border bg-card shadow-sm">
           {isListingForbidden ? (
             <div
@@ -1135,19 +1128,6 @@ export function AgentWorkspaceView() {
               <p className="mt-1 max-w-md text-sm leading-relaxed text-muted-foreground">
                 Choose a file on the left to preview its contents.
               </p>
-              <div className="mt-6 flex flex-wrap justify-center gap-2">
-                {QUICK_JUMP_FILES.slice(0, 3).map((f) => (
-                  <button
-                    key={f.path}
-                    type="button"
-                    aria-label={`Quick jump to ${f.label}`}
-                    onClick={() => handleQuickJump(f.path)}
-                    className="rounded-full border bg-card px-3 py-1 text-xs font-medium hover:bg-accent outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    {f.label}
-                  </button>
-                ))}
-              </div>
             </div>
           ) : isFileForbidden ? (
             <div
@@ -1228,19 +1208,19 @@ export function AgentWorkspaceView() {
                         >
                           {file.ext || file.language || "file"}
                         </Badge>
-                        {file.writable ? (
-                          <Badge
-                            variant="outline"
-                            className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"
-                          >
-                            writable
-                          </Badge>
-                        ) : (
+                        {readOnly ? (
                           <Badge
                             variant="outline"
                             className="text-muted-foreground"
                           >
                             read only
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"
+                          >
+                            writable
                           </Badge>
                         )}
                         {file.truncated ? (
@@ -1248,20 +1228,6 @@ export function AgentWorkspaceView() {
                             truncated
                           </Badge>
                         ) : null}
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                        <span className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 font-mono tabular-nums">
-                          {file.path}
-                        </span>
-                        <span className="inline-flex items-center gap-1 tabular-nums">
-                          <HardDrive className="size-3" />
-                          {formatBytes(file.size)}
-                        </span>
-                        <span className="size-1 rounded-full bg-muted-foreground/30" />
-                        <span className="inline-flex items-center gap-1 tabular-nums">
-                          <Clock3 className="size-3" />
-                          {formatTimestamp(file.updatedAt)}
-                        </span>
                       </div>
                     </div>
 
@@ -1282,7 +1248,7 @@ export function AgentWorkspaceView() {
                         {copied ? "Copied" : "Copy"}
                       </Button>
 
-                      {file.writable ? (
+                      {canEdit ? (
                         isEditing ? (
                           <Button
                             type="button"
@@ -1317,6 +1283,34 @@ export function AgentWorkspaceView() {
                       ) : null}
                     </div>
                   </div>
+
+                  {/* Technical file metadata hidden behind disclosure */}
+                  <details
+                    data-testid="workspace-file-details"
+                    className="rounded-lg border bg-background px-3 py-2 text-xs text-muted-foreground"
+                  >
+                    <summary className="cursor-pointer font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                      File details
+                    </summary>
+                    <div className="mt-2 flex flex-wrap items-center gap-2 tabular-nums">
+                      <span className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 font-mono">
+                        {file.path}
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <HardDrive className="size-3" />
+                        {formatBytes(file.size)}
+                      </span>
+                      <span className="size-1 rounded-full bg-muted-foreground/30" />
+                      <span className="inline-flex items-center gap-1">
+                        <Clock3 className="size-3" />
+                        {formatTimestamp(file.updatedAt)}
+                      </span>
+                      <span className="size-1 rounded-full bg-muted-foreground/30" />
+                      <span className="font-mono">
+                        {file.language || file.ext || "text"}
+                      </span>
+                    </div>
+                  </details>
 
                   {/* View mode toggle */}
                   {showFormattedToggle ? (
@@ -1372,7 +1366,7 @@ export function AgentWorkspaceView() {
 
               {/* File body */}
               <div className="min-h-0 flex-1 overflow-auto bg-background">
-                {isEditing ? (
+                {canEdit && isEditing ? (
                   <div className="p-4 sm:p-6">
                     {saveError ? (
                       <div
