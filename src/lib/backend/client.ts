@@ -24,15 +24,14 @@ export class ApiError extends Error {
  */
 function authHeaders(): HeadersInit {
   const headers: Record<string, string> = {};
-  // A page served by the Go binary itself is same-origin with the API and
-  // has no shared secret to send -- one could only have been given to it
-  // by embedding it in the page, i.e. handing it to every visitor. That
-  // path authenticates structurally instead (same-origin, proven by
-  // Sec-Fetch-Site) plus the session below; see
-  // middleware.RequireTokenOrBrowser. Sending an empty header here would
-  // fail the constant-time compare, so send none at all.
-  if (!isSameOriginBackend()) {
-    const secret = getBackendSharedSecret();
+  // The Rust backend requires the sidecar secret on every /api call whenever
+  // AMIRO_TOKEN is set, and injects it into each page it serves as
+  // window.__BACKEND_TOKEN__. Send it whenever we have one: without it a
+  // page the backend served itself is refused ("invalid or missing sidecar
+  // token"). With no secret on a same-origin page (AMIRO_TOKEN unset), send
+  // nothing -- an empty header would fail the constant-time compare.
+  const secret = getBackendSharedSecret();
+  if (secret || !isSameOriginBackend()) {
     headers["X-Amiro-Token"] = secret;
     headers["X-BetterChatbot-Token"] = secret;
   }
