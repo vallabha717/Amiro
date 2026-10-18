@@ -20,6 +20,8 @@ tokio-stream = "0.1"
 async-stream = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+toml = "0.8"
+amiro-config-types = { path = "../runtime/crates/amiro-config-types" }
 anyhow = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
 rand = "0.8"
