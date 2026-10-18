@@ -71,6 +71,9 @@ fn supported(record: &Value) -> bool {
 fn validate_url(endpoint: &str) -> Result<(), ApiError> {
     let url = url::Url::parse(endpoint)
         .map_err(|_| bad_request("search endpoint must be an absolute HTTP(S) URL"))?;
+    if url.fragment().is_some() {
+        return Err(bad_request("search endpoint must not contain a fragment"));
+    }
     if !matches!(url.scheme(), "http" | "https")
         || url.host_str().is_none()
         || !url.username().is_empty()
@@ -195,11 +198,14 @@ fn custom_config(record: &Value) -> Result<CustomWebSearchConfig, ApiError> {
     }
     validate_url(&config.endpoint)?;
     if !config.body.is_object()
-        || config.query_param.is_empty()
-        || config.count_param.as_deref() == Some("")
+        || config.query_param.trim().is_empty()
+        || config
+            .count_param
+            .as_deref()
+            .is_some_and(|count| count.trim().is_empty() || count == config.query_param)
     {
         return Err(bad_request(
-            "custom body must be a JSON object and parameter names must not be empty",
+            "custom body must be a JSON object and query/count parameter names must be nonempty and distinct",
         ));
     }
     for pointer in [
@@ -208,7 +214,14 @@ fn custom_config(record: &Value) -> Result<CustomWebSearchConfig, ApiError> {
         &config.url_pointer,
         &config.snippet_pointer,
     ] {
-        if !pointer.is_empty() && !pointer.starts_with('/') {
+        let mut chars = pointer.chars();
+        let mut valid = pointer.is_empty() || pointer.starts_with('/');
+        while let Some(character) = chars.next() {
+            if character == '~' && !matches!(chars.next(), Some('0' | '1')) {
+                valid = false;
+            }
+        }
+        if !valid {
             return Err(bad_request(
                 "custom result pointers must use RFC 6901 syntax",
             ));
@@ -811,6 +824,45 @@ mod tests {
 
     fn admin() -> AuthUser {
         AuthUser(json!({"role":"admin"}))
+    }
+
+    #[tokio::test]
+    async fn custom_validation_matches_runtime_and_rejects_before_persisting() {
+        let state = state();
+        initialize(&state).await.unwrap();
+        let before = read_json(&store_path(&state, STORE), Value::Null)
+            .await
+            .unwrap();
+        for custom in [
+            json!({"endpoint":"https://example.org/search?key=secret#fragment"}),
+            json!({"endpoint":"https://example.org/search","query_param":" \t"}),
+            json!({"endpoint":"https://example.org/search","count_param":" \t"}),
+            json!({"endpoint":"https://example.org/search","query_param":"q","count_param":"q"}),
+            json!({"endpoint":"https://example.org/search","results_pointer":"/bad~2escape"}),
+            json!({"endpoint":"https://example.org/search","title_pointer":"/bad~"}),
+            json!({"endpoint":"https://example.org/search","url_pointer":"not/a/pointer"}),
+            json!({"endpoint":"https://example.org/search","snippet_pointer":"/bad~x"}),
+        ] {
+            let error = post_search_provider(
+                State(state.clone()),
+                admin(),
+                Json(json!({"name":"Invalid custom", "provider":"custom", "custom":custom})),
+            )
+            .await
+            .unwrap_err();
+            assert_eq!(error.0, StatusCode::BAD_REQUEST);
+            assert!(!error.1.contains("secret"));
+            assert_eq!(
+                read_json(&store_path(&state, STORE), Value::Null)
+                    .await
+                    .unwrap(),
+                before
+            );
+        }
+        for pointer in ["", "/valid~0tilde~1slash", "/~01", "/unicode-é"] {
+            custom_config(&json!({"provider":"custom","custom":{"endpoint":"https://example.org/search","results_pointer":pointer}})).unwrap();
+        }
+        tokio::fs::remove_dir_all(&state.home).await.unwrap();
     }
 
     #[tokio::test]
