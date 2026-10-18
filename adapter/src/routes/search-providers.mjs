@@ -123,14 +123,6 @@ const CATALOG = [
     keyless: true,
   },
   {
-    kind: 'vellum',
-    label: 'Vellum Managed Search',
-    extracts: true,
-    freeTier: 'Managed platform search proxy',
-    docs: 'https://vellum.ai',
-    keyless: true,
-  },
-  {
     kind: 'inference-provider-native',
     label: 'Provider Native',
     extracts: true,

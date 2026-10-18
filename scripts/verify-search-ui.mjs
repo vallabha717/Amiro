@@ -35,6 +35,15 @@ const original = providers.find((p) => p.isActive);
 assert.equal(original.provider, "inference-provider-native");
 const catalog = await api("/api/search/catalog");
 assert(!JSON.stringify(catalog).toLowerCase().includes("vellum"));
+const privateRegistry = await fetch(
+  `${base}/api/agent/workspace/file?root=runtime&path=search-providers-runtime.json`,
+  { headers },
+);
+assert.equal(
+  privateRegistry.status,
+  403,
+  "Private provider registry is not browser-readable",
+);
 const browser = await chromium.launch({
   headless: true,
   args: ["--no-sandbox"],
