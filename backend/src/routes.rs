@@ -1,6 +1,8 @@
 pub mod admin;
 pub mod archive;
 pub mod checkpoint;
+pub mod composio;
+pub mod credentials;
 pub mod export;
 pub mod fsbrowse;
 pub mod github;
@@ -12,6 +14,7 @@ pub mod schedules;
 pub mod skills;
 pub mod storage;
 pub mod user;
+pub mod voice;
 pub mod workspace_trust;
 
 use axum::Router;
@@ -24,6 +27,8 @@ pub fn router() -> Router<AppState> {
         .merge(archive::routes())
         .merge(workspace_trust::routes())
         .merge(checkpoint::routes())
+        .merge(composio::routes())
+        .merge(credentials::routes())
         .merge(export::routes())
         .merge(storage::routes())
         .merge(mcp::routes())
@@ -34,6 +39,7 @@ pub fn router() -> Router<AppState> {
         .merge(github::routes())
         .merge(schedules::routes())
         .merge(skills::routes())
+        .merge(voice::routes())
 }
 
 #[cfg(test)]

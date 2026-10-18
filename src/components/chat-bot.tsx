@@ -130,56 +130,61 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
 
   const [showParticles, setShowParticles] = useState(isFirstTime);
 
-  const onFinish = useCallback(() => {
-    const messages = latestRef.current.messages;
-    const prevThread = latestRef.current.threadList.find(
-      (v) => v.id === threadId,
-    );
-    const isNewThread =
-      !prevThread?.title &&
-      messages.filter((v) => v.role === "user" || v.role === "assistant")
-        .length < 3;
-    if (isNewThread) {
-      const part = messages
-        .slice(0, 2)
-        .flatMap((m) =>
-          m.parts
-            .filter((v) => v.type === "text")
-            .map(
-              (p) =>
-                `${m.role}: ${truncateString((p as TextUIPart).text, 500)}`,
-            ),
-        );
-      if (part.length > 0) {
-        generateTitle(part.join("\n\n"));
+  const onFinish = useCallback(
+    (finishEvent?: { message?: UIMessage; messages?: UIMessage[] }) => {
+      const messages = finishEvent?.messages ?? latestRef.current.messages;
+      const prevThread = latestRef.current.threadList.find(
+        (v) => v.id === threadId,
+      );
+      const isNewThread =
+        !prevThread?.title &&
+        messages.filter((v) => v.role === "user" || v.role === "assistant")
+          .length < 3;
+      if (isNewThread) {
+        const part = messages
+          .slice(0, 2)
+          .flatMap((m) =>
+            m.parts
+              .filter((v) => v.type === "text")
+              .map(
+                (p) =>
+                  `${m.role}: ${truncateString((p as TextUIPart).text, 500)}`,
+              ),
+          );
+        if (part.length > 0) {
+          generateTitle(part.join("\n\n"));
+        }
+      } else if (latestRef.current.threadList[0]?.id !== threadId) {
+        mutate("/api/thread");
       }
-    } else if (latestRef.current.threadList[0]?.id !== threadId) {
-      mutate("/api/thread");
-    }
 
-    try {
-      const voiceSettings = getCachedVoiceSettings();
-      if (voiceSettings.readAloudEnabled && voiceSettings.autoReadAloud) {
-        const lastAssistantMsg = [...messages]
-          .reverse()
-          .find((m) => m.role === "assistant");
-        if (lastAssistantMsg) {
-          const text = lastAssistantMsg.parts
-            .filter((p) => p.type === "text")
-            .map((p) => (p as TextUIPart).text)
-            .join("\n\n");
-          if (text.trim()) {
-            useMessageReadAloudStore.getState().playMessage({
-              messageId: lastAssistantMsg.id,
-              text,
-            });
+      try {
+        const voiceSettings = getCachedVoiceSettings();
+        if (voiceSettings.readAloudEnabled && voiceSettings.autoReadAloud) {
+          const lastAssistantMsg =
+            (finishEvent?.message?.role === "assistant"
+              ? finishEvent.message
+              : undefined) ??
+            [...messages].reverse().find((m) => m.role === "assistant");
+          if (lastAssistantMsg) {
+            const text = (lastAssistantMsg.parts ?? [])
+              .filter((p) => p.type === "text")
+              .map((p) => (p as TextUIPart).text)
+              .join("\n\n");
+            if (text.trim()) {
+              void useMessageReadAloudStore.getState().playMessage({
+                messageId: lastAssistantMsg.id,
+                text,
+              });
+            }
           }
         }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
-    }
-  }, []);
+    },
+    [],
+  );
 
   const [input, setInput] = useState("");
 

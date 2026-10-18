@@ -5,6 +5,7 @@ export const VOICE_SETTINGS_STORAGE_KEY = "amiro.voice.settings";
 
 export interface VoiceProviderCatalogEntry {
   id: string;
+  name?: string;
   displayName: string;
   subtitle: string;
   defaultModel: string;
@@ -19,6 +20,24 @@ export interface VoiceProviderCatalogEntry {
   apiKeyPlaceholder?: string;
   docsUrl?: string;
   keyless?: boolean;
+}
+
+export interface VoiceOptionItem {
+  id: string;
+  name: string;
+  previewUrl?: string;
+  category?: string;
+}
+
+export interface FetchProviderVoicesParams {
+  provider: string;
+  baseUrl?: string;
+  apiKey?: string;
+}
+
+export interface FetchProviderVoicesResponse {
+  provider: string;
+  voices: VoiceOptionItem[];
 }
 
 export interface ConfiguredTtsProviderState {
@@ -567,12 +586,27 @@ export function setCachedVoiceSettings(settings: VoiceSettingsData): void {
   }
 }
 
+function normalizeCatalog(
+  entries: VoiceProviderCatalogEntry[] | undefined,
+  fallback: VoiceProviderCatalogEntry[],
+): VoiceProviderCatalogEntry[] {
+  if (!Array.isArray(entries) || entries.length === 0) return fallback;
+  return entries.map((entry) => ({
+    ...entry,
+    displayName: entry.displayName || entry.name || entry.id,
+  }));
+}
+
 export async function fetchVoiceSettings(): Promise<VoiceSettingsResponse> {
   try {
     const data = await apiJson<VoiceSettingsResponse>(VOICE_SETTINGS_KEY);
     if (data && data.settings) {
       setCachedVoiceSettings(data.settings);
-      return data;
+      return {
+        ttsCatalog: normalizeCatalog(data.ttsCatalog, FALLBACK_TTS_CATALOG),
+        sttCatalog: normalizeCatalog(data.sttCatalog, FALLBACK_STT_CATALOG),
+        settings: data.settings,
+      };
     }
   } catch {
     // Backend offline / restarting / route pending: fallback to local cache + static catalog
@@ -583,6 +617,24 @@ export async function fetchVoiceSettings(): Promise<VoiceSettingsResponse> {
     sttCatalog: FALLBACK_STT_CATALOG,
     settings: cached,
   };
+}
+
+export async function fetchProviderVoices(
+  params: FetchProviderVoicesParams,
+): Promise<VoiceOptionItem[]> {
+  try {
+    const res = await apiJson<FetchProviderVoicesResponse>("/api/tts/voices", {
+      method: "POST",
+      body: JSON.stringify(params),
+    });
+    if (res && Array.isArray(res.voices) && res.voices.length > 0) {
+      return res.voices;
+    }
+  } catch {
+    // Fallback to static catalog voices below
+  }
+  const entry = FALLBACK_TTS_CATALOG.find((p) => p.id === params.provider);
+  return (entry?.voices || []).map((id) => ({ id, name: id }));
 }
 
 export async function updateVoiceSettings(

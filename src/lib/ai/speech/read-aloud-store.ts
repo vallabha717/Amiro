@@ -6,11 +6,22 @@ import { create } from "zustand";
 
 export type ReadAloudStatus = "idle" | "loading" | "playing";
 
+export interface PlayMessagePayload {
+  messageId: string;
+  text: string;
+  provider?: string;
+  model?: string;
+  voiceId?: string;
+  baseUrl?: string;
+  apiKey?: string;
+  speed?: number;
+}
+
 export interface ReadAloudState {
   messageId: string | null;
   status: ReadAloudStatus;
-  toggle: (payload: { messageId: string; text: string }) => Promise<void>;
-  playMessage: (payload: { messageId: string; text: string }) => Promise<void>;
+  toggle: (payload: PlayMessagePayload) => Promise<void>;
+  playMessage: (payload: PlayMessagePayload) => Promise<void>;
   stop: () => void;
 }
 
@@ -131,16 +142,25 @@ export const useMessageReadAloudStore = create<ReadAloudState>((set, get) => ({
     set({ messageId: null, status: "idle" });
   },
 
-  toggle: async ({ messageId, text }) => {
+  toggle: async (payload) => {
     const state = get();
-    if (state.messageId === messageId && state.status !== "idle") {
+    if (state.messageId === payload.messageId && state.status !== "idle") {
       state.stop();
     } else {
-      await state.playMessage({ messageId, text });
+      await state.playMessage(payload);
     }
   },
 
-  playMessage: async ({ messageId, text }) => {
+  playMessage: async ({
+    messageId,
+    text,
+    provider,
+    model,
+    voiceId,
+    baseUrl,
+    apiKey,
+    speed: speedOverride,
+  }) => {
     const { stop } = get();
     stop();
 
@@ -152,9 +172,9 @@ export const useMessageReadAloudStore = create<ReadAloudState>((set, get) => ({
     set({ messageId, status: "loading" });
 
     const settings = getCachedVoiceSettings();
-    const providerId = settings.ttsProvider || "browser-native";
+    const providerId = provider || settings.ttsProvider || "browser-native";
     const providerState = settings.ttsProviders[providerId];
-    const speed = providerState?.speed || 1.0;
+    const speed = speedOverride ?? providerState?.speed ?? 1.0;
 
     const playNativeSpeech = () => {
       if (typeof window === "undefined" || !window.speechSynthesis) {
@@ -198,10 +218,11 @@ export const useMessageReadAloudStore = create<ReadAloudState>((set, get) => ({
       const blob = await synthesizeSpeech({
         text: cleanText,
         provider: providerId,
-        model: providerState?.model,
-        voiceId: providerState?.voiceId,
-        baseUrl: providerState?.baseUrl,
-        speed: providerState?.speed,
+        model: model || providerState?.model,
+        voiceId: voiceId || providerState?.voiceId,
+        baseUrl: baseUrl || providerState?.baseUrl,
+        apiKey: apiKey || undefined,
+        speed,
       });
 
       if (typeof window === "undefined") {

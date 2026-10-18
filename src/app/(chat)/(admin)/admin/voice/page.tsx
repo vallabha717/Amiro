@@ -25,8 +25,10 @@ import {
   DEFAULT_VOICE_SETTINGS,
   FALLBACK_STT_CATALOG,
   FALLBACK_TTS_CATALOG,
+  type VoiceOptionItem,
   type VoiceProviderCatalogEntry,
   type VoiceSettingsData,
+  fetchProviderVoices,
   fetchVoiceSettings,
   updateVoiceSettings,
 } from "@/lib/backend/voice-api";
@@ -34,6 +36,9 @@ import {
   CheckCircle2,
   ExternalLink,
   Loader2,
+  Play,
+  RefreshCw,
+  Square,
   Volume2,
   VolumeX,
 } from "lucide-react";
@@ -73,6 +78,10 @@ export default function AdminVoicePage() {
   const [ttsBaseUrl, setTtsBaseUrl] = useState("");
   const [ttsApiKey, setTtsApiKey] = useState("");
   const [ttsSaving, setTtsSaving] = useState(false);
+  const [fetchedVoices, setFetchedVoices] = useState<
+    Record<string, VoiceOptionItem[]>
+  >({});
+  const [fetchingVoices, setFetchingVoices] = useState(false);
 
   // STT section state
   const [activeStt, setActiveStt] = useState("browser-native");
@@ -227,14 +236,57 @@ export default function AdminVoicePage() {
     }
   };
 
+  const handleFetchVoices = async () => {
+    setFetchingVoices(true);
+    try {
+      const voices = await fetchProviderVoices({
+        provider: activeTts,
+        baseUrl: ttsBaseUrl.trim() || undefined,
+        apiKey: ttsApiKey.trim() || undefined,
+      });
+      setFetchedVoices((prev) => ({ ...prev, [activeTts]: voices }));
+      if (voices.length > 0) {
+        toast.success(`Loaded ${voices.length} voices for ${activeTts}`);
+      } else {
+        toast.info("No voices returned; enter a custom Voice / Reference ID");
+      }
+    } catch {
+      toast.error("Could not fetch voices from provider");
+    } finally {
+      setFetchingVoices(false);
+    }
+  };
+
+  const handlePreviewVoice = (voiceIdToTest: string) => {
+    const previewMsgId = `voice-preview-${voiceIdToTest}`;
+    if (activeMessageId === previewMsgId && readAloudStatus !== "idle") {
+      useMessageReadAloudStore.getState().stop();
+      return;
+    }
+    void useMessageReadAloudStore.getState().playMessage({
+      messageId: previewMsgId,
+      text: `Hello! This is voice ${voiceIdToTest} on Amiro.`,
+      provider: activeTts,
+      model: ttsModel || undefined,
+      voiceId: voiceIdToTest,
+      baseUrl: ttsBaseUrl.trim() || undefined,
+      apiKey: ttsApiKey.trim() || undefined,
+    });
+  };
+
   const handleTestVoice = () => {
     if (isTestingVoice) {
       useMessageReadAloudStore.getState().stop();
       return;
     }
-    useMessageReadAloudStore.getState().playMessage({
+    void useMessageReadAloudStore.getState().playMessage({
       messageId: "test-voice-preview",
       text: "Hello! I am your Amiro assistant.",
+      provider: activeTts,
+      model: ttsModel || undefined,
+      voiceId: ttsVoice || undefined,
+      baseUrl: ttsBaseUrl.trim() || undefined,
+      apiKey: ttsApiKey.trim() || undefined,
     });
   };
 
@@ -543,38 +595,126 @@ export default function AdminVoicePage() {
             {/* Voice / Reference ID Input / Selection */}
             {currentTtsEntry?.supportsVoiceSelection && (
               <div className="space-y-2">
-                <Label htmlFor="tts-voice" className="text-sm font-medium">
-                  Voice / Reference ID
-                </Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="tts-voice" className="text-sm font-medium">
+                    Voice / Reference ID
+                  </Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    data-testid="tts-fetch-voices-button"
+                    disabled={fetchingVoices}
+                    onClick={handleFetchVoices}
+                    className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    <RefreshCw
+                      className={`size-3 ${fetchingVoices ? "animate-spin" : ""}`}
+                    />
+                    Fetch Available Voices
+                  </Button>
+                </div>
                 <div className="flex flex-col gap-2">
-                  <Input
-                    id="tts-voice"
-                    data-testid="tts-voice-input"
-                    placeholder={
-                      currentTtsEntry.defaultVoice || "Enter voice ID"
-                    }
-                    value={ttsVoice}
-                    onChange={(e) => setTtsVoice(e.target.value)}
-                  />
-                  {currentTtsEntry.voices &&
-                    currentTtsEntry.voices.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        {currentTtsEntry.voices.map((v) => (
-                          <button
-                            key={v}
-                            type="button"
-                            onClick={() => setTtsVoice(v)}
-                            className={`rounded-md px-2 py-0.5 text-xs transition-colors border ${
-                              ttsVoice === v
-                                ? "bg-primary text-primary-foreground border-primary"
-                                : "bg-muted hover:bg-accent text-muted-foreground hover:text-foreground border-transparent"
-                            }`}
-                          >
-                            {v}
-                          </button>
-                        ))}
-                      </div>
+                  <div className="flex gap-2">
+                    <Input
+                      id="tts-voice"
+                      data-testid="tts-voice-input"
+                      placeholder={
+                        currentTtsEntry.defaultVoice ||
+                        "Enter voice ID or reference ID"
+                      }
+                      value={ttsVoice}
+                      onChange={(e) => setTtsVoice(e.target.value)}
+                      className="flex-1"
+                    />
+                    {ttsVoice.trim() && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        data-testid="tts-preview-entered-voice-button"
+                        onClick={() => handlePreviewVoice(ttsVoice.trim())}
+                        className="shrink-0 gap-1.5"
+                      >
+                        {activeMessageId ===
+                          `voice-preview-${ttsVoice.trim()}` &&
+                        readAloudStatus !== "idle" ? (
+                          <>
+                            <Square className="size-3.5 fill-current text-destructive" />
+                            Stop
+                          </>
+                        ) : (
+                          <>
+                            <Play className="size-3.5" />
+                            Preview ID
+                          </>
+                        )}
+                      </Button>
                     )}
+                  </div>
+                  {(() => {
+                    const voiceOptions: VoiceOptionItem[] =
+                      fetchedVoices[activeTts] ??
+                      (currentTtsEntry.voices || []).map((id) => ({
+                        id,
+                        name: id,
+                      }));
+                    if (voiceOptions.length === 0) return null;
+                    return (
+                      <div
+                        className="flex flex-wrap gap-1.5 pt-1"
+                        data-testid="tts-voice-options-list"
+                      >
+                        {voiceOptions.map((v) => {
+                          const isSelected = ttsVoice === v.id;
+                          const isPreviewing =
+                            activeMessageId === `voice-preview-${v.id}` &&
+                            readAloudStatus !== "idle";
+                          return (
+                            <div
+                              key={v.id}
+                              className={`inline-flex items-center rounded-md border text-xs transition-colors ${
+                                isSelected
+                                  ? "bg-primary text-primary-foreground border-primary"
+                                  : "bg-muted/70 hover:bg-accent text-muted-foreground hover:text-foreground border-border/60"
+                              }`}
+                            >
+                              <button
+                                type="button"
+                                data-testid={`tts-voice-chip-${v.id}`}
+                                onClick={() => setTtsVoice(v.id)}
+                                className="px-2.5 py-1 font-medium"
+                                title={`Select voice ${v.name} (${v.id})`}
+                              >
+                                {v.name !== v.id ? `${v.name} (${v.id})` : v.id}
+                              </button>
+                              <button
+                                type="button"
+                                data-testid={`tts-voice-preview-${v.id}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handlePreviewVoice(v.id);
+                                }}
+                                aria-label={`Test voice ${v.name}`}
+                                title={`Test voice ${v.name} before selecting`}
+                                className={`border-l px-1.5 py-1 transition-colors ${
+                                  isSelected
+                                    ? "border-primary-foreground/30 hover:bg-primary-foreground/15"
+                                    : "border-border/60 hover:bg-background/60"
+                                }`}
+                              >
+                                {isPreviewing ? (
+                                  <Square className="size-3 fill-current text-destructive" />
+                                ) : (
+                                  <Volume2 className="size-3" />
+                                )}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             )}
