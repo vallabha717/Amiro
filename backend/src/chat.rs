@@ -38,20 +38,9 @@ fn uid_of(user: &AuthUser) -> String {
         .to_string()
 }
 
-/// Title from the first user message, mirroring the adapter's rule.
+/// Share the runtime's no-inference prompt-title fallback while it starts.
 fn derive_title(text: &str) -> String {
-    let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    let trimmed = collapsed.trim();
-    if trimmed.is_empty() {
-        return "New Chat".to_string();
-    }
-    let chars: Vec<char> = trimmed.chars().collect();
-    if chars.len() > 60 {
-        let head: String = chars.into_iter().take(57).collect();
-        format!("{head}...")
-    } else {
-        trimmed.to_string()
-    }
+    amiro_session_types::prompt_title(text).unwrap_or_else(|| "New Chat".to_string())
 }
 
 fn parts_of(message: &Value) -> &[Value] {
@@ -384,8 +373,9 @@ async fn chat_handler(
         } else {
             patch["workingDir"] = json!(working_dir);
         }
-        if session.created || previous_session.is_none() {
+        if previous_session.is_none() {
             patch["title"] = json!(derive_title(&user_text));
+            patch["titleSource"] = json!("runtime");
             patch["createdAt"] = json!(now);
         }
         if session.created {
@@ -539,6 +529,13 @@ async fn chat_handler(
                         ApiEvent::TurnStopped { message, .. } => {
                             stopped_message = Some(message);
                         }
+                        ApiEvent::SessionRenamed { session_id, display_title, .. } => {
+                            if session_id == session.session_id {
+                                if let Ok(Some(title)) = threads::sync_runtime_title(&state_for_stream, &thread_id, &uid, &session_id, &display_title).await {
+                                    yield frame(json!({"type":"data-thread-title","data":{"threadId":thread_id,"title":title},"transient":true}));
+                                }
+                            }
+                        }
                         ApiEvent::Error { code, message } => {
                             failed = true;
                             yield frame(json!({"type": "error", "errorText": format!("{code:?}: {message}")}));
@@ -570,6 +567,13 @@ async fn chat_handler(
         }
         yield frame(json!({"type": "finish-step"}));
 
+        // Prompt titles and todo-derived labels are owned by the runtime.
+        // Read metadata once after the turn, never launch a cosmetic model turn.
+        if let Ok(Some(title)) = runtime::session_title(&state_for_stream, &session.session_id).await {
+            if let Ok(Some(title)) = threads::sync_runtime_title(&state_for_stream, &thread_id, &uid, &session.session_id, &title).await {
+                yield frame(json!({"type":"data-thread-title","data":{"threadId":thread_id,"title":title},"transient":true}));
+            }
+        }
         let _ = failed;
         let mut metadata = json!({
             "chatModel": chat_model,
@@ -851,61 +855,32 @@ async fn chat_title(
         .unwrap_or("hello")
         .to_string();
 
-    let entry = if thread_id.is_empty() {
-        None
-    } else {
-        threads::get_entry(&state, &thread_id).await?
-    };
-    if let Some(entry) = &entry {
-        if !threads::entry_owned(entry, &uid) {
-            return Err(ApiError(StatusCode::NOT_FOUND, "thread not found".into()));
-        }
-    }
-
+    let entry = threads::get_entry(&state, &thread_id).await?
+        .filter(|entry| threads::entry_owned(entry, &uid))
+        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "thread not found".into()))?;
+    let _ = message; // Legacy callers may send text, but the runtime owns naming.
     let response_id = uuid::Uuid::new_v4().to_string();
     let state_for_stream = state.clone();
     let stream = async_stream::stream! {
         yield frame(json!({"type": "start", "messageId": response_id}));
         yield frame(json!({"type": "start-step"}));
         yield frame(json!({"type": "text-start", "id": response_id}));
-
-        let prompt = format!(
-            "Write a concise title (at most 6 words, no quotes, no trailing punctuation) for a conversation that begins with this message:\n\n{message}"
-        );
-        let working_dir = state_for_stream.workspace.to_string_lossy().to_string();
-        let generated = runtime::run_once(&state_for_stream, &working_dir, &prompt).await;
-        let mut title = String::new();
-        match generated {
-            Ok(text) => title = text.trim().trim_matches('"').to_string(),
-            Err(error) => {
-                // A title is cosmetic, so the turn still answers with the
-                // derived title rather than failing the UI; the reason is
-                // reported so it is never silent.
-                yield frame(json!({"type": "data-title-unavailable", "data": {"reason": error.1}}));
-            }
-        }
-        if title.is_empty() {
-            title = derive_title(&message);
-        }
-        yield frame(json!({"type": "text-delta", "id": response_id, "delta": title}));
-        yield frame(json!({"type": "text-end", "id": response_id}));
-
-        if let Some(entry) = &entry {
-            if let Some(session_id) = entry.get("sessionId").and_then(|value| value.as_str()) {
-                match runtime::rename_session(&state_for_stream, session_id, &title).await {
-                    Ok(()) => {}
-                    Err(error) => {
-                        yield frame(json!({"type": "data-title-rename-failed", "data": {"reason": error.1}}));
+        let mut title = entry.get("title").and_then(Value::as_str).unwrap_or("New Chat").to_string();
+        if entry.get("titleSource").and_then(Value::as_str) != Some("manual") {
+            if let Some(session_id) = entry.get("sessionId").and_then(Value::as_str) {
+                match runtime::session_title(&state_for_stream, session_id).await {
+                    Ok(Some(runtime_title)) => {
+                        if let Ok(Some(applied)) = threads::sync_runtime_title(&state_for_stream, &thread_id, &uid, session_id, &runtime_title).await {
+                            title = applied;
+                        }
                     }
+                    Ok(None) => {}
+                    Err(error) => yield frame(json!({"type": "data-title-unavailable", "data": {"reason": error.1}, "transient": true})),
                 }
             }
         }
-        if !thread_id.is_empty() {
-            let patch = json!({"title": title});
-            if let Err(error) = threads::upsert_entry(&state_for_stream, &thread_id, patch).await {
-                yield frame(json!({"type": "data-title-store-failed", "data": {"reason": error.1}}));
-            }
-        }
+        yield frame(json!({"type": "text-delta", "id": response_id, "delta": title}));
+        yield frame(json!({"type": "text-end", "id": response_id}));
         yield frame(json!({"type": "finish-step"}));
         yield frame(json!({"type": "finish"}));
         yield done_frame();
@@ -1005,13 +980,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn titles_follow_the_adapter_rule() {
+    fn titles_follow_the_runtime_rule() {
         assert_eq!(derive_title("   "), "New Chat");
         assert_eq!(derive_title("hello   world"), "hello world");
         let long = "a".repeat(80);
         let title = derive_title(&long);
-        assert_eq!(title.chars().count(), 60);
-        assert!(title.ends_with("..."));
+        assert_eq!(title.chars().count(), 65);
+        assert!(title.ends_with('…'));
+        assert_eq!(derive_title("<system-reminder>private</system-reminder> Fix titles"), "Fix titles");
+        assert_eq!(derive_title("/model test"), "New Chat");
     }
 
     #[test]

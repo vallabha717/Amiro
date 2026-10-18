@@ -28,6 +28,28 @@ pub async fn get_entry(state: &AppState, id: &str) -> Result<Option<Value>, ApiE
     Ok(doc.get(id).cloned())
 }
 
+/// Apply runtime metadata only to the same, still-owned session mapping.
+/// Late title updates never resurrect deleted threads or overwrite a UI rename.
+pub async fn sync_runtime_title(state: &AppState, id: &str, uid: &str, session_id: &str, title: &str) -> Result<Option<String>, ApiError> {
+    let title = title.trim();
+    if title.is_empty() { return Ok(None); }
+    let _guard = state.store.lock().await;
+    let mut doc = read_threads(state).await?;
+    let Some(entry) = doc.get_mut(id) else { return Ok(None); };
+    if !entry_owned(entry, uid) || entry.get("sessionId").and_then(Value::as_str) != Some(session_id)
+        || entry.get("titleSource").and_then(Value::as_str) == Some("manual") {
+        return Ok(None);
+    }
+    if entry.get("title").and_then(Value::as_str) == Some(title)
+        && entry.get("titleSource").and_then(Value::as_str) == Some("runtime") {
+        return Ok(Some(title.to_string()));
+    }
+    entry["title"] = json!(title);
+    entry["titleSource"] = json!("runtime");
+    write_threads(state, &doc).await?;
+    Ok(Some(title.to_string()))
+}
+
 /// Fail-closed ownership: a mapping with no owner belongs to nobody, and only
 /// the matching user id may reach it. Refusing ownerless mappings keeps a
 /// legacy or malformed record from exposing a shared runtime session.
@@ -255,6 +277,20 @@ async fn list_threads(State(state): State<AppState>, user: AuthUser) -> Result<J
     let uid = user_id(&user);
     let doc = read_json(&threads_path(&state), json!({})).await?;
     let obj = doc.as_object().cloned().unwrap_or_default();
+    let runtime_titles = if obj.values().any(|entry| owns(entry, &uid) && entry.get("titleSource").and_then(Value::as_str) != Some("manual")) {
+        crate::runtime::session_titles(&state).await.unwrap_or_default()
+    } else { Default::default() };
+    for (id, entry) in &obj {
+        if owns(entry, &uid) {
+            if let Some(session_id) = entry.get("sessionId").and_then(Value::as_str) {
+                if let Some(title) = runtime_titles.get(session_id) {
+                    let _ = sync_runtime_title(&state, id, &uid, session_id, title).await;
+                }
+            }
+        }
+    }
+    let doc = read_threads(&state).await?;
+    let obj = doc.as_object().cloned().unwrap_or_default();
     let mut list: Vec<Value> = obj.iter().filter_map(|(id, e)| {
         if !owns(e, &uid) { return None; }
         Some(json!({
@@ -274,11 +310,19 @@ async fn list_threads(State(state): State<AppState>, user: AuthUser) -> Result<J
 async fn get_thread(State(state): State<AppState>, user: AuthUser, Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
     let uid = user_id(&user);
     let doc = read_json(&threads_path(&state), json!({})).await?;
-    let entry = doc.get(&id).cloned().ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "thread not found".into()))?;
+    let mut entry = doc.get(&id).cloned().ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "thread not found".into()))?;
     if !owns(&entry, &uid) {
         return Err(ApiError(StatusCode::NOT_FOUND, "thread not found".into()));
     }
-    let session_id = entry.get("sessionId").and_then(|v| v.as_str()).unwrap_or("");
+    let session_id_owned = entry.get("sessionId").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let session_id = session_id_owned.as_str();
+    if !session_id.is_empty() && entry.get("titleSource").and_then(Value::as_str) != Some("manual") {
+        if let Ok(Some(title)) = crate::runtime::session_title(&state, session_id).await {
+            if let Some(title) = sync_runtime_title(&state, &id, &uid, session_id, &title).await? {
+                entry["title"] = json!(title);
+            }
+        }
+    }
     let history = if session_id.is_empty() {
         Vec::new()
     } else {
@@ -314,6 +358,9 @@ async fn put_thread(State(state): State<AppState>, user: AuthUser, Path(id): Pat
     let title = body.get("title").and_then(|v| v.as_str()).unwrap_or_else(|| entry.get("title").and_then(|v| v.as_str()).unwrap_or("New Chat"));
     if let Some(obj) = doc.get_mut(&id).and_then(|v| v.as_object_mut()) {
         obj.insert("title".into(), json!(title));
+        if body.get("title").and_then(Value::as_str).is_some() {
+            obj.insert("titleSource".into(), json!("manual"));
+        }
     }
     let sid = entry.get("sessionId").and_then(|v| v.as_str()).unwrap_or("");
     if !sid.is_empty() {

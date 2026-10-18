@@ -45,4 +45,5 @@ mime_guess = "2"
 # Owned Amiro runtime client: the real harness protocol (protocol v1 NDJSON,
 # Hello negotiation, sessions, streamed turns). Path dep on the runtime
 # workspace so the backend can never drift onto an invented wire format.
+amiro-session-types = { path = "../runtime/crates/amiro-session-types" }
 amiro-sdk = { path = "../runtime/crates/amiro-sdk" }

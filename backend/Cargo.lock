@@ -45,6 +45,7 @@ version = "0.1.0"
 dependencies = [
  "amiro-config-types",
  "amiro-sdk",
+ "amiro-session-types",
  "anyhow",
  "async-stream",
  "axum",

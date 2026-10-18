@@ -3,7 +3,7 @@
 import { appStore } from "@/app/store";
 import { useChat } from "@ai-sdk/react";
 import clsx from "clsx";
-import { cn, createDebounce, generateUUID, truncateString } from "lib/utils";
+import { cn, createDebounce, generateUUID } from "lib/utils";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ArtifactPane } from "./artifacts/artifact-pane";
@@ -23,7 +23,7 @@ import {
 } from "ai";
 import { useShallow } from "zustand/shallow";
 
-import { useGenerateThreadTitle } from "@/hooks/queries/use-generate-thread-title";
+import { applyRuntimeThreadTitle } from "@/lib/backend/runtime-thread-title";
 import { useFileDragOverlay } from "@/hooks/use-file-drag-overlay";
 import { useToRef } from "@/hooks/use-latest";
 import { useMounted } from "@/hooks/use-mounted";
@@ -124,39 +124,14 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
     ]),
   );
 
-  const generateTitle = useGenerateThreadTitle({
-    threadId,
-  });
-
   const [showParticles, setShowParticles] = useState(isFirstTime);
 
   const onFinish = useCallback(
     (finishEvent?: { message?: UIMessage; messages?: UIMessage[] }) => {
       const messages = finishEvent?.messages ?? latestRef.current.messages;
-      const prevThread = latestRef.current.threadList.find(
-        (v) => v.id === threadId,
-      );
-      const isNewThread =
-        !prevThread?.title &&
-        messages.filter((v) => v.role === "user" || v.role === "assistant")
-          .length < 3;
-      if (isNewThread) {
-        const part = messages
-          .slice(0, 2)
-          .flatMap((m) =>
-            m.parts
-              .filter((v) => v.type === "text")
-              .map(
-                (p) =>
-                  `${m.role}: ${truncateString((p as TextUIPart).text, 500)}`,
-              ),
-          );
-        if (part.length > 0) {
-          generateTitle(part.join("\n\n"));
-        }
-      } else if (latestRef.current.threadList[0]?.id !== threadId) {
-        mutate("/api/thread");
-      }
+      // The runtime names the session during the real chat turn. Refresh its
+      // persisted mapping, never send a second inference request just for a title.
+      void mutate("/api/thread");
 
       try {
         const voiceSettings = getCachedVoiceSettings();
@@ -293,6 +268,11 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
     messages: initialMessages,
     generateId: generateUUID,
     experimental_throttle: 100,
+    onData: (part) => {
+      if (part.type === "data-thread-title") {
+        applyRuntimeThreadTitle(part.data, threadId);
+      }
+    },
     onFinish,
   });
   const [isDeleteThreadPopupOpen, setIsDeleteThreadPopupOpen] = useState(false);
