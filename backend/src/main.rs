@@ -66,9 +66,13 @@ fn origin_allowed(origin: &str, host: &str) -> bool {
     };
     // A same-origin page request sends Origin only for some methods; when it
     // does, it must name this listener exactly.
-    url_authority(&url)
-        .map(|authority| authority.eq_ignore_ascii_case(host))
-        .unwrap_or(false)
+    let Ok(host_url) = url::Url::parse(&format!("{}://{}", url.scheme(), host)) else {
+        return false;
+    };
+    match (url_authority(&url), url_authority(&host_url)) {
+        (Some(origin), Some(authority)) => origin.eq_ignore_ascii_case(&authority),
+        _ => false,
+    }
 }
 
 fn add_cors(mut response: Response, origin: Option<&str>) -> Response {
