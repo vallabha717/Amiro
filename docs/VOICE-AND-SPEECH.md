@@ -79,7 +79,7 @@ frontend fallback only fills in when the backend is unreachable.
 | `fish-audio` | Fish Audio | `speech-1.5` | *(none; reference ID)* | `https://api.fish.audio` | Voice cloning reference IDs; live model list. |
 | `xai` | xAI Grok Voice | `grok-tts` | `eve` | `https://api.x.ai` | Voices `eve`, `ara`, `rex`, `sal`, `leo`. |
 | `custom-openai` | Custom OpenAI-Compatible (9Router / LiteLLM) | `tts-1` | `alloy` | `http://localhost:20128/v1` | `requiresBaseUrl`. Any `/v1/audio/speech` router. |
-| `browser-native` | Browser Web Speech (Free / Offline) | `browser` | `default` | *(none)* | `keyless`; synthesized client-side, never on the server. |
+| `browser-native` | Browser Web Speech (Free / Offline) | `browser` | `default` | *(none)* | `keyless`; synthesized client-side via `window.speechSynthesis` (voice availability and offline support are browser/OS-dependent). |
 
 The Rust catalog names the OpenAI voice list as `alloy, ash, ballad, coral,
 echo, fable, onyx, nova, sage, shimmer, verse`; the static TS fallback lists the
@@ -97,11 +97,11 @@ the provider.
 | `elevenlabs` | ElevenLabs Scribe | `scribe_v1` | `scribe_v1` | `https://api.elevenlabs.io` | `/v1/speech-to-text`. |
 | `xai` | xAI Audio Transcription | `grok-stt` | `grok-stt`, `whisper-1` | `https://api.x.ai/v1` | |
 | `custom-openai` | Custom OpenAI-Compatible (9Router / LiteLLM / Whisper.cpp) | `whisper-1` | `whisper-1`, `gpt-4o-mini-transcribe`, `whisper-large-v3` | `http://localhost:20128/v1` | `requiresBaseUrl`. |
-| `browser-native` | Browser Web Speech Recognition | `browser` | `browser` | *(none)* | `keyless`; runs in the browser. |
+| `browser-native` | Browser Web Speech Recognition | `browser` | `browser` | *(none)* | `keyless`; runs in the browser via `SpeechRecognition` / `webkitSpeechRecognition` (many browsers route recognition through vendor cloud services, so offline recognition is browser/platform-dependent). |
 
 ### Browser Native (`window.speechSynthesis` / `SpeechRecognition`)
 
-Keyless and offline. The server explicitly rejects `browser-native` for
+Keyless (no server API key required; offline capability depends on the browser and OS). The server explicitly rejects `browser-native` for
 `/api/tts/synthesize` and `/api/stt/transcribe` (400 + explanatory message),
 because synthesis and recognition happen in the browser:
 
@@ -310,7 +310,7 @@ Limits and timeouts: TTS 60 s, STT 120 s, `MAX_TTS_CHARS = 8192`,
 echoed back in the upstream body is replaced with `[REDACTED]`.
 
 Adapters: the Node mirror in `adapter/src/routes/voice.mjs` registers the same
-four routes against the same on-disk store.
+four paths (five HTTP methods) against the same on-disk store.
 
 ## Tests
 
@@ -330,7 +330,7 @@ npx vitest run \
   src/components/voice/voice-ui.test.tsx
 ```
 
-Coverage highlights: `backend/tests/voice.rs` asserts all four routes are
+Coverage highlights: `backend/tests/voice.rs` asserts all four paths (five HTTP methods) are
 auth-gated and round-trips a settings update with credential masking;
 `adapter/test/voice.test.mjs` drives the real handlers through a fake app/ctx
 and asserts URL normalization for 9Router/custom bases and streaming audio;
@@ -339,5 +339,6 @@ and asserts URL normalization for 9Router/custom bases and streaming audio;
 ## Current Limitations & Scope
 
 - **Turn-based STT/VAD -> Chat -> TTS pipeline**: Voice Mode runs a hands-free turn loop (browser `SpeechRecognition` or `MediaRecorder` + silence VAD + `/api/stt/transcribe` -> chat turn -> `/api/tts/synthesize` or `speechSynthesis`) so that all 7 TTS/STT providers and custom OpenAI/9Router endpoints work uniformly, rather than a provider-locked WebRTC full-duplex audio socket.
+- **Browser/OS speech & hardware capabilities**: `browser-native` TTS/STT relies on `window.speechSynthesis` and `SpeechRecognition`/`webkitSpeechRecognition`, whose offline availability, voice list, and error callbacks vary by browser and OS. Automated E2E verification runs in headless Chromium against mocked/local endpoints rather than physical microphone hardware or paid third-party cloud keys.
 - **Simulated output amplitude envelope**: Because browser `<audio>` elements and `window.speechSynthesis` do not expose cross-origin PCM frames to an `AnalyserNode` across all providers, the assistant's `"responding"` wave/eye amplitude uses a synchronized multi-sine speech envelope while audio is playing, whereas microphone input uses a live Web Audio `AnalyserNode` RMS loop (falling back to a gentle breathing envelope if mic access is unavailable).
 - **Single-utterance TTS cap**: `/api/tts/synthesize` caps individual synthesis requests at `8,192` characters (`MAX_TTS_CHARS`) and `/api/stt/transcribe` caps audio uploads at `25 MB` (`MAX_AUDIO_BYTES`).
