@@ -471,7 +471,7 @@ mod tests {
         let display = provider_native_display("openai", &item).unwrap();
         assert_eq!(display.id, "ws_1");
         assert_eq!(display.input, Some(json!({"query": "jcode"})));
-        assert_eq!(display.output.as_deref(), Some("Searched: amiro"));
+        assert_eq!(display.output.as_deref(), Some("Searched: jcode"));
     }
 
     #[test]
@@ -509,7 +509,7 @@ mod tests {
         assert_eq!(
             provider_native_text_fallback("openai", &item, None).as_deref(),
             Some(
-                "[web_search for \"amiro\"] (summary of an earlier provider-side search; page contents are no longer available)\nSearched: amiro"
+                "[web_search for \"jcode\"] (summary of an earlier provider-side search; page contents are no longer available)\nSearched: jcode"
             )
         );
         let start =

@@ -1073,7 +1073,7 @@ mod session_search_tests {
         ));
         assert!(session_search_working_dir_matches(
             "/workspace/amiro",
-            "jcode"
+            "amiro"
         ));
         assert!(!session_search_working_dir_matches(
             "/workspace/amiro",

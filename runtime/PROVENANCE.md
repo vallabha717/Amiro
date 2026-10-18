@@ -10,7 +10,7 @@ attribution stays auditable.
 |---|---|
 | Project | jcode |
 | Repository | https://github.com/1jehuang/jcode |
-| Commit vendored | `1952e02ac76fa1c335633e9c6113691c1cf3395` |
+| Commit vendored | `11952e02ac76fa1c335633e9c6113691c1cf3395` |
 | Version | `0.98.1` (root `Cargo.toml` `[package].version`) |
 | Licence | MIT: Copyright (c) 2025 Jeremy Huang |
 | Licence text | `runtime/LICENSE`, copied verbatim from the upstream checkout |
