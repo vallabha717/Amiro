@@ -6,6 +6,7 @@ import {
   formatDuration,
   stepGroupLabel,
 } from "lib/ai/tools/step-kind";
+import type { InlineImage } from "lib/chat-ux/inline-images";
 import { cn } from "lib/utils";
 import {
   CheckCircle2Icon,
@@ -24,6 +25,9 @@ import {
   useSyncExternalStore,
 } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { TextShimmer } from "ui/text-shimmer";
+import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
+import { InlineImageStrip } from "./workspace/inline-images";
 import { PresenterSurface } from "./tool-presenters/surface";
 
 /** One row in the log: either a group of tool calls or a block of prose. */
@@ -32,7 +36,22 @@ export type WorkLogRow =
       type: "group";
       kind: StepKind;
       /** Per-call glance lines, shown collapsed under the group header. */
-      glances: { text: string; failed: boolean }[];
+      glances: {
+        text: string;
+        failed: boolean;
+        /**
+         * Replaces the text when set -- a todo write reads better as a
+         * checklist delta than as "Updated todos". `text` is still filled in
+         * because the header pill uses it as the running step's name.
+         */
+        node?: ReactNode;
+      }[];
+      /**
+       * Images this group's tools returned. Shown under the glance lines
+       * even while the row is collapsed, so a screenshot is never behind a
+       * click.
+       */
+      images?: InlineImage[];
       /**
        * Set on a row about one specific file, which replaces the counted
        * label with the file's name and its +/- counts. Only writes get this
@@ -71,6 +90,12 @@ function GroupRow({
 }) {
   const [open, setOpen] = useState(false);
   const failed = row.glances.some((g) => g.failed);
+  // The shimmer loops forever, so reduced-motion users get plain text
+  // (the spinner next to the label already says the row is live).
+  const reducedMotion = usePrefersReducedMotion();
+  const images = row.images?.length ? (
+    <InlineImageStrip images={row.images} size="md" />
+  ) : null;
 
   // A named file row's card (a colored +N/-M stat that opens the full
   // side-by-side diff on click, or a create/overwrite badge) already says
@@ -78,7 +103,12 @@ function GroupRow({
   // interactive -- so it renders straight away instead of waiting for a
   // second click to reveal what the first click already named.
   if (row.file) {
-    return <div className="flex flex-col py-0.5">{row.children}</div>;
+    return (
+      <div className="flex flex-col py-0.5">
+        {row.children}
+        {images}
+      </div>
+    );
   }
 
   return (
@@ -110,21 +140,36 @@ function GroupRow({
           happened without being expanded into full tool cards. */}
       {!open ? (
         <div className="pl-[18px] flex flex-col">
-          {row.glances.map((g, i) => (
-            <span
-              key={i}
-              className={cn(
-                "text-[11px] truncate leading-5",
-                g.failed ? "text-destructive" : "text-muted-foreground/70",
-              )}
-            >
-              {g.text}
-            </span>
-          ))}
+          {row.glances.map((g, i) =>
+            g.node ? (
+              <div key={i} className="min-w-0 leading-5">
+                {g.node}
+              </div>
+            ) : running && !g.failed && !reducedMotion ? (
+              <TextShimmer
+                key={i}
+                as="span"
+                className="block max-w-full text-[11px] truncate leading-5"
+              >
+                {g.text}
+              </TextShimmer>
+            ) : (
+              <span
+                key={i}
+                className={cn(
+                  "text-[11px] truncate leading-5",
+                  g.failed ? "text-destructive" : "text-muted-foreground/70",
+                )}
+              >
+                {g.text}
+              </span>
+            ),
+          )}
         </div>
       ) : (
         <div className="pl-[18px] flex flex-col gap-2 py-1">{row.children}</div>
       )}
+      {images ? <div className="pl-[18px]">{images}</div> : null}
     </div>
   );
 }
@@ -134,6 +179,8 @@ export const WorkLog = memo(function WorkLog({
   isRunning,
   stepCount,
   durationMs,
+  hiddenCount = 0,
+  images,
 }: {
   rows: WorkLogRow[];
   isRunning: boolean;
@@ -148,6 +195,14 @@ export const WorkLog = memo(function WorkLog({
    * that were spent waiting for the user to answer.
    */
   durationMs?: number;
+  /** Tool calls the transcript filter removed from `rows`. */
+  hiddenCount?: number;
+  /**
+   * Every image the turn's tools returned, including ones from filtered-out
+   * calls. WorkLog decides where they show: under the header while collapsed,
+   * and -- while open -- only those no visible row already carries.
+   */
+  images?: InlineImage[];
 }) {
   // Expanded while running so the user can watch; auto-minimizes smoothly
   // into a summary pill bar when completed.
@@ -225,13 +280,34 @@ export const WorkLog = memo(function WorkLog({
     return null;
   }, [rows, isRunning]);
 
-  if (!rows.length) return null;
+  // Open: rows already show their own images, so only the orphans (from
+  // calls the filter removed) go under the header. Collapsed: no rows are
+  // visible, so everything does. Either way no image appears twice.
+  const stripImages = useMemo(() => {
+    if (!images?.length) return [];
+    if (!open) return images;
+    const inRows = new Set<string>();
+    for (const r of rows) {
+      if (r.type === "group") r.images?.forEach((img) => inRows.add(img.src));
+    }
+    return images.filter((img) => !inRows.has(img.src));
+  }, [images, rows, open]);
 
-  const headerText = isRunning
-    ? `Working… ${formatDuration(elapsed ?? 0)}`
-    : elapsed !== null && elapsed !== undefined
-      ? `Worked for ${formatDuration(elapsed)} · ${stepCount} ${stepCount === 1 ? "step" : "steps"}`
-      : `Worked · ${stepCount} ${stepCount === 1 ? "step" : "steps"}`;
+  // Every call filtered out: no header to draw, but the images must stay.
+  if (!rows.length) {
+    return images?.length ? (
+      <InlineImageStrip images={images} size="sm" />
+    ) : null;
+  }
+
+  const hiddenSuffix = hiddenCount > 0 ? ` · ${hiddenCount} hidden` : "";
+  const headerText =
+    (isRunning
+      ? `Working… ${formatDuration(elapsed ?? 0)}`
+      : elapsed !== null && elapsed !== undefined
+        ? `Worked for ${formatDuration(elapsed)} · ${stepCount} ${stepCount === 1 ? "step" : "steps"}`
+        : `Worked · ${stepCount} ${stepCount === 1 ? "step" : "steps"}`) +
+    hiddenSuffix;
 
   return (
     <div className="flex flex-col w-full my-1 select-none">
@@ -290,6 +366,10 @@ export const WorkLog = memo(function WorkLog({
           )}
         />
       </button>
+
+      {stripImages.length ? (
+        <InlineImageStrip images={stripImages} size="sm" className="mt-1" />
+      ) : null}
 
       <AnimatePresence initial={false}>
         {open && (

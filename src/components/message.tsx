@@ -6,6 +6,17 @@ import { type ReactNode, memo, useMemo, useState } from "react";
 
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { ChatMetadata, ManualToolConfirmTag } from "app-types/chat";
+import { chatUxStore } from "@/app/store/chat-ux-store";
+import {
+  extractInlineImages,
+  type InlineImage,
+} from "lib/chat-ux/inline-images";
+import { toolCategoryOf } from "lib/chat-ux/tool-categories";
+import { type RuntimeTodo, todosFromToolPart } from "lib/chat-ux/todos";
+import { useShallow } from "zustand/shallow";
+import { TextShimmer } from "ui/text-shimmer";
+import { InlineImageStrip } from "./workspace/inline-images";
+import { TodoDelta } from "./workspace/todo-views";
 import { editRowSummary, stepKindOf } from "lib/ai/tools/step-kind";
 import { cn, truncateString } from "lib/utils";
 import { ChevronDown, ChevronUp, TriangleAlertIcon } from "lucide-react";
@@ -106,6 +117,11 @@ const PurePreviewMessage = ({
   const justThisMessage = useMemo(() => [message], [message]);
   const { plan, walkthrough } = useArtifacts(justThisMessage, isLoading);
   const { grantedMode, decide } = usePlanDecision(addToolResult);
+  // Subscribing here (not in the memo comparator) is fine: zustand re-renders
+  // this component itself when the filter changes, memo or not.
+  const [hiddenToolCategories, hideAllTools] = chatUxStore(
+    useShallow((s) => [s.hiddenToolCategories, s.hideAllTools] as const),
+  );
   const t = useTranslations("Chat.Tool");
   const grantedModeLabel =
     grantedMode === "auto"
@@ -317,9 +333,7 @@ const PurePreviewMessage = ({
                       plan={plan}
                       grantedModeLabel={grantedModeLabel}
                       busy={Boolean(isLoading) || readonly}
-                      onProceed={() =>
-                        decide(plan, "proceed", [], grantedMode)
-                      }
+                      onProceed={() => decide(plan, "proceed", [], grantedMode)}
                     />
                   )}
                   {walkthrough && <WalkthroughCard walkthrough={walkthrough} />}
@@ -341,11 +355,25 @@ const PurePreviewMessage = ({
 
             const rows: WorkLogRow[] = [];
             let toolCount = 0;
+            let hiddenCount = 0;
+            // Every image the turn's tools returned, kept even for calls the
+            // filter hides so a screenshot never disappears with its row.
+            const turnImages: InlineImage[] = [];
+            // The previous todo write, so each one can show what changed.
+            let prevTodos: RuntimeTodo[] | undefined;
+            // Parts that must stay visible under hideAllTools because the
+            // user has to act on them (a manual-confirm call awaiting input).
+            const mustShow: ReactNode[] = [];
             for (let i = 0; i < workParts.length; i++) {
               const part = workParts[i];
               if (part.type === "step-start") continue;
 
               if (!isToolUIPart(part)) {
+                // Filtering hides tool calls only; the agent's prose stays.
+                if (hideAllTools) {
+                  mustShow.push(renderPart(part, i));
+                  continue;
+                }
                 rows.push({
                   type: "prose",
                   children: renderPart(part, i),
@@ -354,6 +382,50 @@ const PurePreviewMessage = ({
               }
 
               const toolName = getToolName(part);
+              const partImages =
+                part.state === "output-available"
+                  ? extractInlineImages(part.output)
+                  : [];
+              turnImages.push(...partImages);
+
+              let todoNode: ReactNode;
+              if (toolName === "todo" || toolName === "todo_write") {
+                const next = todosFromToolPart(
+                  (part as any).input,
+                  (part as any).output,
+                );
+                if (next) {
+                  todoNode = <TodoDelta prev={prevTodos} next={next} />;
+                  prevTodos = next;
+                }
+              }
+
+              // A call the user must answer (an approval, or a manual-confirm
+              // invocation) is never filtered out: hiding it reads as a hung
+              // turn. Approvals themselves render outside the log already.
+              const needsUser =
+                part.state === "input-available" &&
+                (pendingApprovals.some(
+                  (a) => a.request.toolCallId === part.toolCallId,
+                ) ||
+                  ((message.metadata as ChatMetadata)?.toolChoice ===
+                    "manual" &&
+                    Boolean(isLastMessage && isLoading && !readonly)));
+              const filtered =
+                !needsUser &&
+                (hideAllTools ||
+                  hiddenToolCategories.includes(
+                    toolCategoryOf(toolName, (part as any).input),
+                  ));
+              if (filtered) {
+                hiddenCount++;
+                continue;
+              }
+              if (hideAllTools) {
+                mustShow.push(renderPart(part, i));
+                continue;
+              }
+
               const kind = stepKindOf(toolName, (part as any).input);
               const presenterProps = presenterPropsFromToolPart(part);
               const status = presenterProps.status;
@@ -374,13 +446,27 @@ const PurePreviewMessage = ({
                 prev.kind === kind &&
                 !prev.file
               ) {
-                prev.glances.push({ text: glance, failed: status === "error" });
+                prev.glances.push({
+                  text: glance,
+                  failed: status === "error",
+                  node: todoNode,
+                });
+                if (partImages.length) {
+                  prev.images = [...(prev.images ?? []), ...partImages];
+                }
                 (prev.children as ReactNode[]).push(renderPart(part, i));
               } else {
                 rows.push({
                   type: "group",
                   kind,
-                  glances: [{ text: glance, failed: status === "error" }],
+                  glances: [
+                    {
+                      text: glance,
+                      failed: status === "error",
+                      node: todoNode,
+                    },
+                  ],
+                  images: partImages.length ? partImages : undefined,
                   file: file ?? undefined,
                   children: [renderPart(part, i)] as ReactNode[],
                 });
@@ -398,14 +484,35 @@ const PurePreviewMessage = ({
 
             return (
               <>
-                <WorkLog
-                  rows={rows}
-                  isRunning={isWorkLogRunning}
-                  stepCount={toolCount}
-                  durationMs={
-                    (message.metadata as ChatMetadata | undefined)?.durationMs
-                  }
-                />
+                {hideAllTools ? (
+                  <>
+                    {/* With every tool hidden a long turn would otherwise
+                        show nothing at all until its answer lands, which
+                        reads as a hung chat. One quiet line says it is
+                        still moving without bringing the log back. */}
+                    {isWorkLogRunning ? (
+                      <TextShimmer
+                        as="span"
+                        className="text-xs"
+                      >{`Working… · ${hiddenCount} ${hiddenCount === 1 ? "step" : "steps"} hidden`}</TextShimmer>
+                    ) : null}
+                    {mustShow}
+                    {turnImages.length ? (
+                      <InlineImageStrip images={turnImages} size="sm" />
+                    ) : null}
+                  </>
+                ) : (
+                  <WorkLog
+                    rows={rows}
+                    images={turnImages}
+                    hiddenCount={hiddenCount}
+                    isRunning={isWorkLogRunning}
+                    stepCount={toolCount}
+                    durationMs={
+                      (message.metadata as ChatMetadata | undefined)?.durationMs
+                    }
+                  />
+                )}
                 {tailParts.map((part, i) =>
                   renderPart(part, lastToolIndex + 1 + i),
                 )}

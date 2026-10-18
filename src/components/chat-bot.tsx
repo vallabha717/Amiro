@@ -4,7 +4,14 @@ import { appStore } from "@/app/store";
 import { useChat } from "@ai-sdk/react";
 import clsx from "clsx";
 import { cn, createDebounce, generateUUID } from "lib/utils";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 import { ArtifactPane } from "./artifacts/artifact-pane";
 import { buildPlanDecision, useArtifacts } from "./artifacts/use-artifacts";
@@ -12,6 +19,17 @@ import { ChatGreeting } from "./chat-greeting";
 import { LoginPanel } from "./chat/login-panel";
 import { ErrorMessage, PreviewMessage } from "./message";
 import PromptInput from "./prompt-input";
+import { MemberThreadBanner } from "./workspace/agent-switcher";
+import { SwarmStrip } from "./workspace/swarm-strip";
+import { ChatToolbar } from "./workspace/chat-toolbar";
+import { SessionPanel } from "./workspace/session-panel";
+import { AgentPane } from "./workspace/agent-pane";
+import { useSwarm, type SwarmMember } from "@/lib/backend/swarm-api";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "ui/resizable";
 
 import {
   DefaultChatTransport,
@@ -23,6 +41,8 @@ import {
 } from "ai";
 import { useShallow } from "zustand/shallow";
 
+import { chatUxStore } from "@/app/store/chat-ux-store";
+import { summarizeSession } from "lib/chat-ux/session-summary";
 import { applyRuntimeThreadTitle } from "@/lib/backend/runtime-thread-title";
 import { useFileDragOverlay } from "@/hooks/use-file-drag-overlay";
 import { useToRef } from "@/hooks/use-latest";
@@ -125,6 +145,8 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
   );
 
   const [showParticles, setShowParticles] = useState(isFirstTime);
+  const showParticlesRef = useRef(showParticles);
+  showParticlesRef.current = showParticles;
 
   const onFinish = useCallback(
     (finishEvent?: { message?: UIMessage; messages?: UIMessage[] }) => {
@@ -324,10 +346,65 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
   // The plan, task list and walkthrough, read back out of the transcript.
   const artifacts = useArtifacts(messages, isLoading);
 
+  // Agents, tasks, context, connectors and outputs for the session panel,
+  // read back out of the same transcript the artifacts come from.
+  const sessionSummary = useMemo(
+    () => summarizeSession(messages, isLoading),
+    [messages, isLoading],
+  );
+  const sessionPanelOpen = chatUxStore((state) => state.panelOpen);
+
   const hasArtifact = Boolean(
     artifacts.plan || artifacts.todos || artifacts.walkthrough,
   );
   const isArtifactViewActive = artifactView.isOpen && hasArtifact;
+
+  // Swarm agents open side by side with this chat. The chat itself stays on
+  // screen, exactly as the TUI keeps the main transcript while an agent is
+  // popped out; panes are only added next to it.
+  const openPaneIds = chatUxStore(
+    (state) => state.agentPanesByThread[threadId],
+  );
+  const { data: swarm } = useSwarm(
+    openPaneIds?.length ? threadId : undefined,
+    isLoading,
+  );
+  const agentPanes = useMemo(() => {
+    if (!openPaneIds?.length) return [];
+    const known: SwarmMember[] = [
+      ...(swarm?.coordinator ? [swarm.coordinator] : []),
+      ...(swarm?.members ?? []),
+    ];
+    return openPaneIds.flatMap((sessionId) => {
+      const member =
+        known.find((m) => m.sessionId === sessionId) ??
+        // Not reported yet (just spawned, or the poll has not landed):
+        // show it under the label its spawn call gave it.
+        (() => {
+          const s = sessionSummary.spawned.find(
+            (x) => x.sessionId === sessionId,
+          );
+          return s
+            ? ({
+                sessionId,
+                label: s.label,
+                swarmStatus: "running",
+                userConnected: false,
+              } as SwarmMember)
+            : ({ sessionId, userConnected: false } as SwarmMember);
+        })();
+      return [
+        {
+          member,
+          coordinator: member.sessionId === swarm?.coordinator?.sessionId,
+        },
+      ];
+    });
+  }, [openPaneIds, swarm, sessionSummary.spawned]);
+  const showAgentPanes = agentPanes.length > 0 && !isArtifactViewActive;
+  const chatPanelSize = showAgentPanes
+    ? Math.max(34, 100 - 33 * agentPanes.length)
+    : 100;
 
   // The assistant message an in-flight turn's artifacts belong to. A revised
   // plan reuses this same id (the suspend/resume round trip continues the
@@ -537,7 +614,15 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
   }, [showParticles, isArtifactViewActive]);
 
   const handleFocus = useCallback(() => {
-    setShowParticles(false);
+    // Only set state when the particles are actually showing. This runs from
+    // the [input] effect on every keystroke, and a keystroke commits at sync
+    // priority, so React flushes that effect synchronously. A redundant
+    // setShowParticles(false) there is not reliably bailed out eagerly: it
+    // leaves a Default-lane update pending after every commit. React 19
+    // counts each such commit as a nested update and never resets the
+    // counter while typing, so ~50 fast keystrokes threw "Maximum update
+    // depth exceeded" from whichever setState came next (often the composer's).
+    if (showParticlesRef.current) setShowParticles(false);
     debounce(() => setShowParticles(true), 60000);
   }, []);
 
@@ -655,120 +740,179 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
             />
           </div>
         ) : null}
-        <div
+        {/* Always a panel group, even with no agents open: wrapping the chat
+            only when the first pane opens would remount it and drop whatever
+            the user was typing. */}
+        <ResizablePanelGroup
+          direction="horizontal"
           className={cn(
-            emptyMessage ? "justify-center pb-24" : "justify-end",
-            "flex flex-col min-w-0 relative h-full z-40",
-            "transition-[width] duration-[240ms] ease-[var(--ease-drawer)] motion-reduce:transition-none",
-            isArtifactViewActive &&
-              "w-[380px] shrink-0 rounded-xl border border-border shadow-xl overflow-hidden bg-background",
-            !isArtifactViewActive && "w-full",
+            "min-w-0 transition-[width] duration-[240ms] ease-[var(--ease-drawer)] motion-reduce:transition-none",
+            isArtifactViewActive ? "!w-[380px] shrink-0 flex-none" : "flex-1",
           )}
         >
-          {isDragging && (
-            <div className="absolute inset-0 z-40 bg-background/70 backdrop-blur-sm flex items-center justify-center pointer-events-none">
-              <div className="rounded-2xl px-6 py-5 bg-background/80 shadow-xl border border-border flex items-center gap-3">
-                <div className="rounded-full bg-primary/10 p-2 text-primary">
-                  <FilePlus className="size-6" />
-                </div>
-                <span className="text-sm text-muted-foreground">
-                  Drop files to upload
-                </span>
-              </div>
-            </div>
-          )}
-          {emptyMessage ? (
-            <ChatGreeting />
-          ) : (
-            <>
-              <div
-                data-testid="chat-messages-container"
-                data-state={
-                  isLoading || isPendingToolCall ? "streaming" : "ready"
-                }
-                className={
-                  "flex flex-col gap-2 overflow-y-auto pt-6 pb-40 z-10 [scrollbar-gutter:stable_both-edges]"
-                }
-                ref={containerRef}
-                onScroll={handleScroll}
-              >
-                {messages.map((message, index) => {
-                  const isLastMessage = messages.length - 1 === index;
-                  return (
-                    <PreviewMessage
-                      threadId={threadId}
-                      prevMessage={messages[index - 1]}
-                      key={message.id}
-                      message={message}
-                      status={status}
-                      addToolResult={addToolResult}
-                      isLoading={isLoading || isPendingToolCall}
-                      isLastMessage={isLastMessage}
-                      setMessages={setMessages}
-                      sendMessage={sendMessage}
-                      className={
-                        isLastMessage &&
-                        message.role != "user" &&
-                        !space &&
-                        (message.parts?.length ?? 0) > 1
-                          ? "min-h-[calc(5dvh-40px)]"
-                          : ""
-                      }
-                    />
-                  );
-                })}
-                {space && (
-                  <>
-                    <div className="w-full mx-auto max-w-3xl px-6 relative">
-                      <div className={space == "space" ? "opacity-0" : ""}>
-                        <Think />
-                      </div>
+          <ResizablePanel
+            id="chat"
+            order={0}
+            minSize={30}
+            defaultSize={chatPanelSize}
+          >
+            <div
+              className={cn(
+                emptyMessage ? "justify-center pb-24" : "justify-end",
+                "flex flex-col min-w-0 relative h-full z-40 w-full",
+                isArtifactViewActive &&
+                  "rounded-xl border border-border shadow-xl overflow-hidden bg-background",
+              )}
+            >
+              <MemberThreadBanner threadId={threadId} />
+              {!emptyMessage && !isArtifactViewActive && (
+                <ChatToolbar
+                  summary={sessionSummary}
+                  className="absolute top-2 right-3 z-30"
+                />
+              )}
+              {isDragging && (
+                <div className="absolute inset-0 z-40 bg-background/70 backdrop-blur-sm flex items-center justify-center pointer-events-none">
+                  <div className="rounded-2xl px-6 py-5 bg-background/80 shadow-xl border border-border flex items-center gap-3">
+                    <div className="rounded-full bg-primary/10 p-2 text-primary">
+                      <FilePlus className="size-6" />
                     </div>
-                    <div className="min-h-[calc(5dvh-56px)]" />
-                  </>
+                    <span className="text-sm text-muted-foreground">
+                      Drop files to upload
+                    </span>
+                  </div>
+                </div>
+              )}
+              {emptyMessage ? (
+                <ChatGreeting />
+              ) : (
+                <>
+                  <div
+                    data-testid="chat-messages-container"
+                    data-state={
+                      isLoading || isPendingToolCall ? "streaming" : "ready"
+                    }
+                    className={
+                      "flex flex-col gap-2 overflow-y-auto pt-12 pb-48 z-10 [scrollbar-gutter:stable_both-edges]"
+                    }
+                    ref={containerRef}
+                    onScroll={handleScroll}
+                  >
+                    {messages.map((message, index) => {
+                      const isLastMessage = messages.length - 1 === index;
+                      return (
+                        <PreviewMessage
+                          threadId={threadId}
+                          prevMessage={messages[index - 1]}
+                          key={message.id}
+                          message={message}
+                          status={status}
+                          addToolResult={addToolResult}
+                          isLoading={isLoading || isPendingToolCall}
+                          isLastMessage={isLastMessage}
+                          setMessages={setMessages}
+                          sendMessage={sendMessage}
+                          className={
+                            isLastMessage &&
+                            message.role != "user" &&
+                            !space &&
+                            (message.parts?.length ?? 0) > 1
+                              ? "min-h-[calc(5dvh-40px)]"
+                              : ""
+                          }
+                        />
+                      );
+                    })}
+                    {space && (
+                      <>
+                        <div className="w-full mx-auto max-w-3xl px-6 relative">
+                          <div className={space == "space" ? "opacity-0" : ""}>
+                            <Think />
+                          </div>
+                        </div>
+                        <div className="min-h-[calc(5dvh-56px)]" />
+                      </>
+                    )}
+
+                    {error && <ErrorMessage error={error} />}
+                    <div className="min-w-0 min-h-16" />
+                  </div>
+                </>
+              )}
+
+              <div
+                className={clsx(
+                  messages.length && "absolute bottom-14",
+                  "w-full z-10",
+                )}
+              >
+                <div className="max-w-3xl mx-auto relative flex justify-center items-center -top-2">
+                  <ScrollToBottomButton
+                    show={!isAtBottom && messages.length > 0}
+                    onClick={scrollToBottom}
+                  />
+                </div>
+
+                {isLoginPanelOpen && (
+                  <div className="max-w-3xl mx-auto px-4 mb-2">
+                    <LoginPanel onClose={() => setIsLoginPanelOpen(false)} />
+                  </div>
                 )}
 
-                {error && <ErrorMessage error={error} />}
-                <div className="min-w-0 min-h-16" />
+                <div className="max-w-3xl mx-auto px-6 mb-1.5">
+                  <SwarmStrip
+                    threadId={threadId}
+                    isRunning={isLoading}
+                    spawned={sessionSummary.spawned}
+                  />
+                </div>
+                <PromptInput
+                  input={input}
+                  threadId={threadId}
+                  sendMessage={handleComposerSend}
+                  setInput={setInput}
+                  isLoading={isLoading || isPendingToolCall}
+                  onStop={handleStop}
+                  onFocus={isFirstTime ? undefined : handleFocus}
+                />
               </div>
-            </>
-          )}
-
-          <div
-            className={clsx(
-              messages.length && "absolute bottom-14",
-              "w-full z-10",
-            )}
-          >
-            <div className="max-w-3xl mx-auto relative flex justify-center items-center -top-2">
-              <ScrollToBottomButton
-                show={!isAtBottom && messages.length > 0}
-                onClick={scrollToBottom}
+              <DeleteThreadPopup
+                threadId={threadId}
+                onClose={() => setIsDeleteThreadPopupOpen(false)}
+                open={isDeleteThreadPopupOpen}
               />
             </div>
-
-            {isLoginPanelOpen && (
-              <div className="max-w-3xl mx-auto px-4 mb-2">
-                <LoginPanel onClose={() => setIsLoginPanelOpen(false)} />
-              </div>
-            )}
-
-            <PromptInput
-              input={input}
-              threadId={threadId}
-              sendMessage={handleComposerSend}
-              setInput={setInput}
-              isLoading={isLoading || isPendingToolCall}
-              onStop={handleStop}
-              onFocus={isFirstTime ? undefined : handleFocus}
-            />
-          </div>
-          <DeleteThreadPopup
+          </ResizablePanel>
+          {showAgentPanes &&
+            agentPanes.map(({ member, coordinator }, i) => (
+              <Fragment key={member.sessionId}>
+                <ResizableHandle withHandle />
+                <ResizablePanel
+                  id={`agent-${member.sessionId}`}
+                  order={i + 1}
+                  minSize={18}
+                  defaultSize={(100 - chatPanelSize) / agentPanes.length}
+                  className="relative z-40"
+                >
+                  <AgentPane
+                    threadId={threadId}
+                    member={member}
+                    coordinator={coordinator}
+                  />
+                </ResizablePanel>
+              </Fragment>
+            ))}
+        </ResizablePanelGroup>
+        {/* The session panel shares the row with the chat column, not the
+            artifact pane: with a plan open the chat is already squeezed to
+            380px, and a third column would leave nothing readable. */}
+        {sessionPanelOpen && !emptyMessage && !isArtifactViewActive && (
+          <SessionPanel
             threadId={threadId}
-            onClose={() => setIsDeleteThreadPopupOpen(false)}
-            open={isDeleteThreadPopupOpen}
+            summary={sessionSummary}
+            isRunning={isLoading}
           />
-        </div>
+        )}
       </div>
     </>
   );

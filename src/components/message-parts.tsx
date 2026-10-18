@@ -1,6 +1,7 @@
 "use client";
 
 import { useCopy } from "@/hooks/use-copy";
+import { useSmoothText } from "@/hooks/use-smooth-text";
 import { rewriteStorageUrl } from "@/lib/backend/config";
 import type { UseChatHelpers } from "@ai-sdk/react";
 import {
@@ -320,6 +321,13 @@ export const AssistMessagePart = memo(function AssistMessagePart({
   const metadata = message.metadata as ChatMetadata | undefined;
   const t = useTranslations("Checkpoint");
 
+  // Only the actively streaming last part is paced; finished messages pass
+  // streaming=false from the start so the hook never schedules a frame.
+  const isStreamingText = Boolean(isLast && isMessageLoading);
+  const displayText = useSmoothText(part.text, isStreamingText);
+  // Keep the caret until the reveal has caught up, not just until the stream ends.
+  const showCaret = isStreamingText || displayText.length < part.text.length;
+
   const isReadAloudStoreActive = useMessageReadAloudStore(
     (s) => s.messageId === message.id,
   );
@@ -413,9 +421,15 @@ export const AssistMessagePart = memo(function AssistMessagePart({
           },
         )}
       >
-        <Markdown isStreaming={isLast && isMessageLoading}>
-          {part.text}
-        </Markdown>
+        <Markdown isStreaming={isStreamingText}>{displayText}</Markdown>
+        {showCaret && (
+          // Sibling after the markdown (not injected into it) so partial
+          // markdown never breaks; it sits inline after the last block.
+          <span
+            aria-hidden
+            className="-mt-1 ml-0.5 inline-block h-[1em] w-[0.5em] self-start rounded-[1px] bg-foreground/60 align-text-bottom motion-safe:animate-pulse"
+          />
+        )}
       </div>
       {showActions && (
         <div className="flex w-full">
@@ -636,20 +650,8 @@ export const AssistMessagePart = memo(function AssistMessagePart({
   );
 });
 AssistMessagePart.displayName = "AssistMessagePart";
-const variants = {
-  collapsed: {
-    height: 0,
-    opacity: 0,
-    marginTop: 0,
-    marginBottom: 0,
-  },
-  expanded: {
-    height: "auto",
-    opacity: 1,
-    marginTop: "1rem",
-    marginBottom: "0.5rem",
-  },
-};
+const reasoningTransition = { duration: 0.22, ease: [0.23, 1, 0.32, 1] } as const;
+
 export const ReasoningPart = memo(function ReasoningPart({
   reasoningText,
   isThinking,
@@ -658,15 +660,45 @@ export const ReasoningPart = memo(function ReasoningPart({
   isThinking?: boolean;
   readonly?: boolean;
 }) {
-  const [isExpanded, setIsExpanded] = useState(Boolean(isThinking));
+  // null = follow the agent (open while thinking, collapsed after). Once the
+  // user clicks, their choice wins so we never re-collapse something they
+  // deliberately opened.
+  const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
+  const isExpanded = userExpanded ?? Boolean(isThinking);
+
+  // Duration is only known for thinking we watched happen. Reopened threads
+  // mount with isThinking=false, so they show a plain "Thought".
+  const startedAtRef = useRef<number | null>(null);
+  const [elapsedSec, setElapsedSec] = useState(0);
+  const [durationSec, setDurationSec] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!isThinking && isExpanded) {
-      setIsExpanded(false);
-    } else if (isThinking && !isExpanded) {
-      setIsExpanded(true);
+    if (isThinking) {
+      const startedAt = startedAtRef.current ?? Date.now();
+      startedAtRef.current = startedAt;
+      const update = () =>
+        setElapsedSec(Math.floor((Date.now() - startedAt) / 1000));
+      update();
+      const id = setInterval(update, 1000);
+      return () => clearInterval(id);
+    }
+    if (startedAtRef.current != null) {
+      setDurationSec(
+        Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000)),
+      );
+      startedAtRef.current = null;
     }
   }, [isThinking]);
+
+  // Follow the stream, but stop following if the user scrolled up to read.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!isThinking || !el) return;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 48) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [reasoningText, isThinking, isExpanded]);
 
   const wordCount = useMemo(() => {
     return reasoningText.trim().split(/\s+/).filter(Boolean).length;
@@ -679,17 +711,21 @@ export const ReasoningPart = memo(function ReasoningPart({
     return firstLine.length > 70 ? `${firstLine.slice(0, 69)}…` : firstLine;
   }, [reasoningText]);
 
+  const toggle = () => setUserExpanded(!isExpanded);
+
   if (isThinking) {
     return (
       <div className="flex flex-col select-none my-1.5 animate-in fade-in duration-200">
         <div
-          className="flex items-center gap-2 text-xs cursor-pointer py-1 text-primary/80 hover:text-primary transition-colors"
-          onClick={() => setIsExpanded(!isExpanded)}
+          className="flex items-center gap-2 text-xs cursor-pointer py-1 text-muted-foreground hover:text-foreground transition-colors"
+          onClick={toggle}
         >
-          <span className="size-2 rounded-full bg-primary animate-pulse" />
           <TextShimmer className="font-medium tracking-wide">
             Thinking…
           </TextShimmer>
+          <span className="tabular-nums text-muted-foreground/70">
+            {elapsedSec}s
+          </span>
           <button
             data-testid="message-reasoning-toggle"
             type="button"
@@ -710,12 +746,14 @@ export const ReasoningPart = memo(function ReasoningPart({
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}
-              className="rounded-xl border border-primary/20 bg-accent/30 p-3 mt-1 overflow-hidden text-xs text-muted-foreground shadow-xs"
+              transition={reasoningTransition}
+              className="overflow-hidden"
             >
-              <div className="max-h-72 overflow-y-auto space-y-2">
+              <div
+                ref={scrollRef}
+                className="max-h-40 overflow-y-auto border-l pl-3 ml-1 text-xs text-muted-foreground/80 space-y-2"
+              >
                 <Markdown>{reasoningText || "Thinking…"}</Markdown>
-                <span className="inline-block size-1.5 rounded-full bg-primary animate-ping ml-1" />
               </div>
             </motion.div>
           )}
@@ -724,6 +762,8 @@ export const ReasoningPart = memo(function ReasoningPart({
     );
   }
 
+  const label = durationSec != null ? `Thought for ${durationSec}s` : "Thought";
+
   return (
     <div className="flex flex-col select-none my-1">
       <div
@@ -731,12 +771,10 @@ export const ReasoningPart = memo(function ReasoningPart({
           "flex items-center gap-2 text-xs cursor-pointer py-1 px-2.5 rounded-lg border bg-muted/30 hover:bg-muted/60 transition-colors w-fit max-w-full",
           isExpanded && "bg-muted/50 border-primary/20",
         )}
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={toggle}
       >
         <BrainIcon className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="font-medium text-muted-foreground">
-          Thought process
-        </span>
+        <span className="font-medium text-muted-foreground">{label}</span>
         {previewSnippet ? (
           <span className="text-[11px] text-muted-foreground/70 truncate max-w-xs md:max-w-md hidden sm:inline">
             · {previewSnippet}
@@ -763,14 +801,15 @@ export const ReasoningPart = memo(function ReasoningPart({
           <motion.div
             data-testid="message-reasoning"
             key="minimized-reasoning"
-            initial="collapsed"
-            animate="expanded"
-            exit="collapsed"
-            variants={variants}
-            transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}
-            className="pl-5 text-muted-foreground border-l ml-3 mt-2 flex flex-col gap-2 text-xs"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={reasoningTransition}
+            className="overflow-hidden"
           >
-            <Markdown>{reasoningText || "Hmm, let's see...🤔"}</Markdown>
+            <div className="pl-5 text-muted-foreground border-l ml-3 mt-2 flex flex-col gap-2 text-xs">
+              <Markdown>{reasoningText || "Hmm, let's see...🤔"}</Markdown>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

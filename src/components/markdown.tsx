@@ -1,13 +1,15 @@
 "use client";
 
 import { Fragment, memo, PropsWithChildren, useMemo } from "react";
-import ReactMarkdown, { type Components } from "react-markdown";
+import ReactMarkdown, { type Components, defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { PreBlock } from "./pre-block";
 import { isJson, isString, toAny } from "lib/utils";
 import { splitMarkdownBlocks } from "lib/markdown-blocks";
+import { isSafeImageSrc, linkifyDataImages } from "lib/chat-ux/inline-images";
+import { MarkdownImage } from "./workspace/inline-images";
 import JsonView from "ui/json-view";
 import { LinkIcon } from "lucide-react";
 import { WritingCursor } from "ui/writing-cursor";
@@ -201,6 +203,9 @@ const components: Partial<Components> = {
   img: ({ node, children, ...props }) => {
     const { src, alt, ...rest } = props;
 
+    if (typeof src === "string" && isSafeImageSrc(src)) {
+      return <MarkdownImage src={src} alt={alt} />;
+    }
     return src ? (
       // eslint-disable-next-line @next/next/no-img-element
       <img className="mx-auto rounded-lg" src={src} alt={alt} {...rest} />
@@ -216,6 +221,16 @@ const components: Partial<Components> = {
  * bails out, and none of the already-rendered text is re-parsed, re-rendered
  * or re-animated. Previously each token re-parsed the entire document.
  */
+/**
+ * react-markdown's default transform strips every data: URL, which also
+ * strips an image a model printed inline. Raster data URLs are let through
+ * for image sources only; links and everything else keep the default rules.
+ */
+function urlTransform(url: string, key: string): string {
+  if (key === "src" && isSafeImageSrc(url)) return url;
+  return defaultUrlTransform(url);
+}
+
 const MarkdownBlock = memo(
   function MarkdownBlock({ source }: { source: string }) {
     return (
@@ -224,6 +239,7 @@ const MarkdownBlock = memo(
           components={components}
           remarkPlugins={[remarkGfm, remarkMath]}
           rehypePlugins={[rehypeKatex]}
+          urlTransform={urlTransform}
         >
           {source}
         </ReactMarkdown>
@@ -256,7 +272,12 @@ const NonMemoizedMarkdown = ({
         const isLast = index === blocks.length - 1;
         // The cursor belongs to the block currently being written, so it
         // travels with the text instead of anchoring to the message end.
-        const source = isStreaming && isLast ? `${block} ${CURSOR_TOKEN}` : block;
+        // A block still being written is left raw: half a data URL would
+        // flash a broken image on every token until the base64 finishes.
+        const source =
+          isStreaming && isLast
+            ? `${block} ${CURSOR_TOKEN}`
+            : linkifyDataImages(block);
         // Keyed by position: a block's index is stable for its lifetime
         // (blocks are only ever appended while streaming), so completed
         // blocks keep their identity and never remount.
