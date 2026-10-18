@@ -544,11 +544,22 @@ async fn provider_status(State(_state): State<AppState>) -> Json<Value> {
     Json(json!({"status": "ok"}))
 }
 
+async fn sync_provider_models(
+    State(state): State<AppState>,
+    user: AuthUser,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    require_admin(&user)?;
+    invalidate_catalog();
+    post_provider_models(State(state), user, Json(json!({"id": id}))).await
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/chat/models", get(get_chat_models))
         .route("/api/ai/providers", get(get_ai_providers))
         .route("/api/ai/providers/models", post(post_provider_models))
+        .route("/api/ai/providers/{id}/sync-models", post(sync_provider_models))
         .route("/api/ai/providers/status", get(provider_status))
 }
 
