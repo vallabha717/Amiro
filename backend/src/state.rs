@@ -1,7 +1,7 @@
 //! Shared native backend state and atomic JSON persistence.
 use axum::{
     extract::FromRequestParts,
-    http::{request::Parts, StatusCode},
+    http::{request::Parts, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
@@ -53,9 +53,13 @@ impl AppState {
         };
         let sibling = |name: &str| {
             std::env::current_exe().ok().and_then(|current| {
-                current
-                    .parent()
-                    .map(|dir| dir.join(if cfg!(windows) { format!("{name}.exe") } else { name.to_string() }))
+                current.parent().map(|dir| {
+                    dir.join(if cfg!(windows) {
+                        format!("{name}.exe")
+                    } else {
+                        name.to_string()
+                    })
+                })
             })
         };
         let runtime_bin = std::env::var_os("AMIRO_RUNTIME_BIN")
@@ -158,6 +162,25 @@ impl FromRequestParts<AppState> for AuthUser {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
+        if let Ok(user) = crate::auth::authenticate(state, &parts.headers).await {
+            return Ok(Self(user));
+        }
+        if let Some(query) = parts.uri.query() {
+            for pair in query.split('&') {
+                if let Some((k, v)) = pair.split_once('=') {
+                    if (k == "token" || k == "bearer") && !v.trim().is_empty() {
+                        let mut fake_headers = HeaderMap::new();
+                        if let Ok(val) = HeaderValue::from_str(&format!("Bearer {}", v.trim())) {
+                            fake_headers.insert(axum::http::header::AUTHORIZATION, val);
+                            if let Ok(user) = crate::auth::authenticate(state, &fake_headers).await
+                            {
+                                return Ok(Self(user));
+                            }
+                        }
+                    }
+                }
+            }
+        }
         crate::auth::authenticate(state, &parts.headers)
             .await
             .map(Self)

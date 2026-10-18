@@ -8,7 +8,7 @@
 # Idempotent: safe to re-run. Anything already installed is skipped.
 #
 # Usage:
-#   ./scripts/setup-vm.sh [--skip-frontend] [--skip-native] [--skip-desktop] [--yes]
+#   ./scripts/setup-vm.sh [--skip-frontend] [--skip-native] [--skip-desktop] [--remote] [--install-service] [--port P] [--yes]
 #
 # Flags:
 #   --skip-frontend   skip `pnpm build` (no out/ export)
@@ -16,6 +16,9 @@
 #   --skip-desktop    skip Tauri desktop GUI system libraries (webkit/GTK).
 #                     Pick this for headless servers. `cargo tauri dev` will
 #                     still need those libraries later.
+#   --remote          configure remote VM access defaults (0.0.0.0 bind)
+#   --install-service install and enable systemd boot service (via install-vm-service.sh)
+#   --port P          port for VM Web UI server (default 3000)
 #   --yes, -y         assume yes for install prompts (non-interactive)
 #   --help, -h        print this help and exit
 #
@@ -23,26 +26,35 @@
 # and the exact privileged command is printed before it runs.
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_FILE="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
 SKIP_FRONTEND=0
 SKIP_NATIVE=0
 SKIP_DESKTOP=0
+REMOTE=0
+INSTALL_SERVICE=0
+PORT=3000
 ASSUME_YES=0
 
 usage() {
-  sed -n '2,20p' "${BASH_SOURCE[0]}"
+  sed -n '2,24p' "$SCRIPT_FILE"
 }
 
-for arg in "$@"; do
-  case "$arg" in
-    --skip-frontend) SKIP_FRONTEND=1 ;;
-    --skip-native) SKIP_NATIVE=1 ;;
-    --skip-desktop) SKIP_DESKTOP=1 ;;
-    --yes|-y) ASSUME_YES=1 ;;
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --skip-frontend) SKIP_FRONTEND=1; shift ;;
+    --skip-native) SKIP_NATIVE=1; shift ;;
+    --skip-desktop) SKIP_DESKTOP=1; shift ;;
+    --remote) REMOTE=1; shift ;;
+    --install-service) INSTALL_SERVICE=1; shift ;;
+    --port) PORT="${2:?--port requires a value}"; shift 2 ;;
+    --port=*) PORT="${1#*=}"; shift ;;
+    --yes|-y) ASSUME_YES=1; shift ;;
     --help|-h) usage; exit 0 ;;
-    *) echo "error: unknown argument: $arg" >&2; echo "try: ./scripts/setup-vm.sh --help" >&2; exit 2 ;;
+    *) echo "error: unknown argument: $1" >&2; echo "try: ./scripts/setup-vm.sh --help" >&2; exit 2 ;;
   esac
 done
 
@@ -290,7 +302,22 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 8. Colored summary
+# 8. Optional service installation
+# ---------------------------------------------------------------------------
+if [ "$INSTALL_SERVICE" = "1" ]; then
+  step "Installing systemd VM service via scripts/install-vm-service.sh"
+  SERVICE_ARGS=("--port" "$PORT")
+  if [ "$REMOTE" = "1" ]; then
+    SERVICE_ARGS+=("--host" "0.0.0.0")
+  fi
+  if [ "$ASSUME_YES" = "1" ]; then
+    SERVICE_ARGS+=("--yes")
+  fi
+  bash "$REPO_ROOT/scripts/install-vm-service.sh" "${SERVICE_ARGS[@]}"
+fi
+
+# ---------------------------------------------------------------------------
+# 9. Colored summary
 # ---------------------------------------------------------------------------
 printf '\n%s========================================%s\n' "$GREEN" "$RESET"
 printf '%s  Amiro setup complete%s\n' "$BOLD" "$RESET"
@@ -314,6 +341,13 @@ if [ -f "$REPO_ROOT/out/index.html" ]; then
   printf '  frontend:     %s\n' "$REPO_ROOT/out"
 else
   printf '  frontend:     %s (not built, see --skip-frontend)\n' "$REPO_ROOT/out"
+fi
+
+printf '\n%sVM Server & Web UI (Remote Access):%s\n' "$BOLD" "$RESET"
+printf '  Start the VM Web UI server on port %s:\n' "$PORT"
+printf '    ./scripts/amiro-server.sh start --host 0.0.0.0 --port %s\n\n' "$PORT"
+if [ -x "$REPO_ROOT/scripts/amiro-server.sh" ]; then
+  AMIRO_HOST="0.0.0.0" AMIRO_PORT="$PORT" bash "$REPO_ROOT/scripts/amiro-server.sh" urls 2>/dev/null || true
 fi
 printf '\n%sNext commands:%s\n' "$BOLD" "$RESET"
 cat <<'EOF'

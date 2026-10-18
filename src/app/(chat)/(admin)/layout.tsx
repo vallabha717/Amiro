@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   ArrowLeft,
   BarChart3,
+  Bell,
   Cpu,
   KeyRound,
   Puzzle,
@@ -36,6 +37,15 @@ const ADMIN_SECTIONS: AdminSection[] = [
     icon: SlidersHorizontal,
     testId: "admin-sidebar-link-general",
     isActive: (p) => p === "/admin/general" || p.startsWith("/admin/general/"),
+  },
+  {
+    id: "notifications",
+    title: "Notifications",
+    subtitle: "Web & desktop notification alerts, quiet hours & delivery channels",
+    href: "/admin/notifications",
+    icon: Bell,
+    testId: "admin-sidebar-link-notifications",
+    isActive: (p) => p.startsWith("/admin/notifications"),
   },
   {
     id: "credentials",

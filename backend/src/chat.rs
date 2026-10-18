@@ -549,6 +549,7 @@ async fn chat_handler(
         let mut usage: Option<TurnUsage> = None;
         let mut failed = false;
         let mut stopped_message: Option<String> = None;
+        let mut assistant_preview = String::new();
 
         yield frame(json!({"type": "start-step"}));
         while let Some(update) = updates.recv().await {
@@ -565,6 +566,9 @@ async fn chat_handler(
                                 text_id = uuid::Uuid::new_v4().to_string();
                                 yield frame(json!({"type": "text-start", "id": text_id}));
                                 text_open = true;
+                            }
+                            if assistant_preview.chars().count() < 280 {
+                                assistant_preview.extend(text.chars().take(280usize.saturating_sub(assistant_preview.chars().count())));
                             }
                             yield frame(json!({"type": "text-delta", "id": text_id, "delta": text}));
                         }
@@ -707,10 +711,27 @@ async fn chat_handler(
 
         // Prompt titles and todo-derived labels are owned by the runtime.
         // Read metadata once after the turn, never launch a cosmetic model turn.
+        let mut resolved_title = derive_title(&user_text);
         if let Ok(Some(title)) = runtime::session_title(&state_for_stream, &session.session_id).await {
+            resolved_title = title.clone();
             if let Ok(Some(title)) = threads::sync_runtime_title(&state_for_stream, &thread_id, &uid, &session.session_id, &title).await {
+                resolved_title = title.clone();
                 yield frame(json!({"type":"data-thread-title","data":{"threadId":thread_id,"title":title},"transient":true}));
             }
+        }
+        if !failed && !assistant_preview.trim().is_empty() {
+            let _ = crate::routes::notifications::emit_notification(
+                &state_for_stream,
+                &uid,
+                &resolved_title,
+                assistant_preview.trim(),
+                "chat_reply",
+                "normal",
+                Some(thread_id.clone()),
+                None,
+                "chat.assistant_reply",
+            )
+            .await;
         }
         let _ = failed;
         let mut metadata = json!({

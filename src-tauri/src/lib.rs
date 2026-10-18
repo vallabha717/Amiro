@@ -103,6 +103,112 @@ fn wait_for_backend(port: u16, timeout: Duration) -> bool {
     false
 }
 
+#[tauri::command]
+fn desktop_show_notification(
+    _app: tauri::AppHandle,
+    title: String,
+    body: String,
+    _thread_id: Option<String>,
+    _schedule_id: Option<String>,
+    _category: Option<String>,
+    silent: Option<bool>,
+) -> Result<serde_json::Value, String> {
+    let os = std::env::consts::OS;
+    let is_silent = silent.unwrap_or(false);
+
+    if !is_silent {
+        #[cfg(target_os = "linux")]
+        {
+            let _ = std::process::Command::new("notify-send")
+                .arg("--app-name=Amiro")
+                .arg(&title)
+                .arg(&body)
+                .spawn();
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            let script = format!(
+                "display notification \"{}\" with title \"{}\"",
+                body.replace('\\', "\\\\").replace('"', "\\\""),
+                title.replace('\\', "\\\\").replace('"', "\\\"")
+            );
+            let _ = std::process::Command::new("osascript")
+                .arg("-e")
+                .arg(&script)
+                .spawn();
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            let script = format!(
+                r#"[void] [System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms"); $obj = New-Object System.Windows.Forms.NotifyIcon; $obj.Icon = [System.Drawing.SystemIcons]::Information; $obj.BalloonTipTitle = "{}"; $obj.BalloonTipText = "{}"; $obj.Visible = $True; $obj.ShowBalloonTip(5000);"#,
+                title.replace('"', "`\""),
+                body.replace('"', "`\"")
+            );
+            let _ = std::process::Command::new("powershell")
+                .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &script])
+                .spawn();
+        }
+    }
+
+    let surface_os = match os {
+        "macos" => "macos",
+        "windows" => "windows",
+        "linux" => "linux",
+        other => other,
+    };
+
+    Ok(serde_json::json!({
+        "delivered": true,
+        "surface": "desktop_native",
+        "os": surface_os
+    }))
+}
+
+#[tauri::command]
+fn desktop_focus_window(
+    app: tauri::AppHandle,
+    route: Option<String>,
+) -> Result<serde_json::Value, String> {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.unminimize();
+        let _ = win.show();
+        let _ = win.set_focus();
+        if let Some(ref r) = route {
+            if r.starts_with('/') {
+                let detail = serde_json::json!({ "targetUrl": r });
+                let js = format!(
+                    "window.dispatchEvent(new CustomEvent(\"amiro:notification-click\", {{ detail: {} }}));",
+                    detail
+                );
+                let _ = win.eval(&js);
+            }
+        }
+        Ok(serde_json::json!({
+            "focused": true,
+            "route": route
+        }))
+    } else {
+        Err("main window not found".to_string())
+    }
+}
+
+#[tauri::command]
+fn focus_main_window(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    desktop_focus_window(app, None)
+}
+
+#[tauri::command]
+fn desktop_runtime_info() -> serde_json::Value {
+    serde_json::json!({
+        "isDesktop": true,
+        "os": std::env::consts::OS,
+        "arch": std::env::consts::ARCH,
+        "version": env!("CARGO_PKG_VERSION")
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Load .env file from project root for local development
@@ -111,6 +217,12 @@ pub fn run() {
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .invoke_handler(tauri::generate_handler![
+            desktop_show_notification,
+            desktop_focus_window,
+            focus_main_window,
+            desktop_runtime_info
+        ])
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -138,6 +250,7 @@ pub fn run() {
                 .shell()
                 .sidecar("backend")
                 .expect("backend sidecar launcher not found next to the app executable (run src-tauri/build-sidecar.sh)")
+                .env("AMIRO_DESKTOP", "1")
                 .env("AMIRO_PORT", backend_port.to_string())
                 .env("AMIRO_TOKEN", &shared_secret)
                 .env("AMIRO_ALLOWED_ORIGIN", allowed_origin)
@@ -218,9 +331,26 @@ pub fn run() {
             // __BACKEND_SESSION_TOKEN__ is intentionally not set: the Amiro
             // backend seeds authentication credentials directly.
             let init_script = format!(
-                "window.__BACKEND_PORT__ = {port};\nwindow.__BACKEND_TOKEN__ = {token};\n",
+                r#"window.__BACKEND_PORT__ = {port};
+window.__BACKEND_TOKEN__ = {token};
+window.__AMIRO_DESKTOP__ = true;
+window.__AMIRO_PLATFORM__ = {platform};
+window.__AMIRO_DESKTOP_NOTIFY__ = async function(payload) {{
+  if (!window.__TAURI__?.core?.invoke && !window.__TAURI__?.invoke) return null;
+  const invoke = window.__TAURI__?.core?.invoke || window.__TAURI__?.invoke;
+  return await invoke("desktop_show_notification", {{
+    title: payload.title,
+    body: payload.body,
+    threadId: payload.threadId ?? null,
+    scheduleId: payload.scheduleId ?? null,
+    category: payload.category ?? null,
+    silent: payload.silent ?? false
+  }});
+}};
+"#,
                 port = backend_port,
                 token = serde_json::to_string(&shared_secret).unwrap(),
+                platform = serde_json::to_string(std::env::consts::OS).unwrap(),
             );
 
             WebviewWindowBuilder::new(app, "main", WebviewUrl::default())

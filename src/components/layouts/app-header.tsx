@@ -21,6 +21,7 @@ import { useTranslations } from "next-intl";
 import { TextShimmer } from "ui/text-shimmer";
 import { buildReturnUrl } from "lib/admin/navigation-utils";
 import { BackButton } from "@/components/layouts/back-button";
+import { NotificationsBell } from "@/components/notifications/notifications-bell";
 import { useVoiceStore } from "@/lib/voice/voice-store";
 import { cn } from "@/lib/utils";
 
@@ -106,14 +107,16 @@ export function AppHeader() {
 
       {componentByPage}
       <div className="flex-1" />
-      {showActionButtons && (
-        <div className="flex items-center gap-2">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size={"icon"}
-                variant={"ghost"}
-                data-testid="header-voice-mode-button"
+      <div className="flex items-center gap-2">
+        <NotificationsBell />
+        {showActionButtons && (
+          <>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size={"icon"}
+                  variant={"ghost"}
+                  data-testid="header-voice-mode-button"
                 className={cn(
                   "bg-secondary/40",
                   voiceActive && "bg-primary text-primary-foreground hover:bg-primary/90",
@@ -183,8 +186,8 @@ export function AppHeader() {
               </div>
             </TooltipContent>
           </Tooltip>
-        </div>
-      )}
+        </>)}
+      </div>
     </header>
   );
 }

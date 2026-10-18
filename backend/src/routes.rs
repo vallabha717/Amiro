@@ -10,6 +10,7 @@ pub mod fsbrowse;
 pub mod github;
 pub mod live_voice;
 pub mod mcp;
+pub mod notifications;
 pub mod provider_login;
 pub mod providers_catalog;
 pub mod schedules;
@@ -48,6 +49,7 @@ pub fn router() -> Router<AppState> {
         .merge(skills::routes())
         .merge(voice::routes())
         .merge(live_voice::routes())
+        .merge(notifications::routes())
         .merge(crate::agent_mcp::router())
 }
 

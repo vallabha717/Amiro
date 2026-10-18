@@ -18,6 +18,7 @@ set -euo pipefail
 
 BACKEND_PORT="${AMIRO_PORT:-8787}"
 FRONTEND_PORT="${FRONTEND_PORT:-3210}"
+HOST="${AMIRO_HOST:-127.0.0.1}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -25,16 +26,31 @@ cd "$ROOT_DIR"
 
 MODE="build"
 
-for arg in "$@"; do
-  case "$arg" in
+while [ $# -gt 0 ]; do
+  case "$1" in
     --build|-b|--prod|-p)
       MODE="build"
+      shift
       ;;
     --dev|-d)
       MODE="dev"
+      shift
       ;;
     --no-build)
       MODE="no-build"
+      shift
+      ;;
+    --remote)
+      HOST="0.0.0.0"
+      shift
+      ;;
+    --host)
+      HOST="${2:?--host requires a value}"
+      shift 2
+      ;;
+    --host=*)
+      HOST="${1#*=}"
+      shift
       ;;
     --help|-h)
       echo "Usage: ./scripts/start-local.sh [OPTIONS]"
@@ -43,6 +59,8 @@ for arg in "$@"; do
       echo "  --build, -b, --prod   Build and start production static server (fast, default)"
       echo "  --no-build            Start production static server with existing build"
       echo "  --dev, -d             Start Next.js dev server with Turbopack (hot-reloading)"
+      echo "  --remote              Bind host 0.0.0.0 so server is reachable across network"
+      echo "  --host <host>         Bind host (default 127.0.0.1, or 0.0.0.0 with --remote)"
       echo "  --help, -h            Show this help message"
       echo ""
       echo "Ports: backend \$AMIRO_PORT (default 8787), frontend \$FRONTEND_PORT (default 3210)."
@@ -50,12 +68,14 @@ for arg in "$@"; do
       exit 0
       ;;
     *)
-      echo "Unknown option: $arg"
+      echo "Unknown option: $1"
       echo "Use --help for usage instructions."
       exit 1
       ;;
   esac
 done
+
+export AMIRO_HOST="$HOST"
 
 echo "=================================================="
 echo " Starting Amiro Local Environment (Mode: $MODE)"
@@ -143,8 +163,8 @@ if [ "$MODE" = "build" ]; then
 fi
 
 # 3. Start Amiro adapter (replaces the old Go backend)
-echo "[3/3] Starting Amiro adapter on port ${BACKEND_PORT}..."
-AMIRO_PORT="$BACKEND_PORT" "$SCRIPT_DIR/dev-backend.sh" &
+echo "[3/3] Starting Amiro adapter on ${HOST}:${BACKEND_PORT}..."
+AMIRO_HOST="$HOST" AMIRO_PORT="$BACKEND_PORT" "$SCRIPT_DIR/dev-backend.sh" &
 BACKEND_PID=$!
 
 # Wait for backend to be ready
@@ -160,21 +180,21 @@ if ! port_listening "$BACKEND_PORT"; then
   echo "Error: Amiro adapter failed to start on port ${BACKEND_PORT}."
   exit 1
 fi
-echo "✓ Amiro adapter is ready on http://127.0.0.1:${BACKEND_PORT}"
+echo "✓ Amiro adapter is ready on http://${HOST}:${BACKEND_PORT}"
 
 # 4. Start Frontend
 if [ "$MODE" = "dev" ]; then
-  echo "Starting Next.js Dev Server with Turbopack on port ${FRONTEND_PORT}..."
-  NODE_OPTIONS="--max-old-space-size=8192" PORT="$FRONTEND_PORT" npx next dev --turbopack &
+  echo "Starting Next.js Dev Server with Turbopack on ${HOST}:${FRONTEND_PORT}..."
+  NODE_OPTIONS="--max-old-space-size=8192" HOST="$HOST" PORT="$FRONTEND_PORT" npx next dev --turbopack -H "$HOST" &
   FRONTEND_PID=$!
 else
-  echo "Starting production static server on port ${FRONTEND_PORT}..."
-  PORT="$FRONTEND_PORT" node "$SCRIPT_DIR/serve-prod.mjs" &
+  echo "Starting production static server on ${HOST}:${FRONTEND_PORT}..."
+  HOST="$HOST" PORT="$FRONTEND_PORT" node "$SCRIPT_DIR/serve-prod.mjs" &
   FRONTEND_PID=$!
 fi
 
 # Wait for frontend to respond
-echo "Waiting for frontend on http://localhost:${FRONTEND_PORT}..."
+echo "Waiting for frontend on http://${HOST}:${FRONTEND_PORT}..."
 COUNT=0
 while ! port_listening "$FRONTEND_PORT" && [ $COUNT -lt $MAX_RETRIES ]; do
   sleep 0.5
@@ -184,8 +204,12 @@ done
 echo ""
 echo "=================================================="
 echo "🚀 Amiro is running!"
-echo "   - Frontend: http://localhost:${FRONTEND_PORT}"
-echo "   - Backend:  http://localhost:${BACKEND_PORT}"
+echo "   - Host:     ${HOST}"
+echo "   - Frontend: http://${HOST}:${FRONTEND_PORT}"
+echo "   - Backend:  http://${HOST}:${BACKEND_PORT}"
+if [ "$HOST" = "0.0.0.0" ]; then
+  echo "   (Remote mode: reachable across network/LAN)"
+fi
 echo "=================================================="
 echo "Press Ctrl+C to stop both servers."
 

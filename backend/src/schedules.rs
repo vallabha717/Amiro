@@ -1567,11 +1567,31 @@ async fn finalize(
     fire_time: DateTime<Utc>,
     outcome: ExecOutcome,
 ) {
-    let _guard = state.store.lock().await;
-    finalize_locked(state, schedule_id, run_id, fire_time, outcome).await;
-    // Still holding the store lock: no tick can observe the released mark
-    // before the new timing is on disk.
-    unmark(schedule_id);
+    let notif_info = {
+        let _guard = state.store.lock().await;
+        let info = finalize_locked(state, schedule_id, run_id, fire_time, outcome).await;
+        // Still holding the store lock: no tick can observe the released mark
+        // before the new timing is on disk.
+        unmark(schedule_id);
+        info
+    };
+    if let Some((uid, name, status, preview, thread_id)) = notif_info {
+        if status == "ok" || status == "failed" {
+            let urgency = if status == "failed" { "high" } else { "normal" };
+            let _ = crate::routes::notifications::emit_notification(
+                state,
+                &uid,
+                &name,
+                &preview,
+                "schedule_result",
+                urgency,
+                thread_id,
+                Some(schedule_id.to_string()),
+                "schedule.result",
+            )
+            .await;
+        }
+    }
 }
 
 /// Body of [`finalize`], called with the store lock held. Never releases the
@@ -1582,7 +1602,7 @@ async fn finalize_locked(
     run_id: &str,
     fire_time: DateTime<Utc>,
     outcome: ExecOutcome,
-) {
+) -> Option<(String, String, String, String, Option<String>)> {
     let ExecOutcome {
         status,
         preview,
@@ -1597,7 +1617,7 @@ async fn finalize_locked(
                 %error,
                 "schedule finalize: schedules store unreadable; leaving the run row for startup recovery"
             );
-            return;
+            return None;
         }
     };
     let mut runs = match load_runs(state).await {
@@ -1609,7 +1629,7 @@ async fn finalize_locked(
                 %error,
                 "schedule finalize: run store unreadable; the outcome could not be persisted"
             );
-            return;
+            return None;
         }
     };
     if !schedules.is_object() {
@@ -1662,6 +1682,9 @@ async fn finalize_locked(
         }
     }
 
+    let notif_meta = schedule
+        .as_ref()
+        .map(|s| (s.user_id.clone(), s.name.clone(), status.clone(), preview.clone(), thread_id.clone()));
     if let Some(mut schedule) = schedule {
         schedule.last_run_at = Some(finished.clone());
         schedule.last_status = Some(status.clone());
@@ -1722,6 +1745,7 @@ async fn finalize_locked(
             );
         }
     }
+    notif_meta
 }
 
 /// Claim due schedules and spawn their executions. The claim (find due +

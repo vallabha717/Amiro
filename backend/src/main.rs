@@ -52,12 +52,52 @@ fn url_authority(url: &url::Url) -> Option<String> {
     }
 }
 
-fn origin_allowed(origin: &str, host: &str) -> bool {
+/// First entry of a possibly comma-separated forwarded header value
+/// (`X-Forwarded-Host: a.example, b.example`), trimmed. Empty when absent.
+fn first_forwarded(value: Option<&HeaderValue>) -> String {
+    value
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(',').next())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_default()
+}
+
+/// Is `entry` from `AMIRO_ALLOWED_ORIGIN` a match for `origin`?
+/// `*` allows every origin; anything else is an exact, case-insensitive URL.
+fn allowed_origin_entry_matches(entry: &str, origin: &str) -> bool {
+    let entry = entry.trim();
+    if entry.is_empty() {
+        return false;
+    }
+    if entry == "*" {
+        return true;
+    }
+    entry.eq_ignore_ascii_case(origin.trim())
+}
+
+/// `true` when `origin` may talk to this listener.
+///
+/// - Dev origins (the Tauri webview and the two dev ports) always pass.
+/// - `AMIRO_ALLOWED_ORIGIN` accepts `*` (wildcard, useful behind an
+///   authenticated reverse proxy) or a comma-separated list of exact URLs.
+/// - Otherwise the origin must name this listener itself. `host` is the
+///   host the request reached this process with -- the `Host` header, or the
+///   `X-Forwarded-Host` a reverse proxy in front of Amiro set -- and `proto`
+///   is the scheme the browser actually used (`X-Forwarded-Proto` when a
+///   proxy terminated TLS, `http` otherwise). So `https://amiro.example`
+///   reached through a proxy that forwards to `127.0.0.1:8787` compares
+///   equal, and a random local page cannot drive the API.
+fn origin_allowed(origin: &str, host: &str, proto: &str) -> bool {
     if DEV_ORIGINS.contains(&origin) {
         return true;
     }
     if let Ok(extra) = std::env::var("AMIRO_ALLOWED_ORIGIN") {
-        if extra.split(',').any(|entry| entry.trim() == origin) {
+        if extra
+            .split(',')
+            .any(|entry| allowed_origin_entry_matches(entry, origin))
+        {
             return true;
         }
     }
@@ -66,7 +106,14 @@ fn origin_allowed(origin: &str, host: &str) -> bool {
     };
     // A same-origin page request sends Origin only for some methods; when it
     // does, it must name this listener exactly.
-    let Ok(host_url) = url::Url::parse(&format!("{}://{}", url.scheme(), host)) else {
+    let scheme = if proto.eq_ignore_ascii_case("https") {
+        "https"
+    } else if proto.eq_ignore_ascii_case("http") {
+        "http"
+    } else {
+        url.scheme()
+    };
+    let Ok(host_url) = url::Url::parse(&format!("{scheme}://{host}")) else {
         return false;
     };
     match (url_authority(&url), url_authority(&host_url)) {
@@ -144,18 +191,33 @@ async fn sidecar_and_origin_middleware(
     let path = req.uri().path().to_string();
     let headers = req.headers().clone();
     let uri = req.uri().clone();
-    let host = headers
-        .get("host")
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or("")
-        .to_string();
+    // The listener's view of itself: the Host header, corrected by a reverse
+    // proxy's X-Forwarded-Host/X-Forwarded-Proto when one is in front (an
+    // nginx/caddy TLS proxy forwards to 127.0.0.1:<port> while the browser's
+    // origin names the public host, so the raw Host would never match).
+    let forwarded_host = first_forwarded(headers.get("x-forwarded-host"));
+    let forwarded_proto = first_forwarded(headers.get("x-forwarded-proto"));
+    let host = if forwarded_host.is_empty() {
+        headers
+            .get("host")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("")
+            .to_string()
+    } else {
+        forwarded_host
+    };
+    let proto = if forwarded_proto.is_empty() {
+        "http"
+    } else {
+        forwarded_proto.as_str()
+    };
     let origin = headers
         .get("origin")
         .and_then(|value| value.to_str().ok())
         .map(str::to_string);
 
     if let Some(origin) = origin.as_deref() {
-        if !origin_allowed(origin, &host) {
+        if !origin_allowed(origin, &host, proto) {
             return forbidden("origin not allowed").into_response();
         }
     }
@@ -199,9 +261,16 @@ async fn inject_backend_origin(req: Request, next: Next) -> Response {
         .and_then(|value| value.to_str().ok())
         .unwrap_or("127.0.0.1:8787")
         .to_string();
+    let configured_port = std::env::var("AMIRO_PORT")
+        .ok()
+        .and_then(|value| value.parse::<u16>().ok());
+    // The port the browser actually used: the Host header's port when it
+    // carries one (http://<vm-ip>:3000), the configured AMIRO_PORT when it
+    // does not (a proxy on port 80 sends `Host: amiro.example` bare).
     let port = host
         .rsplit_once(':')
         .and_then(|(_, port)| port.parse::<u16>().ok())
+        .or(configured_port)
         .unwrap_or(8787);
     let secret = std::env::var("AMIRO_TOKEN").unwrap_or_default();
     let response = next.run(req).await;
@@ -387,7 +456,9 @@ async fn main() -> anyhow::Result<()> {
     let host = std::env::var("AMIRO_HOST").unwrap_or_else(|_| "127.0.0.1".into());
     let addr = format!("{host}:{port}");
     let loopback = matches!(host.as_str(), "127.0.0.1" | "localhost" | "::1" | "[::1]")
-        || host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback());
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback());
     if !loopback && std::env::var("AMIRO_TOKEN").unwrap_or_default().is_empty() {
         tracing::warn!(
             addr = %addr,

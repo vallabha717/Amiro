@@ -203,7 +203,13 @@ export function createAuth({ home, store, log }) {
   function bearerToken(req) {
     const header = req.headers.authorization || req.headers.Authorization || '';
     const m = /^Bearer\s+(.+)$/i.exec(String(header).trim());
-    return m ? m[1].trim() : null;
+    if (m) return m[1].trim();
+    try {
+      const url = new URL(req.url, 'http://localhost');
+      const q = url.searchParams.get('token') || url.searchParams.get('bearer');
+      if (q && q.trim()) return q.trim();
+    } catch {}
+    return null;
   }
 
   async function authenticate(req) {

@@ -7,6 +7,7 @@ import * as credentials from './credentials.mjs';
 import * as exportRoutes from './export.mjs';
 import * as github from './github.mjs';
 import * as mcp from './mcp.mjs';
+import * as notifications from './notifications.mjs';
 import * as searchProviders from './search-providers.mjs';
 import * as skills from './skills.mjs';
 import * as storage from './storage.mjs';
@@ -17,6 +18,7 @@ import * as fsbrowse from './fsbrowse.mjs';
 import * as providersCatalog from './providers-catalog.mjs';
 import * as agent from './agent.mjs';
 import * as voice from './voice.mjs';
+import * as system from './system.mjs';
 
 export function registerRoutes(app, ctx) {
   admin.register(app, ctx);
@@ -26,6 +28,7 @@ export function registerRoutes(app, ctx) {
   exportRoutes.register(app, ctx);
   github.register(app, ctx);
   mcp.register(app, ctx);
+  notifications.register(app, ctx);
   searchProviders.register(app, ctx);
   skills.register(app, ctx);
   storage.register(app, ctx);
@@ -36,4 +39,5 @@ export function registerRoutes(app, ctx) {
   providersCatalog.register(app, ctx);
   agent.register(app, ctx);
   voice.register(app, ctx);
+  system.register(app, ctx);
 }

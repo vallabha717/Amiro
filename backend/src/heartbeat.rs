@@ -500,6 +500,19 @@ pub async fn run_heartbeat(state: &AppState) -> Value {
     match saved {
         Ok(thread_id) => {
             record(state, "message", None).await;
+            let preview: String = text.trim().chars().take(280).collect();
+            let _ = crate::routes::notifications::emit_notification(
+                state,
+                &owner_id,
+                HEARTBEAT_TITLE,
+                &preview,
+                "heartbeat",
+                "normal",
+                Some(thread_id.clone()),
+                None,
+                "heartbeat.message",
+            )
+            .await;
             json!({"result": "message", "threadId": thread_id, "text": text.trim()})
         }
         Err(error) => {

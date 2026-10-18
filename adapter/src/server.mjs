@@ -300,7 +300,21 @@ async function serveStatic(req, res, url) {
       if (st.isDirectory()) continue;
       let data = await fs.readFile(file);
       if (path.extname(file) === '.html') {
-        data = Buffer.from(data.toString('utf8').replace('<head>', '<head><script>window.__BACKEND_ORIGIN__="";</script>'));
+        // The same bootstrap the native backend injects (backend/src/main.rs
+        // inject_backend_origin): same-origin ("" origin) plus the listener
+        // port and the sidecar token, so a browser on any host -- including a
+        // remote VM -- talks to this server with the authenticated path the
+        // desktop webview uses, instead of falling back to a dev port.
+        const port = config.port;
+        const token = JSON.stringify(config.token || '');
+        data = Buffer.from(
+          data
+            .toString('utf8')
+            .replace(
+              '<head>',
+              `<head><script>window.__BACKEND_ORIGIN__="";window.__BACKEND_PORT__=${port};window.__BACKEND_TOKEN__=${token};</script>`,
+            ),
+        );
       }
       res.writeHead(200, {
         'Content-Type': MIME[path.extname(file)] || 'application/octet-stream',
@@ -468,13 +482,77 @@ function allowLoginAttempt(req) {
   return item.count <= 15;
 }
 
+// The listener's view of itself: the Host header, corrected by a reverse
+// proxy's X-Forwarded-Host/X-Forwarded-Proto when one is in front. An nginx or
+// caddy TLS proxy forwards to 127.0.0.1:<port> while the browser's Origin
+// names the public host, so comparing the Origin only against req.headers.host
+// would reject every proxied request. X-Forwarded-Host may be a comma list
+// (`a.example, b.example`); the first entry is the hop that named us.
+function requestHostView(req) {
+  const forwardedHost = String(req.headers['x-forwarded-host'] || '')
+    .split(',')[0]
+    .trim();
+  if (forwardedHost) return forwardedHost;
+  return String(req.headers.host || '');
+}
+
+function requestProtoView(req) {
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '')
+    .split(',')[0]
+    .trim()
+    .toLowerCase();
+  if (forwardedProto) return forwardedProto;
+  return 'http';
+}
+
+// `AMIRO_ALLOWED_ORIGIN` accepts `*` (allow every origin -- use this only
+// behind an authenticating reverse proxy) or a comma-separated list of exact
+// origin URLs. Both are matched case-insensitively after trimming.
+function allowedOriginConfigured(origin) {
+  const raw = process.env.AMIRO_ALLOWED_ORIGIN;
+  if (!raw) return false;
+  return raw.split(',').some((entry) => {
+    const value = entry.trim();
+    if (!value) return false;
+    if (value === '*') return true;
+    return value.toLowerCase() === String(origin).trim().toLowerCase();
+  });
+}
+
+// Same-origin request plus explicit local development origins only. Never
+// reflect arbitrary origins with credentials. An origin is same-origin when
+// its authority equals the request's effective host view (Host header or
+// X-Forwarded-Host behind a proxy) under the request's effective scheme
+// (X-Forwarded-Proto when a proxy terminated TLS). Default ports normalize so
+// `https://a.example` matches `Host: a.example` behind an https proxy.
+function originAuthority(originUrl, hostView, protoView) {
+  try {
+    const parsed = new URL(originUrl);
+    const scheme = protoView === 'https' ? 'https' : parsed.protocol.replace(':', '');
+    const hostUrl = new URL(`${scheme}://${hostView}`);
+    const authority = (u) => {
+      const p = u.port || (u.protocol === 'https:' ? '443' : '80');
+      return `${u.host}:${p}`;
+    };
+    return { origin: authority(parsed), view: authority(hostUrl) };
+  } catch {
+    return null;
+  }
+}
+
 async function handle(req, res, url, app, ctx) {
-  // Same-origin web deployment plus explicit local development origins only.
-  // Never reflect arbitrary origins with credentials.
   const origin = req.headers.origin;
-  const sameOrigin = !origin || (() => {
-    try { return new URL(origin).host === req.headers.host; } catch { return false; }
-  })();
+  const hostView = requestHostView(req);
+  const protoView = requestProtoView(req);
+  let sameOrigin = !origin;
+  if (origin && !sameOrigin) {
+    if (allowedOriginConfigured(origin)) {
+      sameOrigin = true; // explicitly allowlisted (wildcard or exact entry)
+    } else {
+      const views = originAuthority(origin, hostView, protoView);
+      sameOrigin = Boolean(views) && views.origin === views.view;
+    }
+  }
   const devOrigin = origin && ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:3210', 'http://127.0.0.1:3210', 'tauri://localhost', 'http://tauri.localhost'].includes(origin);
   if (!sameOrigin && !devOrigin) {
     sendError(res, 403, 'origin not allowed');
