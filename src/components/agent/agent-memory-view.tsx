@@ -1,19 +1,18 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   ArrowLeft,
   Brain,
   Check,
+  ChevronRight,
   CircleDot,
-  Columns2,
   Compass,
   Crosshair,
   Gauge,
   LayoutGrid,
   Loader2,
   Maximize2,
-  Network,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -58,6 +57,7 @@ import {
   SelectValue,
 } from "ui/select";
 import { Separator } from "ui/separator";
+import { Skeleton } from "ui/skeleton";
 import { Textarea } from "ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
 import { apiJson } from "lib/backend/client";
@@ -125,8 +125,15 @@ interface CreateMemoryResponse {
   reinforced: boolean;
 }
 
-type ViewMode = "constellation" | "cards" | "split";
+/**
+ * Primary view is the plain readable list. The 3D map is an opt-in secondary
+ * lens, so the default stays calm and searchable.
+ */
+type ViewMode = "cards" | "map";
 type RecencyLens = "all" | "7d" | "24h";
+
+/** How many memories the list shows before the reader asks for more. */
+export const LIST_PAGE_SIZE = 24;
 
 /* -------------------------------------------------------------------------- */
 /*                                  Design                                    */
@@ -145,11 +152,17 @@ const CLUSTER_ORDER = ["fact", "preference", "entity", "correction", "other"];
 // is ~/.jcode/memory on an unconfigured install) served by /api/agent/memory.
 const LOCAL_MEMORY_DIR = "~/.jcode/memory";
 
-function categoryMeta(category: string) {
+const RECENCY_LENSES: Array<{ value: RecencyLens; label: string }> = [
+  { value: "all", label: "Any time" },
+  { value: "7d", label: "Last 7 days" },
+  { value: "24h", label: "Last 24 hours" },
+];
+
+export function categoryMeta(category: string) {
   return CATEGORY_META[category] ?? CATEGORY_META.other;
 }
 
-function normalizeCategory(category: string): string {
+export function normalizeCategory(category: string): string {
   return CATEGORY_META[category] ? category : "other";
 }
 
@@ -235,6 +248,17 @@ function truncate(text: string, max: number) {
 function normalizeConfidence(value: number) {
   if (!Number.isFinite(value)) return 0;
   return clamp(value > 1 ? value / 100 : value, 0, 1);
+}
+
+/**
+ * Show at most `visibleCount` memories so a large graph (hundreds of rows)
+ * loads as a short readable page instead of a wall of text. The caller grows
+ * `visibleCount` when the reader asks for more.
+ */
+export function paginateMemories<T>(memories: T[], visibleCount: number): T[] {
+  if (!Number.isFinite(visibleCount)) return memories;
+  const limit = Math.max(0, Math.floor(visibleCount));
+  return memories.slice(0, limit);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -378,14 +402,14 @@ interface Scene {
 /*                              Filtering helpers                             */
 /* -------------------------------------------------------------------------- */
 
-function withinRecency(memory: AgentMemoryNode, lens: RecencyLens) {
+export function withinRecency(memory: AgentMemoryNode, lens: RecencyLens) {
   if (lens === "all") return true;
   const window = lens === "24h" ? 24 * 3600_000 : 7 * 24 * 3600_000;
   const stamp = parseTime(memory.updatedAt) || parseTime(memory.createdAt);
   return Date.now() - stamp <= window;
 }
 
-function matchesSearch(memory: AgentMemoryNode, query: string) {
+export function matchesSearch(memory: AgentMemoryNode, query: string) {
   if (!query) return true;
   const needle = query.toLowerCase();
   return (
@@ -399,28 +423,6 @@ function matchesSearch(memory: AgentMemoryNode, query: string) {
 /* -------------------------------------------------------------------------- */
 /*                             Presentational bits                            */
 /* -------------------------------------------------------------------------- */
-
-function StatPill({
-  icon,
-  label,
-  tone,
-}: {
-  icon?: ReactNode;
-  label: string;
-  tone?: string;
-}) {
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-card/60 px-2.5 py-1 text-xs font-medium text-muted-foreground shadow-xs backdrop-blur-sm"
-      style={
-        tone ? { color: tone, borderColor: hexToRgba(tone, 0.35) } : undefined
-      }
-    >
-      {icon}
-      {label}
-    </span>
-  );
-}
 
 function FilterPill({
   active,
@@ -523,6 +525,25 @@ function PanelShell({
   );
 }
 
+function CategoryTag({ category }: { category: string }) {
+  const meta = categoryMeta(category);
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium"
+      style={{
+        color: meta.color,
+        backgroundColor: hexToRgba(meta.color, 0.12),
+      }}
+    >
+      <span
+        className="size-1.5 rounded-full"
+        style={{ backgroundColor: meta.color }}
+      />
+      {meta.label}
+    </span>
+  );
+}
+
 /* -------------------------------------------------------------------------- */
 /*                               Main component                               */
 /* -------------------------------------------------------------------------- */
@@ -535,16 +556,13 @@ export function AgentMemoryView({ className }: { className?: string }) {
       keepPreviousData: true,
     });
 
-  const stats = data?.stats;
   const scopes = data?.scopes ?? [];
   const allMemories = data?.memories ?? [];
   // Native Amiro memory is retained by the Amiro engine; direct creation/deletion/reinforcement is read-only
   const isReadOnly = data?.readOnly !== false;
 
-  // Creative first, like a memory map: the constellation ("Map", shown here
-  // as Split with its detail inspector beside it) is the default view.
-  // The clean Cards list stays one click away in the view switcher.
-  const [viewMode, setViewMode] = useState<ViewMode>("split");
+  // The readable list is the default. The map is a secondary, opt-in lens.
+  const [viewMode, setViewMode] = useState<ViewMode>("cards");
   const [scopeFilter, setScopeFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [recency, setRecency] = useState<RecencyLens>("all");
@@ -552,12 +570,17 @@ export function AgentMemoryView({ className }: { className?: string }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [pendingFocusId, setPendingFocusId] = useState<string | null>(null);
+  const [visibleCount, setVisibleCount] = useState(LIST_PAGE_SIZE);
 
-  useEffect(() => {
-    if (typeof window !== "undefined" && window.innerWidth < 1024) {
-      setViewMode("cards");
-    }
-  }, []);
+  /* --------------------------- detail focus -------------------------------- */
+
+  // The detail panel behaves like a dialog: focus moves into it when a memory
+  // is chosen, returns to the element that opened it on close, and Escape
+  // (handled globally below) closes it.
+  const reduceMotion = useReducedMotion();
+  const drawerRef = useRef<HTMLDivElement | null>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const drawerOpenRef = useRef(false);
 
   /* ------------------------------ derived data ----------------------------- */
 
@@ -573,6 +596,16 @@ export function AgentMemoryView({ className }: { className?: string }) {
       ),
     [allMemories, scopeFilter, categoryFilter, recency, search],
   );
+
+  const visibleMemories = useMemo(
+    () => paginateMemories(filteredMemories, visibleCount),
+    [filteredMemories, visibleCount],
+  );
+
+  // A new lens starts a fresh, short page rather than staying scrolled deep.
+  useEffect(() => {
+    setVisibleCount(LIST_PAGE_SIZE);
+  }, [scopeFilter, categoryFilter, recency, search]);
 
   const maxStrength = useMemo(
     () => filteredMemories.reduce((max, m) => Math.max(max, m.strength), 1),
@@ -664,6 +697,19 @@ export function AgentMemoryView({ className }: { className?: string }) {
     [scopes],
   );
 
+  const hasActiveFilters =
+    scopeFilter !== "all" ||
+    categoryFilter !== "all" ||
+    recency !== "all" ||
+    search.length > 0;
+
+  const resetFilters = useCallback(() => {
+    setScopeFilter("all");
+    setCategoryFilter("all");
+    setRecency("all");
+    setSearch("");
+  }, []);
+
   /* ------------------------------ canvas refs ------------------------------ */
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -671,8 +717,8 @@ export function AgentMemoryView({ className }: { className?: string }) {
   const dragRef = useRef<{
     x: number;
     y: number;
-    moved: boolean;
     pointerId: number;
+    moved: boolean;
   } | null>(null);
 
   const sceneRef = useRef<Scene>({
@@ -1172,7 +1218,7 @@ export function AgentMemoryView({ className }: { className?: string }) {
       canvas.removeEventListener("pointerleave", onPointerLeave);
       canvas.removeEventListener("wheel", onWheel);
     };
-    // Re-run when the view changes or data arrives: in Cards mode, and while
+    // Re-run when the view changes or data arrives: in list mode, and while
     // the first load shows skeletons, the canvas is not mounted yet, so a
     // mount-only effect would return early and the Map would stay blank.
   }, [viewMode, data]);
@@ -1184,6 +1230,22 @@ export function AgentMemoryView({ className }: { className?: string }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  useEffect(() => {
+    const open = Boolean(selectedMemory);
+    if (open === drawerOpenRef.current) return;
+    drawerOpenRef.current = open;
+    if (open) {
+      previouslyFocusedRef.current =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+      const raf = requestAnimationFrame(() => drawerRef.current?.focus());
+      return () => cancelAnimationFrame(raf);
+    }
+    previouslyFocusedRef.current?.focus?.();
+    previouslyFocusedRef.current = null;
+  }, [selectedMemory]);
 
   /* -------------------------------- mutations ------------------------------- */
 
@@ -1261,23 +1323,7 @@ export function AgentMemoryView({ className }: { className?: string }) {
     [isReadOnly, mutate],
   );
 
-  /* ------------------------------- view labels ------------------------------ */
-
-  const categoryPills = useMemo(() => {
-    const byCategory = stats?.byCategory ?? {};
-    const known = CLUSTER_ORDER.filter((c) => c !== "other").map(
-      (category) => ({
-        category,
-        count: byCategory[category] ?? 0,
-      }),
-    );
-    const extras = Object.keys(byCategory)
-      .filter((c) => !CATEGORY_META[c] || c === "other")
-      .map((category) => ({ category: "other", count: byCategory[category] }));
-    return [...known, ...extras].filter((entry) => entry.count > 0);
-  }, [stats?.byCategory]);
-
-  const total = stats?.total ?? allMemories.length;
+  /* ------------------------------- inspector -------------------------------- */
 
   const inspector = (
     <MemoryInspector
@@ -1313,6 +1359,8 @@ export function AgentMemoryView({ className }: { className?: string }) {
         error instanceof Error ? error.message : String(error),
       ));
 
+  const remaining = filteredMemories.length - visibleMemories.length;
+
   return (
     <div className={cn("min-h-screen w-full bg-background", className)}>
       <div className="pointer-events-none fixed inset-0 -z-10 opacity-[0.55]">
@@ -1320,7 +1368,7 @@ export function AgentMemoryView({ className }: { className?: string }) {
       </div>
 
       <header className="sticky top-0 z-30 border-b border-border/60 bg-background/85 backdrop-blur-xl">
-        <div className="mx-auto w-full max-w-[1560px] px-4 py-3.5 md:px-7">
+        <div className="mx-auto w-full max-w-[1200px] px-4 py-3.5 md:px-7">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <Button
@@ -1376,40 +1424,7 @@ export function AgentMemoryView({ className }: { className?: string }) {
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <StatPill
-              icon={<CircleDot className="size-3" />}
-              label={`${total} memories`}
-            />
-            <StatPill
-              icon={<Network className="size-3" />}
-              label={`${stats?.projectCount ?? 0} project · ${stats?.globalCount ?? 0} global`}
-            />
-            <StatPill
-              icon={<Sparkles className="size-3" />}
-              label={`${stats?.active ?? 0} active`}
-            />
-            <StatPill
-              icon={<Tag className="size-3" />}
-              label={`${stats?.uniqueTags ?? 0} tags`}
-            />
-            <Separator orientation="vertical" className="h-5" />
-            {categoryPills.map(({ category, count }) => {
-              const meta = categoryMeta(category);
-              return (
-                <StatPill
-                  key={category}
-                  label={`${meta.label} ${count}`}
-                  tone={meta.color}
-                />
-              );
-            })}
-            {isValidating ? (
-              <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
-            ) : null}
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <div className="relative">
+            <div className="relative min-w-[200px] flex-1">
               <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
                 data-testid="memory-search-input"
@@ -1417,7 +1432,7 @@ export function AgentMemoryView({ className }: { className?: string }) {
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search memories, tags, sessions"
                 aria-label="Search memories"
-                className="h-8 w-[230px] rounded-full pl-8 text-sm"
+                className="h-9 w-full rounded-full pl-8 text-sm"
               />
               {search ? (
                 <button
@@ -1435,7 +1450,7 @@ export function AgentMemoryView({ className }: { className?: string }) {
               <SelectTrigger
                 size="sm"
                 aria-label="Filter by scope"
-                className="min-w-[140px] rounded-full"
+                className="min-w-[150px] rounded-full"
               >
                 <Compass className="size-3.5 text-muted-foreground" />
                 <SelectValue placeholder="All scopes" />
@@ -1453,80 +1468,71 @@ export function AgentMemoryView({ className }: { className?: string }) {
               </SelectContent>
             </Select>
 
-            <div className="flex flex-wrap items-center gap-1.5">
-              <FilterPill
-                active={categoryFilter === "all"}
-                onClick={() => setCategoryFilter("all")}
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger
+                size="sm"
+                aria-label="Filter by category"
+                className="min-w-[140px] rounded-full"
               >
-                All
-              </FilterPill>
-              {CLUSTER_ORDER.filter((c) => c !== "other").map((category) => (
-                <FilterPill
-                  key={category}
-                  active={categoryFilter === category}
-                  onClick={() =>
-                    setCategoryFilter((current) =>
-                      current === category ? "all" : category,
-                    )
-                  }
-                  color={categoryMeta(category).color}
-                >
-                  {categoryMeta(category).label}
-                </FilterPill>
-              ))}
-            </div>
+                <Tag className="size-3.5 text-muted-foreground" />
+                <SelectValue placeholder="All categories" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All categories</SelectItem>
+                {CLUSTER_ORDER.map((category) => (
+                  <SelectItem key={category} value={category}>
+                    {categoryMeta(category).label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-            <Separator orientation="vertical" className="h-5" />
+            <Select
+              value={recency}
+              onValueChange={(value) => setRecency(value as RecencyLens)}
+            >
+              <SelectTrigger
+                size="sm"
+                aria-label="Filter by recency"
+                className="min-w-[140px] rounded-full"
+              >
+                <SelectValue placeholder="Any time" />
+              </SelectTrigger>
+              <SelectContent>
+                {RECENCY_LENSES.map((lens) => (
+                  <SelectItem key={lens.value} value={lens.value}>
+                    {lens.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-            <div className="flex items-center gap-1.5">
-              {(
-                [
-                  ["all", "All time"],
-                  ["7d", "7d"],
-                  ["24h", "24h"],
-                ] as Array<[RecencyLens, string]>
-              ).map(([value, label]) => (
-                <FilterPill
-                  key={value}
-                  active={recency === value}
-                  onClick={() => setRecency(value)}
-                >
-                  {label}
-                </FilterPill>
-              ))}
-            </div>
-
-            {scopeFilter !== "all" ||
-            categoryFilter !== "all" ||
-            recency !== "all" ||
-            search ? (
+            {hasActiveFilters ? (
               <button
                 type="button"
                 aria-label="Reset all search and filter options"
-                onClick={() => {
-                  setScopeFilter("all");
-                  setCategoryFilter("all");
-                  setRecency("all");
-                  setSearch("");
-                }}
+                onClick={resetFilters}
                 className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs text-muted-foreground transition hover:text-foreground"
               >
                 <RefreshCw className="size-3" />
-                Reset filters
+                Reset
               </button>
             ) : null}
 
             <span
-              className="ml-auto text-[11px] text-muted-foreground"
+              className="ml-auto inline-flex items-center gap-1.5 text-[11px] text-muted-foreground"
               aria-live="polite"
             >
-              {filteredMemories.length} of {allMemories.length} in view
+              {isValidating && !isLoading ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : null}
+              {filteredMemories.length} of {allMemories.length} memories
             </span>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-[1560px] px-4 py-5 md:px-7">
+      <main className="mx-auto w-full max-w-[1200px] px-4 py-5 md:px-7">
         {error ? (
           <EmptyState
             icon={<Brain className="size-5" />}
@@ -1560,33 +1566,13 @@ export function AgentMemoryView({ className }: { className?: string }) {
             }
           />
         ) : isLoading && !data ? (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
-            <div className="h-[540px] animate-pulse rounded-2xl border border-border/60 bg-muted/40" />
-            <div className="h-[540px] animate-pulse rounded-2xl border border-border/60 bg-muted/40" />
-          </div>
-        ) : viewMode === "split" ? (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_392px]">
-            <div className="min-w-0 space-y-3">
-              <ConstellationPanel
-                containerRef={containerRef}
-                canvasRef={canvasRef}
-                nodes={layoutNodes}
-                clusterCounts={clusterCounts}
-                onZoomIn={() => zoomBy(1.18)}
-                onZoomOut={() => zoomBy(1 / 1.18)}
-                onReset={resetCamera}
-              />
-              <LegendRow clusterCounts={clusterCounts} />
-            </div>
-            <div className="min-w-0">{inspector}</div>
-          </div>
-        ) : viewMode === "constellation" ? (
+          <MemoryListSkeleton />
+        ) : viewMode === "map" ? (
           <div className="space-y-3">
             <ConstellationPanel
               containerRef={containerRef}
               canvasRef={canvasRef}
               nodes={layoutNodes}
-              clusterCounts={clusterCounts}
               onZoomIn={() => zoomBy(1.18)}
               onZoomOut={() => zoomBy(1 / 1.18)}
               onReset={resetCamera}
@@ -1594,31 +1580,39 @@ export function AgentMemoryView({ className }: { className?: string }) {
             <LegendRow clusterCounts={clusterCounts} />
           </div>
         ) : (
-          <MemoryCardGrid
-            memories={filteredMemories}
+          <MemoryList
+            memories={visibleMemories}
             selectedId={selectedId}
-            maxStrength={maxStrength}
-            onSelect={(id) => {
-              setSelectedId(id);
-              flyTo(id);
-            }}
+            onSelect={setSelectedId}
+            remaining={remaining}
+            onLoadMore={() =>
+              setVisibleCount((count) => count + LIST_PAGE_SIZE)
+            }
           />
         )}
       </main>
 
       <AnimatePresence>
-        {viewMode !== "split" && selectedMemory ? (
+        {selectedMemory ? (
           <motion.aside
             key="memory-drawer"
-            initial={{ x: 40, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: 40, opacity: 0 }}
-            transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}
+            initial={reduceMotion ? { opacity: 0 } : { x: 40, opacity: 0 }}
+            animate={reduceMotion ? { opacity: 1 } : { x: 0, opacity: 1 }}
+            exit={reduceMotion ? { opacity: 0 } : { x: 40, opacity: 0 }}
+            transition={
+              reduceMotion
+                ? { duration: 0 }
+                : { duration: 0.22, ease: [0.23, 1, 0.32, 1] }
+            }
             className="fixed inset-y-0 right-0 z-40 w-full max-w-[440px] p-3"
             role="dialog"
             aria-label="Memory detail"
           >
-            <div className="h-full overflow-hidden rounded-2xl border border-border/60 bg-background/95 shadow-2xl backdrop-blur-xl">
+            <div
+              ref={drawerRef}
+              tabIndex={-1}
+              className="h-full overflow-hidden rounded-2xl border border-border/60 bg-background/95 shadow-2xl backdrop-blur-xl outline-none"
+            >
               {inspector}
             </div>
           </motion.aside>
@@ -1641,7 +1635,6 @@ export function AgentMemoryView({ className }: { className?: string }) {
             await mutate();
             setSelectedId(memory.id);
             setPendingFocusId(memory.id);
-            setViewMode((mode) => (mode === "cards" ? "split" : mode));
           }}
         />
       )}
@@ -1665,17 +1658,12 @@ function ViewSwitcher({
     label: string;
     icon: ReactNode;
   }> = [
-    {
-      id: "constellation",
-      label: "Map",
-      icon: <Compass className="size-3.5" />,
-    },
     { id: "cards", label: "Cards", icon: <LayoutGrid className="size-3.5" /> },
-    { id: "split", label: "Split", icon: <Columns2 className="size-3.5" /> },
+    { id: "map", label: "Map", icon: <Compass className="size-3.5" /> },
   ];
   return (
     <div
-      role="tablist"
+      role="group"
       aria-label="View mode"
       className="hidden items-center gap-0.5 rounded-full border border-border/70 bg-card/60 p-0.5 shadow-xs sm:flex"
     >
@@ -1683,8 +1671,7 @@ function ViewSwitcher({
         <button
           key={option.id}
           type="button"
-          role="tab"
-          aria-selected={value === option.id}
+          aria-pressed={value === option.id}
           onClick={() => onChange(option.id)}
           className={cn(
             "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40",
@@ -1702,6 +1689,133 @@ function ViewSwitcher({
 }
 
 /* -------------------------------------------------------------------------- */
+/*                               Memory list                                  */
+/* -------------------------------------------------------------------------- */
+
+function MemoryListSkeleton() {
+  return (
+    <div className="space-y-2.5" aria-hidden="true">
+      {Array.from({ length: 6 }).map((_, index) => (
+        <Skeleton key={index} className="h-[92px] w-full rounded-2xl" />
+      ))}
+    </div>
+  );
+}
+
+function MemoryList({
+  memories,
+  selectedId,
+  onSelect,
+  remaining,
+  onLoadMore,
+}: {
+  memories: AgentMemoryNode[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  remaining: number;
+  onLoadMore: () => void;
+}) {
+  if (memories.length === 0) {
+    return (
+      <EmptyState
+        icon={<Brain className="size-5" />}
+        title="No memories match this view"
+        detail="Try clearing the search or filters to bring memories back."
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <ul data-testid="memory-list" className="space-y-2.5">
+        {memories.map((memory) => {
+          const meta = categoryMeta(memory.category);
+          const selected = selectedId === memory.id;
+          return (
+            <li key={memory.id}>
+              <button
+                type="button"
+                data-testid="memory-card"
+                aria-label={`View memory details: ${truncate(memory.content, 48)}`}
+                aria-current={selected ? "true" : undefined}
+                onClick={() => onSelect(memory.id)}
+                className={cn(
+                  "group flex w-full items-start gap-3 rounded-2xl border border-border/70 bg-card/50 p-4 text-left shadow-xs transition duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] hover:-translate-y-0.5 hover:border-border hover:shadow-md focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none",
+                  selected && "ring-2 ring-ring/60",
+                  !memory.active && "opacity-70",
+                )}
+              >
+                <span
+                  aria-hidden="true"
+                  className="mt-1 size-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: meta.color }}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <CategoryTag category={memory.category} />
+                    <span className="font-mono text-[11px] text-muted-foreground">
+                      {relativeTime(memory.updatedAt)}
+                    </span>
+                    {!memory.active ? (
+                      <Badge
+                        variant="secondary"
+                        className="rounded-full text-[10px] font-normal"
+                      >
+                        superseded
+                      </Badge>
+                    ) : null}
+                  </span>
+                  <span className="mt-1.5 line-clamp-2 block text-sm leading-relaxed text-foreground">
+                    {memory.content}
+                  </span>
+                  {memory.tags.length ? (
+                    <span className="mt-2 flex flex-wrap gap-1.5">
+                      {memory.tags.slice(0, 4).map((tag) => (
+                        <Badge
+                          key={tag}
+                          variant="outline"
+                          className="rounded-full text-[10px] font-normal text-muted-foreground"
+                        >
+                          {tag}
+                        </Badge>
+                      ))}
+                      {memory.tags.length > 4 ? (
+                        <span className="text-[10px] text-muted-foreground">
+                          +{memory.tags.length - 4}
+                        </span>
+                      ) : null}
+                    </span>
+                  ) : null}
+                </span>
+                <ChevronRight
+                  aria-hidden="true"
+                  className="mt-0.5 size-4 shrink-0 text-muted-foreground transition group-hover:translate-x-0.5 group-hover:text-foreground"
+                />
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+
+      {remaining > 0 ? (
+        <div className="flex justify-center pt-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            data-testid="memory-load-more"
+            onClick={onLoadMore}
+          >
+            Show {Math.min(remaining, LIST_PAGE_SIZE)} more
+            <span className="text-muted-foreground">({remaining} left)</span>
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /*                          Constellation panel + map                          */
 /* -------------------------------------------------------------------------- */
 
@@ -1709,7 +1823,6 @@ function ConstellationPanel({
   containerRef,
   canvasRef,
   nodes,
-  clusterCounts,
   onZoomIn,
   onZoomOut,
   onReset,
@@ -1717,7 +1830,6 @@ function ConstellationPanel({
   containerRef: React.RefObject<HTMLDivElement | null>;
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   nodes: LayoutNode[];
-  clusterCounts: number[];
   onZoomIn: () => void;
   onZoomOut: () => void;
   onReset: () => void;
@@ -1800,23 +1912,6 @@ function ConstellationPanel({
           <TooltipContent>Reset camera</TooltipContent>
         </Tooltip>
       </div>
-
-      <div className="pointer-events-none absolute bottom-3 left-3 flex flex-wrap gap-2">
-        {CLUSTER_ORDER.map((cluster, index) =>
-          clusterCounts[index] ? (
-            <span
-              key={cluster}
-              className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-2 py-0.5 text-[11px] text-muted-foreground backdrop-blur-sm"
-            >
-              <span
-                className="size-1.5 rounded-full"
-                style={{ backgroundColor: categoryMeta(cluster).color }}
-              />
-              {categoryMeta(cluster).label}
-            </span>
-          ) : null,
-        )}
-      </div>
     </div>
   );
 }
@@ -1840,119 +1935,6 @@ function LegendRow({ clusterCounts }: { clusterCounts: number[] }) {
         <Sparkles className="size-3.5" />
         halo marks fresh or strong memory
       </span>
-    </div>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/*                             Memory card grid                               */
-/* -------------------------------------------------------------------------- */
-
-function MemoryCardGrid({
-  memories,
-  selectedId,
-  maxStrength,
-  onSelect,
-}: {
-  memories: AgentMemoryNode[];
-  selectedId: string | null;
-  maxStrength: number;
-  onSelect: (id: string) => void;
-}) {
-  if (memories.length === 0) {
-    return (
-      <EmptyState
-        icon={<Brain className="size-5" />}
-        title="No memories match this view"
-        detail="Try clearing filters to bring records into orbit."
-      />
-    );
-  }
-  return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-      {memories.map((memory) => {
-        const meta = categoryMeta(memory.category);
-        const wide = memory.content.length > 170;
-        return (
-          <button
-            key={memory.id}
-            type="button"
-            aria-label={`View memory details: ${truncate(memory.content, 48)}`}
-            onClick={() => onSelect(memory.id)}
-            className={cn(
-              "group relative flex flex-col gap-3 overflow-hidden rounded-2xl border border-border/70 bg-card/50 p-4 text-left shadow-xs transition duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] hover:-translate-y-0.5 hover:border-border hover:shadow-md focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none",
-              wide && "sm:col-span-2",
-              selectedId === memory.id && "ring-2 ring-ring/60",
-              !memory.active && "opacity-70",
-            )}
-          >
-            <span
-              className="absolute inset-x-0 top-0 h-[3px]"
-              style={{ backgroundColor: meta.color }}
-            />
-            <div className="flex items-center justify-between gap-2">
-              <span
-                className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium"
-                style={{
-                  color: meta.color,
-                  backgroundColor: hexToRgba(meta.color, 0.12),
-                }}
-              >
-                <span
-                  className="size-1.5 rounded-full"
-                  style={{ backgroundColor: meta.color }}
-                />
-                {meta.label}
-              </span>
-              <span className="font-mono text-[11px] text-muted-foreground">
-                {relativeTime(memory.updatedAt)}
-              </span>
-            </div>
-
-            <p className="text-sm leading-relaxed text-foreground">
-              {truncate(memory.content, wide ? 320 : 190)}
-            </p>
-
-            {memory.tags.length ? (
-              <div className="flex flex-wrap gap-1.5">
-                {memory.tags.slice(0, 5).map((tag) => (
-                  <Badge
-                    key={tag}
-                    variant="outline"
-                    className="rounded-full text-[10px] font-normal text-muted-foreground"
-                  >
-                    {tag}
-                  </Badge>
-                ))}
-                {memory.tags.length > 5 ? (
-                  <span className="text-[10px] text-muted-foreground">
-                    +{memory.tags.length - 5}
-                  </span>
-                ) : null}
-              </div>
-            ) : null}
-
-            <div className="mt-auto flex items-center gap-3 pt-1">
-              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${Math.round(clamp(memory.strength / Math.max(1, maxStrength), 0, 1) * 100)}%`,
-                    backgroundColor: meta.color,
-                  }}
-                />
-              </div>
-              <span className="inline-flex items-center gap-1 font-mono text-[11px] text-muted-foreground">
-                <Gauge className="size-3" />
-                {memory.strength.toFixed(2)}
-              </span>
-              <span className="font-mono text-[11px] text-muted-foreground">
-                {memory.reinforcements}x
-              </span>
-            </div>
-          </button>
-        );
-      })}
     </div>
   );
 }
@@ -1994,15 +1976,14 @@ function MemoryInspector({
 
   if (!memory) {
     return (
-      <PanelShell title="Memory Inspector" className="h-full">
+      <PanelShell title="Memory details" className="h-full">
         <div className="flex h-full min-h-[320px] flex-col items-center justify-center gap-3 p-8 text-center">
           <span className="flex size-11 items-center justify-center rounded-2xl border border-border/60 bg-card/50">
-            <Crosshair className="size-5 text-muted-foreground" />
+            <CircleDot className="size-5 text-muted-foreground" />
           </span>
           <p className="font-brand text-base">Nothing selected</p>
           <p className="max-w-[240px] text-sm text-muted-foreground">
-            Click any node in the constellation, or a card, to inspect its
-            content, provenance, and graph relationships.
+            Choose any memory to inspect its content, provenance, and links.
           </p>
         </div>
       </PanelShell>
@@ -2022,7 +2003,7 @@ function MemoryInspector({
 
   return (
     <PanelShell
-      title="Memory Inspector"
+      title="Memory details"
       className="h-full"
       action={
         <Button
@@ -2031,7 +2012,7 @@ function MemoryInspector({
           size="icon"
           className="size-7"
           onClick={onClose}
-          aria-label="Close inspector"
+          aria-label="Close details"
         >
           <X className="size-4" />
         </Button>
@@ -2040,19 +2021,7 @@ function MemoryInspector({
       <ScrollArea className="max-h-[calc(100vh-190px)]">
         <div className="space-y-5 p-5">
           <div className="flex flex-wrap items-center gap-2">
-            <span
-              className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium"
-              style={{
-                color: meta.color,
-                backgroundColor: hexToRgba(meta.color, 0.12),
-              }}
-            >
-              <span
-                className="size-1.5 rounded-full"
-                style={{ backgroundColor: meta.color }}
-              />
-              {meta.label}
-            </span>
+            <CategoryTag category={memory.category} />
             <Badge variant="outline" className="rounded-full font-normal">
               {memory.scopeLabel || memory.scope}
             </Badge>
@@ -2067,84 +2036,19 @@ function MemoryInspector({
             {memory.content}
           </p>
 
-          <button
-            type="button"
-            aria-label="Focus memory location in constellation"
-            onClick={() => onFocus(memory.id)}
-            className="flex w-full items-center gap-2 rounded-xl border border-border/60 bg-card/40 px-3 py-2 text-left font-mono text-[11px] text-muted-foreground transition hover:border-border hover:text-foreground"
-          >
-            <CircleDot className="size-3.5 shrink-0" />
-            <span className="truncate">{scopePath}</span>
-          </button>
-
-          <div className="grid grid-cols-2 gap-x-4 gap-y-4">
-            {trustNumeric ? (
-              <Meter
-                label="Trust"
-                value={trustValue}
-                color={meta.color}
-                hint={`${Math.round(trustValue * 100)}%`}
-              />
-            ) : (
-              <div className="space-y-1.5">
-                <span className="text-[11px] font-medium tracking-wide text-muted-foreground">
-                  Trust
-                </span>
-                <div className="flex items-center gap-1.5 text-sm font-medium">
-                  <ShieldCheck
-                    className="size-3.5"
-                    style={{ color: meta.color }}
-                  />
-                  {memory.trust || "unknown"}
-                </div>
-              </div>
-            )}
-            <Meter
-              label="Confidence"
-              value={confidence}
-              color="#0E9B8B"
-              hint={`${Math.round(confidence * 100)}%`}
-            />
-            <Meter
-              label="Strength"
-              value={clamp(memory.strength / Math.max(1, maxStrength), 0, 1)}
-              color={meta.color}
-              hint={memory.strength.toFixed(2)}
-            />
-            <div className="space-y-1.5">
-              <span className="text-[11px] font-medium tracking-wide text-muted-foreground">
-                Reinforcements
-              </span>
-              <div className="flex items-center gap-1.5 text-sm font-medium">
-                <Sparkles className="size-3.5" style={{ color: meta.color }} />
-                {memory.reinforcements}
-                <span className="text-xs text-muted-foreground">
-                  · {memory.accessCount} recalls
-                </span>
-              </div>
-            </div>
-          </div>
-
           {memory.tags.length ? (
-            <div className="space-y-2">
-              <span className="text-[11px] font-medium tracking-wide text-muted-foreground">
-                Tags
-              </span>
-              <div className="flex flex-wrap gap-1.5">
-                {memory.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-card/50 px-2 py-0.5 text-[11px] text-muted-foreground"
-                  >
-                    <Tag className="size-3" />
-                    {tag}
-                  </span>
-                ))}
-              </div>
+            <div className="flex flex-wrap gap-1.5">
+              {memory.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-card/50 px-2 py-0.5 text-[11px] text-muted-foreground"
+                >
+                  <Tag className="size-3" />
+                  {tag}
+                </span>
+              ))}
             </div>
           ) : null}
-
-          <Separator />
 
           <dl className="grid grid-cols-1 gap-2.5 text-xs">
             <div className="flex items-center justify-between gap-3">
@@ -2157,18 +2061,6 @@ function MemoryInspector({
               <dt className="text-muted-foreground">Updated</dt>
               <dd className="font-mono text-foreground">
                 {relativeTime(memory.updatedAt)}
-              </dd>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <dt className="text-muted-foreground">Source session</dt>
-              <dd className="max-w-[200px] truncate font-mono text-foreground">
-                {memory.source || "manual"}
-              </dd>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <dt className="text-muted-foreground">Memory id</dt>
-              <dd className="max-w-[200px] truncate font-mono text-foreground">
-                {memory.id}
               </dd>
             </div>
           </dl>
@@ -2202,6 +2094,100 @@ function MemoryInspector({
             </div>
           ) : null}
 
+          <details
+            data-testid="memory-technical-details"
+            className="group rounded-xl border border-border/60 bg-muted/20"
+          >
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-[11px] font-medium tracking-wide text-muted-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40">
+              <span className="inline-flex items-center gap-1.5">
+                <Gauge className="size-3.5" />
+                Technical details
+              </span>
+              <ChevronRight className="size-3.5 transition group-open:rotate-90" />
+            </summary>
+            <div className="space-y-4 border-t border-border/60 p-3">
+              <button
+                type="button"
+                aria-label="Focus memory location in constellation"
+                onClick={() => onFocus(memory.id)}
+                className="flex w-full items-center gap-2 rounded-xl border border-border/60 bg-card/40 px-3 py-2 text-left font-mono text-[11px] text-muted-foreground transition hover:border-border hover:text-foreground"
+              >
+                <CircleDot className="size-3.5 shrink-0" />
+                <span className="truncate">{scopePath}</span>
+              </button>
+
+              <div className="grid grid-cols-2 gap-x-4 gap-y-4">
+                {trustNumeric ? (
+                  <Meter
+                    label="Trust"
+                    value={trustValue}
+                    color={meta.color}
+                    hint={`${Math.round(trustValue * 100)}%`}
+                  />
+                ) : (
+                  <div className="space-y-1.5">
+                    <span className="text-[11px] font-medium tracking-wide text-muted-foreground">
+                      Trust
+                    </span>
+                    <div className="flex items-center gap-1.5 text-sm font-medium">
+                      <ShieldCheck
+                        className="size-3.5"
+                        style={{ color: meta.color }}
+                      />
+                      {memory.trust || "unknown"}
+                    </div>
+                  </div>
+                )}
+                <Meter
+                  label="Confidence"
+                  value={confidence}
+                  color="#0E9B8B"
+                  hint={`${Math.round(confidence * 100)}%`}
+                />
+                <Meter
+                  label="Strength"
+                  value={clamp(
+                    memory.strength / Math.max(1, maxStrength),
+                    0,
+                    1,
+                  )}
+                  color={meta.color}
+                  hint={memory.strength.toFixed(2)}
+                />
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-medium tracking-wide text-muted-foreground">
+                    Reinforcements
+                  </span>
+                  <div className="flex items-center gap-1.5 text-sm font-medium">
+                    <Sparkles
+                      className="size-3.5"
+                      style={{ color: meta.color }}
+                    />
+                    {memory.reinforcements}
+                    <span className="text-xs text-muted-foreground">
+                      · {memory.accessCount} recalls
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <dl className="grid grid-cols-1 gap-2.5 text-xs">
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-muted-foreground">Source session</dt>
+                  <dd className="max-w-[200px] truncate font-mono text-foreground">
+                    {memory.source || "manual"}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-muted-foreground">Memory id</dt>
+                  <dd className="max-w-[200px] truncate font-mono text-foreground">
+                    {memory.id}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+          </details>
+
           <Separator />
 
           <div className="space-y-2">
@@ -2212,10 +2198,10 @@ function MemoryInspector({
                   Native Amiro memory retained
                 </div>
                 <p className="mt-1">
-                  Memories are stored directly in Amiro&apos;s native runtime memory graph
-                  and updated natively by Amiro during chat sessions. Direct mutation
-                  controls are disabled because Amiro retains memories natively without
-                  running a secondary engine.
+                  Memories are stored directly in Amiro&apos;s native runtime
+                  memory graph and updated natively by Amiro during chat
+                  sessions. Direct mutation controls are disabled because Amiro
+                  retains memories natively without running a secondary engine.
                 </p>
               </div>
             ) : (
