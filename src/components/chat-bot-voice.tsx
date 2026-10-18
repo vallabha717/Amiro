@@ -432,24 +432,23 @@ export function ChatBotVoice() {
   );
 
   const active = useLiveVoiceStore((s) => s.active);
-  const startSession = useLiveVoiceStore((s) => s.startSession);
-  const endSession = useLiveVoiceStore((s) => s.endSession);
 
   // Mount the live voice audio capture, RMS meters, VAD, STT, and read-aloud controller
   useLiveVoiceController();
 
   // Sync appStore.voiceChat.isOpen -> useLiveVoiceStore.active
   useEffect(() => {
-    if (voiceChatOpen && !active) {
-      startSession();
-    } else if (!voiceChatOpen && active) {
-      endSession();
+    const live = useLiveVoiceStore.getState();
+    if (voiceChatOpen && !live.active) {
+      live.startSession();
+    } else if (!voiceChatOpen && live.active) {
+      live.endSession();
     }
-  }, [voiceChatOpen, active, startSession, endSession]);
+  }, [voiceChatOpen]);
 
   // Sync useLiveVoiceStore.active -> appStore.voiceChat.isOpen
   useEffect(() => {
-    if (active !== voiceChatOpen) {
+    if (appStore.getState().voiceChat.isOpen !== active) {
       appStoreMutate((prev) => ({
         voiceChat: {
           ...prev.voiceChat,
@@ -457,7 +456,7 @@ export function ChatBotVoice() {
         },
       }));
     }
-  }, [active, voiceChatOpen, appStoreMutate]);
+  }, [active, appStoreMutate]);
 
   // Keyboard shortcut listeners (toggle voice chat, Escape to minimize)
   useEffect(() => {

@@ -126,6 +126,7 @@ export function VoiceComposerBar({
       {/* Center expand tap target */}
       <button
         type="button"
+        data-testid="voice-bar-expand-button"
         onClick={onExpand}
         className="relative z-10 mx-2 flex h-8 flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg px-2 text-xs font-medium opacity-90 transition-all hover:bg-black/10 hover:opacity-100 dark:hover:bg-white/10"
         title="Expand voice stage"
