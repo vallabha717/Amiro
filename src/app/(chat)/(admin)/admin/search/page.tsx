@@ -62,7 +62,9 @@ export default function AdminSearchProvidersPage() {
 
   const configuredProviders = providers?.filter((p) => p.configured) ?? [];
   const defaultProvider = configuredProviders.find((p) => p.isActive);
-  const fallbackCount = configuredProviders.filter((p) => !p.isActive).length;
+  const fallbackCount = configuredProviders.filter(
+    (p) => !p.isActive && p.provider !== "native",
+  ).length;
 
   const addMenu = (align: "end" | "center") => (
     <DropdownMenuContent align={align} className="w-72">
@@ -136,13 +138,15 @@ export default function AdminSearchProvidersPage() {
           >
             <p>
               Only configured providers are available to your agent. Searches
-              try your selected default first, then other configured providers
-              if it fails.
+              try your selected default first, then other configured local
+              providers if it fails. Model-native hosted search is available
+              when selected as default on a supported model, not as an automatic
+              HTTP fallback.
             </p>
             <p>
-              Free DuckDuckGo and Bing providers are configured by the backend
-              on first setup. You can change the default or add another provider
-              below.
+              Provider Native is the default on first setup. Free DuckDuckGo and
+              Bing providers are also preconfigured as local alternatives. You
+              can change the default or add another provider below.
             </p>
             {!isLoading && !error && (
               <p data-testid="search-provider-counts">

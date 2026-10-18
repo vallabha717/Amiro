@@ -116,7 +116,7 @@ export const SearchProviderCard = memo(function SearchProviderCard({
                 variant="secondary"
                 className="bg-green-500/10 text-green-600 dark:text-green-500 border-green-500/20 text-[10px] px-1.5"
               >
-                Fallback
+                {provider === "native" ? "Hosted search" : "Fallback"}
               </Badge>
             )
           ) : (
@@ -227,9 +227,13 @@ export const SearchProviderCard = memo(function SearchProviderCard({
       <CardContent className="pt-0 text-xs text-muted-foreground">
         {!configured
           ? "Not configured. Unavailable to the agent until its configuration is complete and supported."
-          : isActive
-            ? "Tried first for every search. Other configured providers are fallbacks if it fails."
-            : "Available to the agent as a fallback if the default provider fails."}
+          : provider === "native"
+            ? isActive
+              ? "Uses model-native search when supported. Configured local providers remain available if it fails."
+              : "Hosted search available when selected as default. Not an automatic HTTP fallback."
+            : isActive
+              ? "Tried first for every search. Other configured local providers are fallbacks if it fails."
+              : "Available to the agent as a fallback if the default provider fails."}
       </CardContent>
 
       {/* The detail strip: what engine, what key, and whether picking it

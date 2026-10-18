@@ -78,6 +78,42 @@ beforeEach(() => {
 });
 
 describe("search provider management", () => {
+  it("describes native default as supported-model hosted search", () => {
+    const html = renderToStaticMarkup(
+      createElement(SearchProviderCard, { ...provider, provider: "native" }),
+    );
+    expect(html).toContain("Uses model-native search when supported");
+    expect(html).toContain(
+      "Configured local providers remain available if it fails",
+    );
+    expect(html).not.toContain("Tried first for every search");
+  });
+
+  it("does not promise native hosted search as an automatic fallback", () => {
+    const html = renderToStaticMarkup(
+      createElement(SearchProviderCard, {
+        ...provider,
+        provider: "native",
+        isActive: false,
+      }),
+    );
+    expect(html).toContain("Hosted search available when selected as default");
+    expect(html).toContain("Not an automatic HTTP fallback");
+    expect(html).not.toContain("fallback if the default provider fails");
+  });
+
+  it("excludes non-default native search from automatic fallback counts", () => {
+    mocks.providers = [
+      provider,
+      { ...provider, id: "native", provider: "native", isActive: false },
+      { ...provider, id: "bing", provider: "bing", isActive: false },
+    ];
+    const html = renderToStaticMarkup(createElement(AdminSearchProvidersPage));
+    expect(html).toContain("3 configured");
+    expect(html).toContain("1 fallback");
+    expect(html).not.toContain("2 fallbacks");
+  });
+
   it("labels the selected configured provider as default without a missing-key warning", () => {
     const html = renderToStaticMarkup(
       createElement(SearchProviderCard, { ...provider, spec: freeSpec }),
@@ -147,7 +183,9 @@ describe("search provider management", () => {
     expect(html).toContain(
       "Only configured providers are available to your agent",
     );
-    expect(html).toContain("Free DuckDuckGo and Bing");
+    expect(html).toContain("Provider Native is the default on first setup");
+    expect(html).toMatch(/Free DuckDuckGo and\s+Bing/);
+    expect(html).toContain("preconfigured as local alternatives");
   });
 
   it("does not fabricate a default or configured count on a load error", () => {

@@ -413,8 +413,9 @@ export default function SearchProviderEditor({
     <div className="flex flex-col space-y-8 animate-in fade-in duration-500">
       <p className="text-sm text-muted-foreground">
         Only configured providers are available to the agent. Set the default on
-        the provider list. Other configured providers are tried if the default
-        fails.
+        the provider list. Other configured local providers are tried if the
+        default fails. Model-native hosted search requires selection as default
+        and a supported model, and is not an automatic HTTP fallback.
       </p>
       {catalogError && (
         <p role="alert">
