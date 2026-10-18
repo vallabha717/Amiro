@@ -53,7 +53,8 @@ export function getBackendBaseUrl(): string {
       return `http://127.0.0.1:${window.__BACKEND_PORT__}`;
     }
   }
-  return process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8787";
+  // An explicit empty URL means use the frontend's same-origin dev proxy.
+  return process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://127.0.0.1:8787";
 }
 
 /** True when the Go binary is serving this page, so the API is same-origin.

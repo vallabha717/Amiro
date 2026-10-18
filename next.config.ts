@@ -5,6 +5,9 @@ import type { NextConfig } from "next";
 const PROJECT_ROOT = import.meta.dirname;
 
 export default () => {
+  const isDev = process.env.NODE_ENV === "development";
+  const devBackend =
+    process.env.AMIRO_DEV_BACKEND_URL || "http://127.0.0.1:8787";
   const nextConfig: NextConfig = {
     // A real `tauri build` needs static frontendDist files, not a running
     // Node server -- bundling Node would defeat the point of this rewrite
@@ -14,7 +17,24 @@ export default () => {
     // to call static export "an optimization, not a blocker". `next dev`
     // (devUrl in tauri.conf.json) doesn't need this, only `tauri build`
     // does.
-    output: "export",
+    output: isDev ? undefined : "export",
+    ...(isDev
+      ? {
+          async rewrites() {
+            return [
+              {
+                source: "/api/:path*",
+                destination: `${devBackend}/api/:path*`,
+              },
+              {
+                source: "/storage/:path*",
+                destination: `${devBackend}/storage/:path*`,
+              },
+              { source: "/health", destination: `${devBackend}/health` },
+            ];
+          },
+        }
+      : {}),
     cleanDistDir: true,
     devIndicators: {
       position: "bottom-right",
@@ -31,6 +51,7 @@ export default () => {
     },
     env: {
       NO_HTTPS: process.env.NO_HTTPS,
+      NEXT_PUBLIC_BACKEND_URL: isDev ? "" : process.env.NEXT_PUBLIC_BACKEND_URL,
     },
     // authInterrupts (forbidden()/unauthorized()) and serverActions are
     // both RSC-server features -- static export has no server, and Phase 7
