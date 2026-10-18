@@ -2254,6 +2254,28 @@ pub(super) async fn handle_client(
                         handle_reload(id, false, &client_session_id, &agent, &swarm_members, &client_event_tx).await;
                         return Ok((serde_json::Value::Null, String::new()));
                     }
+                    if parsed == amiro_harness_api::RuntimeCommand::McpReload {
+                        if !args.is_empty() { anyhow::bail!("Usage: /mcp-reload (accepts no arguments)"); }
+                        let mut guard = agent.try_lock().map_err(|_| anyhow::anyhow!("Session is busy. Retry the MCP reload after the current turn."))?;
+                        let ctx = crate::tool::ToolContext {
+                            session_id: client_session_id.clone(),
+                            message_id: crate::id::new_id("msg"),
+                            tool_call_id: crate::id::new_id("call"),
+                            working_dir: guard.working_dir().map(std::path::PathBuf::from),
+                            stdin_request_tx: None,
+                            graceful_shutdown_signal: None,
+                            execution_mode: crate::tool::ToolExecutionMode::Direct,
+                        };
+                        let output = guard.registry().execute("mcp", serde_json::json!({"action": "reload"}), ctx).await?;
+                        // A reload can add, remove, or change per-server tools. In
+                        // `eager` mode the next request must rebuild its locked
+                        // snapshot to see them; every other mode keeps a
+                        // cache-stable fixed surface and picks changes up through
+                        // the transcript (or provider-native deferred loading).
+                        guard.unlock_tools_if_needed("mcp");
+                        let data = serde_json::json!({"reloaded": true, "action": "reload", "message": output.output});
+                        return Ok((data, output.output));
+                    }
                     if matches!(parsed, amiro_harness_api::RuntimeCommand::Continue | amiro_harness_api::RuntimeCommand::ResumeAll) {
                         if !args.is_empty() { anyhow::bail!("This command accepts no arguments"); }
                         let (tx, mut rx) = mpsc::unbounded_channel();

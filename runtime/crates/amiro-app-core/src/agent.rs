@@ -281,6 +281,9 @@ pub struct Agent {
     _tool_policy_registration: crate::tool::SessionToolPolicyRegistration,
     /// MCP top-level definition exposure policy captured when the session starts.
     mcp_tools_mode: crate::config::McpToolsMode,
+    /// Cap on MCP server tools exposed as top-level definitions in `eager`
+    /// mode. Overflow stays reachable through `mcp_search`/`mcp_call`.
+    mcp_eager_tool_limit: usize,
     /// Provider-specific session ID for conversation resume (e.g., Claude Code CLI session)
     provider_session_id: Option<String>,
     /// Last upstream provider (OpenRouter) observed for this session
@@ -447,6 +450,7 @@ impl Agent {
             disabled_tools,
             _tool_policy_registration: tool_policy_registration,
             mcp_tools_mode: tool_config.mcp_tools,
+            mcp_eager_tool_limit: tool_config.mcp_eager_tool_limit,
             provider_session_id: None,
             last_upstream_provider: None,
             last_connection_type: None,

@@ -185,6 +185,42 @@ fn test_mcp_http_server_is_not_stdio() {
     );
 }
 
+/// The exact shape the backend writes for a Composio Tool Router server must
+/// parse as a runnable Streamable HTTP entry with its custom headers intact.
+#[test]
+fn composio_streamable_http_snippet_parses_with_headers() {
+    let json = r#"{
+            "servers": {
+                "composio": {
+                    "type": "streamable-http",
+                    "url": "https://app.composio.dev/tool_router/v3/session-123/mcp",
+                    "headers": { "x-api-key": "secret-key" },
+                    "shared": true
+                }
+            }
+        }"#;
+    let config: McpConfig = serde_json::from_str(json).unwrap();
+    let server = config.servers.get("composio").unwrap();
+    assert!(server.is_runnable());
+    assert!(!server.is_stdio());
+    assert_eq!(
+        server.remote_transport(),
+        Some(RemoteTransport::StreamableHttp)
+    );
+    assert_eq!(
+        server.url.as_deref(),
+        Some("https://app.composio.dev/tool_router/v3/session-123/mcp")
+    );
+    assert_eq!(server.headers["x-api-key"], "secret-key");
+    assert!(server.shared);
+    // The Claude Code alias carries the same entry.
+    let aliased: McpConfig = serde_json::from_str(
+        &json.replace("\"servers\"", "\"mcpServers\""),
+    )
+    .unwrap();
+    assert_eq!(aliased.servers["composio"].headers["x-api-key"], "secret-key");
+}
+
 #[test]
 fn remote_transport_inference_respects_explicit_type() {
     let parse = |value| serde_json::from_value::<McpServerConfig>(value).unwrap();

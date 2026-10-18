@@ -115,6 +115,7 @@ pub(super) async fn execute(
         RuntimeCommand::RefreshModelList
         | RuntimeCommand::Continue
         | RuntimeCommand::ResumeAll
+        | RuntimeCommand::McpReload
         | RuntimeCommand::ServerReload => {
             bail!("Command must be routed through the server control handler")
         }

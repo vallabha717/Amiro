@@ -600,6 +600,23 @@ fn tool_config_defaults_to_full_toolset() {
     assert!(selection.disabled_tools.is_empty());
     assert_eq!(config.mcp_tools, McpToolsMode::Auto);
     assert_eq!(config.mcp_tools_token_threshold, 8_000);
+    assert_eq!(
+        config.mcp_eager_tool_limit,
+        crate::config::DEFAULT_MCP_EAGER_TOOL_LIMIT
+    );
+    assert_eq!(crate::config::DEFAULT_MCP_EAGER_TOOL_LIMIT, 100);
+}
+
+#[test]
+fn tool_config_eager_tool_limit_deserializes_and_defaults() {
+    let config: Config = toml::from_str("[tools]\nmcp_eager_tool_limit = 25\n").unwrap();
+    assert_eq!(config.tools.mcp_eager_tool_limit, 25);
+    // An omitted value keeps the safe default rather than 0 (uncapped).
+    let config: Config = toml::from_str("[tools]\nmcp_tools = \"eager\"\n").unwrap();
+    assert_eq!(
+        config.tools.mcp_eager_tool_limit,
+        crate::config::DEFAULT_MCP_EAGER_TOOL_LIMIT
+    );
 }
 
 #[test]
@@ -620,16 +637,20 @@ fn tool_config_mcp_exposure_env_overrides() {
     let _guard = crate::storage::lock_test_env();
     let previous_mode = std::env::var_os("AMIRO_MCP_TOOLS");
     let previous_threshold = std::env::var_os("AMIRO_MCP_TOOLS_TOKEN_THRESHOLD");
+    let previous_limit = std::env::var_os("AMIRO_MCP_EAGER_TOOL_LIMIT");
     crate::env::set_var("AMIRO_MCP_TOOLS", "deferred");
     crate::env::set_var("AMIRO_MCP_TOOLS_TOKEN_THRESHOLD", "4321");
+    crate::env::set_var("AMIRO_MCP_EAGER_TOOL_LIMIT", "50");
 
     let mut config = Config::default();
     config.apply_env_overrides();
 
     assert_eq!(config.tools.mcp_tools, McpToolsMode::Deferred);
     assert_eq!(config.tools.mcp_tools_token_threshold, 4_321);
+    assert_eq!(config.tools.mcp_eager_tool_limit, 50);
     restore_env_var("AMIRO_MCP_TOOLS", previous_mode);
     restore_env_var("AMIRO_MCP_TOOLS_TOKEN_THRESHOLD", previous_threshold);
+    restore_env_var("AMIRO_MCP_EAGER_TOOL_LIMIT", previous_limit);
 }
 
 #[test]

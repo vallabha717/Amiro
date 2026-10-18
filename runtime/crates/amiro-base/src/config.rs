@@ -227,6 +227,7 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "AMIRO_MAX_RETRIES",
     "AMIRO_MCP_TOOLS",
     "AMIRO_MCP_TOOLS_TOKEN_THRESHOLD",
+    "AMIRO_MCP_EAGER_TOOL_LIMIT",
     "AMIRO_CODEMODE",
     "AMIRO_RETRY_BACKOFF_CAP_SECS",
     "AMIRO_SWARM_ENABLED",
@@ -715,6 +716,10 @@ impl McpToolsMode {
     }
 }
 
+/// Default cap on MCP server tools exposed as top-level tool definitions in
+/// `eager` mode. Overflow stays reachable through `mcp_search`/`mcp_call`.
+pub const DEFAULT_MCP_EAGER_TOOL_LIMIT: usize = 100;
+
 /// Controls which tools are sent to the model.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -739,6 +744,13 @@ pub struct ToolConfig {
         alias = "mcp_tools_auto_threshold_tokens"
     )]
     pub mcp_tools_token_threshold: usize,
+    /// Maximum number of MCP server tools exposed as top-level tool definitions
+    /// in `eager` mode. A server (or the union of all servers) defining more
+    /// than this keeps only the first `mcp_eager_tool_limit` top-level; the
+    /// surplus is still reachable through `mcp_search`/`mcp_call`, which stay
+    /// in the tool list whenever the cap truncates anything. Defaults to
+    /// [`DEFAULT_MCP_EAGER_TOOL_LIMIT`]. `0` disables the cap.
+    pub mcp_eager_tool_limit: usize,
     /// Opt-in Codemode: expose a `codemode` tool that runs model-written
     /// JavaScript in an embedded QuickJS sandbox able to call every other
     /// tool (including MCP tools). Off by default.
@@ -754,6 +766,7 @@ impl Default for ToolConfig {
             disable_base_tools: false,
             mcp_tools: McpToolsMode::Auto,
             mcp_tools_token_threshold: 8_000,
+            mcp_eager_tool_limit: DEFAULT_MCP_EAGER_TOOL_LIMIT,
             codemode: false,
         }
     }

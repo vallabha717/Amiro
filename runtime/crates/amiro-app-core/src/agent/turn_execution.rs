@@ -299,7 +299,7 @@ impl Agent {
 
     /// Unlock tools if a tool execution may have changed the registry
     /// (e.g., mcp connect/disconnect/reload)
-    pub(super) fn unlock_tools_if_needed(&mut self, tool_name: &str) {
+    pub(crate) fn unlock_tools_if_needed(&mut self, tool_name: &str) {
         // Only explicit `eager` exposes per-server definitions in the cached
         // tool list. Every other mode keeps that list fixed (native deferred
         // loading or the `mcp_search`/`mcp_call` surface), so an `mcp`
@@ -640,9 +640,58 @@ impl Agent {
 
         if deferred {
             tools.retain(|tool| !tool.name.starts_with("mcp__"));
-        } else {
+            return;
+        }
+
+        // Explicit `eager`: expose per-server definitions top-level, but never
+        // more than the configured cap. A server (or the union of all servers)
+        // defining hundreds of tools must not push a matching number of
+        // definitions into every request; the surplus stays callable through
+        // `mcp_search`/`mcp_call`, which are kept in the list whenever the cap
+        // truncates anything.
+        if !self.cap_eager_mcp_tools(tools) {
+            // No overflow: the fixed discovery surface is redundant with every
+            // per-server definition present, so drop it (preserves the
+            // historical eager shape and its cache expectations).
             tools.retain(|tool| !matches!(tool.name.as_str(), "mcp_search" | "mcp_call"));
         }
+    }
+
+    /// Keep at most the configured eager-tool cap of per-server `mcp__*`
+    /// definitions in `tools`, selecting a deterministic (name-sorted) prefix.
+    /// Returns `true` when anything was dropped, which tells the caller to keep
+    /// `mcp_search`/`mcp_call` in the list so the omitted tools stay reachable.
+    /// A limit of `0` disables the cap.
+    fn cap_eager_mcp_tools(&self, tools: &mut Vec<ToolDefinition>) -> bool {
+        let limit = self.mcp_eager_tool_limit;
+        if limit == 0 {
+            return false;
+        }
+        let mcp_count = tools
+            .iter()
+            .filter(|tool| tool.name.starts_with("mcp__"))
+            .count();
+        if mcp_count <= limit {
+            return false;
+        }
+        // Sort the per-server definitions by name and keep the first `limit`, so
+        // the retained set is stable across registry iteration order. Built-in
+        // tools keep their original positions; only `mcp__*` entries are
+        // dropped.
+        let mut names: Vec<String> = tools
+            .iter()
+            .filter(|tool| tool.name.starts_with("mcp__"))
+            .map(|tool| tool.name.clone())
+            .collect();
+        names.sort();
+        let keep: HashSet<String> = names.into_iter().take(limit).collect();
+        tools.retain(|tool| !tool.name.starts_with("mcp__") || keep.contains(&tool.name));
+        logging::info(&format!(
+            "Capping top-level MCP tool definitions at {} ({} omitted); overflow is reachable via mcp_search/mcp_call",
+            limit,
+            mcp_count - limit,
+        ));
+        true
     }
 
     /// Expose the `selfdev` tool only while running in self-development mode.

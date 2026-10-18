@@ -155,6 +155,11 @@ impl Config {
         {
             self.tools.mcp_tools_token_threshold = parsed;
         }
+        if let Ok(v) = std::env::var("AMIRO_MCP_EAGER_TOOL_LIMIT")
+            && let Ok(parsed) = v.trim().parse::<usize>()
+        {
+            self.tools.mcp_eager_tool_limit = parsed;
+        }
         if let Ok(v) = std::env::var("AMIRO_CODEMODE")
             && let Some(parsed) = parse_env_bool(&v)
         {

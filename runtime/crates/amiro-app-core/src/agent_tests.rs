@@ -1925,6 +1925,142 @@ async fn mcp_exposure_modes_select_eager_or_fixed_definitions() {
     assert!(auto_deferred.mcp_late_register_resolved);
 }
 
+/// Register `count` per-server MCP tools named `mcp__srv__tool_<n>`.
+async fn register_many_fake_mcp_tools(registry: &Registry, count: usize) {
+    for index in 0..count {
+        let name = format!("mcp__srv__tool_{index:03}");
+        registry
+            .register(
+                name.clone(),
+                Arc::new(FakeMcpTool { name }) as Arc<dyn crate::tool::Tool>,
+            )
+            .await;
+    }
+}
+
+/// Hundreds of MCP tools must never reach the model as hundreds of top-level
+/// definitions in `eager` mode: the union is capped, and the overflow stays
+/// reachable through `mcp_search`/`mcp_call`, which the cap keeps in the list.
+#[tokio::test]
+async fn eager_mode_caps_top_level_mcp_tools_and_keeps_search_surface() {
+    let _guard = crate::storage::lock_test_env();
+    let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
+    let registry = Registry::new(provider.clone()).await;
+    register_fake_deferred_mcp_surface(&registry).await;
+    register_many_fake_mcp_tools(&registry, 250).await;
+    let mut agent = Agent::new(provider, registry);
+    agent.mcp_tools_mode = crate::config::McpToolsMode::Eager;
+    agent.mcp_eager_tool_limit = 100;
+
+    let tools = agent.tool_definitions().await;
+    let names: Vec<String> = tools.iter().map(|tool| tool.name.clone()).collect();
+    let mcp: Vec<&String> = names
+        .iter()
+        .filter(|name| name.starts_with("mcp__"))
+        .collect();
+    assert_eq!(mcp.len(), 100, "top-level MCP definitions must be capped");
+    assert!(names.iter().any(|name| name == "mcp_search"));
+    assert!(names.iter().any(|name| name == "mcp_call"));
+    // Deterministic, name-sorted prefix.
+    assert_eq!(mcp.first().map(|name| name.as_str()), Some("mcp__srv__tool_000"));
+    assert_eq!(mcp.last().map(|name| name.as_str()), Some("mcp__srv__tool_099"));
+    // The overflow stays registered and is therefore discoverable and callable
+    // through `mcp_search`/`mcp_call`.
+    let registered = agent.registry.tool_names().await;
+    assert!(registered.iter().any(|name| name == "mcp__srv__tool_249"));
+}
+
+/// Below the cap, `eager` keeps its historical shape: every per-server tool is
+/// top-level and the fixed discovery surface is dropped as redundant.
+#[tokio::test]
+async fn eager_mode_below_cap_keeps_historical_shape() {
+    let _guard = crate::storage::lock_test_env();
+    let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
+    let registry = Registry::new(provider.clone()).await;
+    register_fake_deferred_mcp_surface(&registry).await;
+    register_many_fake_mcp_tools(&registry, 3).await;
+    let mut agent = Agent::new(provider, registry);
+    agent.mcp_tools_mode = crate::config::McpToolsMode::Eager;
+    agent.mcp_eager_tool_limit = 100;
+
+    let names: Vec<String> = agent
+        .tool_definitions()
+        .await
+        .into_iter()
+        .map(|tool| tool.name)
+        .collect();
+    assert_eq!(names.iter().filter(|name| name.starts_with("mcp__")).count(), 3);
+    assert!(!names.iter().any(|name| name == "mcp_search"));
+    assert!(!names.iter().any(|name| name == "mcp_call"));
+}
+
+/// A limit of `0` disables the cap (opt-out), matching the documented contract.
+#[tokio::test]
+async fn eager_mode_zero_limit_disables_cap() {
+    let _guard = crate::storage::lock_test_env();
+    let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
+    let registry = Registry::new(provider.clone()).await;
+    register_fake_deferred_mcp_surface(&registry).await;
+    register_many_fake_mcp_tools(&registry, 150).await;
+    let mut agent = Agent::new(provider, registry);
+    agent.mcp_tools_mode = crate::config::McpToolsMode::Eager;
+    agent.mcp_eager_tool_limit = 0;
+
+    let names: Vec<String> = agent
+        .tool_definitions()
+        .await
+        .into_iter()
+        .map(|tool| tool.name)
+        .collect();
+    assert_eq!(names.iter().filter(|name| name.starts_with("mcp__")).count(), 150);
+    assert!(!names.iter().any(|name| name == "mcp_search"));
+}
+
+/// A Composio Tool Router session exposes a handful of meta tools. On a
+/// provider without native deferred loading, `auto` loads them behind the fixed
+/// `mcp_search`/`mcp_call` surface and never trips the eager cap.
+#[tokio::test]
+async fn composio_style_meta_tools_load_on_the_fixed_surface() {
+    let _guard = crate::storage::lock_test_env();
+    let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
+    let registry = Registry::new(provider.clone()).await;
+    register_fake_deferred_mcp_surface(&registry).await;
+    for name in [
+        "mcp__composio__COMPOSIO_SEARCH_TOOLS",
+        "mcp__composio__COMPOSIO_MULTI_EXECUTE_TOOL",
+        "mcp__composio__COMPOSIO_MANAGE_CONNECTIONS",
+        "mcp__composio__COMPOSIO_GET_TOOL_SCHEMAS",
+    ] {
+        registry
+            .register(
+                name.to_string(),
+                Arc::new(FakeMcpTool {
+                    name: name.to_string(),
+                }) as Arc<dyn crate::tool::Tool>,
+            )
+            .await;
+    }
+    let mut agent = Agent::new(provider, registry);
+    agent.mcp_tools_mode = crate::config::McpToolsMode::Auto;
+    agent.mcp_eager_tool_limit = crate::config::DEFAULT_MCP_EAGER_TOOL_LIMIT;
+
+    let names: Vec<String> = agent
+        .tool_definitions()
+        .await
+        .into_iter()
+        .map(|tool| tool.name)
+        .collect();
+    assert!(names.iter().any(|name| name == "mcp_search"));
+    assert!(names.iter().any(|name| name == "mcp_call"));
+    assert!(!names.iter().any(|name| name.starts_with("mcp__")));
+    let registered = agent.registry.tool_names().await;
+    assert!(
+        registered
+            .iter()
+            .any(|name| name == "mcp__composio__COMPOSIO_SEARCH_TOOLS")
+    );
+}
+
 #[tokio::test]
 async fn deferred_mcp_surface_ignores_late_per_tool_registration() {
     let _guard = crate::storage::lock_test_env();
