@@ -133,13 +133,14 @@ bytes leave the process.
 
 ## 7. Verification commands
 
-Both scripts are runnable as-is and keep all artifacts under a scratch or temp
-directory.
+Neither script is self-contained; each has a prerequisite.
 
 - Runtime routing: `node scripts/verify-search-runtime.mjs`.
-  Spawns the compiled runtime (`runtime/target/debug/amiro-runtime`, override with
-  `AMIRO_RUNTIME_BIN`) against a local fixture HTTP server, then over the debug
-  socket:
+  Requires an already-compiled runtime binary, `runtime/target/debug/amiro-runtime`
+  by default or `AMIRO_RUNTIME_BIN` when set. It writes its fixture home, config,
+  and registry under a temp or scratch directory, so it does not touch a real
+  Amiro home. It spawns that binary against a local fixture HTTP server, then over
+  the debug socket:
   - `tools:full` shows `websearch.input_schema.properties.provider.enum` equal to
     the configured IDs, with no `engine` property and no endpoint string leaked.
   - A search issues the default provider first, then the configured alternative
@@ -149,11 +150,20 @@ directory.
   - Editing the registry changes the exposed enum without a runtime restart.
   - An empty registry fails with `No search providers` and no free-engine escape.
 
-- Admin API plus UI: `node scripts/verify-search-ui.mjs` (needs a running server
-  and an existing admin session). Checks three preconfigured providers, Provider
-  Native as default, Vellum absent from the catalog, HTTP 403 for the private
-  registry, switching the default to Bing and back through the browser, and a
-  mobile layout with no overflow and no page errors.
+- Admin API plus UI: `node scripts/verify-search-ui.mjs`.
+  Requires a live server (`AMIRO_TEST_URL`, default `http://127.0.0.1:3000`) and an
+  Amiro home (`AMIRO_TEST_HOME`, default `~/.amiro`) that already contains the
+  `admin@local` administrator user and at least one active session for it. The
+  harness looks up that specific user by email and then finds a session whose
+  `userId` matches; it does not accept an arbitrary admin account.
+  It mutates live state: it switches the active default to Bing and then back, and
+  it restores the originally active provider in a `finally` block by
+  re-activating it (and closes the browser) even when a check fails. Run it only
+  against a home you are willing to have that default temporarily changed and then
+  restored. Checks: three preconfigured providers, Provider Native as default,
+  Vellum absent from the catalog, HTTP 403 for the private registry, switching the
+  default to Bing and back through the browser, and a mobile layout with no
+  overflow and no page errors.
 
 - Component-level: `src/components/search-provider-ui.test.tsx` covers the admin
   page and editor rendering with mocked data.
