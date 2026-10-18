@@ -188,11 +188,23 @@ server.
 - Listener: `AMIRO_HOST` (default `127.0.0.1`) and `AMIRO_PORT` (default `8787`).
   Binding a non-loopback host without `AMIRO_TOKEN` logs a warning.
 
+Both defaults are overridable, and the live deployment sets them explicitly. A
+typical production launch of the compiled binary (`amiro-backend`, from
+`backend/Cargo.toml`) at port 3000 is:
+
+    AMIRO_PORT=3000 AMIRO_HOST=127.0.0.1 AMIRO_OUT_DIR="$PWD/out" \
+      AMIRO_RUNTIME_HOME="$HOME/.amiro/runtime" \
+      /path/to/amiro-backend
+
+`AMIRO_PORT=3000` is a supported deployment override, not a `serve-out.mjs`-only
+value. The Rust backend can and does serve the API plus static UI on 3000 when
+configured that way.
+
 `serve-out.mjs` is not the production deployment. It is a minimal static-only
 server for exercising the exported bundle in a browser; it serves `out/` and
 defaults to port `3000` (`Number(process.argv[2] || 3000)`). It exposes no API.
-`verify-search-ui.mjs` defaults its base URL to `http://127.0.0.1:3000` because it
-runs against such a UI server, not because 3000 is the production port.
+`verify-search-ui.mjs` defaults its base URL to `http://127.0.0.1:3000`, which
+matches both that static server and a deployment that overrides `AMIRO_PORT=3000`.
 
 ## 9. Exact limitations
 
