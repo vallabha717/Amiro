@@ -2,8 +2,10 @@
 
 This document describes the search routing as it is actually wired today. When an
 Amiro-managed provider registry is present, the runtime reaches only the
-providers a user configured through Amiro. It does not silently fall back to the
-free DuckDuckGo/Bing HTML engines.
+providers a user configured through Amiro. It does not fall back to any
+unconfigured free engine. DuckDuckGo and Bing are eligible only when they exist
+as configured providers; there is no implicit free DuckDuckGo/Bing fallback
+outside the registry.
 
 Every claim below is tied to a source path so it can be re-checked. No secrets
 and no personal paths appear here.
@@ -162,11 +164,25 @@ directory.
 
 ## 8. Deployment shape
 
-The frontend is a static export. `next.config.ts` sets `output: "export"` for
-non-dev builds, producing `out/`. `serve-out.mjs` serves `out/` with static-host
-trailing-slash and `.html` resolution and defaults to port `3000`
-(`Number(process.argv[2] || 3000)`). `verify-search-ui.mjs` defaults its base URL
-to `http://127.0.0.1:3000` to match.
+Production serves the API and the static UI from one process and one listener: the
+compiled Rust backend (`backend/src/main.rs`). It is not a standalone static
+server.
+
+- `next.config.ts` sets `output: "export"` for non-dev builds, producing `out/`.
+- `backend/src/state.rs` (`out_dir`) resolves the UI directory from `AMIRO_OUT_DIR`,
+  else a packaged `ui/` directory next to the executable, else `../out` relative to
+  the backend crate.
+- `backend/src/main.rs` mounts the API routes, then falls back to serving that
+  directory for non-API GET/HEAD requests (`ServeDir` with an `index.html`
+  fallback and a `.html` / `index.html` route resolver).
+- Listener: `AMIRO_HOST` (default `127.0.0.1`) and `AMIRO_PORT` (default `8787`).
+  Binding a non-loopback host without `AMIRO_TOKEN` logs a warning.
+
+`serve-out.mjs` is not the production deployment. It is a minimal static-only
+server for exercising the exported bundle in a browser; it serves `out/` and
+defaults to port `3000` (`Number(process.argv[2] || 3000)`). It exposes no API.
+`verify-search-ui.mjs` defaults its base URL to `http://127.0.0.1:3000` because it
+runs against such a UI server, not because 3000 is the production port.
 
 ## 9. Exact limitations
 
@@ -199,5 +215,5 @@ to `http://127.0.0.1:3000` to match.
 | Workspace file allowlist / 403 / redaction | `backend/src/agent.rs` |
 | Runtime home resolution | `backend/src/state.rs` |
 | Default config comments | `runtime/crates/amiro-base/src/config/default_file.rs` |
-| Static export and serve port | `next.config.ts`, `serve-out.mjs` |
+| Static export, production static serving, listener | `next.config.ts`, `backend/src/state.rs`, `backend/src/main.rs`, `serve-out.mjs` |
 | Verification scripts | `scripts/verify-search-runtime.mjs`, `scripts/verify-search-ui.mjs` |
