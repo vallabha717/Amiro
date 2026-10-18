@@ -1,4 +1,6 @@
 import { DefaultToolName } from "lib/ai/tools";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
   getToolPresenter,
@@ -7,6 +9,11 @@ import {
   toolGlance,
   toolPresenters,
 } from "./index";
+import {
+  WebSearchGlanceRow,
+  WebSearchSourceChip,
+  WebSearchSourcesBar,
+} from "./jcode-presenters";
 
 /**
  * The tools the Go backend offers that must be readable at a glance.
@@ -410,5 +417,196 @@ describe("code intelligence presenters", () => {
         status: "success",
       }),
     ).toBe("reinforced: we use pnpm");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Rich web search cards                                              */
+/* ------------------------------------------------------------------ */
+
+const searchOutput = (count: number): string =>
+  [
+    "Search provider: Bing Search (bing)",
+    "Search results for: rust async runtime",
+    "",
+    ...Array.from({ length: count }, (_, i) =>
+      [
+        `${i + 1}. **Result ${i + 1}**`,
+        `   https://site${i + 1}.example.com/page`,
+        `   Snippet number ${i + 1}.`,
+      ].join("\n"),
+    ),
+  ].join("\n");
+
+const renderSearchExpanded = (output: unknown, inputQuery = "rust async runtime") => {
+  const Expanded = toolPresenters.websearch.Expanded!;
+  return renderToStaticMarkup(
+    createElement(Expanded, {
+      input: { query: inputQuery },
+      output,
+      status: "success",
+    }),
+  );
+};
+
+describe("websearch rich card", () => {
+  it("renders the header, query, provider, source count and timing", () => {
+    const raw = `[tool timing: start=2026-10-18T07:46:43.641Z finish=2026-10-18T07:46:50.635Z duration=6.4s] \n${searchOutput(2)}`;
+    const html = renderSearchExpanded(raw);
+
+    expect(html).toContain("Web search");
+    expect(html).toContain("rust async runtime");
+    expect(html).toContain("Bing Search");
+    expect(html).toContain("2 sources");
+    expect(html).toContain("6.4s");
+  });
+
+  it("renders the source chips strip and detailed result rows", () => {
+    const html = renderSearchExpanded(searchOutput(3));
+
+    expect(html).toContain('data-testid="websearch-source-chip"');
+    expect(html).toContain('data-testid="websearch-result-row"');
+    expect(html).toContain("site1.example.com");
+    expect(html).toContain("#1");
+    expect(html).toContain("#3");
+    expect(html).toContain("Snippet number 1.");
+    // Links are real, new-tab, referrer-safe anchors.
+    expect(html).toContain('href="https://site1.example.com/page"');
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain('rel="noopener noreferrer"');
+    // Favicons come from the shared Google favicon service.
+    expect(html).toContain("google.com/s2/favicons");
+  });
+
+  it("shows only four rows by default with an all-results toggle", () => {
+    const html = renderSearchExpanded(searchOutput(6));
+    const rows = html.split('data-testid="websearch-result-row"').length - 1;
+    expect(rows).toBe(4);
+    expect(html).toContain('data-testid="websearch-toggle-all"');
+    expect(html).toContain("Show all 6 results");
+  });
+
+  it("renders a pending shimmer while the search is running", () => {
+    const Expanded = toolPresenters.websearch.Expanded!;
+    const html = renderToStaticMarkup(
+      createElement(Expanded, {
+        input: { query: "rust async runtime" },
+        output: undefined,
+        status: "pending",
+      }),
+    );
+    expect(html).toContain('data-testid="websearch-pending"');
+    expect(html).toContain("Searching the web");
+    expect(html).toContain("animate-pulse");
+  });
+
+  it("keeps the raw output behind a collapsible escape hatch", () => {
+    const html = renderSearchExpanded(searchOutput(1));
+    expect(html).toContain('data-testid="websearch-toggle-raw"');
+    expect(html).toContain("Raw output");
+  });
+
+  it("shows a clean notice with the raw text when nothing parses", () => {
+    const Expanded = toolPresenters.websearch.Expanded!;
+    const html = renderToStaticMarkup(
+      createElement(Expanded, {
+        input: { query: "nothing" },
+        output: "No results found for: nothing",
+        status: "success",
+      }),
+    );
+    expect(html).toContain("No results found");
+  });
+
+  it("never turns a non-http url into a link", () => {
+    const html = renderToStaticMarkup(
+      createElement(WebSearchSourceChip, {
+        hit: {
+          rank: 1,
+          title: "evil",
+          url: "javascript:alert(1)",
+          domain: "",
+          faviconUrl: "",
+        },
+      }),
+    );
+    expect(html).not.toContain("href=");
+  });
+});
+
+describe("webfetch rich card", () => {
+  it("renders the fetched page card with url, host and byte count", () => {
+    const Expanded = toolPresenters.webfetch.Expanded!;
+    const html = renderToStaticMarkup(
+      createElement(Expanded, {
+        input: { url: "https://example.com/docs" },
+        output: "Fetched https://example.com/docs (2048 bytes)\n\n# Docs\n\nBody text.",
+        status: "success",
+      }),
+    );
+
+    expect(html).toContain('data-testid="webfetch-source-card"');
+    expect(html).toContain("Fetch URL");
+    expect(html).toContain("https://example.com/docs");
+    expect(html).toContain("example.com");
+    expect(html).toContain('data-testid="webfetch-byte-count"');
+    expect(html).toContain("2.0 KB");
+    expect(html).toContain("Body text.");
+  });
+});
+
+describe("work log web glance rows", () => {
+  it("shows the query and favicon chips for a finished search", () => {
+    const html = renderToStaticMarkup(
+      createElement(WebSearchGlanceRow, {
+        toolName: "websearch",
+        input: { query: "rust async runtime" },
+        output: searchOutput(6),
+        status: "success",
+      }),
+    );
+    expect(html).toContain('Searched the web · &quot;rust async runtime&quot;');
+    expect(html).toContain('data-testid="worklog-websearch-chip"');
+    expect(html).toContain("+2 more");
+  });
+
+  it("shows what is being fetched", () => {
+    const html = renderToStaticMarkup(
+      createElement(WebSearchGlanceRow, {
+        toolName: "webfetch",
+        input: { url: "https://example.com/docs" },
+        output: undefined,
+        status: "pending",
+      }),
+    );
+    expect(html).toContain("Fetching example.com");
+    expect(html).toContain('data-testid="worklog-webfetch-chip"');
+  });
+});
+
+describe("message sources bar", () => {
+  it("summarizes used sources and lists domains", () => {
+    const html = renderToStaticMarkup(
+      createElement(WebSearchSourcesBar, {
+        searches: [
+          {
+            id: "call-1",
+            query: "rust async runtime",
+            hits: [
+              {
+                rank: 1,
+                title: "Tokio",
+                url: "https://tokio.rs/",
+                domain: "tokio.rs",
+                faviconUrl: "https://www.google.com/s2/favicons?domain=tokio.rs&sz=64",
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    expect(html).toContain('data-testid="message-web-sources-bar"');
+    expect(html).toContain("Used 1 web source");
+    expect(html).toContain("tokio.rs");
   });
 });

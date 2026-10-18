@@ -40,12 +40,20 @@ export function ttsCatalog() {
       displayName: 'ElevenLabs',
       subtitle: 'High-quality expressive voice synthesis for conversations and read-aloud.',
       defaultModel: 'eleven_turbo_v2_5',
-      defaultVoice: '21m00Tcm4TlvDq8ikWAM',
-      voices: ['21m00Tcm4TlvDq8ikWAM', 'AZnzlk1XvdvUeBnXmlld', 'EXAVITQu4vr4xnSDxMaL', 'ErXwobaYiN019PkySvjV', 'TxGEqnHWrfWFTfGW9XjX'],
+      defaultVoice: 'EXAVITQu4vr4xnSDxMaL',
+      voices: ['EXAVITQu4vr4xnSDxMaL', 'JBFqnCBsd6RMkjVDRZzb', '21m00Tcm4TlvDq8ikWAM', 'AZnzlk1XvdvUeBnXmlld', 'ErXwobaYiN019PkySvjV', 'TxGEqnHWrfWFTfGW9XjX'],
+      voiceLabels: {
+        EXAVITQu4vr4xnSDxMaL: 'Sarah',
+        JBFqnCBsd6RMkjVDRZzb: 'George',
+        '21m00Tcm4TlvDq8ikWAM': 'Rachel',
+        AZnzlk1XvdvUeBnXmlld: 'Domi',
+        ErXwobaYiN019PkySvjV: 'Antoni',
+        TxGEqnHWrfWFTfGW9XjX: 'Josh',
+      },
       models: ['eleven_turbo_v2_5', 'eleven_multilingual_v2', 'eleven_flash_v2_5'],
       supportsVoiceSelection: true,
       supportsModelSelection: true,
-      supportsBaseUrl: false,
+      supportsBaseUrl: true,
       defaultBaseUrl: 'https://api.elevenlabs.io',
       apiKeyPlaceholder: 'sk_...',
       docsUrl: 'https://elevenlabs.io/app/settings/api-keys',
@@ -184,7 +192,7 @@ export function sttCatalog() {
       defaultModel: 'scribe_v1',
       models: ['scribe_v1'],
       supportsModelSelection: true,
-      supportsBaseUrl: false,
+      supportsBaseUrl: true,
       defaultBaseUrl: 'https://api.elevenlabs.io',
       apiKeyPlaceholder: 'sk_...',
       docsUrl: 'https://elevenlabs.io/app/settings/api-keys',
@@ -269,6 +277,35 @@ export function defaultSettings() {
   };
 }
 
+export const ELEVENLABS_VOICE_NAMES = {
+  EXAVITQu4vr4xnSDxMaL: 'Sarah',
+  JBFqnCBsd6RMkjVDRZzb: 'George',
+  '21m00Tcm4TlvDq8ikWAM': 'Rachel',
+  AZnzlk1XvdvUeBnXmlld: 'Domi',
+  ErXwobaYiN019PkySvjV: 'Antoni',
+  TxGEqnHWrfWFTfGW9XjX: 'Josh',
+};
+
+export function elevenLabsVoiceName(id) {
+  return ELEVENLABS_VOICE_NAMES[id] || id;
+}
+
+export function resolveDefaultTtsProvider(hints) {
+  const candidates = ['elevenlabs', 'openai', 'deepgram', 'xai', 'fish-audio', 'custom-openai'];
+  for (const c of candidates) {
+    if (hints.has(`tts.${c}/api_key`) || hints.has(`${c}/api_key`)) return c;
+  }
+  return 'browser-native';
+}
+
+export function resolveDefaultSttProvider(hints) {
+  const candidates = ['elevenlabs', 'deepgram', 'openai', 'groq', 'xai', 'custom-openai'];
+  for (const c of candidates) {
+    if (hints.has(`stt.${c}/api_key`) || hints.has(`${c}/api_key`)) return c;
+  }
+  return 'browser-native';
+}
+
 export function buildSettingsView(settings, hints) {
   const hintFor = (service, fallback) =>
     hints.get(`${service}/api_key`) ?? hints.get(`${fallback}/api_key`) ?? null;
@@ -304,7 +341,27 @@ export function buildSettingsView(settings, hints) {
     };
   }
 
-  return { tts, stt };
+  const elevenSavedTts = (settings.ttsProviders || {}).elevenlabs || {};
+  const elevenSavedStt = (settings.sttProviders || {}).elevenlabs || {};
+  const elevenTtsModel = elevenSavedTts.model || 'eleven_flash_v2_5';
+  const elevenSttModel = elevenSavedStt.model || 'scribe_v1';
+  const elevenVoiceId = elevenSavedTts.voiceId || 'EXAVITQu4vr4xnSDxMaL';
+  const elevenVoiceName = elevenLabsVoiceName(elevenVoiceId);
+  const elevenConfigured = hints.has('tts.elevenlabs/api_key') || hints.has('elevenlabs/api_key') || hints.has('stt.elevenlabs/api_key');
+  const elevenHint = hints.get('tts.elevenlabs/api_key') || hints.get('elevenlabs/api_key') || hints.get('stt.elevenlabs/api_key') || null;
+
+  const liveVoice = {
+    provider: 'elevenlabs',
+    displayName: 'ElevenLabs Conversational Voice',
+    configured: elevenConfigured,
+    apiKeyHint: elevenHint,
+    ttsModel: elevenTtsModel,
+    sttModel: elevenSttModel,
+    voiceId: elevenVoiceId,
+    voiceName: elevenVoiceName,
+  };
+
+  return { tts, stt, liveVoice };
 }
 
 function audioExtension(mimeType) {
@@ -335,14 +392,28 @@ export function register(app, ctx) {
     log: ctx.log,
   });
 
-  async function loadSettings() {
-    const stored = await ctx.store.read(SETTINGS_KEY, {});
+  async function loadSettings(hints = null, rawStored = null) {
+    const stored = rawStored ?? (await ctx.store.read(SETTINGS_KEY, {}));
     const settings = defaultSettings();
     if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
       for (const [key, value] of Object.entries(stored)) settings[key] = value;
     }
     if (!settings.ttsProviders || typeof settings.ttsProviders !== 'object') settings.ttsProviders = {};
     if (!settings.sttProviders || typeof settings.sttProviders !== 'object') settings.sttProviders = {};
+
+    const hasStoredTts = stored && typeof stored.ttsProvider === 'string' && stored.ttsProvider.trim() !== '';
+    const hasStoredStt = stored && typeof stored.sttProvider === 'string' && stored.sttProvider.trim() !== '';
+
+    if (!hasStoredTts || !hasStoredStt) {
+      const activeHints = hints ?? (await hintMap());
+      if (!hasStoredTts) {
+        settings.ttsProvider = resolveDefaultTtsProvider(activeHints);
+      }
+      if (!hasStoredStt) {
+        settings.sttProvider = resolveDefaultSttProvider(activeHints);
+      }
+    }
+
     return settings;
   }
 
@@ -359,13 +430,14 @@ export function register(app, ctx) {
   }
 
   async function settingsPayload() {
-    const settings = await loadSettings();
     const hints = await hintMap();
-    const { tts, stt } = buildSettingsView(settings, hints);
+    const rawStored = await ctx.store.read(SETTINGS_KEY, {});
+    const settings = await loadSettings(hints, rawStored);
+    const { tts, stt, liveVoice } = buildSettingsView(settings, hints);
     return {
       ttsCatalog: ttsCatalog(),
       sttCatalog: sttCatalog(),
-      settings: { ...settings, ttsProviders: tts, sttProviders: stt },
+      settings: { ...settings, ttsProviders: tts, sttProviders: stt, liveVoice },
     };
   }
 
@@ -484,7 +556,10 @@ export function register(app, ctx) {
     const baseUrl = ((typeof body.baseUrl === 'string' && body.baseUrl.trim()) ||
       savedString(settings, 'ttsProviders', provider, 'baseUrl', spec.defaultBaseUrl)).replace(/\/+$/, '');
     const apiKey = await resolveKey('tts', provider, body.apiKey);
-    const defaultVoices = (spec.voices || []).map((id) => ({ id, name: id }));
+    const defaultVoices = (spec.voices || []).map((id) => ({
+      id,
+      name: provider === 'elevenlabs' ? elevenLabsVoiceName(id) : id,
+    }));
 
     try {
       if (provider === 'elevenlabs' && apiKey) {

@@ -80,10 +80,18 @@ pub fn tts_catalog() -> Vec<Value> {
             "defaultModel": "eleven_turbo_v2_5",
             "defaultVoice": "EXAVITQu4vr4xnSDxMaL",
             "voices": ["EXAVITQu4vr4xnSDxMaL", "JBFqnCBsd6RMkjVDRZzb", "21m00Tcm4TlvDq8ikWAM", "AZnzlk1XvdvUeBnXmlld", "ErXwobaYiN019PkySvjV", "TxGEqnHWrfWFTfGW9XjX"],
+            "voiceLabels": {
+                "EXAVITQu4vr4xnSDxMaL": "Sarah",
+                "JBFqnCBsd6RMkjVDRZzb": "George",
+                "21m00Tcm4TlvDq8ikWAM": "Rachel",
+                "AZnzlk1XvdvUeBnXmlld": "Domi",
+                "ErXwobaYiN019PkySvjV": "Antoni",
+                "TxGEqnHWrfWFTfGW9XjX": "Josh"
+            },
             "models": ["eleven_turbo_v2_5", "eleven_multilingual_v2", "eleven_flash_v2_5"],
             "supportsVoiceSelection": true,
             "supportsModelSelection": true,
-            "supportsBaseUrl": false,
+            "supportsBaseUrl": true,
             "defaultBaseUrl": "https://api.elevenlabs.io",
             "apiKeyPlaceholder": "sk_...",
             "docsUrl": "https://elevenlabs.io/app/settings/api-keys",
@@ -223,7 +231,7 @@ pub fn stt_catalog() -> Vec<Value> {
             "defaultModel": "scribe_v1",
             "models": ["scribe_v1"],
             "supportsModelSelection": true,
-            "supportsBaseUrl": false,
+            "supportsBaseUrl": true,
             "defaultBaseUrl": "https://api.elevenlabs.io",
             "apiKeyPlaceholder": "sk_...",
             "docsUrl": "https://elevenlabs.io/app/settings/api-keys",
@@ -309,11 +317,68 @@ fn default_settings() -> Value {
     })
 }
 
+pub fn elevenlabs_voice_name(voice_id: &str) -> String {
+    match voice_id {
+        "EXAVITQu4vr4xnSDxMaL" => "Sarah".to_string(),
+        "JBFqnCBsd6RMkjVDRZzb" => "George".to_string(),
+        "21m00Tcm4TlvDq8ikWAM" => "Rachel".to_string(),
+        "AZnzlk1XvdvUeBnXmlld" => "Domi".to_string(),
+        "ErXwobaYiN019PkySvjV" => "Antoni".to_string(),
+        "TxGEqnHWrfWFTfGW9XjX" => "Josh".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn resolve_default_tts_provider(hints: &BTreeMap<String, String>) -> &'static str {
+    const CANDIDATES: &[&str] = &[
+        "elevenlabs",
+        "openai",
+        "deepgram",
+        "xai",
+        "fish-audio",
+        "custom-openai",
+    ];
+    for provider in CANDIDATES {
+        if has_key(hints, &format!("tts.{provider}"), provider) {
+            return provider;
+        }
+    }
+    "browser-native"
+}
+
+fn resolve_default_stt_provider(hints: &BTreeMap<String, String>) -> &'static str {
+    const CANDIDATES: &[&str] = &[
+        "elevenlabs",
+        "deepgram",
+        "openai",
+        "groq",
+        "xai",
+        "custom-openai",
+    ];
+    for provider in CANDIDATES {
+        if has_key(hints, &format!("stt.{provider}"), provider) {
+            return provider;
+        }
+    }
+    "browser-native"
+}
+
 pub(crate) async fn load_settings(state: &AppState) -> Result<Value, ApiError> {
     let stored = read_json(&settings_path(state), json!({})).await?;
     let mut settings = default_settings();
-    if let (Some(base), Some(stored)) = (settings.as_object_mut(), stored.as_object()) {
-        for (key, value) in stored {
+    let has_explicit_tts = stored
+        .get("ttsProvider")
+        .and_then(Value::as_str)
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false);
+    let has_explicit_stt = stored
+        .get("sttProvider")
+        .and_then(Value::as_str)
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false);
+
+    if let (Some(base), Some(stored_obj)) = (settings.as_object_mut(), stored.as_object()) {
+        for (key, value) in stored_obj {
             base.insert(key.clone(), value.clone());
         }
     }
@@ -323,16 +388,25 @@ pub(crate) async fn load_settings(state: &AppState) -> Result<Value, ApiError> {
             settings[slot] = json!({});
         }
     }
+
+    if !has_explicit_tts || !has_explicit_stt {
+        let hints = credential_hints(state).await;
+        if !has_explicit_tts {
+            settings["ttsProvider"] = json!(resolve_default_tts_provider(&hints));
+        }
+        if !has_explicit_stt {
+            settings["sttProvider"] = json!(resolve_default_stt_provider(&hints));
+        }
+    }
+
     Ok(settings)
 }
 
 /// Map of `service/field` -> masked hint for every stored credential.
 async fn credential_hints(state: &AppState) -> BTreeMap<String, String> {
     let mut hints = BTreeMap::new();
-    if let Ok(items) = credentials::list_metadata(state).await {
-        for item in items {
-            hints.insert(format!("{}/{}", item.service, item.field), item.hint);
-        }
+    for item in credentials::list_metadata_sync(&state.home) {
+        hints.insert(format!("{}/{}", item.service, item.field), item.hint);
     }
     hints
 }
@@ -459,6 +533,36 @@ async fn settings_payload(state: &AppState) -> Result<Value, ApiError> {
     let mut merged = settings;
     merged["ttsProviders"] = Value::Object(tts);
     merged["sttProviders"] = Value::Object(stt);
+
+    let elevenlabs_saved_tts = saved_config(&merged, "ttsProviders", "elevenlabs");
+    let elevenlabs_saved_stt = saved_config(&merged, "sttProviders", "elevenlabs");
+    let eleven_tts_model = elevenlabs_saved_tts
+        .and_then(|c| non_empty(c, "model"))
+        .unwrap_or("eleven_flash_v2_5");
+    let eleven_stt_model = elevenlabs_saved_stt
+        .and_then(|c| non_empty(c, "model"))
+        .unwrap_or("scribe_v1");
+    let eleven_voice_id = elevenlabs_saved_tts
+        .and_then(|c| non_empty(c, "voiceId"))
+        .unwrap_or("EXAVITQu4vr4xnSDxMaL");
+    let eleven_voice_name = elevenlabs_voice_name(eleven_voice_id);
+    let eleven_configured = has_key(&hints, "tts.elevenlabs", "elevenlabs")
+        || has_key(&hints, "stt.elevenlabs", "elevenlabs");
+    let eleven_hint = hint_for(&hints, "tts.elevenlabs", "elevenlabs")
+        .or_else(|| hint_for(&hints, "stt.elevenlabs", "elevenlabs"));
+
+    let live_voice = json!({
+        "provider": "elevenlabs",
+        "displayName": "ElevenLabs Conversational Voice",
+        "configured": eleven_configured,
+        "apiKeyHint": eleven_hint,
+        "ttsModel": eleven_tts_model,
+        "sttModel": eleven_stt_model,
+        "voiceId": eleven_voice_id,
+        "voiceName": eleven_voice_name,
+    });
+    merged["liveVoice"] = live_voice;
+
     Ok(json!({
         "ttsCatalog": tts_catalog(),
         "sttCatalog": stt_catalog(),
@@ -1268,7 +1372,14 @@ async fn list_voices(
         .map(|arr| {
             arr.iter()
                 .filter_map(Value::as_str)
-                .map(|id| json!({ "id": id, "name": id }))
+                .map(|id| {
+                    let name = if provider == "elevenlabs" {
+                        elevenlabs_voice_name(id)
+                    } else {
+                        id.to_string()
+                    };
+                    json!({ "id": id, "name": name })
+                })
                 .collect()
         })
         .unwrap_or_default();

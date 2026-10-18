@@ -25,6 +25,7 @@ import {
   DEFAULT_VOICE_SETTINGS,
   FALLBACK_STT_CATALOG,
   FALLBACK_TTS_CATALOG,
+  getElevenLabsVoiceName,
   type VoiceOptionItem,
   type VoiceProviderCatalogEntry,
   type VoiceSettingsData,
@@ -33,11 +34,15 @@ import {
   updateVoiceSettings,
 } from "@/lib/backend/voice-api";
 import {
+  AlertCircle,
   CheckCircle2,
   ExternalLink,
   Loader2,
+  Mic,
   Play,
+  Radio,
   RefreshCw,
+  Sparkles,
   Square,
   Volume2,
   VolumeX,
@@ -340,6 +345,23 @@ export default function AdminVoicePage() {
     sttCatalog.find((c) => c.id === activeStt) || sttCatalog[0];
   const currentSttState = settings.sttProviders[activeStt];
 
+  const liveVoice = settings.liveVoice;
+  const activeDefaultTtsProvider = settings.ttsProvider || "browser-native";
+  const activeTtsDefaultEntry =
+    ttsCatalog.find((c) => c.id === activeDefaultTtsProvider) || ttsCatalog[0];
+  const activeTtsDefaultState = settings.ttsProviders[activeDefaultTtsProvider];
+  const activeTtsVoiceId =
+    activeTtsDefaultState?.voiceId || activeTtsDefaultEntry?.defaultVoice || "default";
+  const activeTtsVoiceName =
+    activeDefaultTtsProvider === "elevenlabs"
+      ? getElevenLabsVoiceName(activeTtsVoiceId)
+      : activeTtsVoiceId;
+
+  const activeDefaultSttProvider = settings.sttProvider || "browser-native";
+  const activeSttDefaultEntry =
+    sttCatalog.find((c) => c.id === activeDefaultSttProvider) || sttCatalog[0];
+  const activeSttDefaultState = settings.sttProviders[activeDefaultSttProvider];
+
   if (loading) {
     return (
       <div className="flex h-full w-full items-center justify-center p-8">
@@ -361,6 +383,236 @@ export default function AdminVoicePage() {
             and custom 9Router endpoints.
           </p>
         </div>
+
+        {/* Active Voice Configuration Summary Banner */}
+        <Card
+          data-testid="voice-active-defaults-summary"
+          className="border border-border/80 bg-card/60 shadow-xs"
+        >
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <Sparkles className="size-4 text-primary" />
+                  Active Voice &amp; Speech Configuration
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Active live conversation, read-aloud synthesis, and
+                  microphone dictation defaults across Amiro.
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Surface 1: Expressive Live Voice Mode */}
+              <div className="flex flex-col justify-between rounded-lg border bg-muted/30 p-3.5 text-xs gap-3">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-foreground flex items-center gap-1.5">
+                      <Radio className="size-3.5 text-primary animate-pulse" />
+                      Expressive Live Voice Mode
+                    </span>
+                    {liveVoice?.configured ? (
+                      <Badge
+                        variant="outline"
+                        className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[10px] px-1.5"
+                      >
+                        <CheckCircle2 className="size-2.5 mr-1" />
+                        Configured{" "}
+                        {liveVoice.apiKeyHint
+                          ? `(${liveVoice.apiKeyHint})`
+                          : ""}
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className="text-amber-600 dark:text-amber-400 border-amber-500/30 text-[10px] px-1.5"
+                      >
+                        <AlertCircle className="size-2.5 mr-1" />
+                        Needs API Key
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="text-muted-foreground space-y-0.5">
+                    <p>
+                      <span className="text-foreground font-medium">
+                        {liveVoice?.displayName || "ElevenLabs"}
+                      </span>
+                    </p>
+                    <p>
+                      Voice:{" "}
+                      <span className="text-foreground font-medium">
+                        {liveVoice?.voiceName || "Sarah"} (
+                        {liveVoice?.voiceId || "EXAVITQu4vr4xnSDxMaL"})
+                      </span>
+                    </p>
+                    <p>
+                      TTS:{" "}
+                      <span className="font-mono">
+                        {liveVoice?.ttsModel || "eleven_flash_v2_5"}
+                      </span>{" "}
+                      / STT:{" "}
+                      <span className="font-mono">
+                        {liveVoice?.sttModel || "scribe_v1"}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs w-full mt-1"
+                  onClick={() => {
+                    handleTtsProviderChange("elevenlabs");
+                    handleSttProviderChange("elevenlabs");
+                  }}
+                >
+                  Configure ElevenLabs
+                </Button>
+              </div>
+
+              {/* Surface 2: Active Read-Aloud (TTS) Default */}
+              <div className="flex flex-col justify-between rounded-lg border bg-muted/30 p-3.5 text-xs gap-3">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-foreground flex items-center gap-1.5">
+                      <Volume2 className="size-3.5 text-primary" />
+                      Active Read-Aloud (TTS) Default
+                    </span>
+                    {activeTtsDefaultEntry?.keyless ? (
+                      <Badge variant="secondary" className="text-[10px] px-1.5">
+                        <CheckCircle2 className="size-2.5 mr-1 text-emerald-500" />
+                        Built-in
+                      </Badge>
+                    ) : activeTtsDefaultState?.configured ? (
+                      <Badge
+                        variant="outline"
+                        className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[10px] px-1.5"
+                      >
+                        <CheckCircle2 className="size-2.5 mr-1" />
+                        Configured{" "}
+                        {activeTtsDefaultState.apiKeyHint
+                          ? `(${activeTtsDefaultState.apiKeyHint})`
+                          : ""}
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className="text-muted-foreground text-[10px] px-1.5"
+                      >
+                        Not configured
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="text-muted-foreground space-y-0.5">
+                    <p>
+                      <span className="text-foreground font-medium">
+                        {activeTtsDefaultEntry?.displayName ||
+                          activeDefaultTtsProvider}
+                      </span>
+                    </p>
+                    <p>
+                      Model:{" "}
+                      <span className="font-mono">
+                        {activeTtsDefaultState?.model ||
+                          activeTtsDefaultEntry?.defaultModel ||
+                          "default"}
+                      </span>
+                    </p>
+                    <p>
+                      Voice:{" "}
+                      <span className="text-foreground font-medium">
+                        {activeTtsVoiceName} · {activeTtsVoiceId}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs w-full mt-1 border text-muted-foreground hover:text-foreground"
+                  onClick={() => {
+                    handleTtsProviderChange(settings.ttsProvider);
+                  }}
+                >
+                  Edit Read-Aloud
+                </Button>
+              </div>
+
+              {/* Surface 3: Active Dictation (STT) Default */}
+              <div className="flex flex-col justify-between rounded-lg border bg-muted/30 p-3.5 text-xs gap-3">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-foreground flex items-center gap-1.5">
+                      <Mic className="size-3.5 text-primary" />
+                      Active Dictation (STT) Default
+                    </span>
+                    {activeSttDefaultEntry?.keyless ? (
+                      <Badge variant="secondary" className="text-[10px] px-1.5">
+                        <CheckCircle2 className="size-2.5 mr-1 text-emerald-500" />
+                        Built-in
+                      </Badge>
+                    ) : activeSttDefaultState?.configured ? (
+                      <Badge
+                        variant="outline"
+                        className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[10px] px-1.5"
+                      >
+                        <CheckCircle2 className="size-2.5 mr-1" />
+                        Configured{" "}
+                        {activeSttDefaultState.apiKeyHint
+                          ? `(${activeSttDefaultState.apiKeyHint})`
+                          : ""}
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className="text-muted-foreground text-[10px] px-1.5"
+                      >
+                        Not configured
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="text-muted-foreground space-y-0.5">
+                    <p>
+                      <span className="text-foreground font-medium">
+                        {activeSttDefaultEntry?.displayName ||
+                          activeDefaultSttProvider}
+                      </span>
+                    </p>
+                    <p>
+                      Model:{" "}
+                      <span className="font-mono">
+                        {activeSttDefaultState?.model ||
+                          activeSttDefaultEntry?.defaultModel ||
+                          "default"}
+                      </span>
+                    </p>
+                    <p>
+                      Language:{" "}
+                      <span className="font-mono">
+                        {settings.sttLanguage || "en"}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs w-full mt-1 border text-muted-foreground hover:text-foreground"
+                  onClick={() => {
+                    handleSttProviderChange(settings.sttProvider);
+                  }}
+                >
+                  Edit Dictation
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Section 1: Read Aloud & Output Behavior */}
         <Card data-testid="voice-read-aloud-card" className="border shadow-xs">
@@ -464,11 +716,43 @@ export default function AdminVoicePage() {
                   <SelectValue placeholder="Select TTS Provider" />
                 </SelectTrigger>
                 <SelectContent>
-                  {ttsCatalog.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.displayName}
-                    </SelectItem>
-                  ))}
+                  {ttsCatalog.map((p) => {
+                    const pState = settings.ttsProviders[p.id];
+                    const isDefault = settings.ttsProvider === p.id;
+                    return (
+                      <SelectItem key={p.id} value={p.id}>
+                        <div className="flex items-center justify-between w-full gap-3">
+                          <span>{p.displayName}</span>
+                          <div className="flex items-center gap-1.5 ml-auto">
+                            {isDefault && (
+                              <Badge
+                                variant="secondary"
+                                className="text-[10px] px-1.5 py-0 h-4"
+                              >
+                                Default
+                              </Badge>
+                            )}
+                            {p.keyless ? (
+                              <Badge
+                                variant="secondary"
+                                className="text-[10px] px-1.5 py-0 h-4 text-emerald-600"
+                              >
+                                Built-in
+                              </Badge>
+                            ) : pState?.configured ? (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] px-1.5 py-0 h-4 text-emerald-600 border-emerald-500/30"
+                              >
+                                Configured{" "}
+                                {pState.apiKeyHint ? `(${pState.apiKeyHint})` : ""}
+                              </Badge>
+                            ) : null}
+                          </div>
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
               {currentTtsEntry?.subtitle && (
@@ -556,9 +840,16 @@ export default function AdminVoicePage() {
             {/* Model Input / Selection */}
             {currentTtsEntry?.supportsModelSelection && (
               <div className="space-y-2">
-                <Label htmlFor="tts-model" className="text-sm font-medium">
-                  Model
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="tts-model" className="text-sm font-medium">
+                    Model
+                  </Label>
+                  {currentTtsEntry.defaultModel && (
+                    <span className="text-xs text-muted-foreground">
+                      Default: {currentTtsEntry.defaultModel}
+                    </span>
+                  )}
+                </div>
                 <div className="flex flex-col gap-2">
                   <Input
                     id="tts-model"
@@ -596,9 +887,19 @@ export default function AdminVoicePage() {
             {currentTtsEntry?.supportsVoiceSelection && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                  <Label htmlFor="tts-voice" className="text-sm font-medium">
-                    Voice / Reference ID
-                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="tts-voice" className="text-sm font-medium">
+                      Voice / Reference ID
+                    </Label>
+                    {currentTtsEntry.defaultVoice && (
+                      <span className="text-xs text-muted-foreground">
+                        Default:{" "}
+                        {currentTtsEntry.id === "elevenlabs"
+                          ? `${getElevenLabsVoiceName(currentTtsEntry.defaultVoice)} (${currentTtsEntry.defaultVoice})`
+                          : currentTtsEntry.defaultVoice}
+                      </span>
+                    )}
+                  </div>
                   <Button
                     type="button"
                     variant="ghost"
@@ -657,7 +958,10 @@ export default function AdminVoicePage() {
                       fetchedVoices[activeTts] ??
                       (currentTtsEntry.voices || []).map((id) => ({
                         id,
-                        name: id,
+                        name:
+                          activeTts === "elevenlabs"
+                            ? getElevenLabsVoiceName(id)
+                            : id,
                       }));
                     if (voiceOptions.length === 0) return null;
                     return (
@@ -670,6 +974,12 @@ export default function AdminVoicePage() {
                           const isPreviewing =
                             activeMessageId === `voice-preview-${v.id}` &&
                             readAloudStatus !== "idle";
+                          const label =
+                            v.name !== v.id
+                              ? `${v.name} (${v.id})`
+                              : activeTts === "elevenlabs"
+                                ? `${getElevenLabsVoiceName(v.id)} (${v.id})`
+                                : v.id;
                           return (
                             <div
                               key={v.id}
@@ -686,7 +996,7 @@ export default function AdminVoicePage() {
                                 className="px-2.5 py-1 font-medium"
                                 title={`Select voice ${v.name} (${v.id})`}
                               >
-                                {v.name !== v.id ? `${v.name} (${v.id})` : v.id}
+                                {label}
                               </button>
                               <button
                                 type="button"
@@ -805,11 +1115,43 @@ export default function AdminVoicePage() {
                   <SelectValue placeholder="Select STT Provider" />
                 </SelectTrigger>
                 <SelectContent>
-                  {sttCatalog.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.displayName}
-                    </SelectItem>
-                  ))}
+                  {sttCatalog.map((p) => {
+                    const pState = settings.sttProviders[p.id];
+                    const isDefault = settings.sttProvider === p.id;
+                    return (
+                      <SelectItem key={p.id} value={p.id}>
+                        <div className="flex items-center justify-between w-full gap-3">
+                          <span>{p.displayName}</span>
+                          <div className="flex items-center gap-1.5 ml-auto">
+                            {isDefault && (
+                              <Badge
+                                variant="secondary"
+                                className="text-[10px] px-1.5 py-0 h-4"
+                              >
+                                Default
+                              </Badge>
+                            )}
+                            {p.keyless ? (
+                              <Badge
+                                variant="secondary"
+                                className="text-[10px] px-1.5 py-0 h-4 text-emerald-600"
+                              >
+                                Built-in
+                              </Badge>
+                            ) : pState?.configured ? (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] px-1.5 py-0 h-4 text-emerald-600 border-emerald-500/30"
+                              >
+                                Configured{" "}
+                                {pState.apiKeyHint ? `(${pState.apiKeyHint})` : ""}
+                              </Badge>
+                            ) : null}
+                          </div>
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
               {currentSttEntry?.subtitle && (
@@ -897,9 +1239,16 @@ export default function AdminVoicePage() {
             {/* Model Input / Selection */}
             {currentSttEntry?.supportsModelSelection && (
               <div className="space-y-2">
-                <Label htmlFor="stt-model" className="text-sm font-medium">
-                  Model
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="stt-model" className="text-sm font-medium">
+                    Model
+                  </Label>
+                  {currentSttEntry.defaultModel && (
+                    <span className="text-xs text-muted-foreground">
+                      Default: {currentSttEntry.defaultModel}
+                    </span>
+                  )}
+                </div>
                 <div className="flex flex-col gap-2">
                   <Input
                     id="stt-model"

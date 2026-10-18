@@ -17,6 +17,7 @@ export interface ProviderConfig {
   apiKey?: string;
   baseUrl?: string;
   models?: string[];
+  selectedModel?: string;
 }
 
 /** Payload for creating or updating a connection. */

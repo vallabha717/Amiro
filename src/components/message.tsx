@@ -49,6 +49,17 @@ import {
   getToolPresenter,
   presenterPropsFromToolPart,
 } from "./tool-presenters";
+import {
+  WebSearchGlanceRow,
+  WebSearchSourcesBar,
+  type WebSearchSourceEntry,
+} from "./tool-presenters/jcode-presenters";
+import { parseToolTiming } from "lib/ai/tools/timing";
+import {
+  type ParsedWebSearchHit,
+  parseWebFetchOutput,
+  parseWebSearchOutput,
+} from "lib/web-search/parse-web-search";
 import { WorkLog, type WorkLogRow } from "./work-log";
 
 interface Props {
@@ -390,6 +401,10 @@ const PurePreviewMessage = ({
             const tailParts = partsForDisplay.slice(lastToolIndex + 1);
 
             const rows: WorkLogRow[] = [];
+            // Every completed or in-flight `websearch` call this turn made.
+            // Rendered as the sources bar above the answer, so the evidence
+            // does not live only inside the (auto-collapsing) work log.
+            const webSearches: WebSearchSourceEntry[] = [];
             let toolCount = 0;
             let hiddenCount = 0;
             // Every image the turn's tools returned, kept even for calls the
@@ -490,6 +505,72 @@ const PurePreviewMessage = ({
                   : [];
               turnImages.push(...partImages);
 
+              if (
+                toolName === "websearch" ||
+                toolName === "webSearch"
+              ) {
+                const parsed = parseWebSearchOutput(
+                  (part as any).output,
+                  partInput?.query,
+                );
+                const partError =
+                  part.state === "output-error"
+                    ? (part as any).errorText || "Web search failed"
+                    : parsed.errorText;
+                webSearches.push({
+                  id: part.toolCallId,
+                  query: partInput?.query ?? parsed.query,
+                  hits: parsed.hits,
+                  provider: parsed.provider ?? parsed.providerId,
+                  duration: parseToolTiming((part as any).output).duration,
+                  pending: !part.state.startsWith("output"),
+                  noResults: parsed.noResults,
+                  errorText: partError,
+                  rawText: parsed.rawText,
+                });
+              } else if (
+                toolName === "webfetch" ||
+                toolName === "webContent"
+              ) {
+                const parsedFetch = parseWebFetchOutput(
+                  (part as any).output,
+                  partInput?.url,
+                );
+                const fetchUrl = parsedFetch.url || partInput?.url || "";
+                const fetchHits: ParsedWebSearchHit[] = fetchUrl
+                  ? [
+                      {
+                        rank: 1,
+                        title:
+                          parsedFetch.title ||
+                          parsedFetch.domain ||
+                          fetchUrl,
+                        url: fetchUrl,
+                        domain: parsedFetch.domain,
+                        faviconUrl: parsedFetch.faviconUrl,
+                        snippet: parsedFetch.content
+                          ? parsedFetch.content.slice(0, 220)
+                          : undefined,
+                      },
+                    ]
+                  : [];
+                const partError =
+                  part.state === "output-error"
+                    ? (part as any).errorText || "Fetch failed"
+                    : undefined;
+                webSearches.push({
+                  id: part.toolCallId,
+                  query: fetchUrl,
+                  hits: fetchHits,
+                  provider: "Web Fetch",
+                  duration: parseToolTiming((part as any).output).duration,
+                  pending: !part.state.startsWith("output"),
+                  noResults: !fetchUrl && !parsedFetch.content,
+                  errorText: partError,
+                  rawText: parsedFetch.content,
+                });
+              }
+
               let todoNode: ReactNode;
               if (toolName === "todo" || toolName === "todo_write") {
                 const next = todosFromToolPart(
@@ -535,6 +616,22 @@ const PurePreviewMessage = ({
                 getToolPresenter(toolName)?.glance(presenterProps) ?? toolName;
               toolCount++;
 
+              // A web call gets a rich glance node: the collapsed log should
+              // still show the favicon source chips, not just a sentence.
+              const toolNode: ReactNode =
+                todoNode ??
+                (toolName === "websearch" ||
+                toolName === "webfetch" ||
+                toolName === "webSearch" ||
+                toolName === "webContent" ? (
+                  <WebSearchGlanceRow
+                    toolName={toolName}
+                    input={presenterProps.input}
+                    output={presenterProps.output}
+                    status={status}
+                  />
+                ) : undefined);
+
               // A write gets its own row, named after the file it touched;
               // reads fold into a count. Folding writes would collapse
               // "Edited client.go +6 −0" and "Edited stream_step.go +32 −5"
@@ -551,7 +648,7 @@ const PurePreviewMessage = ({
                 prev.glances.push({
                   text: glance,
                   failed: status === "error",
-                  node: todoNode,
+                  node: toolNode,
                 });
                 if (partImages.length) {
                   prev.images = [...(prev.images ?? []), ...partImages];
@@ -565,7 +662,7 @@ const PurePreviewMessage = ({
                     {
                       text: glance,
                       failed: status === "error",
-                      node: todoNode,
+                      node: toolNode,
                     },
                   ],
                   images: partImages.length ? partImages : undefined,
@@ -615,6 +712,9 @@ const PurePreviewMessage = ({
                     }
                   />
                 )}
+                {!hideAllTools && webSearches.length ? (
+                  <WebSearchSourcesBar searches={webSearches} />
+                ) : null}
                 {tailParts.map((part, i) => {
                   if (part.type === "text" && part.text) {
                     const sp = parseSecretPrompt(part.text);

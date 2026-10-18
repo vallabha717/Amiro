@@ -20,6 +20,20 @@ export interface VoiceProviderCatalogEntry {
   apiKeyPlaceholder?: string;
   docsUrl?: string;
   keyless?: boolean;
+  voiceLabels?: Record<string, string>;
+}
+
+export const ELEVENLABS_VOICE_NAMES: Record<string, string> = {
+  EXAVITQu4vr4xnSDxMaL: "Sarah",
+  JBFqnCBsd6RMkjVDRZzb: "George",
+  "21m00Tcm4TlvDq8ikWAM": "Rachel",
+  AZnzlk1XvdvUeBnXmlld: "Domi",
+  ErXwobaYiN019PkySvjV: "Antoni",
+  TxGEqnHWrfWFTfGW9XjX: "Josh",
+};
+
+export function getElevenLabsVoiceName(id: string): string {
+  return ELEVENLABS_VOICE_NAMES[id] || id;
 }
 
 export interface VoiceOptionItem {
@@ -57,6 +71,17 @@ export interface ConfiguredSttProviderState {
   apiKeyHint?: string;
 }
 
+export interface LiveVoiceState {
+  provider: string;
+  displayName: string;
+  configured: boolean;
+  apiKeyHint?: string | null;
+  ttsModel: string;
+  sttModel: string;
+  voiceId: string;
+  voiceName: string;
+}
+
 export interface VoiceSettingsData {
   readAloudEnabled: boolean;
   autoReadAloud: boolean;
@@ -65,6 +90,7 @@ export interface VoiceSettingsData {
   sttLanguage: string;
   ttsProviders: Record<string, ConfiguredTtsProviderState>;
   sttProviders: Record<string, ConfiguredSttProviderState>;
+  liveVoice?: LiveVoiceState;
 }
 
 export interface VoiceSettingsResponse {
@@ -147,17 +173,14 @@ export const FALLBACK_TTS_CATALOG: VoiceProviderCatalogEntry[] = [
     subtitle: "Industry-leading expressive AI voices and voice cloning",
     defaultModel: "eleven_turbo_v2_5",
     defaultVoice: "EXAVITQu4vr4xnSDxMaL",
+    voiceLabels: ELEVENLABS_VOICE_NAMES,
     voices: [
       "EXAVITQu4vr4xnSDxMaL",
       "JBFqnCBsd6RMkjVDRZzb",
       "21m00Tcm4TlvDq8ikWAM",
       "AZnzlk1XvdvUeBnXmlld",
       "ErXwobaYiN019PkySvjV",
-      "MF3mGyEYCl7XYWbV9V6O",
       "TxGEqnHWrfWFTfGW9XjX",
-      "VR6AewLTigWG4xVXQiKG",
-      "pNInz6obpgDQGcFmaJgB",
-      "yoZ06aMxZJJ28mfd3POQ",
     ],
     models: [
       "eleven_turbo_v2_5",

@@ -46,6 +46,7 @@ export const ProviderCard = memo(function ProviderCard({
   apiKey,
   baseUrl,
   models,
+  selectedModel,
 }: ProviderConfig) {
   const t = useTranslations("Providers");
   const router = useRouter();
@@ -104,7 +105,7 @@ export const ProviderCard = memo(function ProviderCard({
         {isLoading && <Loader className="size-4 z-20 animate-spin mr-1" />}
 
         <ModelProviderIcon provider={provider} className="size-4 mr-1.5" />
-        <h4 className="font-bold text-xs sm:text-lg flex items-center gap-2">
+        <h4 className="font-bold text-xs sm:text-lg flex items-center gap-2 flex-wrap">
           {name}
           {configured ? (
             <Badge
@@ -116,6 +117,15 @@ export const ProviderCard = memo(function ProviderCard({
           ) : (
             <Badge variant="destructive" className="text-[10px] px-1.5">
               {t("noKey")}
+            </Badge>
+          )}
+          {selectedModel && (
+            <Badge
+              data-testid="provider-default-model-badge"
+              variant="outline"
+              className="border-primary/40 bg-primary/10 text-primary text-[10px] px-1.5 font-mono"
+            >
+              Default model: {selectedModel}
             </Badge>
           )}
         </h4>
@@ -246,7 +256,11 @@ export const ProviderCard = memo(function ProviderCard({
 
             <div className="flex-1 overflow-y-auto">
               {modelList.length > 0 ? (
-                <ModelsList providerId={id} models={modelList} />
+                <ModelsList
+                  providerId={id}
+                  models={modelList}
+                  selectedModel={selectedModel}
+                />
               ) : (
                 <div className="bg-secondary/30 rounded-md p-3 text-center">
                   <p className="text-sm text-muted-foreground">
@@ -267,27 +281,50 @@ export const ProviderCard = memo(function ProviderCard({
  * the equivalent of MCPCard's per-tool detail popup.
  */
 const ModelsList = memo(
-  ({ providerId, models }: { providerId: string; models: string[] }) => (
+  ({
+    providerId,
+    models,
+    selectedModel,
+  }: {
+    providerId: string;
+    models: string[];
+    selectedModel?: string;
+  }) => (
     <div className="space-y-2 pr-2">
-      {models.map((model) => (
-        <Link
-          key={model}
-          href={`/admin/providers/test?id=${encodeURIComponent(
-            providerId,
-          )}&model=${encodeURIComponent(model)}`}
-          className="flex items-center gap-2 bg-secondary rounded-md p-2 hover:bg-input transition-colors"
-          data-testid="provider-model-row"
-        >
-          <p className="font-medium text-sm break-all flex-1 min-w-0">
-            {model}
-          </p>
-          <FlaskConical
-            size={14}
-            className="text-muted-foreground shrink-0"
-            aria-hidden
-          />
-        </Link>
-      ))}
+      {models.map((model) => {
+        const isDefault = selectedModel === model;
+        return (
+          <Link
+            key={model}
+            href={`/admin/providers/test?id=${encodeURIComponent(
+              providerId,
+            )}&model=${encodeURIComponent(model)}`}
+            className={`flex items-center gap-2 rounded-md p-2 transition-colors ${
+              isDefault
+                ? "bg-primary/15 border border-primary/40 text-foreground font-semibold hover:bg-primary/20"
+                : "bg-secondary hover:bg-input text-foreground"
+            }`}
+            data-testid="provider-model-row"
+          >
+            <p className="font-medium text-sm break-all flex-1 min-w-0 flex items-center gap-2">
+              {model}
+              {isDefault && (
+                <Badge
+                  variant="secondary"
+                  className="text-[9px] px-1 py-0 h-4 bg-primary/20 text-primary"
+                >
+                  Default
+                </Badge>
+              )}
+            </p>
+            <FlaskConical
+              size={14}
+              className={`shrink-0 ${isDefault ? "text-primary" : "text-muted-foreground"}`}
+              aria-hidden
+            />
+          </Link>
+        );
+      })}
     </div>
   ),
 );

@@ -38,6 +38,7 @@ import {
   selectProviders,
   type ProviderConfig,
 } from "@/lib/backend/provider-api";
+import { appStore } from "@/app/store";
 
 const LightRays = dynamic(() => import("@/components/ui/light-rays"), {
   ssr: false,
@@ -230,12 +231,23 @@ export default function AdminProvidersPage() {
     [],
   );
 
+  const currentChatModel = appStore((state) => state.chatModel);
+  const activeDefaultChatModel =
+    currentChatModel?.model ||
+    providers?.find((p) => p.selectedModel)?.selectedModel ||
+    providers?.[0]?.models?.[0] ||
+    "default";
+  const activeDefaultChatProvider =
+    currentChatModel?.provider ||
+    providers?.find((p) => p.selectedModel)?.name ||
+    providers?.[0]?.name;
+
   return (
     <>
       {particle}
       <ScrollArea className="h-full w-full z-40">
         <div className="pt-8 flex-1 relative flex flex-col gap-4 px-8 max-w-3xl h-full mx-auto pb-8">
-          <div className="flex items-center pb-8">
+          <div className="flex items-center pb-4">
             <h1 className="text-2xl font-bold flex items-center gap-2">
               {t("myProviders")}
               {isValidating && !isLoading && (
@@ -257,6 +269,39 @@ export default function AdminProvidersPage() {
               </Button>,
             )}
           </div>
+
+          {/* Active Default Summary */}
+          {providers && providers.length > 0 && (
+            <div
+              data-testid="providers-active-default-summary"
+              className="flex items-center justify-between gap-3 rounded-lg border bg-muted/40 px-4 py-2.5 text-xs text-muted-foreground mb-2"
+            >
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-foreground">
+                  {providers.length}{" "}
+                  {providers.length === 1 ? "provider" : "providers"} connected
+                </span>
+                <span>•</span>
+                <span>
+                  Active chat default:{" "}
+                  <strong className="text-foreground font-mono">
+                    {activeDefaultChatModel}
+                  </strong>
+                  {activeDefaultChatProvider && (
+                    <span className="ml-1 text-muted-foreground">
+                      ({activeDefaultChatProvider})
+                    </span>
+                  )}
+                </span>
+              </div>
+              <Badge
+                variant="outline"
+                className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[10px] px-1.5 shrink-0"
+              >
+                Active
+              </Badge>
+            </div>
+          )}
 
           {isLoginPanelOpen && (
             <div className="mb-4">
