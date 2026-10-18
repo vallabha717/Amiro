@@ -612,7 +612,10 @@ export default function AdminCredentialsPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel data-testid="credential-delete-cancel">
+            <AlertDialogCancel
+              data-testid="credential-delete-cancel"
+              onClick={() => setPendingDelete(null)}
+            >
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
