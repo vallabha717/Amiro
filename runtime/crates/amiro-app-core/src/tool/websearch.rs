@@ -1,5 +1,8 @@
 use super::{Tool, ToolContext, ToolOutput};
-use crate::config::{CustomWebSearchConfig, CustomWebSearchMethod, WebSearchEngine};
+use crate::config::{
+    ConfiguredSearchProvider, ConfiguredSearchRegistry, CustomWebSearchConfig,
+    CustomWebSearchMethod, WebSearchEngine,
+};
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -25,6 +28,8 @@ struct WebSearchInput {
     num_results: Option<usize>,
     #[serde(default)]
     engine: Option<WebSearchEngine>,
+    #[serde(default)]
+    provider: Option<String>,
     #[serde(default)]
     bing_market: Option<String>,
 }
@@ -54,7 +59,7 @@ impl Tool for WebSearchTool {
     }
 
     fn parameters_schema(&self) -> Value {
-        json!({
+        let mut schema = json!({
             "type": "object",
             "required": ["query"],
             "properties": {
@@ -77,7 +82,13 @@ impl Tool for WebSearchTool {
                     "description": "Optional Bing market, e.g. en-US or zh-CN. Defaults to AMIRO_BING_MARKET or en-US."
                 }
             }
-        })
+        });
+        if let Some(path) = &crate::config::config().websearch.configured_providers_file {
+            // Fail closed, and never include endpoints, keys or raw registry JSON.
+            let registry = ConfiguredSearchRegistry::load(path).ok();
+            configure_provider_schema(&mut schema, registry.as_ref());
+        }
+        schema
     }
 
     async fn execute(&self, input: Value, _ctx: ToolContext) -> Result<ToolOutput> {
@@ -85,6 +96,12 @@ impl Tool for WebSearchTool {
         let num_results = params.num_results.unwrap_or(8).min(20);
 
         let config = crate::config::config();
+        if let Some(path) = &config.websearch.configured_providers_file {
+            let registry = ConfiguredSearchRegistry::load(path).map_err(anyhow::Error::msg)?;
+            return self
+                .execute_configured(&params, num_results, &registry)
+                .await;
+        }
         let engines = local_engine_order(
             params.engine.unwrap_or(config.websearch.engine),
             &config.websearch.fallback_engines,
@@ -157,6 +174,115 @@ impl Tool for WebSearchTool {
 }
 
 impl WebSearchTool {
+    async fn execute_configured(
+        &self,
+        params: &WebSearchInput,
+        num_results: usize,
+        registry: &ConfiguredSearchRegistry,
+    ) -> Result<ToolOutput> {
+        anyhow::ensure!(
+            params.engine.is_none(),
+            "Use a configured provider ID, not an engine override"
+        );
+        let providers = configured_provider_order(registry, params.provider.as_deref())?;
+        anyhow::ensure!(
+            !providers.is_empty(),
+            "No search providers are configured. Configure one in Amiro settings."
+        );
+        let mut attempts = Vec::new();
+        for provider in providers {
+            let result = tokio::time::timeout(
+                std::time::Duration::from_secs(20),
+                self.search_configured_provider(
+                    provider,
+                    &params.query,
+                    num_results,
+                    params.bing_market.as_deref().unwrap_or("en-US"),
+                ),
+            )
+            .await;
+            match result {
+                Ok(Ok(results)) if !results.is_empty() => {
+                    let mut output = format!(
+                        "Search provider: {} ({})\nSearch results for: {}\n",
+                        provider.label, provider.id, params.query
+                    );
+                    if !attempts.is_empty() {
+                        output.push_str(&format!("Fallback after: {}\n", attempts.join(", ")));
+                    }
+                    for (i, result) in results.iter().enumerate() {
+                        output.push_str(&format!(
+                            "\n{}. **{}**\n   {}\n   {}\n",
+                            i + 1,
+                            result.title,
+                            result.url,
+                            result.snippet
+                        ));
+                    }
+                    return Ok(ToolOutput::new(output));
+                }
+                Ok(Ok(_)) => attempts.push(format!("{}: empty results", provider.id)),
+                Ok(Err(_)) => attempts.push(format!("{}: unavailable", provider.id)),
+                Err(_) => attempts.push(format!("{}: timed out", provider.id)),
+            }
+        }
+        // Provider transport errors can contain URLs, queries or credentials.
+        anyhow::bail!(
+            "All configured search providers failed or returned no results. Attempts: {}. No unconfigured providers were used.",
+            attempts.join(", ")
+        )
+    }
+
+    async fn search_configured_provider(
+        &self,
+        provider: &ConfiguredSearchProvider,
+        query: &str,
+        num_results: usize,
+        market: &str,
+    ) -> Result<Vec<SearchResult>> {
+        match provider.engine {
+            WebSearchEngine::Duckduckgo => self.search_duckduckgo(query, num_results).await,
+            WebSearchEngine::Bing => {
+                self.search_bing(
+                    query,
+                    num_results,
+                    BingSearchOptions {
+                        market,
+                        configured_api_key: provider.bing_api_key.as_deref(),
+                        api_key_env: "",
+                    },
+                    true,
+                )
+                .await
+            }
+            WebSearchEngine::Custom => {
+                search_custom(
+                    provider
+                        .custom
+                        .as_ref()
+                        .ok_or_else(|| anyhow::anyhow!("Missing configured search endpoint"))?,
+                    query,
+                    num_results,
+                )
+                .await
+            }
+            WebSearchEngine::Searxng => {
+                self.search_searxng_at(
+                    provider
+                        .searxng_url
+                        .as_deref()
+                        .ok_or_else(|| anyhow::anyhow!("Missing configured SearXNG URL"))?,
+                    query,
+                    num_results,
+                )
+                .await
+            }
+            WebSearchEngine::Native => anyhow::bail!(
+                "Use hosted search for the selected native provider, or a configured local alternative"
+            ),
+        }
+    }
+
     async fn search_with_engine(
         &self,
         engine: WebSearchEngine,
@@ -368,6 +494,15 @@ impl WebSearchTool {
                 )
             })?;
 
+        self.search_searxng_at(&base, query, num_results).await
+    }
+
+    async fn search_searxng_at(
+        &self,
+        base: &str,
+        query: &str,
+        num_results: usize,
+    ) -> Result<Vec<SearchResult>> {
         let endpoint = format!("{}/search", base.trim_end_matches('/'));
         let response = self
             .client
@@ -397,6 +532,47 @@ impl WebSearchTool {
         })?;
 
         Ok(parse_searxng_results(parsed, num_results))
+    }
+}
+
+fn configured_provider_order<'a>(
+    registry: &'a ConfiguredSearchRegistry,
+    requested: Option<&str>,
+) -> Result<Vec<&'a ConfiguredSearchProvider>> {
+    let selected = requested.or(registry.default_provider.as_deref());
+    if let Some(id) = selected {
+        anyhow::ensure!(
+            registry.providers.iter().any(|p| p.id == id),
+            "Requested search provider is not configured"
+        );
+    }
+    Ok(selected
+        .into_iter()
+        .filter_map(|id| registry.providers.iter().find(|p| p.id == id))
+        .chain(
+            registry
+                .providers
+                .iter()
+                .filter(|p| Some(p.id.as_str()) != selected),
+        )
+        .collect())
+}
+
+fn configure_provider_schema(schema: &mut Value, registry: Option<&ConfiguredSearchRegistry>) {
+    let providers = registry.map(|r| r.providers.as_slice()).unwrap_or(&[]);
+    schema["properties"]
+        .as_object_mut()
+        .unwrap()
+        .remove("engine");
+    schema["properties"]["provider"] = json!({
+        "type": "string",
+        "description": format!("Optional configured provider ID. Omit to use the selected default first, then configured alternatives on failure or empty results. Default: {}. Configured providers: {}. If the default is native, use the model's hosted web_search first when available. Call this tool only if hosted search is unavailable or fails, then it tries configured local alternatives. Do not change the default or use an unconfigured provider.",
+            registry.and_then(|r| r.default_provider.as_deref()).unwrap_or("none"),
+            providers.iter().map(|p| format!("{} ({})", p.id, p.label)).collect::<Vec<_>>().join(", "))
+    });
+    if !providers.is_empty() {
+        schema["properties"]["provider"]["enum"] =
+            json!(providers.iter().map(|p| &p.id).collect::<Vec<_>>());
     }
 }
 

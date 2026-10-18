@@ -94,7 +94,16 @@ pub(crate) fn without_local_websearch<'a>(
     tools: &'a [ToolDefinition],
     hosted_tools: &[Value],
 ) -> std::borrow::Cow<'a, [ToolDefinition]> {
-    if hosted_tools.is_empty() {
+    if hosted_tools.is_empty()
+        || tools.iter().any(|tool| {
+            is_builtin_local_websearch(tool)
+                && tool
+                    .input_schema
+                    .get("properties")
+                    .and_then(|p| p.get("provider"))
+                    .is_some()
+        })
+    {
         return std::borrow::Cow::Borrowed(tools);
     }
     std::borrow::Cow::Owned(
@@ -109,6 +118,17 @@ pub(crate) fn without_local_websearch<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hosted_search_keeps_configured_local_alternatives() {
+        let tools = vec![ToolDefinition::new(
+            "websearch",
+            amiro_message_types::provider_native::LOCAL_WEBSEARCH_DESCRIPTION,
+            json!({"type":"object","properties":{"provider":{"type":"string","enum":["saved"]}}}),
+        )];
+        let hosted = vec![json!({"type":"web_search"})];
+        assert_eq!(without_local_websearch(&tools, &hosted).len(), 1);
+    }
     use amiro_base::config::WebSearchEngine;
     use amiro_message_types::provider_native::LOCAL_WEBSEARCH_DESCRIPTION;
 

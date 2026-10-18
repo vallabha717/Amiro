@@ -107,6 +107,8 @@ impl Default for CustomWebSearchConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct WebSearchConfig {
+    /// Amiro-managed registry. When present, only these providers may be used.
+    pub configured_providers_file: Option<std::path::PathBuf>,
     /// HTTP JSON provider configuration for engine = "custom".
     pub custom: Option<CustomWebSearchConfig>,
     /// Preferred engine when the tool input does not specify one.
@@ -150,6 +152,7 @@ pub struct WebSearchConfig {
 impl Default for WebSearchConfig {
     fn default() -> Self {
         Self {
+            configured_providers_file: None,
             custom: None,
             engine: WebSearchEngine::Duckduckgo,
             fallback_engines: vec![WebSearchEngine::Bing],
@@ -175,6 +178,92 @@ pub const DEFAULT_ANTHROPIC_WEB_SEARCH_TOOL: &str = "web_search_20250305";
 impl WebSearchConfig {
     /// True when provider-native search should be used where available.
     pub fn native_enabled(&self) -> bool {
+        if let Some(path) = &self.configured_providers_file {
+            return ConfiguredSearchRegistry::load(path)
+                .ok()
+                .and_then(|registry| registry.default_provider().map(|p| p.engine))
+                == Some(WebSearchEngine::Native);
+        }
         self.prefer_native || self.engine == WebSearchEngine::Native
+    }
+}
+
+/// Private runtime configuration, never sent verbatim to the model.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfiguredSearchProvider {
+    pub id: String,
+    pub label: String,
+    pub engine: WebSearchEngine,
+    #[serde(default)]
+    pub custom: Option<CustomWebSearchConfig>,
+    #[serde(default)]
+    pub searxng_url: Option<String>,
+    #[serde(default)]
+    pub bing_api_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfiguredSearchRegistry {
+    pub default_provider: Option<String>,
+    pub providers: Vec<ConfiguredSearchProvider>,
+}
+
+impl ConfiguredSearchRegistry {
+    pub fn load(path: &std::path::Path) -> Result<Self, &'static str> {
+        let bytes = std::fs::read(path).map_err(|_| "Configured search registry is unavailable")?;
+        let registry: Self =
+            serde_json::from_slice(&bytes).map_err(|_| "Configured search registry is invalid")?;
+        let mut ids = std::collections::HashSet::new();
+        if registry
+            .providers
+            .iter()
+            .any(|p| p.id.trim().is_empty() || !ids.insert(&p.id))
+        {
+            return Err("Configured search registry contains invalid provider IDs");
+        }
+        if !registry.providers.is_empty() && registry.default_provider().is_none() {
+            return Err("Configured search default is unavailable");
+        }
+        Ok(registry)
+    }
+
+    pub fn default_provider(&self) -> Option<&ConfiguredSearchProvider> {
+        self.providers
+            .iter()
+            .find(|p| Some(&p.id) == self.default_provider.as_ref())
+    }
+}
+
+#[cfg(test)]
+mod configured_search_tests {
+    use super::*;
+
+    #[test]
+    fn configured_registry_controls_native_preference_and_fails_closed() {
+        let path = std::env::temp_dir().join(format!(
+            "amiro-search-registry-{}-{}.json",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let config = WebSearchConfig {
+            configured_providers_file: Some(path.clone()),
+            prefer_native: true,
+            engine: WebSearchEngine::Native,
+            ..Default::default()
+        };
+        assert!(!config.native_enabled());
+        std::fs::write(&path, r#"{"default_provider":"saved","providers":[{"id":"saved","label":"Free search","engine":"bing"}]}"#).unwrap();
+        assert!(!config.native_enabled());
+        std::fs::write(&path, r#"{"default_provider":"native","providers":[{"id":"native","label":"Hosted search","engine":"native"}]}"#).unwrap();
+        assert!(config.native_enabled());
+        std::fs::write(&path, r#"{"default_provider":"missing","providers":[{"id":"saved","label":"Free search","engine":"bing"}]}"#).unwrap();
+        assert!(ConfiguredSearchRegistry::load(&path).is_err());
+        assert!(!config.native_enabled());
+        std::fs::write(&path, r#"{"default_provider":"saved","providers":[{"id":"saved","label":"One","engine":"bing"},{"id":"saved","label":"Two","engine":"custom"}]}"#).unwrap();
+        assert!(ConfiguredSearchRegistry::load(&path).is_err());
+        std::fs::remove_file(path).unwrap();
     }
 }

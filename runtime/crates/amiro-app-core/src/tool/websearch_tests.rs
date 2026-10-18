@@ -6,6 +6,172 @@ fn custom_config() -> CustomWebSearchConfig {
     }
 }
 
+fn configured_provider(id: &str, endpoint: String) -> ConfiguredSearchProvider {
+    ConfiguredSearchProvider {
+        id: id.into(),
+        label: id.into(),
+        engine: WebSearchEngine::Custom,
+        custom: Some(CustomWebSearchConfig {
+            endpoint,
+            ..Default::default()
+        }),
+        searxng_url: None,
+        bing_api_key: None,
+    }
+}
+
+#[test]
+fn configured_order_is_default_first_and_rejects_unconfigured_ids() {
+    let registry = ConfiguredSearchRegistry {
+        default_provider: Some("second".into()),
+        providers: vec![
+            configured_provider("first", "https://one.test".into()),
+            configured_provider("second", "https://two.test".into()),
+        ],
+    };
+    assert_eq!(
+        configured_provider_order(&registry, None)
+            .unwrap()
+            .iter()
+            .map(|p| p.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["second", "first"]
+    );
+    assert_eq!(
+        configured_provider_order(&registry, Some("first")).unwrap()[0].id,
+        "first"
+    );
+    assert!(configured_provider_order(&registry, Some("bing")).is_err());
+}
+
+#[test]
+fn configured_schema_exposes_only_ids_and_labels_not_credentials() {
+    let registry = ConfiguredSearchRegistry {
+        default_provider: Some("saved".into()),
+        providers: vec![configured_provider(
+            "saved",
+            "https://private.test/credential-sentinel".into(),
+        )],
+    };
+    let mut schema = json!({"properties":{"engine":{"enum":["duckduckgo","bing","custom"]}}});
+    configure_provider_schema(&mut schema, Some(&registry));
+    assert_eq!(schema["properties"]["provider"]["enum"], json!(["saved"]));
+    assert!(schema["properties"].get("engine").is_none());
+    assert!(!schema.to_string().contains("credential-sentinel"));
+    assert!(
+        schema["properties"]["provider"]["description"]
+            .as_str()
+            .unwrap()
+            .contains("Default: saved")
+    );
+    configure_provider_schema(&mut schema, None);
+    assert!(schema["properties"]["provider"].get("enum").is_none());
+}
+
+#[tokio::test]
+async fn configured_search_falls_back_after_http_failure_and_empty_results() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    for failed_body in [None, Some(r#"{"results":[]}"#)] {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let mut paths = Vec::new();
+            for i in 0..2 {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut bytes = [0; 8192];
+                let n = stream.read(&mut bytes).await.unwrap();
+                paths.push(
+                    String::from_utf8_lossy(&bytes[..n])
+                        .lines()
+                        .next()
+                        .unwrap()
+                        .to_string(),
+                );
+                let (status, body) = if i == 0 {
+                    (
+                        if failed_body.is_some() {
+                            "200 OK"
+                        } else {
+                            "503 Service Unavailable"
+                        },
+                        failed_body.unwrap_or("credential-sentinel"),
+                    )
+                } else {
+                    (
+                        "200 OK",
+                        r#"{"results":[{"title":"Fallback result","url":"https://result.test","snippet":"Working"}]}"#,
+                    )
+                };
+                let response = format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                stream.write_all(response.as_bytes()).await.unwrap();
+            }
+            paths
+        });
+        let registry = ConfiguredSearchRegistry {
+            default_provider: Some("selected".into()),
+            providers: vec![
+                configured_provider("alternative", format!("http://{address}/alternative")),
+                configured_provider("selected", format!("http://{address}/selected")),
+            ],
+        };
+        let params = serde_json::from_value(json!({"query":"rust"})).unwrap();
+        let output = WebSearchTool::new()
+            .execute_configured(&params, 3, &registry)
+            .await
+            .unwrap();
+        let text = output.output;
+        assert!(text.contains("Fallback result"));
+        assert!(text.contains("Search provider: alternative"));
+        assert!(text.contains("Fallback after: selected"));
+        assert!(!text.contains("credential-sentinel"));
+        let paths = server.await.unwrap();
+        assert!(paths[0].starts_with("GET /selected?"));
+        assert!(paths[1].starts_with("GET /alternative?"));
+    }
+}
+
+#[tokio::test]
+async fn configured_search_never_escapes_empty_or_failed_registry() {
+    let tool = WebSearchTool::new();
+    let params = serde_json::from_value(json!({"query":"rust"})).unwrap();
+    let registry = ConfiguredSearchRegistry {
+        default_provider: None,
+        providers: vec![],
+    };
+    assert!(
+        tool.execute_configured(&params, 3, &registry)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("No search providers")
+    );
+    let registry = ConfiguredSearchRegistry {
+        default_provider: Some("only".into()),
+        providers: vec![configured_provider(
+            "only",
+            "invalid:credential-sentinel".into(),
+        )],
+    };
+    let error = tool
+        .execute_configured(&params, 3, &registry)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("No unconfigured providers were used"));
+    assert!(!error.contains("credential-sentinel"));
+    let params = serde_json::from_value(json!({"query":"rust", "engine":"bing"})).unwrap();
+    assert!(
+        tool.execute_configured(&params, 3, &registry)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("engine override")
+    );
+}
+
 #[test]
 fn custom_get_encodes_query_and_resolves_env_headers() {
     let mut config = custom_config();
