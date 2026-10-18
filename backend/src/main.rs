@@ -302,6 +302,10 @@ async fn main() -> anyhow::Result<()> {
         .await
         .map_err(|error| anyhow::anyhow!("search provider initialization failed: {}", error.1))?;
 
+    // Export vault secrets to the runtime's credential-env.json so `${VAR}`
+    // placeholders in mcp.json resolve without a runtime restart.
+    backend::credentials::sync_runtime_credential_env_logged(&state);
+
     // Keep the runtime alive while the app is open and recover it if its daemon
     // exits after the idle timeout, so the first chat after a pause still works.
     backend::runtime::spawn_supervisor(state.clone());

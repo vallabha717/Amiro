@@ -702,6 +702,45 @@ fn reload_mcp_blocking(state: &AppState) -> McpReloadOutcome {
     outcome
 }
 
+/// Live MCP server status (`{"servers":[{name,transport,enabled,connected,
+/// error,tools}]}`) from the runtime's `McpStatus` command, answered by the
+/// most recently active idle session. `None` when no session can answer (no
+/// runtime, all sessions busy, or the runtime predates `McpStatus`).
+///
+pub async fn mcp_status(state: &AppState) -> Option<Value> {
+    let command = RuntimeCommand::McpStatus;
+    if !socket_ready(&state.runtime_socket) {
+        return None;
+    }
+    let state = state.clone();
+    blocking("mcp_status", move || Ok(mcp_status_blocking(&state, command)))
+        .await
+        .ok()
+        .flatten()
+}
+
+fn mcp_status_blocking(state: &AppState, command: RuntimeCommand) -> Option<Value> {
+    let client = connect_client(state, false).ok()?;
+    let mut sessions = client.list_sessions().ok()?;
+    sessions.sort_by_key(|session| {
+        std::cmp::Reverse(session.last_active_at_ms.or(session.updated_at_ms).unwrap_or(0))
+    });
+    for session in sessions
+        .iter()
+        .filter(|session| !session.archived && !session_is_busy(&session.status))
+    {
+        if client.attach_session(&session.session_id).is_err() {
+            continue;
+        }
+        match client.runtime_command(&session.session_id, command, Vec::new()) {
+            Ok(output) => return Some(output.data),
+            // Busy (or otherwise unable): try the next session.
+            Err(_) => continue,
+        }
+    }
+    None
+}
+
 /// The session's real context window and how much of it is in use, as the
 /// runtime itself sees them (the same figures its compaction decisions use).
 ///

@@ -23,7 +23,7 @@ use serde_json::{json, Value};
 
 use crate::composio_config::{self, ApiKey};
 use crate::runtime::McpReloadOutcome;
-use crate::state::{read_json, write_json, ApiError, AppState, AuthUser};
+use crate::state::{ApiError, AppState, AuthUser};
 
 const MCP_ENTRY_NAME: &str = "composio";
 /// Header value written to `mcp.json`. The runtime expands it from its process
@@ -743,55 +743,10 @@ async fn sync_state_detailed(
     Ok((toolkits, crate::runtime::reload_mcp_idle_sessions(state).await))
 }
 
-/// The runtime's MCP config file. The runtime resolves its home from
-/// `AMIRO_HOME`/`AMIRO_RUNTIME_HOME` and reads `mcp.json` there.
-fn mcp_config_path(state: &AppState) -> std::path::PathBuf {
-    state.runtime_home.join("mcp.json")
-}
-
 /// Insert (`Some`) or remove (`None`) the `composio` server, preserving every
-/// other entry and top-level key. Written atomically with 0600 permissions.
+/// other entry and top-level key. Shared with the Connectors API.
 async fn write_mcp_entry(state: &AppState, entry: Option<&Value>) -> Result<bool, ApiError> {
-    let path = mcp_config_path(state);
-    let _lock = state.store.lock().await;
-    let mut document = read_json(&path, json!({ "servers": {} })).await?;
-    if !document.is_object() {
-        document = json!({ "servers": {} });
-    }
-    let object = document.as_object_mut().expect("object checked above");
-
-    // Honour whichever canonical key the file already uses.
-    let servers_key = if object.contains_key("servers") {
-        "servers"
-    } else if object.contains_key("mcpServers") {
-        "mcpServers"
-    } else {
-        "servers"
-    };
-    let servers = object
-        .entry(servers_key.to_string())
-        .or_insert_with(|| json!({}));
-    if !servers.is_object() {
-        *servers = json!({});
-    }
-    let servers = servers.as_object_mut().expect("object ensured above");
-
-    let before = servers.get(MCP_ENTRY_NAME).cloned();
-    let after = match entry {
-        Some(entry) => {
-            servers.insert(MCP_ENTRY_NAME.to_string(), entry.clone());
-            Some(entry.clone())
-        }
-        None => {
-            servers.remove(MCP_ENTRY_NAME);
-            None
-        }
-    };
-    if before == after {
-        return Ok(false);
-    }
-    write_json(&path, &document).await?;
-    Ok(true)
+    super::connectors::write_mcp_entry_named(state, MCP_ENTRY_NAME, entry).await
 }
 
 pub fn routes() -> Router<AppState> {

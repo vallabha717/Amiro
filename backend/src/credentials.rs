@@ -534,6 +534,7 @@ async fn write_credential(
     map.insert(id, stored_value);
 
     write_json(&store_file(state), &Value::Object(map)).await?;
+    sync_runtime_credential_env_logged(state);
     metadata_from(service, field, &stored, key.bytes())
 }
 
@@ -627,6 +628,7 @@ pub async fn delete(state: &AppState, service: &str, field: &str) -> Result<bool
         return Ok(false);
     }
     write_json(&store_file(state), &Value::Object(map)).await?;
+    sync_runtime_credential_env_logged(state);
     Ok(true)
 }
 
@@ -738,6 +740,54 @@ pub fn runtime_env_vars_sync(home: &Path) -> Vec<(String, String)> {
     }
 
     pairs
+}
+
+/// File the runtime reads (`$AMIRO_RUNTIME_HOME/credential-env.json`) to
+/// resolve `${VAR}` placeholders in `mcp.json` without a restart.
+pub fn credential_env_file(state: &AppState) -> PathBuf {
+    state.runtime_home.join("credential-env.json")
+}
+
+/// Write every exported credential env var (`runtime_env_vars_sync`) to
+/// `credential-env.json` as a flat `name -> value` object, atomically with 0600
+/// permissions. Never takes the store lock (the sync reader does not either).
+pub fn sync_runtime_credential_env(state: &AppState) -> std::io::Result<()> {
+    let mut object = Map::new();
+    for (name, value) in runtime_env_vars_sync(&state.home) {
+        object.insert(name, Value::String(value));
+    }
+    let dir = state.runtime_home.clone();
+    std::fs::create_dir_all(&dir)?;
+    let target = credential_env_file(state);
+    let temporary = dir.join(format!(".amiro-credenv-{}.tmp", uuid::Uuid::new_v4()));
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let result = (|| {
+        let mut file = options.open(&temporary)?;
+        let mut bytes = serde_json::to_vec_pretty(&Value::Object(object))
+            .map_err(std::io::Error::other)?;
+        bytes.push(b'\n');
+        file.write_all(&bytes)?;
+        file.sync_all()?;
+        drop(file);
+        std::fs::rename(&temporary, &target)
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    result
+}
+
+/// Best-effort wrapper: a failed export must not fail the credential write.
+pub fn sync_runtime_credential_env_logged(state: &AppState) {
+    if let Err(error) = sync_runtime_credential_env(state) {
+        tracing::warn!("could not sync runtime credential-env.json: {error}");
+    }
 }
 
 #[cfg(test)]
@@ -1037,6 +1087,25 @@ mod tests {
             .collect();
         assert!(names.contains(&"AMIRO_CRED_GITHUB_TOKEN".to_string()));
         assert!(names.contains(&"AMIRO_CRED_TTS_OPENAI_API_KEY".to_string()));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn credential_env_file_tracks_set_and_delete() {
+        let (state, root) = fixture();
+        set(&state, "mcp.my-server", "authorization", "Bearer abc", None)
+            .await
+            .unwrap();
+        let file = credential_env_file(&state);
+        let read = || -> Value { serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap() };
+        assert_eq!(
+            read()["AMIRO_CRED_MCP_MY_SERVER_AUTHORIZATION"],
+            "Bearer abc"
+        );
+        #[cfg(unix)]
+        assert_eq!(mode_of(&file), 0o600);
+        assert!(delete(&state, "mcp.my-server", "authorization").await.unwrap());
+        assert!(read().get("AMIRO_CRED_MCP_MY_SERVER_AUTHORIZATION").is_none());
         let _ = std::fs::remove_dir_all(root);
     }
 }

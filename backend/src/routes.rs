@@ -2,6 +2,7 @@ pub mod admin;
 pub mod archive;
 pub mod checkpoint;
 pub mod composio;
+pub mod connectors;
 pub mod credentials;
 pub mod export;
 pub mod fsbrowse;
@@ -30,6 +31,7 @@ pub fn router() -> Router<AppState> {
         .merge(workspace_trust::routes())
         .merge(checkpoint::routes())
         .merge(composio::routes())
+        .merge(connectors::routes())
         .merge(credentials::routes())
         .merge(export::routes())
         .merge(storage::routes())
