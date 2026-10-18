@@ -26,8 +26,10 @@ import {
   MoonStar,
   ChevronRight,
   Settings,
+  Shield,
 } from "lucide-react";
 import { useTheme } from "next-themes";
+import { useRouter } from "next/navigation";
 import { appStore } from "@/app/store";
 import { COOKIE_KEY_LOCALE, SUPPORTED_LOCALES } from "lib/const";
 import { COLOR_TO_SIDEBAR_THEME } from "@/lib/agent/character-catalog";
@@ -56,6 +58,7 @@ export function AppSidebarUserInner(props: {
     refreshInterval: 1000 * 60 * 10,
   });
   const appStoreMutate = appStore((state) => state.mutate);
+  const router = useRouter();
   const t = useTranslations("Layout");
 
   const logout = () => {
@@ -167,6 +170,16 @@ export function AppSidebarUserInner(props: {
               <Settings className="size-4 text-foreground" />
               <span>{t("userSettings")}</span>
             </DropdownMenuItem>
+            {user.role === "admin" && (
+              <DropdownMenuItem
+                onClick={() => router.push("/admin/providers")}
+                className="cursor-pointer"
+                data-testid="user-menu-admin-link"
+              >
+                <Shield className="size-4 text-foreground" />
+                <span>Admin Preferences</span>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={logout} className="cursor-pointer">
               <LogOutIcon className="size-4 text-foreground" />
