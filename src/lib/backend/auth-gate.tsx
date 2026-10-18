@@ -55,13 +55,35 @@ export function RequireAdmin({ children }: { children: React.ReactNode }) {
     if (isPending) return;
     if (!session) {
       router.replace("/sign-in");
-    } else if (session.user.role !== "admin") {
-      router.replace("/");
     }
   }, [isPending, session, router]);
 
-  if (isPending || !session || session.user.role !== "admin") {
+  if (isPending || !session) {
     return null;
+  }
+  if (session.user.role !== "admin") {
+    return (
+      <div
+        className="mx-auto flex max-w-lg flex-col gap-4 px-8 py-16"
+        role="alert"
+      >
+        <h1 className="text-2xl font-semibold">
+          Administrator access required
+        </h1>
+        <p className="text-muted-foreground">
+          Providers and Search Providers can only be configured by an
+          administrator. Newly registered accounts do not have administrator
+          permissions.
+        </p>
+        <p className="text-muted-foreground">
+          Sign in with your administrator account, or ask the instance owner to
+          grant access.
+        </p>
+        <a href="/" className="text-primary underline">
+          Back to chat
+        </a>
+      </div>
+    );
   }
   return <>{children}</>;
 }
