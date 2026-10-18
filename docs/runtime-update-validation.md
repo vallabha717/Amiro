@@ -23,6 +23,8 @@ This records validation of [runtime-upstream-update.md](runtime-upstream-update.
 
 ## Not claimed or executed
 
+- Post-commit whole frontend run observed 648 passing tests and one failure in the existing popup-shell contract because concurrent connector work replaced the legacy MCP test page with a redirect. That failure was reported to the connector owner. It is not a green full-suite result and must be resolved before an actual candidate release.
+- Public skill API discovery passed when the project path was supplied explicitly. Opening `/skill?name=amiro-runtime-update&project=...` in the current production browser did not show the editor: this route currently ignores `project` and resolves details using the server's default project context. Invoke the repository skill through an agent working in this checkout, or use the explicit-project API for inspection. Browser skill-editor access in a differently rooted server is not verified.
 - No normalized upstream transformer exists yet. The runbook requires a deterministic baseline bootstrap and exact old-to-current local-delta proof before an import.
 - No new upstream SHA was selected or imported. No real old/new Jcode merge, storage migration or production rollback was rehearsed.
 - The broad app-core suite, full backend suite, lint/build, all three browser fixtures, target-platform builds and authorized real staging acceptance remain mandatory for an actual future candidate. They were not all rerun for this documentation/skill task.
