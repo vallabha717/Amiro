@@ -75,6 +75,7 @@ pub mod platform;
 pub mod power_inhibit;
 pub mod process_memory;
 pub mod process_title;
+pub mod agent_home;
 pub mod prompt;
 pub mod protocol;
 pub mod provider;

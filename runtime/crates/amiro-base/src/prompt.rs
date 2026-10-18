@@ -305,6 +305,8 @@ pub struct ContextInfo {
     pub memory_chars: usize,
     /// Prompt overlay section size (chars)
     pub prompt_overlay_chars: usize,
+    /// Agent home files section size (chars)
+    pub agent_home_chars: usize,
     /// Preferred tools section size (chars)
     pub preferred_tools_chars: usize,
     // === Dynamic (Conversation) ===
@@ -348,6 +350,7 @@ impl ContextInfo {
             + self.selfdev_chars
             + self.memory_chars
             + self.prompt_overlay_chars
+            + self.agent_home_chars
             + self.preferred_tools_chars
             + self.tool_defs_chars
     }
@@ -383,6 +386,9 @@ impl ContextInfo {
         }
         if self.prompt_overlay_chars > 0 {
             parts.push(("overlay", self.prompt_overlay_chars, "🧩"));
+        }
+        if self.agent_home_chars > 0 {
+            parts.push(("agent home", self.agent_home_chars, "🏠"));
         }
         if self.preferred_tools_chars > 0 {
             parts.push(("tools", self.preferred_tools_chars, "🧰"));
@@ -502,6 +508,12 @@ pub fn build_system_prompt_full_with_capabilities(
     if let Some(memory) = memory_prompt {
         info.memory_chars = memory.len();
         parts.push(memory.to_string());
+    }
+
+    // Agent home files (re-read every turn; changes often)
+    if let Some((block, chars)) = crate::agent_home::load_agent_home_files() {
+        info.agent_home_chars = chars;
+        parts.push(block);
     }
 
     // Add available skills list
@@ -649,6 +661,12 @@ fn build_system_prompt_split_with_capabilities_and_agents_md(
     if let Some(memory) = memory_prompt {
         info.memory_chars = memory.len();
         dynamic_parts.push(memory.to_string());
+    }
+
+    // Agent home files (re-read every turn; changes often, so dynamic/uncached)
+    if let Some((block, chars)) = crate::agent_home::load_agent_home_files() {
+        info.agent_home_chars = chars;
+        dynamic_parts.push(block);
     }
 
     // Active skill prompt (changes per skill invocation)
