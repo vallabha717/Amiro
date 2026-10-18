@@ -82,9 +82,13 @@ function makeSkill(overrides: Partial<SkillSummary> & { name: string }): SkillSu
 const builtinSkill = makeSkill({
   name: "summarize",
   description: "Summarize any text quickly.",
-  source: ".amiro",
+  source: "bundled",
   scope: "user",
   writable: false,
+  bundled: true,
+  emoji: "📝",
+  displayName: "Summarize",
+  category: "content",
 });
 
 const customSkill = makeSkill({
@@ -130,7 +134,8 @@ describe("SkillsList — polished superpowers", () => {
     expect(html).toContain('data-testid="superpowers-filter-all"');
     expect(html).toContain('data-testid="superpowers-filter-builtin"');
     expect(html).toContain('data-testid="superpowers-filter-custom"');
-    expect(html).toContain('data-testid="superpowers-filter-project"');
+    // Project only appears once a project's skills are in the list.
+    expect(html).not.toContain('data-testid="superpowers-filter-project"');
     expect(html).toContain('data-testid="create-skill-button"');
     expect(html).toContain('data-testid="superpowers-back-link"');
   });
@@ -185,22 +190,25 @@ describe("SkillsList — polished superpowers", () => {
     // primary action Use and secondary Open on every card
     expect(html).toContain(">Use<");
     expect(html).toContain(">Open<");
-    // source/details on demand via badges
-    expect(html).toContain('data-testid="skill-card-source-.amiro"');
-    expect(html).toContain('data-testid="skill-card-source-.agents"');
-    expect(html).toContain("Built-in");
-    expect(html).toContain("Project");
+    // where it comes from, in the user's terms
+    expect(html).toContain('data-testid="skill-card-kind-builtin"');
+    expect(html).toContain('data-testid="skill-card-kind-custom"');
+    expect(html).toContain('data-testid="skill-card-kind-project"');
+    expect(html).toContain('data-testid="superpowers-filter-project"');
+    // display name and emoji from the skill's metadata
+    expect(html).toContain(">Summarize<");
+    expect(html).toContain("📝");
+    // never the raw source folders
+    expect(html).not.toContain(".agents");
   });
 
-  it("marks read-only builtin with lock and Duplicate, editable without it", () => {
-    mocks.items = [builtinSkill, customSkill];
-    const html = renderToStaticMarkup(createElement(SkillsList));
-    // builtin is not writable -> lock + Duplicate
-    expect(html).toContain('data-testid="skill-card-lock"');
-    expect(html).toContain("Duplicate");
-    // custom is writable -> Editable label, no Duplicate button for that card
-    expect(html).toContain("Editable");
-    expect(html).toContain("Read-only");
+  it("offers an editable copy only for read-only skills", () => {
+    mocks.items = [builtinSkill];
+    const builtinOnly = renderToStaticMarkup(createElement(SkillsList));
+    expect(builtinOnly).toContain('aria-label="Duplicate summarize"');
+    mocks.items = [customSkill];
+    const customOnly = renderToStaticMarkup(createElement(SkillsList));
+    expect(customOnly).not.toContain("Duplicate");
   });
 
   it("disables Use when deliverable is false", () => {

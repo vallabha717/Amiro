@@ -7,7 +7,7 @@ import { duplicateSkill } from "@/lib/backend/skills-api";
 import type { SkillSummary } from "@/types/skill";
 import type { ChatMention } from "app-types/chat";
 import { cn } from "lib/utils";
-import { ArrowLeft, Copy, Lock, Plus, Search, Sparkles } from "lucide-react";
+import { ArrowLeft, Copy, Plus, Search, Sparkles } from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -15,37 +15,26 @@ import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "ui/badge";
 import { Button } from "ui/button";
-import { Card, CardDescription, CardHeader, CardTitle } from "ui/card";
+import { Card } from "ui/card";
 import { Input } from "ui/input";
 import { Skeleton } from "ui/skeleton";
 
 type SuperpowerFilter = "all" | "builtin" | "custom" | "project";
 
-const SOURCE_META: Record<string, { label: string; color: string; bg: string }> = {
-  ".amiro": {
-    label: "Built-in",
-    color: "#E9642F",
-    bg: "rgba(233, 100, 47, 0.12)",
-  },
-  ".agents": {
-    label: "Project",
-    color: "#0E9B8B",
-    bg: "rgba(14, 155, 139, 0.12)",
-  },
-  ".codex": {
-    label: "Codex",
-    color: "#A665C9",
-    bg: "rgba(166, 101, 201, 0.12)",
-  },
-  ".claude": {
-    label: "Claude",
-    color: "#6B7BFF",
-    bg: "rgba(107, 123, 255, 0.12)",
-  },
-};
+/** Where a skill comes from, as the user thinks of it. */
+function kindOf(skill: SkillSummary): "builtin" | "project" | "custom" {
+  if (skill.bundled) return "builtin";
+  if (skill.scope === "project") return "project";
+  return "custom";
+}
 
-function isEngineOwnedSource(source: string): boolean {
-  return source === ".amiro";
+const KIND_LABEL = { builtin: "Built-in", project: "Project", custom: "My skill" } as const;
+
+/** "mcp-setup" -> "Mcp setup" when a skill has no display name. */
+function titleOf(skill: SkillSummary): string {
+  if (skill.displayName) return skill.displayName;
+  const words = skill.name.replace(/[-_]+/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 export function SkillsList() {
@@ -66,14 +55,13 @@ export function SkillsList() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return items.filter((s) => {
-      if (filter === "builtin" && !isEngineOwnedSource(s.source)) return false;
-      if (filter === "custom" && !s.writable) return false;
-      if (filter === "project" && s.scope !== "project") return false;
+      if (filter !== "all" && kindOf(s) !== filter) return false;
       if (!q) return true;
       return (
         s.name.toLowerCase().includes(q) ||
+        titleOf(s).toLowerCase().includes(q) ||
         (s.description || "").toLowerCase().includes(q) ||
-        s.source.toLowerCase().includes(q)
+        (s.category || "").toLowerCase().includes(q)
       );
     });
   }, [items, query, filter]);
@@ -215,8 +203,8 @@ export function SkillsList() {
               ["all", "All"],
               ["builtin", "Built-in"],
               ["custom", "My skills"],
-              ["project", "Project"],
-            ] as const
+              ...(items.some((s) => s.scope === "project") ? [["project", "Project"]] : []),
+            ] as [SuperpowerFilter, string][]
           ).map(([id, label]) => (
             <button
               key={id}
@@ -329,98 +317,92 @@ function SkillCard({
   duplicating: boolean;
 }) {
   const t = useTranslations();
-  const meta = SOURCE_META[skill.source] ?? {
-    label: skill.source,
-    color: "#6B7280",
-    bg: "rgba(107, 114, 128, 0.12)",
-  };
+  const kind = kindOf(skill);
   const canUse = skill.deliverable !== false && !skill.disableModelInvocation;
+  const href = `/skill?name=${encodeURIComponent(skill.name)}`;
 
   return (
     <Card
       data-testid="skill-card"
       data-item-name={skill.name}
-      className="group flex min-h-[148px] flex-col justify-between rounded-2xl border-border/60 bg-card transition-all hover:border-border hover:bg-card hover:shadow-sm"
+      data-kind={kind}
+      className="group relative flex flex-col gap-3 rounded-2xl border-border/60 bg-card p-4 transition-all hover:border-border hover:shadow-sm"
     >
-      <CardHeader className="flex h-full flex-col gap-3 p-4">
-        <div className="flex items-start gap-3">
-          <div
-            className="flex size-8 shrink-0 items-center justify-center rounded-xl text-[11px] font-semibold"
-            style={{ backgroundColor: meta.bg, color: meta.color }}
-            aria-hidden="true"
-          >
-            <Sparkles className="size-3.5" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <CardTitle className="flex items-center gap-1.5">
-              <Link
-                href={`/skill?name=${encodeURIComponent(skill.name)}`}
-                title={skill.name}
-                className="truncate font-mono text-[13px] font-semibold leading-none hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded-sm"
-              >
-                /{skill.name}
-              </Link>
-              {!skill.writable && (
-                <Lock
-                  className="size-3 shrink-0 text-muted-foreground/70"
-                  data-testid="skill-card-lock"
-                  aria-label="Read-only skill"
-                />
-              )}
-            </CardTitle>
-            <p className="mt-1 truncate text-[11px] font-medium text-muted-foreground">{meta.label} · {skill.scope}</p>
-          </div>
+      <div className="flex items-start gap-3">
+        <div
+          className={cn(
+            "flex size-10 shrink-0 items-center justify-center rounded-xl text-lg",
+            kind === "builtin" ? "bg-primary/10" : "bg-muted",
+          )}
+          aria-hidden="true"
+        >
+          {skill.emoji ? <span>{skill.emoji}</span> : <Sparkles className="size-4 text-muted-foreground" />}
         </div>
-
-        <CardDescription className="line-clamp-2 min-h-[32px] text-xs leading-relaxed text-muted-foreground">
-          {skill.description || t("Skill.noDescription")}
-        </CardDescription>
-
-        <div className="mt-auto flex items-center gap-1.5 pt-1">
-          <Badge
-            variant="outline"
-            data-testid={`skill-card-source-${skill.source}`}
-            className="h-5 border-border/60 bg-muted/40 px-1.5 font-mono text-[10px] font-normal uppercase tracking-wide text-muted-foreground"
-          >
-            {skill.source}
-          </Badge>
-          <span className="truncate text-[11px] text-muted-foreground/60">
-            {skill.writable ? "Editable" : "Read-only"}
-          </span>
-
-          <div className="ml-auto flex items-center gap-1">
-            {!skill.writable && (
-              <button
-                type="button"
-                disabled={duplicating}
-                onClick={(e) => onDuplicate(skill, e)}
-                title="Duplicate to make it editable"
-                aria-label={`Duplicate ${skill.name}`}
-                className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-full border border-border/60 bg-background px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:border-foreground/15 hover:text-foreground disabled:opacity-50"
-              >
-                <Copy className="size-3" aria-hidden="true" />
-                {duplicating ? "…" : "Duplicate"}
-              </button>
-            )}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
             <Link
-              href={`/skill?name=${encodeURIComponent(skill.name)}`}
-              aria-label={`Open ${skill.name}`}
-              className="inline-flex h-7 items-center rounded-full border border-border/60 bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+              href={href}
+              className="truncate text-sm font-semibold leading-tight hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
             >
-              Open
+              {titleOf(skill)}
             </Link>
-            <button
-              type="button"
-              disabled={!canUse}
-              onClick={(e) => onUseInChat(skill, e)}
-              title={canUse ? `Use /${skill.name} in next message` : skill.invokableReason || "Not available for chat"}
-              className="inline-flex h-7 cursor-pointer items-center rounded-full bg-foreground px-3 text-xs font-medium text-background transition-colors hover:bg-foreground/90 disabled:cursor-not-allowed disabled:opacity-40"
+            <span
+              data-testid={`skill-card-kind-${kind}`}
+              className={cn(
+                "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium",
+                kind === "builtin"
+                  ? "bg-primary/10 text-primary"
+                  : kind === "project"
+                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                    : "bg-muted text-muted-foreground",
+              )}
             >
-              Use
-            </button>
+              {KIND_LABEL[kind]}
+            </span>
           </div>
+          <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
+            /{skill.name}
+            {skill.category ? <span className="font-sans"> · {skill.category}</span> : null}
+          </p>
         </div>
-      </CardHeader>
+      </div>
+
+      <p className="line-clamp-3 min-h-[3.75rem] text-xs leading-relaxed text-muted-foreground">
+        {skill.description || t("Skill.noDescription")}
+      </p>
+
+      <div className="mt-auto flex items-center gap-1.5">
+        {!skill.writable && (
+          <button
+            type="button"
+            disabled={duplicating}
+            onClick={(e) => onDuplicate(skill, e)}
+            title="Make an editable copy"
+            aria-label={`Duplicate ${skill.name}`}
+            className="inline-flex size-7 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+          >
+            <Copy className="size-3.5" aria-hidden="true" />
+          </button>
+        )}
+        <div className="ml-auto flex items-center gap-1.5">
+          <Link
+            href={href}
+            aria-label={`Open ${skill.name}`}
+            className="inline-flex h-7 items-center rounded-full border border-border/60 bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+          >
+            Open
+          </Link>
+          <button
+            type="button"
+            disabled={!canUse}
+            onClick={(e) => onUseInChat(skill, e)}
+            title={canUse ? `Use /${skill.name} in your next message` : skill.invokableReason || "Not available for chat"}
+            className="inline-flex h-7 cursor-pointer items-center rounded-full bg-foreground px-3 text-xs font-medium text-background transition-colors hover:bg-foreground/90 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Use
+          </button>
+        </div>
+      </div>
     </Card>
   );
 }

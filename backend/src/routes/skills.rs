@@ -13,11 +13,46 @@ use crate::state::{read_json, write_json, ApiError, AppState, AuthUser};
 
 pub const SKILL_NAME_MAX_LENGTH: usize = 64;
 
-/// Bundled `visualize` skill from `.agents/skills/visualize/SKILL.md` so every
-/// Amiro instance discovers it out of the box even before a user skills folder
-/// exists.
-const BUNDLED_VISUALIZE_SKILL_MD: &str =
-    include_str!("../../../.agents/skills/visualize/SKILL.md");
+/// The agent's built-in skills, shipped with the app from `agent-skills/`
+/// (Vellum's bundled-skills). They are compiled in, installed into the
+/// runtime's skills folder at startup so the agent can load them, and shown
+/// as Built-in. Developer skills for working on Amiro itself live in
+/// `.agents/skills` and are never shown or shipped.
+pub const BUNDLED_AGENT_SKILLS: &[(&str, &str)] = &[
+    ("visualize", include_str!("../../../agent-skills/visualize/SKILL.md")),
+    ("mcp-setup", include_str!("../../../agent-skills/mcp-setup/SKILL.md")),
+];
+
+fn bundled_skill(name: &str) -> Option<&'static str> {
+    BUNDLED_AGENT_SKILLS
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, md)| *md)
+}
+
+/// Write every bundled skill into `<runtime_home>/skills/<name>/SKILL.md`,
+/// replacing an older copy, so the runtime offers the current version.
+pub fn install_bundled_skills(state: &AppState) {
+    for (name, markdown) in BUNDLED_AGENT_SKILLS {
+        let dir = state.runtime_home.join("skills").join(name);
+        let path = dir.join("SKILL.md");
+        if std::fs::read_to_string(&path).ok().as_deref() == Some(*markdown) {
+            continue;
+        }
+        if let Err(error) = std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&path, markdown)) {
+            eprintln!("skills: could not install bundled skill {name}: {error}");
+        }
+    }
+}
+
+/// Display metadata from a skill's frontmatter (`metadata.emoji`,
+/// `metadata.amiro.display-name`, `metadata.amiro.category`).
+#[derive(Debug, Clone, Default)]
+struct SkillMeta {
+    emoji: Option<String>,
+    display_name: Option<String>,
+    category: Option<String>,
+}
 
 fn now_iso() -> String {
     Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
@@ -112,6 +147,7 @@ struct ParsedSkill {
     license: Option<String>,
     disable_model_invocation: bool,
     allowed_tools: Vec<String>,
+    meta: SkillMeta,
 }
 
 fn parse_skill_markdown(raw: &str, fallback_name: &str) -> ParsedSkill {
@@ -121,6 +157,7 @@ fn parse_skill_markdown(raw: &str, fallback_name: &str) -> ParsedSkill {
     let mut license = None;
     let mut disable_model_invocation = false;
     let mut allowed_tools = Vec::new();
+    let mut meta = SkillMeta::default();
 
     if let Some(rest) = raw.strip_prefix("---\n").or_else(|| raw.strip_prefix("---\r\n")) {
         if let Some(idx) = rest.find("\n---") {
@@ -138,6 +175,9 @@ fn parse_skill_markdown(raw: &str, fallback_name: &str) -> ParsedSkill {
                         "description" if !val.is_empty() => description = val.to_string(),
                         "license" if !val.is_empty() => license = Some(val.to_string()),
                         "disable-model-invocation" => disable_model_invocation = val == "true",
+                        "emoji" if !val.is_empty() => meta.emoji = Some(val.to_string()),
+                        "display-name" if !val.is_empty() => meta.display_name = Some(val.to_string()),
+                        "category" if !val.is_empty() => meta.category = Some(val.to_string()),
                         "allowed-tools" => {
                             allowed_tools = val
                                 .split(',')
@@ -169,6 +209,7 @@ fn parse_skill_markdown(raw: &str, fallback_name: &str) -> ParsedSkill {
         license,
         disable_model_invocation,
         allowed_tools,
+        meta,
     }
 }
 
@@ -236,6 +277,9 @@ struct DiscoveredSkill {
     readonly: bool,
     path: String,
     updated_at: String,
+    meta: SkillMeta,
+    /// Shipped with Amiro (agent-skills/).
+    bundled: bool,
 }
 
 fn discover_skills(
@@ -251,16 +295,17 @@ fn discover_skills(
         .unwrap_or_else(|| PathBuf::from("/root"))
         .join(".codex");
 
-    let repo_skills = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../.agents/skills");
-    let roots = [
-        (state.runtime_home.join("skills"), "user", ".amiro"),
-        (repo_root.join(".amiro").join("skills"), "project", ".amiro"),
-        (repo_root.join(".jcode").join("skills"), "project", ".amiro"),
-        (repo_root.join(".agents").join("skills"), "project", ".agents"),
-        (repo_skills, "user", ".agents"),
-        (codex_home.join("skills"), "user", ".codex"),
-    ];
+    // The agent's skills: bundled ones (installed into the runtime's folder)
+    // and the user's own. Project skills only when the user picked a project.
+    // Developer skills (this repo's .agents/skills, ~/.codex/skills) are not
+    // the agent's and are never listed.
+    let _ = &codex_home;
+    let mut roots = vec![(state.runtime_home.join("skills"), "user", ".amiro")];
+    if project_dir.is_some() {
+        roots.push((repo_root.join(".amiro").join("skills"), "project", ".amiro"));
+        roots.push((repo_root.join(".jcode").join("skills"), "project", ".amiro"));
+        roots.push((repo_root.join(".agents").join("skills"), "project", ".agents"));
+    }
 
     for (root_dir, scope, source) in roots {
         let root_canon = match std::fs::canonicalize(&root_dir) {
@@ -331,6 +376,7 @@ fn discover_skills(
                 Err(_) => now_iso(),
             };
 
+            let bundled = scope == "user" && bundled_skill(&ent_name).is_some();
             discovered.insert(
                 key,
                 DiscoveredSkill {
@@ -342,38 +388,42 @@ fn discover_skills(
                     disable_model_invocation: parsed.disable_model_invocation,
                     allowed_tools: parsed.allowed_tools,
                     scope: scope.to_string(),
-                    source: source.to_string(),
+                    source: if bundled { "bundled".to_string() } else { source.to_string() },
                     writable: false,
                     readonly: true,
                     path: skill_md.to_string_lossy().to_string(),
                     updated_at,
+                    meta: parsed.meta,
+                    bundled,
                 },
             );
         }
     }
 
-    if !discovered.contains_key("visualize") {
-        let parsed = parse_skill_markdown(BUNDLED_VISUALIZE_SKILL_MD, "visualize");
+    // Bundled skills are always offered, even before they are installed.
+    for (name, markdown) in BUNDLED_AGENT_SKILLS {
+        if discovered.contains_key(*name) {
+            continue;
+        }
+        let parsed = parse_skill_markdown(markdown, name);
         discovered.insert(
-            "visualize".to_string(),
+            name.to_string(),
             DiscoveredSkill {
-                name: "visualize".to_string(),
+                name: name.to_string(),
                 description: parsed.description,
-                body: if parsed.body.is_empty() {
-                    BUNDLED_VISUALIZE_SKILL_MD.to_string()
-                } else {
-                    parsed.body
-                },
+                body: if parsed.body.is_empty() { markdown.to_string() } else { parsed.body },
                 resources: Vec::new(),
                 license: parsed.license,
                 disable_model_invocation: parsed.disable_model_invocation,
                 allowed_tools: parsed.allowed_tools,
                 scope: "user".to_string(),
-                source: ".amiro".to_string(),
+                source: "bundled".to_string(),
                 writable: false,
                 readonly: true,
-                path: "~/.amiro/skills/visualize/SKILL.md".to_string(),
+                path: format!("agent-skills/{name}/SKILL.md"),
                 updated_at: now_iso(),
+                meta: parsed.meta,
+                bundled: true,
             },
         );
     }
@@ -424,6 +474,10 @@ fn present_summary(skill: &DiscoveredSkill, tools_on: bool) -> Value {
         "path": skill.path,
         "license": skill.license,
         "updatedAt": skill.updated_at,
+        "bundled": skill.bundled,
+        "emoji": skill.meta.emoji,
+        "displayName": skill.meta.display_name,
+        "category": skill.meta.category,
     })
 }
 
@@ -489,6 +543,8 @@ async fn get_merged_skills(
                     readonly: false,
                     path,
                     updated_at,
+                    meta: SkillMeta::default(),
+                    bundled: false,
                 },
             );
         }
@@ -655,6 +711,8 @@ async fn create_skill(
         readonly: false,
         path: format!("~/.amiro/skills/{name}/SKILL.md"),
         updated_at: now,
+        meta: SkillMeta::default(),
+        bundled: false,
     };
 
     let warn = mirror_skill(&state, &name, &discovered).await;
@@ -740,6 +798,8 @@ async fn update_skill(
         readonly: false,
         path: format!("~/.amiro/skills/{name}/SKILL.md"),
         updated_at: updated_record.get("updatedAt").and_then(|u| u.as_str()).unwrap_or(&now_iso()).to_string(),
+        meta: SkillMeta::default(),
+        bundled: false,
     };
 
     let warn = mirror_skill(&state, &name, &discovered).await;
@@ -869,6 +929,8 @@ async fn duplicate_skill(
         readonly: false,
         path: format!("~/.amiro/skills/{copy_name}/SKILL.md"),
         updated_at: now,
+        meta: SkillMeta::default(),
+        bundled: false,
     };
 
     let warn = mirror_skill(&state, &copy_name, &dup_skill).await;
@@ -912,4 +974,68 @@ pub fn routes() -> Router<AppState> {
             post(duplicate_skill),
         )
         .route("/api/skills/generate", post(generate_skill))
+}
+
+#[cfg(test)]
+mod bundled_skill_tests {
+    use super::*;
+
+    fn temp_state() -> AppState {
+        let root = std::env::temp_dir().join(format!("amiro-skills-{}", uuid::Uuid::new_v4()));
+        AppState {
+            home: root.join("home"),
+            workspace: root.join("workspace"),
+            runtime_home: root.join("runtime"),
+            runtime_socket: root.join("run/amiro-api.sock"),
+            runtime_bin: root.join("amiro-runtime"),
+            token: "test-token".to_string(),
+            store: std::sync::Arc::new(tokio::sync::Mutex::new(())),
+        }
+    }
+
+    #[test]
+    fn frontmatter_metadata_is_parsed() {
+        let parsed = parse_skill_markdown(bundled_skill("mcp-setup").unwrap(), "mcp-setup");
+        assert_eq!(parsed.name, "mcp-setup");
+        assert_eq!(parsed.meta.emoji.as_deref(), Some("🔌"));
+        assert_eq!(parsed.meta.display_name.as_deref(), Some("MCP Setup"));
+        assert_eq!(parsed.meta.category.as_deref(), Some("integrations"));
+        assert!(parsed.allowed_tools.contains(&"mcp".to_string()));
+        let visualize = parse_skill_markdown(bundled_skill("visualize").unwrap(), "visualize");
+        assert_eq!(visualize.meta.display_name.as_deref(), Some("Visualize"));
+    }
+
+    #[test]
+    fn bundled_skills_are_listed_as_built_in_and_dev_skills_are_not() {
+        let state = temp_state();
+        // Before install they are still offered, as bundled.
+        let (found, _) = discover_skills(&state, None);
+        for (name, _) in BUNDLED_AGENT_SKILLS {
+            let skill = found.get(*name).expect("bundled skill listed");
+            assert!(skill.bundled);
+            assert_eq!(skill.source, "bundled");
+        }
+        // This repo's developer skills (.agents/skills: plan, implement, ui…)
+        // are never the agent's.
+        for dev in ["plan", "implement", "ui", "backend", "test", "amiro-runtime-update"] {
+            assert!(!found.contains_key(dev), "dev skill {dev} must not be listed");
+        }
+
+        // After install the runtime copy is found and still reads as bundled;
+        // a user's own skill next to it is not.
+        install_bundled_skills(&state);
+        let custom = state.runtime_home.join("skills").join("my-notes");
+        std::fs::create_dir_all(&custom).unwrap();
+        std::fs::write(custom.join("SKILL.md"), "---\nname: my-notes\ndescription: mine\n---\nBody").unwrap();
+        let (found, _) = discover_skills(&state, None);
+        assert!(found["visualize"].bundled);
+        assert!(found["mcp-setup"].bundled);
+        assert!(!found["my-notes"].bundled);
+        assert_eq!(found["my-notes"].source, ".amiro");
+        let installed = std::fs::read_to_string(
+            state.runtime_home.join("skills/mcp-setup/SKILL.md"),
+        )
+        .unwrap();
+        assert_eq!(installed, bundled_skill("mcp-setup").unwrap());
+    }
 }

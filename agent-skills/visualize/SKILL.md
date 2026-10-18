@@ -2,6 +2,11 @@
 name: visualize
 description: Render a polished visual inline in the chat as part of your answer — a diagram, a chart, an interactive explainer, or a UI mockup. Load it proactively whenever an explanation would land better as a picture than as prose. Do not wait to be asked.
 allowed-tools: applet, skill_manage
+metadata:
+  emoji: "📊"
+  amiro:
+    display-name: "Visualize"
+    category: "content"
 ---
 
 You are authoring a self-contained HTML fragment that renders inline in the chat transcript, directly beneath the paragraph you are writing. It renders in a sandboxed frame sized to your content, with the host's design tokens injected, so it looks native in light and dark mode.

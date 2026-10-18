@@ -3,6 +3,7 @@ import { z } from "zod";
 export type SkillScope = "project" | "user";
 
 export type SkillSource =
+  | "bundled"
   | ".agents"
   | ".amiro"
   | ".claude"
@@ -45,6 +46,14 @@ export interface SkillSummary {
   metadata?: Record<string, string>;
   allowedTools?: string[];
   shadows?: ShadowedSkill[];
+  /** Shipped with Amiro (agent-skills/): read-only, always available. */
+  bundled?: boolean;
+  /** From frontmatter `metadata.emoji`. */
+  emoji?: string | null;
+  /** From frontmatter `metadata.amiro.display-name`. */
+  displayName?: string | null;
+  /** From frontmatter `metadata.amiro.category`. */
+  category?: string | null;
 }
 
 /**
