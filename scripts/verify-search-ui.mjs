@@ -89,7 +89,7 @@ try {
     });
     return (await r.json()).provider === "inference-provider-native";
   });
-  await context.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
   await page.getByTestId("search-provider-card").first().waitFor();
   assert.equal(await page.getByTestId("search-provider-card").count(), 3);
