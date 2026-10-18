@@ -2,7 +2,7 @@
 
 How Amiro connects Composio: the backend routes and UI that store the key and
 manage connections, how the runtime loads a large remote MCP server such as
-Composio's Tool Router (`https://backend.composio.dev/tool_router/v3/<session>/mcp`,
+Composio's Tool Router (the session URL Composio returns, shaped `/tool_router/v3/<session>/mcp`,
 Streamable HTTP, `x-api-key` header), what happens when a server exposes
 hundreds of tools, and how the backend triggers a reload after writing
 `mcp.json`.
@@ -12,8 +12,8 @@ hundreds of tools, and how the backend triggers a reload after writing
 **Key resolution** (`backend/src/composio_config.rs`), first match wins:
 the encrypted credential store (reported as source `ui`), then
 `COMPOSIO_API_KEY` from the environment or `.env` (`env`), then
-`composio.api_key` in `~/.amiro/amiro.toml` (`toml`). Override the API origin
-for tests with `AMIRO_COMPOSIO_BASE_URL`.
+`composio.api_key` in `~/.amiro/amiro.toml` (`toml`). The REST origin defaults to `https://backend.composio.dev`
+(`DEFAULT_BASE_URL`) and can be overridden with `AMIRO_COMPOSIO_BASE_URL`.
 
 **Routes** (`backend/src/routes/composio.rs`). All need a session. Mutating
 routes need the owner (admin) role.
@@ -67,24 +67,27 @@ supports Streamable HTTP with custom headers. Relevant fields:
 | Field         | Type                      | Meaning |
 |---------------|---------------------------|---------|
 | `type`        | string                    | `"streamable-http"` (also accepts `"http"`, `"streamable_http"`, `"streamablehttp"`), or `"sse"` for legacy HTTP+SSE. An entry with only a `url` and no `command` defaults to Streamable HTTP. |
-| `url`         | string                    | Endpoint, e.g. `https://app.composio.dev/tool_router/v3/<session>/mcp`. |
+| `url`         | string                    | Endpoint. The Amiro backend does not build it: it uses the `mcp.url` that Composio returns when the Tool Router session is created (shape: `https://<composio-host>/tool_router/v3/<session>/mcp`). |
 | `headers`     | object<string,string>     | Extra headers sent on every request. `${VAR}` / `${VAR:-default}` are env-expanded at load time. |
 | `shared`      | bool (default `true`)     | Reuse one connection across sessions. Keep `true` for stateless API wrappers. |
 | `enabled`     | bool (default `true`)     | Keep the entry registered but do not connect it. |
 | `timeout_secs`| number (default `30`)     | Per-request reply timeout (raise for slow meta tools). |
 
-The exact snippet the backend writes for a server named **`composio`**, into the
-file `~/.jcode/mcp.json` (global) or `<project>/.jcode/mcp.json` (project-local;
-`.mcp.json` and `.claude/mcp.json` are merged too, later sources winning):
+The shape of the entry for a server named **`composio`**. The Amiro backend
+writes it to `$AMIRO_RUNTIME_HOME/mcp.json` (`~/.amiro/runtime/mcp.json` by
+default), with the `${COMPOSIO_API_KEY}` placeholder in place of the key. The
+runtime's generic discovery also reads `~/.jcode/mcp.json`,
+`<project>/.jcode/mcp.json`, `.mcp.json` and `.claude/mcp.json` (later sources
+winning). Those are historical discovery defaults and are not written by Amiro:
 
 ```json
 {
   "servers": {
     "composio": {
       "type": "streamable-http",
-      "url": "https://app.composio.dev/tool_router/v3/<session>/mcp",
+      "url": "<mcp.url returned by Composio for the session>",
       "headers": {
-        "x-api-key": "<composio-api-key>"
+        "x-api-key": "${COMPOSIO_API_KEY}"
       },
       "shared": true
     }

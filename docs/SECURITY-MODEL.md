@@ -58,5 +58,6 @@ The timezone choice is stored per browser in `localStorage`
 - `GET /api/system` metrics are Linux only and describe the host, not a
   per-user quota. There is no resize control.
 - The timezone setting does not change server-side schedule behaviour.
-- The owner password cannot be recovered from the UI. Reset it on the VM by
-  editing the user store while the backend is stopped.
+- There is no implemented password recovery. The UI cannot reset a lost
+  owner password, and no secure operator recovery or backup procedure is
+  documented yet. Treat the owner password as something you must keep.
