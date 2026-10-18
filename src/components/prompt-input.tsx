@@ -59,16 +59,7 @@ import {
 } from "@/lib/backend/voice-api";
 import { FileUIPart, TextUIPart } from "ai";
 import { toast } from "sonner";
-import { AnimatePresence } from "framer-motion";
-import { LiveVoiceStage } from "./chat-bot-voice";
-import { VoiceComposerBar } from "./voice/voice-composer-bar";
-import {
-  LIVE_VOICE_UTTERANCE_EVENT,
-  type LiveVoiceUtterance,
-  useLiveVoiceStore,
-} from "@/lib/ai/speech/live-voice-store";
-import { useMessageReadAloudStore } from "@/lib/ai/speech/read-aloud-store";
-import { useAgentIdentity } from "@/hooks/queries/use-agent-identity";
+import { useVoiceStore } from "@/lib/voice/voice-store";
 
 interface PromptInputProps {
   placeholder?: string;
@@ -108,19 +99,8 @@ export default function PromptInput({
   disabledMention,
 }: PromptInputProps) {
   const t = useTranslations("Chat");
-  const { data: agentIdentity } = useAgentIdentity();
-  const liveVoiceActive = useLiveVoiceStore((s) => s.active);
-  const liveVoiceMinimized = useLiveVoiceStore((s) => s.minimized);
-  const liveVoicePhase = useLiveVoiceStore((s) => s.phase);
-  const liveVoiceMuted = useLiveVoiceStore((s) => s.muted);
-  const liveVoiceOutputMuted = useLiveVoiceStore((s) => s.outputMuted);
-  const liveVoiceAssistantAudioActive = useLiveVoiceStore((s) => s.assistantAudioActive);
-  const startSession = useLiveVoiceStore((s) => s.startSession);
-  const endVoiceSession = useLiveVoiceStore((s) => s.endSession);
-  const minimizeRoom = useLiveVoiceStore((s) => s.minimizeRoom);
-  const restoreRoom = useLiveVoiceStore((s) => s.restoreRoom);
-  const toggleMuted = useLiveVoiceStore((s) => s.toggleMuted);
-  const toggleOutputMuted = useLiveVoiceStore((s) => s.toggleOutputMuted);
+  const liveVoiceActive = useVoiceStore((s) => s.active);
+  const liveVoiceMinimized = useVoiceStore((s) => s.minimized);
 
   const [isUploadDropdownOpen, setIsUploadDropdownOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -159,59 +139,6 @@ export default function PromptInput({
     };
   }, []);
 
-  // Listen for spoken turns in Voice Mode and send them through sendMessage
-  useEffect(() => {
-    const handleVoiceUtterance = (e: Event) => {
-      const customEvent = e as CustomEvent<LiveVoiceUtterance>;
-      const utterance = customEvent.detail?.text;
-      if (!utterance || !utterance.trim()) return;
-
-      const live = useLiveVoiceStore.getState();
-      live.setPhase("thinking");
-
-      sendMessage({
-        role: "user",
-        parts: [{ type: "text", text: utterance.trim() }],
-      });
-    };
-
-    window.addEventListener(LIVE_VOICE_UTTERANCE_EVENT, handleVoiceUtterance);
-    return () => {
-      window.removeEventListener(LIVE_VOICE_UTTERANCE_EVENT, handleVoiceUtterance);
-    };
-  }, [sendMessage]);
-
-  // Synchronize assistant response with Voice Mode
-  const prevLoadingRef = useRef(isLoading);
-  useEffect(() => {
-    if (prevLoadingRef.current && !isLoading) {
-      const live = useLiveVoiceStore.getState();
-      if (live.active) {
-        setTimeout(() => {
-          const assistantNodes = document.querySelectorAll(
-            '[data-testid="chat-messages-container"] [data-role="assistant"], [data-testid="chat-messages-container"] .preview-message',
-          );
-          let text = "";
-          if (assistantNodes.length > 0) {
-            const lastNode = assistantNodes[assistantNodes.length - 1] as HTMLElement;
-            text = lastNode.innerText?.trim() || "";
-          }
-          if (text) {
-            live.setAssistantTranscript(text);
-            if (!live.outputMuted && useMessageReadAloudStore.getState().status === "idle") {
-              void useMessageReadAloudStore.getState().playMessage({
-                messageId: `voice-${Date.now()}`,
-                text,
-              });
-            }
-          } else {
-            live.setPhase(live.muted ? "idle" : "listening");
-          }
-        }, 80);
-      }
-    }
-    prevLoadingRef.current = isLoading;
-  }, [isLoading]);
 
   const handleToggleDictation = useCallback(async () => {
     if (dictationState === "recording") {
@@ -608,9 +535,6 @@ export default function PromptInput({
       role: "user",
       parts: [...attachmentParts, { type: "text", text: userMessage }],
     });
-    if (useLiveVoiceStore.getState().active) {
-      useLiveVoiceStore.getState().setPhase("thinking");
-    }
     appStoreMutate((prev) => ({
       threadFiles: {
         ...prev.threadFiles,
@@ -646,31 +570,6 @@ export default function PromptInput({
     <div className="max-w-3xl mx-auto fade-in animate-in">
       <div className="z-10 mx-auto w-full max-w-3xl relative">
         <fieldset className="flex w-full min-w-0 max-w-full flex-col px-4">
-          {/* Vellum Expressive Voice Mode Stage */}
-          <AnimatePresence>
-            {liveVoiceActive && !liveVoiceMinimized && (
-              <LiveVoiceStage />
-            )}
-          </AnimatePresence>
-
-          {/* Vellum Minimized Composer Voice Bar */}
-          <AnimatePresence>
-            {liveVoiceActive && liveVoiceMinimized && (
-              <div className="mb-2 w-full">
-                <VoiceComposerBar
-                  phase={liveVoicePhase}
-                  muted={liveVoiceMuted}
-                  outputMuted={liveVoiceOutputMuted}
-                  assistantAudioActive={liveVoiceAssistantAudioActive}
-                  onToggleMute={toggleMuted}
-                  onToggleOutputMute={toggleOutputMuted}
-                  onEnd={endVoiceSession}
-                  onExpand={restoreRoom}
-                  accentHex={agentIdentity?.accentHex}
-                />
-              </div>
-            )}
-          </AnimatePresence>
 
           <div className="shadow-lg overflow-hidden rounded-4xl backdrop-blur-sm transition-all duration-200 bg-muted/60 relative flex w-full flex-col cursor-text z-10 items-stretch focus-within:bg-muted hover:bg-muted focus-within:ring-muted hover:ring-muted">
             {mentions.length > 0 && (
@@ -903,14 +802,11 @@ export default function PromptInput({
                         size={"sm"}
                         data-testid="composer-voice-mode-button"
                         onClick={() => {
+                          const voice = useVoiceStore.getState();
                           if (liveVoiceActive) {
-                            if (liveVoiceMinimized) {
-                              restoreRoom();
-                            } else {
-                              minimizeRoom();
-                            }
+                            voice.setMinimized(!liveVoiceMinimized);
                           } else {
-                            startSession({ threadId });
+                            void voice.start(threadId ?? null);
                           }
                         }}
                         className={cn(

@@ -22,8 +22,8 @@ const ChatPreferencesPopup = dynamic(
   },
 );
 
-const ChatBotVoice = dynamic(
-  () => import("@/components/chat-bot-voice").then((mod) => mod.ChatBotVoice),
+const VoiceHotkeys = dynamic(
+  () => import("@/components/voice-room/voice-room").then((mod) => mod.VoiceHotkeys),
   {
     ssr: false,
   },
@@ -69,7 +69,7 @@ export function AppPopupProvider({
       <KeyboardShortcutsPopup />
       <ChatPreferencesPopup />
       <UserSettingsPopup userSettingsComponent={userSettingsComponent} />
-      <ChatBotVoice />
+      <VoiceHotkeys />
       <ChatBotTemporary />
       <McpCustomizationPopup />
     </>

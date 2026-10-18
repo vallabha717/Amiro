@@ -78,8 +78,8 @@ pub fn tts_catalog() -> Vec<Value> {
             "displayName": "ElevenLabs",
             "subtitle": "High-quality expressive voice synthesis for conversations and read-aloud.",
             "defaultModel": "eleven_turbo_v2_5",
-            "defaultVoice": "21m00Tcm4TlvDq8ikWAM",
-            "voices": ["21m00Tcm4TlvDq8ikWAM", "AZnzlk1XvdvUeBnXmlld", "EXAVITQu4vr4xnSDxMaL", "ErXwobaYiN019PkySvjV", "TxGEqnHWrfWFTfGW9XjX"],
+            "defaultVoice": "EXAVITQu4vr4xnSDxMaL",
+            "voices": ["EXAVITQu4vr4xnSDxMaL", "JBFqnCBsd6RMkjVDRZzb", "21m00Tcm4TlvDq8ikWAM", "AZnzlk1XvdvUeBnXmlld", "ErXwobaYiN019PkySvjV", "TxGEqnHWrfWFTfGW9XjX"],
             "models": ["eleven_turbo_v2_5", "eleven_multilingual_v2", "eleven_flash_v2_5"],
             "supportsVoiceSelection": true,
             "supportsModelSelection": true,
@@ -309,7 +309,7 @@ fn default_settings() -> Value {
     })
 }
 
-async fn load_settings(state: &AppState) -> Result<Value, ApiError> {
+pub(crate) async fn load_settings(state: &AppState) -> Result<Value, ApiError> {
     let stored = read_json(&settings_path(state), json!({})).await?;
     let mut settings = default_settings();
     if let (Some(base), Some(stored)) = (settings.as_object_mut(), stored.as_object()) {
@@ -349,7 +349,7 @@ fn has_key(hints: &BTreeMap<String, String>, service: &str, fallback: &str) -> b
         || hints.contains_key(&format!("{fallback}/api_key"))
 }
 
-fn non_empty<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
+pub(crate) fn non_empty<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
     value
         .get(key)
         .and_then(Value::as_str)
@@ -654,7 +654,7 @@ fn collect_cred_ops(
 // Key and config resolution
 // ---------------------------------------------------------------------------
 
-async fn resolve_key(
+pub(crate) async fn resolve_key(
     state: &AppState,
     kind: &str,
     provider: &str,
@@ -674,7 +674,7 @@ async fn resolve_key(
     Ok(None)
 }
 
-fn resolve_saved_string(
+pub(crate) fn resolve_saved_string(
     settings: &Value,
     slot: &str,
     provider: &str,
@@ -764,16 +764,16 @@ async fn upstream_error(
     )
 }
 
-struct Part<'a> {
-    name: &'a str,
-    filename: Option<&'a str>,
-    content_type: Option<&'a str>,
-    data: &'a [u8],
+pub(crate) struct Part<'a> {
+    pub(crate) name: &'a str,
+    pub(crate) filename: Option<&'a str>,
+    pub(crate) content_type: Option<&'a str>,
+    pub(crate) data: &'a [u8],
 }
 
 /// Build an RFC 2046 multipart/form-data body without pulling in the `multipart`
 /// reqwest feature (which would churn `Cargo.lock`).
-fn multipart_body(boundary: &str, parts: &[Part]) -> Vec<u8> {
+pub(crate) fn multipart_body(boundary: &str, parts: &[Part]) -> Vec<u8> {
     let mut body = Vec::new();
     for part in parts {
         body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());

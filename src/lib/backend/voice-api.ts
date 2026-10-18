@@ -146,11 +146,12 @@ export const FALLBACK_TTS_CATALOG: VoiceProviderCatalogEntry[] = [
     displayName: "ElevenLabs",
     subtitle: "Industry-leading expressive AI voices and voice cloning",
     defaultModel: "eleven_turbo_v2_5",
-    defaultVoice: "21m00Tcm4TlvDq8ikWAM",
+    defaultVoice: "EXAVITQu4vr4xnSDxMaL",
     voices: [
+      "EXAVITQu4vr4xnSDxMaL",
+      "JBFqnCBsd6RMkjVDRZzb",
       "21m00Tcm4TlvDq8ikWAM",
       "AZnzlk1XvdvUeBnXmlld",
-      "EXAVITQu4vr4xnSDxMaL",
       "ErXwobaYiN019PkySvjV",
       "MF3mGyEYCl7XYWbV9V6O",
       "TxGEqnHWrfWFTfGW9XjX",
@@ -384,7 +385,7 @@ export const DEFAULT_VOICE_SETTINGS: VoiceSettingsData = {
     },
     elevenlabs: {
       model: "eleven_turbo_v2_5",
-      voiceId: "21m00Tcm4TlvDq8ikWAM",
+      voiceId: "EXAVITQu4vr4xnSDxMaL",
       baseUrl: "https://api.elevenlabs.io/v1",
       speed: 1.0,
       configured: false,

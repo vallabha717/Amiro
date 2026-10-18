@@ -5,6 +5,7 @@ pub mod composio;
 pub mod credentials;
 pub mod export;
 pub mod fsbrowse;
+pub mod live_voice;
 pub mod github;
 pub mod mcp;
 pub mod provider_login;
@@ -42,6 +43,7 @@ pub fn router() -> Router<AppState> {
         .merge(schedules::routes())
         .merge(skills::routes())
         .merge(voice::routes())
+        .merge(live_voice::routes())
 }
 
 #[cfg(test)]

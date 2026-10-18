@@ -66,6 +66,9 @@ import { ArrowDown, FilePlus, Loader } from "lucide-react";
 import { useTranslations } from "next-intl";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
+import { useVoiceStore } from "@/lib/voice/voice-store";
+import { useVoiceChatBridge } from "@/lib/voice/use-voice-chat-bridge";
+import { VoiceDock, VoiceRoom } from "./voice-room/voice-room";
 import { mutate } from "swr";
 import { safe } from "ts-safe";
 import { Button } from "ui/button";
@@ -157,7 +160,12 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
 
       try {
         const voiceSettings = getCachedVoiceSettings();
-        if (voiceSettings.readAloudEnabled && voiceSettings.autoReadAloud) {
+        // In a voice call the live session already speaks every answer.
+        if (
+          voiceSettings.readAloudEnabled &&
+          voiceSettings.autoReadAloud &&
+          !useVoiceStore.getState().active
+        ) {
           const lastAssistantMsg =
             (finishEvent?.message?.role === "assistant"
               ? finishEvent.message
@@ -565,6 +573,17 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
     [sendMessageAnsweringPlan],
   );
 
+  // Voice: spoken turns go through the same chat stream as typed ones, and
+  // the answer streams back to the voice session to be spoken.
+  useVoiceChatBridge({
+    messages,
+    status,
+    sendMessage: handleComposerSend as any,
+    stop: handleStop,
+  });
+  const voiceActive = useVoiceStore((s) => s.active);
+  const voiceMinimized = useVoiceStore((s) => s.minimized);
+
   const space = useMemo(() => {
     if (!isLoading || error) return false;
     const lastMessage = messages.at(-1);
@@ -765,6 +784,11 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
               )}
             >
               <MemberThreadBanner threadId={threadId} />
+              <AnimatePresence>
+                {voiceActive && !voiceMinimized && (
+                  <VoiceRoom key="voice-room" threadId={threadId} />
+                )}
+              </AnimatePresence>
               {!emptyMessage && !isArtifactViewActive && (
                 <ChatToolbar
                   summary={sessionSummary}
@@ -859,6 +883,13 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
                   </div>
                 )}
 
+                <AnimatePresence>
+                  {voiceActive && voiceMinimized && (
+                    <div key="voice-dock" className="max-w-3xl mx-auto px-6 mb-2">
+                      <VoiceDock />
+                    </div>
+                  )}
+                </AnimatePresence>
                 <div className="max-w-3xl mx-auto px-6 mb-1.5">
                   <SwarmStrip
                     threadId={threadId}

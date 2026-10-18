@@ -21,18 +21,14 @@ import { useTranslations } from "next-intl";
 import { TextShimmer } from "ui/text-shimmer";
 import { buildReturnUrl } from "lib/admin/navigation-utils";
 import { BackButton } from "@/components/layouts/back-button";
-import { VoiceSessionPill } from "@/components/voice/voice-composer-bar";
-import { useLiveVoiceStore } from "@/lib/ai/speech/live-voice-store";
+import { useVoiceStore } from "@/lib/voice/voice-store";
 import { cn } from "@/lib/utils";
 
 export function AppHeader() {
   const t = useTranslations();
   const appStoreMutate = appStore((state) => state.mutate);
-  const voiceActive = useLiveVoiceStore((s) => s.active);
-  const voiceMinimized = useLiveVoiceStore((s) => s.minimized);
-  const startSession = useLiveVoiceStore((s) => s.startSession);
-  const restoreRoom = useLiveVoiceStore((s) => s.restoreRoom);
-  const minimizeRoom = useLiveVoiceStore((s) => s.minimizeRoom);
+  const voiceActive = useVoiceStore((s) => s.active);
+  const voiceMinimized = useVoiceStore((s) => s.minimized);
   const { toggleSidebar, open } = useSidebar();
   const currentPaths = usePathname();
   const searchParams = useSearchParams();
@@ -110,8 +106,6 @@ export function AppHeader() {
 
       {componentByPage}
       <div className="flex-1" />
-      {/* Live Voice session pill in header when active */}
-      <VoiceSessionPill className="mr-2" />
       {showActionButtons && (
         <div className="flex items-center gap-2">
           <Tooltip>
@@ -125,14 +119,11 @@ export function AppHeader() {
                   voiceActive && "bg-primary text-primary-foreground hover:bg-primary/90",
                 )}
                 onClick={() => {
+                  const voice = useVoiceStore.getState();
                   if (voiceActive) {
-                    if (voiceMinimized) {
-                      restoreRoom();
-                    } else {
-                      minimizeRoom();
-                    }
+                    voice.setMinimized(!voiceMinimized);
                   } else {
-                    startSession();
+                    void voice.start(searchParams.get("thread"));
                   }
                 }}
               >
