@@ -638,8 +638,7 @@ export function showInAppToast(
   payload: NotificationDeliveryPayload,
   onClick?: () => void,
 ): string {
-  const options = {
-    title: payload.title,
+  const toastId = toast(payload.title, {
     description: payload.preview || payload.body,
     duration: 6000,
     action: {
@@ -650,8 +649,7 @@ export function showInAppToast(
       },
     },
     icon: "🔔",
-  };
-  const toastId = (toast as any)(options);
+  });
   return String(toastId);
 }
 

@@ -331,6 +331,7 @@ describe("in-app toast", () => {
   it("calls sonner toast with a View action", () => {
     showInAppToast(basePayload);
     expect(toast).toHaveBeenCalledWith(
+      "Hello",
       expect.objectContaining({
         description: "A chat reply...",
         duration: 6000,
