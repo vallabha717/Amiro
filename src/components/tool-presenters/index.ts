@@ -1,6 +1,7 @@
 import { agentPresenters } from "./agent-presenters";
 import { codeIntelPresenters } from "./code-intel-presenters";
 import { filePresenters } from "./file-presenters";
+import { jcodePresenters } from "./jcode-presenters";
 import { planPresenters } from "./plan-presenters";
 import { shellPresenters } from "./shell-presenters";
 import type { ToolPresenter, ToolPresenterRegistry } from "./types";
@@ -30,6 +31,7 @@ export const toolPresenters: ToolPresenterRegistry = {
   ...agentPresenters,
   ...codeIntelPresenters,
   ...planPresenters,
+  ...jcodePresenters,
 };
 
 export function getToolPresenter(

@@ -3,11 +3,16 @@
 import { cn } from "lib/utils";
 import {
   AlertTriangleIcon,
+  BookOpenIcon,
   BrainIcon,
   CheckCircle2Icon,
   CrosshairIcon,
+  HistoryIcon,
   MapIcon,
+  SearchIcon,
+  WrenchIcon,
 } from "lucide-react";
+import { parseToolTiming } from "lib/ai/tools/timing";
 import type { PresenterProps, ToolPresenter } from "./types";
 
 /* ------------------------------------------------------------------ */
@@ -246,6 +251,18 @@ function MemoryBody({ input, output }: PresenterProps) {
     );
   }
 
+  if (input?.content) {
+    return (
+      <div className="space-y-1 text-xs">
+        <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+          <CheckCircle2Icon className="size-3.5 shrink-0" />
+          <span>memory updated</span>
+        </div>
+        <div className="text-muted-foreground pl-5">{input.content}</div>
+      </div>
+    );
+  }
+
   const entries = output?.entries;
   if (entries) {
     if (entries.length === 0) {
@@ -257,9 +274,9 @@ function MemoryBody({ input, output }: PresenterProps) {
     }
     return (
       <div className="space-y-1 text-xs">
-        {entries.map((e: any) => (
-          <div key={e.id} className="leading-relaxed">
-            {e.text}
+        {entries.map((e: any, idx: number) => (
+          <div key={e.id ?? idx} className="leading-relaxed">
+            {e.text ?? (typeof e === "string" ? e : JSON.stringify(e))}
           </div>
         ))}
       </div>
@@ -273,15 +290,30 @@ function MemoryBody({ input, output }: PresenterProps) {
       </span>
     );
   }
+
+  if (typeof output === "string") {
+    return (
+      <pre className="text-xs font-mono whitespace-pre-wrap text-muted-foreground">
+        {parseToolTiming(output).cleanText}
+      </pre>
+    );
+  }
+
   return <span className="text-muted-foreground text-xs">…</span>;
 }
 
 const memory: ToolPresenter = {
   glance: ({ input, output, status }) => {
     if (status === "error") return "memory failed";
+    if (input?.content !== undefined) {
+      return `remembered: ${String(input.content).slice(0, 60)}`;
+    }
     if (input?.text !== undefined) {
       const verb = output?.updated ? "reinforced" : "remembered";
       return `${verb}: ${String(input.text).slice(0, 60)}`;
+    }
+    if (input?.query !== undefined) {
+      return `recall: ${String(input.query).slice(0, 60)}`;
     }
     if (output?.removed !== undefined) {
       return output.removed ? "forgot a note" : "no such note";
@@ -289,25 +321,295 @@ const memory: ToolPresenter = {
     const n = output?.entries?.length ?? 0;
     return `${n} note${n === 1 ? "" : "s"}`;
   },
-  Compact: (props: PresenterProps) => (
-    <div className="w-full rounded-lg border bg-card overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/40">
-        <BrainIcon className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="text-xs font-medium">
-          {props.input?.text !== undefined
-            ? "Remember about this workspace"
-            : props.input?.id !== undefined
-              ? "Forget a note"
-              : "Workspace notes"}
-        </span>
+  Compact: (props: PresenterProps) => {
+    const timing = parseToolTiming(props.output);
+    return (
+      <div className="w-full rounded-lg border bg-card overflow-hidden">
+        <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/40">
+          <BrainIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="text-xs font-medium">
+            {props.input?.action
+              ? `Memory · ${props.input.action}`
+              : props.input?.text !== undefined || props.input?.content !== undefined
+                ? "Remember about this workspace"
+                : props.input?.id !== undefined
+                  ? "Forget a note"
+                  : "Workspace notes"}
+          </span>
+          {timing.duration ? (
+            <span className="ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-muted border text-muted-foreground">
+              {timing.duration}
+            </span>
+          ) : null}
+        </div>
+        <div className="px-3 py-2">
+          <MemoryBody {...props} />
+        </div>
       </div>
-      <div className="px-3 py-2">
-        <MemoryBody {...props} />
-      </div>
-    </div>
-  ),
+    );
+  },
 };
 memory.Expanded = memory.Compact;
+
+const agentgrep: ToolPresenter = {
+  glance: ({ input, output, status }) => {
+    const mode = input?.mode ?? "grep";
+    const q = input?.query ?? input?.terms?.join(", ") ?? input?.file ?? "";
+    if (status === "pending") return `agentgrep (${mode}) · "${q}"…`;
+    if (status === "error") return `⚠ agentgrep failed · ${mode}`;
+    const timing = parseToolTiming(output);
+    const clean = typeof output === "string" ? timing.cleanText : "";
+    const matchLines = clean ? clean.split("\n").filter(Boolean).length : 0;
+    return `agentgrep (${mode}) · "${q}" · ${matchLines} ${matchLines === 1 ? "match" : "matches"}`;
+  },
+  Compact: ({ input, output, status }: PresenterProps) => {
+    const mode = input?.mode ?? "grep";
+    const timing = parseToolTiming(output);
+    return (
+      <div
+        className={cn(
+          "w-full rounded-lg border bg-card overflow-hidden text-xs",
+          status === "error" && "border-destructive/50",
+        )}
+      >
+        <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/40">
+          <SearchIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="font-medium">agentgrep</span>
+          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono uppercase">
+            {mode}
+          </span>
+          {input?.query ? (
+            <span className="font-mono text-muted-foreground truncate max-w-xs">
+              "{input.query}"
+            </span>
+          ) : null}
+          {timing.duration ? (
+            <span className="ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-muted border text-muted-foreground">
+              {timing.duration}
+            </span>
+          ) : null}
+        </div>
+        <div className="px-3 py-2 text-muted-foreground space-y-1">
+          {input?.intent ? <div className="text-[11px]">{input.intent}</div> : null}
+          {input?.path || input?.file || input?.glob ? (
+            <div className="text-[11px] font-mono">
+              target: {input.file ?? input.path ?? input.glob}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  },
+  Expanded: ({ input, output, status, errorText }: PresenterProps) => {
+    const mode = input?.mode ?? "grep";
+    const timing = parseToolTiming(output);
+    const clean = typeof output === "string" ? timing.cleanText : JSON.stringify(output, null, 2);
+    return (
+      <div
+        className={cn(
+          "w-full rounded-lg border bg-card overflow-hidden text-xs",
+          status === "error" && "border-destructive/50",
+        )}
+      >
+        <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/40">
+          <SearchIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="font-medium">agentgrep</span>
+          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono uppercase">
+            {mode}
+          </span>
+          {input?.query ? (
+            <span className="font-mono text-muted-foreground truncate max-w-xs">
+              "{input.query}"
+            </span>
+          ) : null}
+          {timing.duration ? (
+            <span className="ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-muted border text-muted-foreground">
+              {timing.duration}
+            </span>
+          ) : null}
+        </div>
+        <div className="px-3 py-2 space-y-2">
+          {input?.intent ? <div className="text-[11px] text-muted-foreground">{input.intent}</div> : null}
+          {status === "error" ? (
+            <pre className="text-destructive font-mono whitespace-pre-wrap">
+              {errorText || "search failed"}
+            </pre>
+          ) : clean ? (
+            <pre className="max-h-80 overflow-auto font-mono text-[11px] whitespace-pre-wrap bg-muted/20 p-2 rounded border leading-relaxed">
+              {clean}
+            </pre>
+          ) : (
+            <div className="text-muted-foreground">no matches</div>
+          )}
+        </div>
+      </div>
+    );
+  },
+};
+
+const sessionSearch: ToolPresenter = {
+  glance: ({ input, status }) => {
+    const q = input?.query ?? "";
+    if (status === "pending") return `searching sessions for "${q}"…`;
+    if (status === "error") return `session search failed`;
+    return `session search · "${q}"`;
+  },
+  Compact: ({ input, output }: PresenterProps) => {
+    const timing = parseToolTiming(output);
+    return (
+      <div className="w-full rounded-lg border bg-card overflow-hidden text-xs">
+        <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/40">
+          <HistoryIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="font-medium">Session search</span>
+          {timing.duration ? (
+            <span className="ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-muted border text-muted-foreground">
+              {timing.duration}
+            </span>
+          ) : null}
+        </div>
+        <div className="px-3 py-2 text-muted-foreground font-mono">
+          "{input?.query ?? ""}"
+        </div>
+      </div>
+    );
+  },
+  Expanded: ({ input, output, status, errorText }: PresenterProps) => {
+    const timing = parseToolTiming(output);
+    const clean = typeof output === "string" ? timing.cleanText : JSON.stringify(output, null, 2);
+    return (
+      <div className="w-full rounded-lg border bg-card overflow-hidden text-xs">
+        <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/40">
+          <HistoryIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="font-medium">Session search · "{input?.query ?? ""}"</span>
+          {timing.duration ? (
+            <span className="ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-muted border text-muted-foreground">
+              {timing.duration}
+            </span>
+          ) : null}
+        </div>
+        <div className="px-3 py-2">
+          {status === "error" ? (
+            <pre className="text-destructive font-mono whitespace-pre-wrap">{errorText || "failed"}</pre>
+          ) : (
+            <pre className="max-h-72 overflow-auto font-mono text-[11px] whitespace-pre-wrap bg-muted/20 p-2 rounded border">
+              {clean}
+            </pre>
+          )}
+        </div>
+      </div>
+    );
+  },
+};
+
+const docsPresenter: ToolPresenter = {
+  glance: ({ input, status }) => {
+    const q = input?.query ?? input?.path ?? "documentation";
+    if (status === "pending") return `searching docs · ${q}…`;
+    if (status === "error") return `docs search failed`;
+    return `docs · ${q}`;
+  },
+  Compact: ({ input, output }: PresenterProps) => {
+    const timing = parseToolTiming(output);
+    return (
+      <div className="w-full rounded-lg border bg-card overflow-hidden text-xs">
+        <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/40">
+          <BookOpenIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="font-medium">Docs</span>
+          {timing.duration ? (
+            <span className="ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-muted border text-muted-foreground">
+              {timing.duration}
+            </span>
+          ) : null}
+        </div>
+        <div className="px-3 py-2 text-muted-foreground">
+          {input?.query ?? input?.path ?? "search docs"}
+        </div>
+      </div>
+    );
+  },
+  Expanded: ({ input, output, status, errorText }: PresenterProps) => {
+    const timing = parseToolTiming(output);
+    const clean = typeof output === "string" ? timing.cleanText : JSON.stringify(output, null, 2);
+    return (
+      <div className="w-full rounded-lg border bg-card overflow-hidden text-xs">
+        <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/40">
+          <BookOpenIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="font-medium">Docs · {input?.query ?? input?.path ?? ""}</span>
+          {timing.duration ? (
+            <span className="ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-muted border text-muted-foreground">
+              {timing.duration}
+            </span>
+          ) : null}
+        </div>
+        <div className="px-3 py-2">
+          {status === "error" ? (
+            <pre className="text-destructive font-mono whitespace-pre-wrap">{errorText || "failed"}</pre>
+          ) : (
+            <pre className="max-h-72 overflow-auto font-mono text-[11px] whitespace-pre-wrap bg-muted/20 p-2 rounded border">
+              {clean}
+            </pre>
+          )}
+        </div>
+      </div>
+    );
+  },
+};
+
+const skillPresenter: ToolPresenter = {
+  glance: ({ input, status }) => {
+    const action = input?.action ?? "manage";
+    const name = input?.name ?? "";
+    if (status === "pending") return `skill (${action}) · ${name}…`;
+    if (status === "error") return `skill ${action} failed`;
+    return `skill (${action}) · ${name}`;
+  },
+  Compact: ({ input, output }: PresenterProps) => {
+    const timing = parseToolTiming(output);
+    return (
+      <div className="w-full rounded-lg border bg-card overflow-hidden text-xs">
+        <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/40">
+          <WrenchIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="font-medium">Skill · {input?.action ?? "manage"}</span>
+          {input?.name ? <span className="font-mono text-primary">{input.name}</span> : null}
+          {timing.duration ? (
+            <span className="ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-muted border text-muted-foreground">
+              {timing.duration}
+            </span>
+          ) : null}
+        </div>
+        {input?.intent ? <div className="px-3 py-2 text-muted-foreground">{input.intent}</div> : null}
+      </div>
+    );
+  },
+  Expanded: ({ input, output, status, errorText }: PresenterProps) => {
+    const timing = parseToolTiming(output);
+    const clean = typeof output === "string" ? timing.cleanText : JSON.stringify(output, null, 2);
+    return (
+      <div className="w-full rounded-lg border bg-card overflow-hidden text-xs">
+        <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/40">
+          <WrenchIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="font-medium">Skill · {input?.action ?? "manage"}</span>
+          {input?.name ? <span className="font-mono text-primary">{input.name}</span> : null}
+          {timing.duration ? (
+            <span className="ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-muted border text-muted-foreground">
+              {timing.duration}
+            </span>
+          ) : null}
+        </div>
+        <div className="px-3 py-2 space-y-2">
+          {input?.intent ? <div className="text-muted-foreground">{input.intent}</div> : null}
+          {status === "error" ? (
+            <pre className="text-destructive font-mono whitespace-pre-wrap">{errorText || "failed"}</pre>
+          ) : clean ? (
+            <pre className="max-h-72 overflow-auto font-mono text-[11px] whitespace-pre-wrap bg-muted/20 p-2 rounded border">
+              {clean}
+            </pre>
+          ) : null}
+        </div>
+      </div>
+    );
+  },
+};
 
 export const codeIntelPresenters = {
   repo_map: repoMap,
@@ -315,4 +617,12 @@ export const codeIntelPresenters = {
   memory_write: memory,
   memory_read: memory,
   memory_forget: memory,
+  memory,
+  agentgrep,
+  session_search: sessionSearch,
+  conversation_search: sessionSearch,
+  amiro_docs: docsPresenter,
+  jcode_docs: docsPresenter,
+  skill_manage: skillPresenter,
+  skill: skillPresenter,
 };

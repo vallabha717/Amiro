@@ -2,6 +2,7 @@
 
 import { cn } from "lib/utils";
 import {
+  ExternalLinkIcon,
   FileIcon,
   FilePlusIcon,
   FolderIcon,
@@ -9,6 +10,8 @@ import {
   SearchIcon,
   TriangleAlertIcon,
 } from "lucide-react";
+import { parseToolTiming } from "lib/ai/tools/timing";
+import { editRowSummary } from "lib/ai/tools/step-kind";
 import {
   DiffEditorView,
   DiffEditorViewCompact,
@@ -28,11 +31,15 @@ function Shell({
   icon: Icon,
   title,
   tone = "default",
+  intent,
+  duration,
   children,
 }: {
   icon: typeof FileIcon;
   title: string;
   tone?: "default" | "error" | "warn";
+  intent?: string;
+  duration?: string;
   children?: React.ReactNode;
 }) {
   return (
@@ -50,7 +57,17 @@ function Shell({
             tone === "error" ? "text-destructive" : "text-muted-foreground",
           )}
         />
-        <span className="text-xs font-medium truncate">{title}</span>
+        <div className="min-w-0 flex-1 flex flex-col">
+          <span className="text-xs font-medium truncate">{title}</span>
+          {intent ? (
+            <span className="text-[11px] text-muted-foreground truncate">{intent}</span>
+          ) : null}
+        </div>
+        {duration ? (
+          <span className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-muted border text-muted-foreground">
+            {duration}
+          </span>
+        ) : null}
       </div>
       {children ? <div className="px-3 py-2 text-xs">{children}</div> : null}
     </div>
@@ -71,21 +88,34 @@ function ErrorBody({ errorText }: { errorText?: string }) {
 
 const readFile: ToolPresenter = {
   glance: ({ input, output, status }) => {
-    const path = output?.path ?? input?.path ?? "";
+    const path = output?.path ?? input?.file_path ?? input?.path ?? "";
     if (status === "pending") return `reading ${baseName(path)}…`;
     if (status === "error") return `failed to read ${baseName(path)}`;
-    const total = output?.total_lines ?? 0;
+    const parsedTiming = parseToolTiming(output);
+    const text = typeof output === "string" ? parsedTiming.cleanText : output?.content;
+    const linesCount = typeof text === "string" ? (text ? text.split("\n").length : 0) : 0;
+    const total = output?.total_lines ?? linesCount;
+    if (input?.start_line && linesCount > 0) {
+      const endLine = input.start_line + linesCount - 1;
+      return `${path} · lines ${input.start_line}-${endLine} of ${total}`;
+    }
     return output?.truncated
       ? `${path} · lines ${output.start_line}-${output.end_line} of ${total}`
       : `${path} · ${total} lines`;
   },
   Compact: ({ input, output, status, errorText }: PresenterProps) => {
-    const path = output?.path ?? input?.path ?? "";
+    const path = output?.path ?? input?.file_path ?? input?.path ?? "";
+    const parsedTiming = parseToolTiming(output);
+    const text = typeof output === "string" ? parsedTiming.cleanText : output?.content;
+    const linesCount = typeof text === "string" ? (text ? text.split("\n").length : 0) : 0;
+    const total = output?.total_lines ?? linesCount;
     return (
       <Shell
         icon={FileIcon}
         title={path}
         tone={status === "error" ? "error" : "default"}
+        intent={input?.intent}
+        duration={parsedTiming.duration}
       >
         {status === "error" ? (
           <ErrorBody errorText={errorText} />
@@ -93,7 +123,7 @@ const readFile: ToolPresenter = {
           <span className="text-muted-foreground">reading…</span>
         ) : (
           <div className="flex items-center gap-2 text-muted-foreground">
-            <span>{output?.total_lines ?? 0} lines</span>
+            <span>{total} lines</span>
             {output?.truncated ? (
               <span className="rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 px-1.5 py-0.5">
                 truncated
@@ -105,12 +135,18 @@ const readFile: ToolPresenter = {
     );
   },
   Expanded: ({ input, output, status, errorText }: PresenterProps) => {
-    const path = output?.path ?? input?.path ?? "";
+    const path = output?.path ?? input?.file_path ?? input?.path ?? "";
+    const parsedTiming = parseToolTiming(output);
+    const text = typeof output === "string" ? parsedTiming.cleanText : output?.content;
+    const linesCount = typeof text === "string" ? (text ? text.split("\n").length : 0) : 0;
+    const total = output?.total_lines ?? linesCount;
     return (
       <Shell
         icon={FileIcon}
         title={path}
         tone={status === "error" ? "error" : "default"}
+        intent={input?.intent}
+        duration={parsedTiming.duration}
       >
         {status === "error" ? (
           <ErrorBody errorText={errorText} />
@@ -118,14 +154,24 @@ const readFile: ToolPresenter = {
           <span className="text-muted-foreground">reading…</span>
         ) : (
           <>
+            <div className="flex items-center gap-2 text-muted-foreground mb-2">
+              <span>{total} lines</span>
+              {output?.truncated ? (
+                <span className="rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 px-1.5 py-0.5">
+                  truncated
+                </span>
+              ) : null}
+            </div>
             {output?.notice ? (
               <div className="mb-2 text-amber-600 dark:text-amber-400">
                 {output.notice}
               </div>
             ) : null}
-            <pre className="max-h-80 overflow-auto font-mono text-xs leading-relaxed whitespace-pre">
-              {output?.content ?? ""}
-            </pre>
+            {text ? (
+              <pre className="max-h-80 overflow-auto font-mono text-xs leading-relaxed whitespace-pre-wrap break-all bg-muted/20 p-2 rounded border">
+                {text}
+              </pre>
+            ) : null}
           </>
         )}
       </Shell>
@@ -338,41 +384,63 @@ const grep: ToolPresenter = {
 /* write_file                                                          */
 /* ------------------------------------------------------------------ */
 
+function extractPathFromPatchText(patchText?: string): string {
+  if (!patchText || typeof patchText !== "string") return "";
+  const updateMatch = patchText.match(/\*\*\*\s+(?:Update|Add)\s+File:\s*([^\s\n]+)/i);
+  if (updateMatch) return updateMatch[1];
+  const diffMatch = patchText.match(/diff --git a\/([^\s\n]+)/);
+  if (diffMatch) return diffMatch[1];
+  const plusMatch = patchText.match(/\+\+\+\s+(?:b\/)?([^\s\n]+)/);
+  if (plusMatch && plusMatch[1] !== "/dev/null") return plusMatch[1];
+  return "";
+}
+
 const writeFile: ToolPresenter = {
   glance: ({ input, output, status }) => {
-    const path = output?.path ?? input?.path ?? "";
+    const path = output?.path ?? input?.file_path ?? input?.path ?? "";
     if (status === "pending") return `writing ${baseName(path)}…`;
     if (status === "error") return `failed to write ${baseName(path)}`;
-    const verb = output?.created ? "created" : "overwrote";
-    return `${verb} ${path} · ${output?.lines ?? 0} lines`;
+    const row = editRowSummary("write", { input, output, status });
+    const verb = row?.verb?.toLowerCase() ?? (output?.created ? "created" : "overwrote");
+    const lines = row?.added ?? output?.lines ?? 0;
+    return `${verb} ${path} · ${lines} lines`;
   },
-  Compact: ({ input, output, status, errorText }: PresenterProps) => (
-    <Shell
-      icon={FilePlusIcon}
-      title={output?.path ?? input?.path ?? ""}
-      tone={status === "error" ? "error" : "default"}
-    >
-      {status === "error" ? (
-        <ErrorBody errorText={errorText} />
-      ) : (
-        <div className="flex items-center gap-2">
-          <span
-            className={cn(
-              "rounded px-1.5 py-0.5",
-              output?.created
-                ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                : "bg-amber-500/15 text-amber-600 dark:text-amber-400",
-            )}
-          >
-            {output?.created ? "created" : "overwrote"}
-          </span>
-          <span className="text-muted-foreground">
-            {output?.lines ?? 0} lines
-          </span>
-        </div>
-      )}
-    </Shell>
-  ),
+  Compact: ({ input, output, status, errorText }: PresenterProps) => {
+    const path = output?.path ?? input?.file_path ?? input?.path ?? "";
+    const parsedTiming = parseToolTiming(output);
+    const row = editRowSummary("write", { input, output, status });
+    const isCreated = row ? row.verb === "Created" : output?.created ?? true;
+    const lines = row?.added ?? output?.lines ?? 0;
+    return (
+      <Shell
+        icon={FilePlusIcon}
+        title={path}
+        tone={status === "error" ? "error" : "default"}
+        intent={input?.intent}
+        duration={parsedTiming.duration}
+      >
+        {status === "error" ? (
+          <ErrorBody errorText={errorText} />
+        ) : (
+          <div className="flex items-center gap-2">
+            <span
+              className={cn(
+                "rounded px-1.5 py-0.5",
+                isCreated
+                  ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                  : "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+              )}
+            >
+              {isCreated ? "created" : "overwrote"}
+            </span>
+            <span className="text-muted-foreground">
+              {lines} lines
+            </span>
+          </div>
+        )}
+      </Shell>
+    );
+  },
 };
 writeFile.Expanded = writeFile.Compact;
 
@@ -396,7 +464,8 @@ function DiffStrip({ added, removed }: { added: number; removed: number }) {
   );
 }
 
-function EditBody({ output, status, errorText }: PresenterProps) {
+function EditBody(props: PresenterProps) {
+  const { output, status, errorText } = props;
   if (status === "error") {
     return (
       <div className="flex items-start gap-2">
@@ -413,9 +482,12 @@ function EditBody({ output, status, errorText }: PresenterProps) {
   if (status === "pending") {
     return <span className="text-muted-foreground">applying edit…</span>;
   }
+  const row = editRowSummary("edit", props);
+  const added = typeof output?.added === "number" ? output.added : (row?.added ?? 0);
+  const removed = typeof output?.removed === "number" ? output.removed : (row?.removed ?? 0);
   return (
     <div className="space-y-2">
-      <DiffStrip added={output?.added ?? 0} removed={output?.removed ?? 0} />
+      <DiffStrip added={added} removed={removed} />
     </div>
   );
 }
@@ -434,14 +506,23 @@ function EditDetail({
   errorText,
   note,
 }: PresenterProps & { note?: string }) {
-  const { sections, windowed } = sectionsFromEditOutput(output);
+  const { sections, windowed } = sectionsFromEditOutput(output, input);
+  const row = editRowSummary("edit", { input, output, status });
+  const added = typeof output?.added === "number" ? output.added : (row?.added ?? 0);
+  const removed = typeof output?.removed === "number" ? output.removed : (row?.removed ?? 0);
+  const path =
+    output?.path ??
+    input?.file_path ??
+    input?.path ??
+    extractPathFromPatchText(input?.patch_text) ??
+    "";
   return (
     <DiffEditorView
-      path={output?.path ?? input?.path ?? ""}
+      path={path}
       sections={sections}
       windowed={windowed}
-      added={output?.added ?? 0}
-      removed={output?.removed ?? 0}
+      added={added}
+      removed={removed}
       status={status}
       errorText={errorText}
       note={note}
@@ -461,14 +542,23 @@ function EditExpanded(props: PresenterProps & { note?: string }) {
     return <EditDetail {...props} />;
   }
   const { input, output, status, errorText, note } = props;
-  const { sections, windowed } = sectionsFromEditOutput(output);
+  const { sections, windowed } = sectionsFromEditOutput(output, input);
+  const row = editRowSummary("edit", props);
+  const added = typeof output?.added === "number" ? output.added : (row?.added ?? 0);
+  const removed = typeof output?.removed === "number" ? output.removed : (row?.removed ?? 0);
+  const path =
+    output?.path ??
+    input?.file_path ??
+    input?.path ??
+    extractPathFromPatchText(input?.patch_text) ??
+    "";
   return (
     <DiffEditorViewCompact
-      path={output?.path ?? input?.path ?? ""}
+      path={path}
       sections={sections}
       windowed={windowed}
-      added={output?.added ?? 0}
-      removed={output?.removed ?? 0}
+      added={added}
+      removed={removed}
       status={status}
       errorText={errorText}
       note={note}
@@ -478,24 +568,160 @@ function EditExpanded(props: PresenterProps & { note?: string }) {
 
 const editFile: ToolPresenter = {
   glance: ({ input, output, status }) => {
-    const path = output?.path ?? input?.path ?? "";
+    const path =
+      output?.path ??
+      input?.file_path ??
+      input?.path ??
+      "";
     if (status === "pending") return `editing ${baseName(path)}…`;
     // Loud on purpose: a failed anchor is the one outcome a reviewer
     // scanning a long run must never scroll past.
     if (status === "error") return `⚠ edit failed · ${baseName(path)}`;
-    return `${path} · +${output?.added ?? 0} −${output?.removed ?? 0}`;
+    const row = editRowSummary("edit", { input, output, status });
+    const added = typeof output?.added === "number" ? output.added : (row?.added ?? 0);
+    const removed = typeof output?.removed === "number" ? output.removed : (row?.removed ?? 0);
+    return `${path} · +${added} −${removed}`;
   },
-  Compact: (props: PresenterProps) => (
-    <Shell
-      icon={PencilIcon}
-      title={props.output?.path ?? props.input?.path ?? ""}
-      tone={props.status === "error" ? "error" : "default"}
-    >
-      <EditBody {...props} />
-    </Shell>
-  ),
+  Compact: (props: PresenterProps) => {
+    const parsedTiming = parseToolTiming(props.output);
+    return (
+      <Shell
+        icon={PencilIcon}
+        title={props.output?.path ?? props.input?.file_path ?? props.input?.path ?? ""}
+        tone={props.status === "error" ? "error" : "default"}
+        intent={props.input?.intent}
+        duration={parsedTiming.duration}
+      >
+        <EditBody {...props} />
+      </Shell>
+    );
+  },
 };
 editFile.Expanded = EditExpanded;
+
+const applyPatch: ToolPresenter = {
+  glance: ({ input, output, status }) => {
+    const path =
+      input?.file_path ??
+      input?.path ??
+      output?.path ??
+      extractPathFromPatchText(input?.patch_text) ??
+      "patch";
+    if (status === "pending") return `applying patch to ${baseName(path)}…`;
+    if (status === "error") return `⚠ patch failed · ${baseName(path)}`;
+    const row = editRowSummary("apply_patch", { input, output, status });
+    return `patched ${baseName(path)} · +${row?.added ?? 0} −${row?.removed ?? 0}`;
+  },
+  Compact: (props: PresenterProps) => {
+    const path =
+      props.input?.file_path ??
+      props.input?.path ??
+      props.output?.path ??
+      extractPathFromPatchText(props.input?.patch_text) ??
+      "patch";
+    const parsedTiming = parseToolTiming(props.output);
+    return (
+      <Shell
+        icon={PencilIcon}
+        title={path}
+        tone={props.status === "error" ? "error" : "default"}
+        intent={props.input?.intent}
+        duration={parsedTiming.duration}
+      >
+        <EditBody {...props} />
+      </Shell>
+    );
+  },
+  Expanded: EditExpanded,
+};
+
+const replaceTool: ToolPresenter = {
+  glance: ({ input, output, status }) => {
+    const path =
+      input?.file_path ??
+      input?.path ??
+      output?.path ??
+      "";
+    if (status === "pending") return `replacing in ${baseName(path)}…`;
+    if (status === "error") return `⚠ replace failed · ${baseName(path)}`;
+    const row = editRowSummary("replace", { input, output, status });
+    return `${path || "replace"} · +${row?.added ?? 0} −${row?.removed ?? 0}`;
+  },
+  Compact: (props: PresenterProps) => {
+    const path =
+      props.input?.file_path ??
+      props.input?.path ??
+      props.output?.path ??
+      "";
+    const parsedTiming = parseToolTiming(props.output);
+    return (
+      <Shell
+        icon={PencilIcon}
+        title={path || "replace"}
+        tone={props.status === "error" ? "error" : "default"}
+        intent={props.input?.intent}
+        duration={parsedTiming.duration}
+      >
+        <EditBody {...props} />
+      </Shell>
+    );
+  },
+  Expanded: EditExpanded,
+};
+
+const openTool: ToolPresenter = {
+  glance: ({ input, output, status }) => {
+    const target = input?.target ?? "";
+    if (status === "pending") return `opening ${target}…`;
+    if (status === "error") return `failed to open ${target}`;
+    return `opened ${target}`;
+  },
+  Compact: ({ input, output, status, errorText }: PresenterProps) => {
+    const target = input?.target ?? "";
+    return (
+      <Shell
+        icon={ExternalLinkIcon}
+        title={target || "open"}
+        tone={status === "error" ? "error" : "default"}
+        intent={input?.intent}
+      >
+        {status === "error" ? (
+          <ErrorBody errorText={errorText} />
+        ) : (
+          <div className="text-muted-foreground">
+            action: {input?.action ?? "open"}
+          </div>
+        )}
+      </Shell>
+    );
+  },
+  Expanded: ({ input, output, status, errorText }: PresenterProps) => {
+    const target = input?.target ?? "";
+    const parsedTiming = parseToolTiming(output);
+    return (
+      <Shell
+        icon={ExternalLinkIcon}
+        title={target || "open"}
+        tone={status === "error" ? "error" : "default"}
+        intent={input?.intent}
+        duration={parsedTiming.duration}
+      >
+        {status === "error" ? (
+          <ErrorBody errorText={errorText} />
+        ) : (
+          <div className="space-y-1 text-xs">
+            <div className="font-mono text-muted-foreground">{target}</div>
+            {parsedTiming.cleanText ? (
+              <pre className="font-mono text-[11px] text-muted-foreground whitespace-pre-wrap">
+                {parsedTiming.cleanText}
+              </pre>
+            ) : null}
+          </div>
+        )}
+      </Shell>
+    );
+  },
+};
 
 const multiEdit: ToolPresenter = {
   glance: ({ input, output, status }) => {
@@ -543,4 +769,11 @@ export const filePresenters = {
   write_file: writeFile,
   edit_file: editFile,
   multi_edit: multiEdit,
+  read: readFile,
+  ls: listDir,
+  edit: editFile,
+  write: writeFile,
+  apply_patch: applyPatch,
+  replace: replaceTool,
+  open: openTool,
 };

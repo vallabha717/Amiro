@@ -13,6 +13,7 @@ import {
 import { stepKindOf } from "lib/ai/tools/step-kind";
 import { cn, safeJSONParse, truncateString } from "lib/utils";
 import {
+  BrainIcon,
   Check,
   ChevronDownIcon,
   ChevronRight,
@@ -30,6 +31,7 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
+import { parseToolTiming } from "lib/ai/tools/timing";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "ui/badge";
 import { Button } from "ui/button";
@@ -615,66 +617,118 @@ export const ReasoningPart = memo(function ReasoningPart({
   isThinking?: boolean;
   readonly?: boolean;
 }) {
-  const [isExpanded, setIsExpanded] = useState(isThinking);
+  const [isExpanded, setIsExpanded] = useState(Boolean(isThinking));
 
   useEffect(() => {
     if (!isThinking && isExpanded) {
       setIsExpanded(false);
+    } else if (isThinking && !isExpanded) {
+      setIsExpanded(true);
     }
   }, [isThinking]);
 
-  return (
-    <div
-      className="flex flex-col cursor-pointer select-none"
-      onClick={() => {
-        setIsExpanded(!isExpanded);
-      }}
-    >
-      <div className="flex flex-row gap-2 items-center text-ring hover:text-primary transition-colors duration-150">
-        {isThinking && (
-          <span className="size-2 rounded-full bg-primary animate-pulse" />
-        )}
-        {isThinking ? (
-          <TextShimmer>Reasoning...</TextShimmer>
-        ) : (
-          <div className="font-medium text-xs tracking-wide">
-            Thought process
-          </div>
-        )}
+  const wordCount = useMemo(() => {
+    return reasoningText.trim().split(/\s+/).filter(Boolean).length;
+  }, [reasoningText]);
 
-        <button
-          data-testid="message-reasoning-toggle"
-          type="button"
-          className={cn(
-            "cursor-pointer transition-transform duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]",
-            isExpanded && "rotate-180",
-          )}
+  const previewSnippet = useMemo(() => {
+    const clean = reasoningText.replace(/[#*`_]/g, "").trim();
+    if (!clean) return "";
+    const firstLine = clean.split("\n")[0].trim();
+    return firstLine.length > 70 ? `${firstLine.slice(0, 69)}…` : firstLine;
+  }, [reasoningText]);
+
+  if (isThinking) {
+    return (
+      <div className="flex flex-col select-none my-1.5 animate-in fade-in duration-200">
+        <div
+          className="flex items-center gap-2 text-xs cursor-pointer py-1 text-primary/80 hover:text-primary transition-colors"
+          onClick={() => setIsExpanded(!isExpanded)}
         >
-          <ChevronDownIcon size={14} />
-        </button>
-      </div>
+          <span className="size-2 rounded-full bg-primary animate-pulse" />
+          <TextShimmer className="font-medium tracking-wide">Thinking…</TextShimmer>
+          <button
+            data-testid="message-reasoning-toggle"
+            type="button"
+            className={cn(
+              "ml-auto p-1 text-muted-foreground transition-transform duration-200",
+              isExpanded && "rotate-180",
+            )}
+          >
+            <ChevronDownIcon size={14} />
+          </button>
+        </div>
 
-      <div className="pl-4">
         <AnimatePresence initial={false}>
           {isExpanded && (
             <motion.div
               data-testid="message-reasoning"
-              key="content"
-              initial="collapsed"
-              animate="expanded"
-              exit="collapsed"
-              variants={variants}
+              key="streaming-reasoning"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
               transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}
-              style={{ overflow: "hidden" }}
-              className="pl-6 text-muted-foreground border-l flex flex-col gap-4"
+              className="rounded-xl border border-primary/20 bg-accent/30 p-3 mt-1 overflow-hidden text-xs text-muted-foreground shadow-xs"
             >
-              <Markdown>
-                {reasoningText || (isThinking ? "" : "Hmm, let's see...🤔")}
-              </Markdown>
+              <div className="max-h-72 overflow-y-auto space-y-2">
+                <Markdown>{reasoningText || "Thinking…"}</Markdown>
+                <span className="inline-block size-1.5 rounded-full bg-primary animate-ping ml-1" />
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col select-none my-1">
+      <div
+        className={cn(
+          "flex items-center gap-2 text-xs cursor-pointer py-1 px-2.5 rounded-lg border bg-muted/30 hover:bg-muted/60 transition-colors w-fit max-w-full",
+          isExpanded && "bg-muted/50 border-primary/20",
+        )}
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <BrainIcon className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="font-medium text-muted-foreground">Thought process</span>
+        {previewSnippet ? (
+          <span className="text-[11px] text-muted-foreground/70 truncate max-w-xs md:max-w-md hidden sm:inline">
+            · {previewSnippet}
+          </span>
+        ) : wordCount > 0 ? (
+          <span className="text-[10px] text-muted-foreground/60">
+            ({wordCount} words)
+          </span>
+        ) : null}
+        <button
+          data-testid="message-reasoning-toggle"
+          type="button"
+          className={cn(
+            "shrink-0 p-0.5 text-muted-foreground transition-transform duration-200 ml-1",
+            isExpanded && "rotate-180",
+          )}
+        >
+          <ChevronDownIcon size={13} />
+        </button>
+      </div>
+
+      <AnimatePresence initial={false}>
+        {isExpanded && (
+          <motion.div
+            data-testid="message-reasoning"
+            key="minimized-reasoning"
+            initial="collapsed"
+            animate="expanded"
+            exit="collapsed"
+            variants={variants}
+            transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}
+            className="pl-5 text-muted-foreground border-l ml-3 mt-2 flex flex-col gap-2 text-xs"
+          >
+            <Markdown>{reasoningText || "Hmm, let's see...🤔"}</Markdown>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 });
@@ -951,9 +1005,9 @@ export const ToolMessagePart = memo(
       return extractMCPToolId(toolName);
     }, [toolName]);
 
-    const isExpanded = useMemo(() => {
-      return expanded || result === null;
-    }, [expanded, result]);
+    const parsedTiming = useMemo(() => {
+      return parseToolTiming(output);
+    }, [output]);
 
     const isExecuting = useMemo(() => {
       return !isCompleted && isLast;
@@ -973,180 +1027,187 @@ export const ToolMessagePart = memo(
             {CustomToolComponent}
           </ToolRenderBoundary>
         ) : (
-          <div className="flex flex-col fade-in duration-300 animate-in">
+          <div className="flex flex-col w-full my-1 fade-in duration-200 animate-in">
             <div
-              className="flex gap-2 items-center cursor-pointer group/title"
+              className={cn(
+                "group/pill flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-card text-xs cursor-pointer transition-colors hover:bg-muted/40",
+                isError && "border-destructive/40 bg-destructive/5 text-destructive",
+              )}
               onClick={() => setExpanded(!expanded)}
             >
-              <div className="p-1.5 text-primary bg-input/40 rounded">
+              <div className="p-1 text-primary bg-input/40 rounded shrink-0">
                 {isExecuting ? (
-                  <Loader className="size-3.5 animate-spin" />
+                  <Loader className="size-3.5 animate-spin text-primary" />
                 ) : isError ? (
                   <TriangleAlert className="size-3.5 text-destructive" />
                 ) : (
-                  <HammerIcon className="size-3.5" />
+                  <HammerIcon className="size-3.5 text-muted-foreground" />
                 )}
               </div>
-              <span className="font-bold flex items-center gap-2">
+              <div className="min-w-0 flex items-center gap-1.5 font-medium truncate flex-1">
                 {isExecuting ? (
                   <TextShimmer>{mcpServerName}</TextShimmer>
                 ) : (
-                  mcpServerName
+                  <span>{mcpServerName}</span>
                 )}
-              </span>
-              {mcpToolName && (
-                <>
-                  <ChevronRight className="size-3.5" />
-                  <span className="text-muted-foreground group-hover/title:text-primary transition-colors duration-300">
-                    {mcpToolName}
+                {mcpToolName ? (
+                  <>
+                    <ChevronRight className="size-3 text-muted-foreground shrink-0" />
+                    <span className="font-mono text-muted-foreground truncate">{mcpToolName}</span>
+                  </>
+                ) : null}
+                {(input as any)?.intent ? (
+                  <span className="text-[11px] font-normal text-muted-foreground truncate hidden sm:inline">
+                    · {(input as any).intent}
                   </span>
-                </>
-              )}
-              <div className="ml-auto group-hover/title:bg-input p-1.5 rounded transition-colors duration-200">
+                ) : null}
+              </div>
+              {parsedTiming.duration ? (
+                <span className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-muted border text-muted-foreground">
+                  {parsedTiming.duration}
+                </span>
+              ) : null}
+              <div className="shrink-0 p-1 rounded group-hover/pill:bg-muted text-muted-foreground transition-colors duration-200">
                 <ChevronDownIcon
                   className={cn(
                     "size-3.5 transition-transform duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]",
-                    isExpanded && "rotate-180",
+                    expanded && "rotate-180",
                   )}
                 />
               </div>
             </div>
-            <div className="flex gap-2 py-2">
-              <div className="w-7 flex justify-center">
-                <Separator
-                  orientation="vertical"
-                  className="h-full bg-gradient-to-t from-transparent to-border to-5%"
-                />
-              </div>
-              <div className="w-full flex flex-col gap-2">
-                <div
-                  className={cn(
-                    "min-w-0 w-full p-4 rounded-lg bg-card px-4 border text-xs transition-colors fade-300",
-                    !isExpanded && "hover:bg-secondary cursor-pointer",
-                  )}
-                  onClick={() => {
-                    if (!isExpanded) {
-                      setExpanded(true);
-                    }
-                  }}
+
+            <AnimatePresence initial={false}>
+              {expanded && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
+                  className="flex flex-col gap-2 pt-2 px-1 overflow-hidden"
                 >
-                  <div className="flex items-center">
-                    <h5 className="text-muted-foreground font-medium select-none transition-colors">
-                      Request
-                    </h5>
-                    <div className="flex-1" />
-                    {copiedInput ? (
-                      <Check className="size-3" />
-                    ) : (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-3 text-muted-foreground"
-                        onClick={() => copyInput(JSON.stringify(input))}
-                      >
-                        <Copy className="size-3" />
-                      </Button>
-                    )}
-                  </div>
-                  {isExpanded && (
-                    <div className="p-2 max-h-[300px] overflow-y-auto ">
-                      <JsonView data={input} />
-                    </div>
-                  )}
-                </div>
-                {!result ? null : (
                   <div
                     className={cn(
-                      "min-w-0 w-full p-4 rounded-lg bg-card px-4 border text-xs mt-2 transition-colors fade-300",
-                      !isExpanded && "hover:bg-secondary cursor-pointer",
+                      "min-w-0 w-full p-3 rounded-lg bg-card border text-xs transition-colors",
                     )}
-                    onClick={() => {
-                      if (!isExpanded) {
-                        setExpanded(true);
-                      }
-                    }}
                   >
-                    <div className="flex items-center">
+                    <div className="flex items-center mb-1">
                       <h5 className="text-muted-foreground font-medium select-none">
-                        Response
+                        Request
                       </h5>
                       <div className="flex-1" />
-                      {copiedOutput ? (
-                        <Check className="size-3" />
+                      {copiedInput ? (
+                        <Check className="size-3 text-emerald-500" />
                       ) : (
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="size-3 text-muted-foreground"
-                          onClick={() => copyOutput(JSON.stringify(result))}
+                          className="size-4 text-muted-foreground"
+                          onClick={() => copyInput(JSON.stringify(input, null, 2))}
                         >
                           <Copy className="size-3" />
                         </Button>
                       )}
                     </div>
-                    {isExpanded && (
-                      <div className="p-2 max-h-[300px] overflow-y-auto">
-                        <JsonView data={result} />
-                      </div>
-                    )}
+                    <div className="max-h-[260px] overflow-y-auto">
+                      <JsonView data={input} />
+                    </div>
                   </div>
-                )}
 
-                {isManualToolInvocation && (
-                  <div className="flex flex-row gap-2 items-center mt-2">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="rounded-full text-xs hover:ring py-2"
-                      onClick={() =>
-                        addToolResult?.({
-                          tool: toolName,
-                          toolCallId,
-                          output: ManualToolConfirmTag.create({
-                            confirm: true,
-                          }),
-                        })
-                      }
+                  {result !== null && result !== undefined ? (
+                    <div
+                      className={cn(
+                        "min-w-0 w-full p-3 rounded-lg bg-card border text-xs transition-colors",
+                      )}
                     >
-                      <Check />
-                      {t("Common.approve")}
-                      <Separator orientation="vertical" className="h-4" />
-                      <span className="text-muted-foreground">
-                        {getShortcutKeyList(approveToolInvocationShortcut).join(
-                          " ",
+                      <div className="flex items-center mb-1">
+                        <h5 className="text-muted-foreground font-medium select-none">
+                          Response
+                        </h5>
+                        <div className="flex-1" />
+                        {copiedOutput ? (
+                          <Check className="size-3 text-emerald-500" />
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-4 text-muted-foreground"
+                            onClick={() =>
+                              copyOutput(
+                                typeof result === "string"
+                                  ? result
+                                  : JSON.stringify(result, null, 2),
+                              )
+                            }
+                          >
+                            <Copy className="size-3" />
+                          </Button>
                         )}
-                      </span>
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="rounded-full text-xs py-2"
-                      onClick={() =>
-                        addToolResult?.({
-                          tool: toolName,
-                          toolCallId,
-                          output: ManualToolConfirmTag.create({
-                            confirm: false,
-                          }),
-                        })
-                      }
-                    >
-                      <X />
-                      {t("Common.reject")}
-                      <Separator orientation="vertical" />
-                      <span className="text-muted-foreground">
-                        {getShortcutKeyList(rejectToolInvocationShortcut).join(
-                          " ",
+                      </div>
+                      <div className="max-h-[260px] overflow-y-auto">
+                        {typeof result === "string" ? (
+                          <pre className="font-mono text-xs whitespace-pre-wrap leading-relaxed text-muted-foreground">
+                            {parsedTiming.cleanText || result}
+                          </pre>
+                        ) : (
+                          <JsonView data={result} />
                         )}
-                      </span>
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {isManualToolInvocation && (
+                    <div className="flex flex-row gap-2 items-center mt-1">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="rounded-full text-xs hover:ring py-2"
+                        onClick={() =>
+                          addToolResult?.({
+                            tool: toolName,
+                            toolCallId,
+                            output: ManualToolConfirmTag.create({
+                              confirm: true,
+                            }),
+                          })
+                        }
+                      >
+                        <Check />
+                        {t("Common.approve")}
+                        <Separator orientation="vertical" className="h-4" />
+                        <span className="text-muted-foreground">
+                          {getShortcutKeyList(approveToolInvocationShortcut).join(" ")}
+                        </span>
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="rounded-full text-xs hover:ring py-2"
+                        onClick={() =>
+                          addToolResult?.({
+                            tool: toolName,
+                            toolCallId,
+                            output: ManualToolConfirmTag.create({
+                              confirm: false,
+                            }),
+                          })
+                        }
+                      >
+                        <X />
+                        {t("Common.reject")}
+                        <Separator orientation="vertical" className="h-4" />
+                        <span className="text-muted-foreground">
+                          {getShortcutKeyList(rejectToolInvocationShortcut).join(" ")}
+                        </span>
+                      </Button>
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {showActions && (
-              <div className="flex flex-row gap-2 items-center">
+              <div className="flex flex-row gap-2 items-center mt-1">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button

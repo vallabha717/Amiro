@@ -3,11 +3,12 @@
 import {
   type EditRowSummary,
   type StepKind,
+  formatDuration,
   stepGroupLabel,
-  workLogHeader,
 } from "lib/ai/tools/step-kind";
 import { cn } from "lib/utils";
 import {
+  CheckCircle2Icon,
   ChevronDownIcon,
   ChevronRightIcon,
   Loader2Icon,
@@ -17,10 +18,12 @@ import {
   type ReactNode,
   memo,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
 } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { PresenterSurface } from "./tool-presenters/surface";
 
 /** One row in the log: either a group of tool calls or a block of prose. */
@@ -146,18 +149,18 @@ export const WorkLog = memo(function WorkLog({
    */
   durationMs?: number;
 }) {
-  // Expanded while running so the user can watch; folds itself away on
-  // completion. Only auto-folds once -- reopening it must stick, or the
-  // component fights the user on the next render.
+  // Expanded while running so the user can watch; auto-minimizes smoothly
+  // into a summary pill bar when completed.
   const [open, setOpen] = useState(isRunning);
-  const autoCollapsed = useRef(false);
+  const wasRunningPrev = useRef(isRunning);
 
   useEffect(() => {
-    if (!isRunning && !autoCollapsed.current) {
-      autoCollapsed.current = true;
+    if (wasRunningPrev.current && !isRunning) {
       setOpen(false);
+    } else if (!wasRunningPrev.current && isRunning) {
+      setOpen(true);
     }
-    if (isRunning) setOpen(true);
+    wasRunningPrev.current = isRunning;
   }, [isRunning]);
 
   // Duration is measured, never guessed. While the turn is running the
@@ -165,11 +168,6 @@ export const WorkLog = memo(function WorkLog({
   // once it finishes the server's figure wins, because it is the one that
   // survives a reload and the one that already excludes time spent waiting
   // on an approval.
-  //
-  // The local clock restarts on each running stretch and resumes from the
-  // total so far, so a turn that stopped to ask does not count the asking:
-  // the user taking two minutes over an approval card is not the agent
-  // working for two minutes.
   const runStartedAt = useRef<number | null>(null);
   const runBaseMs = useRef(0);
   const wasRunning = useRef(false);
@@ -195,49 +193,134 @@ export const WorkLog = memo(function WorkLog({
       Math.max(0, (now || Date.now()) - (runStartedAt.current ?? now))
     : (durationMs ?? measuredMs.current);
 
-  const header = workLogHeader({ isRunning, elapsedMs: elapsed, stepCount });
+  const hasError = useMemo(() => {
+    return rows.some(
+      (r) => r.type === "group" && r.glances.some((g) => g.failed),
+    );
+  }, [rows]);
+
+  const editTotals = useMemo(() => {
+    let added = 0;
+    let removed = 0;
+    let fileCount = 0;
+    for (const r of rows) {
+      if (r.type === "group" && r.file) {
+        fileCount++;
+        if (typeof r.file.added === "number") added += r.file.added;
+        if (typeof r.file.removed === "number") removed += r.file.removed;
+      }
+    }
+    return { added, removed, fileCount };
+  }, [rows]);
+
+  const activeStepGlance = useMemo(() => {
+    if (!isRunning) return null;
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const row = rows[i];
+      if (row.type === "group" && row.glances.length > 0) {
+        const last = row.glances[row.glances.length - 1];
+        return last.text;
+      }
+    }
+    return null;
+  }, [rows, isRunning]);
 
   if (!rows.length) return null;
 
+  const headerText = isRunning
+    ? `Working… ${formatDuration(elapsed ?? 0)}`
+    : elapsed !== null && elapsed !== undefined
+      ? `Worked for ${formatDuration(elapsed)} · ${stepCount} ${stepCount === 1 ? "step" : "steps"}`
+      : `Worked · ${stepCount} ${stepCount === 1 ? "step" : "steps"}`;
+
   return (
-    <div className="flex flex-col w-full">
+    <div className="flex flex-col w-full my-1 select-none">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1 w-fit"
+        className={cn(
+          "group/worklog flex items-center gap-2 text-xs py-1 px-2.5 rounded-lg border transition-all text-left w-fit max-w-full",
+          isRunning
+            ? "border-primary/30 bg-primary/5 text-foreground hover:bg-primary/10"
+            : hasError
+              ? "border-amber-500/30 bg-card text-muted-foreground hover:text-foreground hover:bg-muted/30"
+              : "border-border bg-card text-muted-foreground hover:text-foreground hover:bg-muted/30",
+        )}
       >
         {isRunning ? (
-          <Loader2Icon className="size-3 animate-spin" />
-        ) : open ? (
-          <ChevronDownIcon className="size-3" />
+          <div className="relative flex items-center justify-center shrink-0 size-3.5">
+            <span className="absolute size-2.5 rounded-full bg-primary/30 animate-ping" />
+            <Loader2Icon className="size-3.5 animate-spin text-primary" />
+          </div>
+        ) : hasError ? (
+          <TriangleAlertIcon className="size-3.5 shrink-0 text-amber-500" />
         ) : (
-          <ChevronRightIcon className="size-3" />
+          <CheckCircle2Icon className="size-3.5 shrink-0 text-emerald-500 dark:text-emerald-400" />
         )}
-        <span className="font-medium">{header}</span>
+
+        <span className="font-medium text-foreground tracking-tight">
+          {headerText}
+        </span>
+
+        {isRunning && activeStepGlance ? (
+          <span className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[11px] font-mono truncate max-w-[200px] sm:max-w-xs hidden sm:inline">
+            {activeStepGlance}
+          </span>
+        ) : null}
+
+        {!isRunning && editTotals.fileCount > 0 ? (
+          <span className="inline-flex items-center gap-1 font-mono text-[10px] px-1.5 py-0.5 rounded-full bg-muted border shrink-0">
+            <span className="text-emerald-600 dark:text-emerald-400">
+              +{editTotals.added}
+            </span>
+            <span className="text-destructive">−{editTotals.removed}</span>
+          </span>
+        ) : null}
+
+        {!isRunning && hasError ? (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-destructive/15 text-destructive border border-destructive/20 font-medium shrink-0">
+            Failed
+          </span>
+        ) : null}
+
+        <ChevronDownIcon
+          className={cn(
+            "size-3.5 shrink-0 text-muted-foreground transition-transform duration-200 ml-1",
+            open && "rotate-180",
+          )}
+        />
       </button>
 
-      {open ? (
-        // Everything inside the log renders as a log entry, not as a full
-        // record: the diff, the file body and the rest live one click away,
-        // where there is room for them.
-        <PresenterSurface value="chat">
-          <div className="flex flex-col gap-1 border-l ml-1.5 pl-3 mt-1">
-            {rows.map((row, i) =>
-              row.type === "group" ? (
-                <GroupRow
-                  key={i}
-                  row={row}
-                  running={isRunning && i === rows.length - 1}
-                />
-              ) : (
-                <div key={i} className="py-1">
-                  {row.children}
-                </div>
-              ),
-            )}
-          </div>
-        </PresenterSurface>
-      ) : null}
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            key="work-log-timeline"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}
+            className="overflow-hidden"
+          >
+            <PresenterSurface value="chat">
+              <div className="flex flex-col gap-1 border-l ml-2 pl-3 mt-1.5 mb-1">
+                {rows.map((row, i) =>
+                  row.type === "group" ? (
+                    <GroupRow
+                      key={i}
+                      row={row}
+                      running={isRunning && i === rows.length - 1}
+                    />
+                  ) : (
+                    <div key={i} className="py-1">
+                      {row.children}
+                    </div>
+                  ),
+                )}
+              </div>
+            </PresenterSurface>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 });

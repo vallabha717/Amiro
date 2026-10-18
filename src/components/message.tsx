@@ -354,7 +354,7 @@ const PurePreviewMessage = ({
               }
 
               const toolName = getToolName(part);
-              const kind = stepKindOf(toolName);
+              const kind = stepKindOf(toolName, (part as any).input);
               const presenterProps = presenterPropsFromToolPart(part);
               const status = presenterProps.status;
               const glance =
@@ -387,11 +387,20 @@ const PurePreviewMessage = ({
               }
             }
 
+            const isWorkLogRunning = Boolean(
+              isLastMessage &&
+                isLoading &&
+                (tailParts.every((p) => p.type !== "text" || !p.text?.trim()) ||
+                  workParts.some(
+                    (p) => isToolUIPart(p) && !p.state.startsWith("output"),
+                  )),
+            );
+
             return (
               <>
                 <WorkLog
                   rows={rows}
-                  isRunning={Boolean(isLastMessage && isLoading)}
+                  isRunning={isWorkLogRunning}
                   stepCount={toolCount}
                   durationMs={
                     (message.metadata as ChatMetadata | undefined)?.durationMs

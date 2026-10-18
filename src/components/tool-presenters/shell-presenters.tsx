@@ -2,6 +2,7 @@
 
 import { cn } from "lib/utils";
 import { GitBranchIcon, GitPullRequestIcon, TerminalIcon } from "lucide-react";
+import { parseToolTiming } from "lib/ai/tools/timing";
 import { TerminalWindow } from "ui/terminal-window";
 import type { PresenterProps, ToolPresenter } from "./types";
 
@@ -37,10 +38,14 @@ function firstLine(s: string, max = 64) {
 function CommandStrip({
   command,
   cwd,
+  intent,
+  duration,
   tone = "default",
 }: {
   command?: string;
   cwd?: string;
+  intent?: string;
+  duration?: string;
   tone?: "default" | "error";
 }) {
   return (
@@ -55,6 +60,16 @@ function CommandStrip({
         <span className="text-xs font-medium text-muted-foreground">
           {cwd || "shell"}
         </span>
+        {intent ? (
+          <span className="text-[11px] text-muted-foreground truncate max-w-xs">
+            · {intent}
+          </span>
+        ) : null}
+        {duration ? (
+          <span className="ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-muted border text-muted-foreground">
+            {duration}
+          </span>
+        ) : null}
       </div>
       <pre className="px-3 py-2 font-mono text-xs whitespace-pre-wrap break-all">
         {command || ""}
@@ -65,30 +80,42 @@ function CommandStrip({
 
 const runShell: ToolPresenter = {
   glance: ({ input, output, status }) => {
-    const command = firstLine(output?.command ?? input?.command ?? "");
+    const rawCmd = output?.command ?? input?.command ?? input?.intent ?? "";
+    const command = firstLine(rawCmd);
     if (status === "pending") return command || "running a command…";
-    if (status === "error") return `⚠ ${command}`;
-    const exit = output?.exit_code ?? 0;
+    if (status === "error") return `⚠ ${command || "command failed"}`;
+    const timing = parseToolTiming(output);
+    const exit = typeof output?.exit_code === "number" ? output.exit_code : 0;
     if (output?.timed_out) return `${command} · timed out`;
+    if (exit !== 0) return `${command} · exit ${exit}`;
+    if (timing.duration) return `${command} · ${timing.duration}`;
     return `${command} · exit ${exit}`;
   },
   // Node-sized and approval-sized: the command, and nothing else. Output
   // goes in Expanded, which is where there is room for it.
-  Compact: ({ input, output, status }: PresenterProps) => (
-    <CommandStrip
-      command={output?.command ?? input?.command}
-      cwd={output?.cwd}
-      tone={status === "error" ? "error" : "default"}
-    />
-  ),
+  Compact: ({ input, output, status }: PresenterProps) => {
+    const timing = parseToolTiming(output);
+    return (
+      <CommandStrip
+        command={output?.command ?? input?.command}
+        cwd={output?.cwd}
+        intent={input?.intent}
+        duration={timing.duration}
+        tone={status === "error" ? "error" : "default"}
+      />
+    );
+  },
   // Unchanged from the pre-registry renderer: TerminalWindow already knows
   // nothing about which surface it is in, which was the point of the
   // exercise -- the first tool to need a presenter needed no new
   // presentational component.
   Expanded: ({ input, output, status, errorText }: PresenterProps) => {
-    const exitCode = output?.exit_code ?? 0;
+    const exitCode = typeof output?.exit_code === "number" ? output.exit_code : 0;
     const isError =
-      status === "error" || Boolean(output?.error) || (output && exitCode !== 0);
+      status === "error" || Boolean(output?.error) || exitCode !== 0;
+    const timing = parseToolTiming(output);
+    const cleanOutput =
+      typeof output === "string" ? timing.cleanText : output?.output || errorText || "";
     return (
       <div className="w-full my-2">
         <TerminalWindow
@@ -96,9 +123,82 @@ const runShell: ToolPresenter = {
           cwd={output?.cwd}
           status={status === "pending" ? "pending" : isError ? "error" : "success"}
           exitCode={exitCode}
-          output={output?.output || errorText || ""}
+          output={cleanOutput}
           sandboxed={output?.sandboxed}
           sandboxBackend={output?.sandbox_backend}
+        />
+      </div>
+    );
+  },
+};
+
+const bg: ToolPresenter = {
+  glance: ({ input, status }) => {
+    const action = input?.action ?? "status";
+    const id = input?.task_id ? ` · ${input.task_id}` : "";
+    if (status === "pending") return `bg ${action}${id}…`;
+    if (status === "error") return `⚠ bg ${action}${id} failed`;
+    return `bg ${action}${id}`;
+  },
+  Compact: ({ input, output, status }: PresenterProps) => {
+    const action = input?.action ?? "status";
+    const timing = parseToolTiming(output);
+    return (
+      <CommandStrip
+        command={`bg ${action} ${input?.task_id ?? ""}`}
+        intent={input?.intent}
+        duration={timing.duration}
+        tone={status === "error" ? "error" : "default"}
+      />
+    );
+  },
+  Expanded: ({ input, output, status, errorText }: PresenterProps) => {
+    const timing = parseToolTiming(output);
+    const text = typeof output === "string" ? timing.cleanText : JSON.stringify(output, null, 2);
+    return (
+      <div className="w-full my-2">
+        <TerminalWindow
+          command={`bg ${input?.action ?? "status"} ${input?.task_id ?? ""}`}
+          status={status === "pending" ? "pending" : status === "error" ? "error" : "success"}
+          exitCode={status === "error" ? 1 : 0}
+          output={text || errorText || ""}
+        />
+      </div>
+    );
+  },
+};
+
+const compileRemote: ToolPresenter = {
+  glance: ({ input, output, status }) => {
+    const cmd = firstLine(input?.command ?? "compile_remote");
+    if (status === "pending") return `compile_remote · ${cmd}…`;
+    if (status === "error") return `⚠ compile_remote failed · ${cmd}`;
+    const timing = parseToolTiming(output);
+    return timing.duration ? `compile_remote · ${cmd} · ${timing.duration}` : `compile_remote · ${cmd}`;
+  },
+  Compact: ({ input, output, status }: PresenterProps) => {
+    const timing = parseToolTiming(output);
+    return (
+      <CommandStrip
+        command={input?.command ?? "compile_remote"}
+        cwd={input?.path}
+        intent={input?.intent}
+        duration={timing.duration}
+        tone={status === "error" ? "error" : "default"}
+      />
+    );
+  },
+  Expanded: ({ input, output, status, errorText }: PresenterProps) => {
+    const timing = parseToolTiming(output);
+    const text = typeof output === "string" ? timing.cleanText : JSON.stringify(output, null, 2);
+    return (
+      <div className="w-full my-2">
+        <TerminalWindow
+          command={input?.command ?? "compile_remote"}
+          cwd={input?.path}
+          status={status === "pending" ? "pending" : status === "error" ? "error" : "success"}
+          exitCode={status === "error" ? 1 : 0}
+          output={text || errorText || ""}
         />
       </div>
     );
@@ -323,6 +423,9 @@ const createPR: ToolPresenter = {
 export const shellPresenters = {
   run_shell: runShell,
   "terminal-execution": runShell,
+  bash: runShell,
+  bg,
+  compile_remote: compileRemote,
   git,
   create_pr: createPR,
 };

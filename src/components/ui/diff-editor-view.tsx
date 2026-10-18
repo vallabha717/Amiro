@@ -67,19 +67,68 @@ function splitLines(text: string): string[] {
 /* Reading an edit tool's output                                         */
 /* -------------------------------------------------------------------- */
 
+function parsePatchSections(patchText: string): DiffSection[] {
+  const lines = patchText.split("\n");
+  const sections: DiffSection[] = [];
+  let currentBefore: string[] = [];
+  let currentAfter: string[] = [];
+  let currentStartLine = 1;
+  let inHunk = false;
+
+  for (const line of lines) {
+    const hunkMatch = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+    if (hunkMatch) {
+      if (inHunk && (currentBefore.length > 0 || currentAfter.length > 0)) {
+        sections.push({
+          before: currentBefore.join("\n"),
+          after: currentAfter.join("\n"),
+          startLine: currentStartLine,
+        });
+        currentBefore = [];
+        currentAfter = [];
+      }
+      inHunk = true;
+      currentStartLine = parseInt(hunkMatch[1], 10) || 1;
+      continue;
+    }
+
+    if (!inHunk) {
+      if (line.startsWith("***") || line.startsWith("---") || line.startsWith("+++")) {
+        continue;
+      }
+    }
+
+    if (line.startsWith("+") && !line.startsWith("+++")) {
+      currentAfter.push(line.slice(1));
+    } else if (line.startsWith("-") && !line.startsWith("---")) {
+      currentBefore.push(line.slice(1));
+    } else if (line.startsWith(" ")) {
+      currentBefore.push(line.slice(1));
+      currentAfter.push(line.slice(1));
+    }
+  }
+
+  if (currentBefore.length > 0 || currentAfter.length > 0) {
+    sections.push({
+      before: currentBefore.join("\n"),
+      after: currentAfter.join("\n"),
+      startLine: currentStartLine,
+    });
+  }
+
+  return sections;
+}
+
 /**
  * Turns edit_file/multi_edit's observation into sections to render.
  *
- * Two shapes, because two eras. `ui_view` is the whole file (or a wide window
- * of it) that the backend now ships alongside the result specifically for
- * this view. Messages written before that existed only kept the tool's own
- * few-line hunk preview, so they fall back to rendering those fragments --
- * which is worth doing rather than showing an old thread nothing at all.
+ * Supports legacy and modern backend outputs as well as Jcode runtime
+ * plain text outputs and input payloads (edit, write, apply_patch, replace).
  *
  * Exported and pure so both call sites -- the chat presenter and the file
  * card -- read a result the same way.
  */
-export function sectionsFromEditOutput(output: any): {
+export function sectionsFromEditOutput(output: any, input?: any): {
   sections: DiffSection[];
   windowed: boolean;
 } {
@@ -102,25 +151,120 @@ export function sectionsFromEditOutput(output: any): {
   }
 
   const edits = Array.isArray(output?.edits) ? output.edits : [];
-  const sections: DiffSection[] = [];
-  for (const edit of edits) {
-    const hunk: string[] = Array.isArray(edit?.hunk) ? edit.hunk : [];
-    const before: string[] = [];
-    const after: string[] = [];
-    for (const line of hunk) {
-      if (line.startsWith("+")) after.push(line.slice(1));
-      else if (line.startsWith("-")) before.push(line.slice(1));
+  if (edits.length > 0) {
+    const sections: DiffSection[] = [];
+    for (const edit of edits) {
+      const hunk: string[] = Array.isArray(edit?.hunk) ? edit.hunk : [];
+      const before: string[] = [];
+      const after: string[] = [];
+      for (const line of hunk) {
+        if (line.startsWith("+")) after.push(line.slice(1));
+        else if (line.startsWith("-")) before.push(line.slice(1));
+      }
+      if (before.length === 0 && after.length === 0) continue;
+      sections.push({
+        before: before.join("\n"),
+        after: after.join("\n"),
+        startLine: edit?.at_line ?? 1,
+      });
     }
-    if (before.length === 0 && after.length === 0) continue;
-    sections.push({
-      before: before.join("\n"),
-      after: after.join("\n"),
-      startLine: edit?.at_line ?? 1,
-    });
+    if (sections.length > 0) {
+      return { sections, windowed: true };
+    }
   }
+
+  // Jcode tool shapes:
+  // 1. edit: input.old_string & input.new_string
+  if (
+    input &&
+    (typeof input.old_string === "string" ||
+      typeof input.new_string === "string")
+  ) {
+    return {
+      sections: [
+        {
+          before: input.old_string ?? "",
+          after: input.new_string ?? "",
+          startLine: 1,
+        },
+      ],
+      windowed: false,
+    };
+  }
+
+  // 2. edit with multiple edits: input.edits = [{ old_string, new_string }]
+  if (input && Array.isArray(input.edits) && input.edits.length > 0) {
+    const sections: DiffSection[] = [];
+    for (const e of input.edits) {
+      if (
+        typeof e?.old_string === "string" ||
+        typeof e?.new_string === "string"
+      ) {
+        sections.push({
+          before: e.old_string ?? "",
+          after: e.new_string ?? "",
+          startLine: 1,
+        });
+      }
+    }
+    if (sections.length > 0) {
+      return { sections, windowed: sections.length > 1 };
+    }
+  }
+
+  // 3. write: input.content
+  if (input && typeof input.content === "string") {
+    return {
+      sections: [
+        {
+          before: "",
+          after: input.content,
+          startLine: 1,
+        },
+      ],
+      windowed: false,
+    };
+  }
+
+  // 4. replace: input.pattern & input.replacement
+  if (
+    input &&
+    (typeof input.pattern === "string" ||
+      typeof input.replacement === "string")
+  ) {
+    return {
+      sections: [
+        {
+          before: input.pattern ?? "",
+          after: input.replacement ?? "",
+          startLine: 1,
+        },
+      ],
+      windowed: false,
+    };
+  }
+
+  // 5. apply_patch: input.patch_text
+  if (input && typeof input.patch_text === "string" && input.patch_text.trim()) {
+    const patchSections = parsePatchSections(input.patch_text);
+    if (patchSections.length > 0) {
+      return { sections: patchSections, windowed: true };
+    }
+    return {
+      sections: [
+        {
+          before: "",
+          after: input.patch_text,
+          startLine: 1,
+        },
+      ],
+      windowed: true,
+    };
+  }
+
   // Fragments, never the file -- say so, so the gutter's line numbers are
   // read as "around here" rather than as the whole story.
-  return { sections, windowed: sections.length > 0 };
+  return { sections: [], windowed: false };
 }
 
 /* -------------------------------------------------------------------- */

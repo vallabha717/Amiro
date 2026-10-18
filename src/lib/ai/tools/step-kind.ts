@@ -76,10 +76,65 @@ const KIND_BY_TOOL: Record<string, StepKind> = {
   [DefaultToolName.CreateLineChart]: "visualize",
   [DefaultToolName.CreateTable]: "visualize",
   [ImageToolName]: "visualize",
+
+  // Jcode runtime tools:
+  // File & Search
+  read: "explore",
+  ls: "explore",
+  open: "explore",
+  // agentgrep is handled dynamically in stepKindOf based on mode
+
+  // Edit & Write
+  edit: "edit",
+  write: "edit",
+  apply_patch: "edit",
+  replace: "edit",
+
+  // Execution
+  bash: "command",
+  bg: "command",
+  compile_remote: "command",
+
+  // Planning & Memory
+  todo: "plan",
+  memory: "remember",
+  session_search: "orient",
+  conversation_search: "orient",
+  amiro_docs: "orient",
+  jcode_docs: "orient",
+  skill_manage: "remember",
+  skill: "remember",
+
+  // Agent & Swarm
+  swarm: "delegate",
+  subagent: "delegate",
+  communicate: "delegate",
+  batch: "delegate",
+
+  // Web & Apps
+  websearch: "search",
+  webfetch: "search",
+  browser: "search",
+  mcp: "delegate",
+  mcp_call: "delegate",
+  mcp_search: "search",
+  applet: "visualize",
+  panel: "visualize",
+  side_panel: "visualize",
+  schedule: "plan",
+  gmail: "command",
+  calendar: "plan",
 };
 
-export function stepKindOf(toolName: string | undefined): StepKind {
+export function stepKindOf(toolName: string | undefined, input?: any): StepKind {
   if (!toolName) return "other";
+  if (toolName === "agentgrep") {
+    const mode = input?.mode;
+    if (mode === "outline" || mode === "trace") {
+      return "orient";
+    }
+    return "explore";
+  }
   return KIND_BY_TOOL[toolName] ?? "other";
 }
 
@@ -193,6 +248,31 @@ export type EditRowSummary = {
   removed?: number;
 };
 
+function extractPathFromPatchText(patchText?: string): string {
+  if (!patchText || typeof patchText !== "string") return "";
+  const updateMatch = patchText.match(/\*\*\*\s+(?:Update|Add)\s+File:\s*([^\s\n]+)/i);
+  if (updateMatch) return updateMatch[1];
+  const diffMatch = patchText.match(/diff --git a\/([^\s\n]+)/);
+  if (diffMatch) return diffMatch[1];
+  const plusMatch = patchText.match(/\+\+\+\s+(?:b\/)?([^\s\n]+)/);
+  if (plusMatch && plusMatch[1] !== "/dev/null") return plusMatch[1];
+  const minusMatch = patchText.match(/---\s+(?:a\/)?([^\s\n]+)/);
+  if (minusMatch && minusMatch[1] !== "/dev/null") return minusMatch[1];
+  return "";
+}
+
+function patchLineCounts(patchText?: string): { added: number; removed: number } {
+  if (!patchText || typeof patchText !== "string") return { added: 0, removed: 0 };
+  let added = 0;
+  let removed = 0;
+  for (const line of patchText.split("\n")) {
+    if (line.startsWith("+++") || line.startsWith("---") || line.startsWith("***")) continue;
+    if (line.startsWith("+")) added++;
+    else if (line.startsWith("-")) removed++;
+  }
+  return { added, removed };
+}
+
 /**
  * The per-file heading for a write in the work log.
  *
@@ -211,7 +291,11 @@ export function editRowSummary(
   props: { input?: any; output?: any; status?: string },
 ): EditRowSummary | null {
   const { input, output, status } = props;
-  const path: string = output?.path ?? input?.path ?? "";
+  let path: string =
+    output?.path ?? input?.file_path ?? input?.path ?? "";
+  if (!path && toolName === "apply_patch") {
+    path = extractPathFromPatchText(input?.patch_text);
+  }
   if (!path) return null;
   const running = status === "pending";
   const name = path.split("/").pop() || path;
@@ -241,6 +325,98 @@ export function editRowSummary(
         name,
         added: output?.lines,
         removed: created ? 0 : undefined,
+      };
+    }
+    case "edit": {
+      if (running) return { verb: "Editing", path, name };
+      let added: number | undefined =
+        typeof output?.added === "number" ? output.added : undefined;
+      let removed: number | undefined =
+        typeof output?.removed === "number" ? output.removed : undefined;
+      if (added === undefined && removed === undefined) {
+        if (Array.isArray(input?.edits)) {
+          added = 0;
+          removed = 0;
+          for (const e of input.edits) {
+            if (typeof e?.new_string === "string" && e.new_string) {
+              added += e.new_string.split("\n").length;
+            }
+            if (typeof e?.old_string === "string" && e.old_string) {
+              removed += e.old_string.split("\n").length;
+            }
+          }
+        } else {
+          const oldStr = input?.old_string;
+          const newStr = input?.new_string;
+          if (typeof oldStr === "string" || typeof newStr === "string") {
+            removed = typeof oldStr === "string" && oldStr ? oldStr.split("\n").length : 0;
+            added = typeof newStr === "string" && newStr ? newStr.split("\n").length : 0;
+          } else {
+            added = 0;
+            removed = 0;
+          }
+        }
+      }
+      return {
+        verb: "Edited",
+        path,
+        name,
+        added,
+        removed,
+      };
+    }
+    case "write": {
+      if (running) return { verb: "Writing", path, name };
+      const outputText = typeof output === "string" ? output : "";
+      const isUpdated =
+        output?.created === false ||
+        outputText.toLowerCase().includes("updated") ||
+        outputText.toLowerCase().includes("rewrote");
+      const created = !isUpdated;
+      const lines =
+        typeof output?.lines === "number"
+          ? output.lines
+          : typeof input?.content === "string" && input.content
+            ? input.content.split("\n").length
+            : 0;
+      return {
+        verb: created ? "Created" : "Rewrote",
+        path,
+        name,
+        added: lines,
+        removed: created ? 0 : undefined,
+      };
+    }
+    case "apply_patch": {
+      if (running) return { verb: "Patching", path, name };
+      const counts =
+        typeof output?.added === "number" && typeof output?.removed === "number"
+          ? { added: output.added, removed: output.removed }
+          : patchLineCounts(input?.patch_text);
+      return {
+        verb: "Patched",
+        path,
+        name,
+        added: counts.added,
+        removed: counts.removed,
+      };
+    }
+    case "replace": {
+      if (running) return { verb: "Replacing", path, name };
+      const patLines =
+        typeof input?.pattern === "string" && input.pattern
+          ? input.pattern.split("\n").length
+          : 0;
+      const repLines =
+        typeof input?.replacement === "string" && input.replacement
+          ? input.replacement.split("\n").length
+          : 0;
+      return {
+        verb: "Replaced",
+        path,
+        name,
+        added: typeof output?.added === "number" ? output.added : repLines,
+        removed: typeof output?.removed === "number" ? output.removed : patLines,
       };
     }
     default:

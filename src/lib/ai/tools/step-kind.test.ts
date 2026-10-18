@@ -182,4 +182,123 @@ describe("editRowSummary", () => {
       }),
     ).toBeNull();
   });
+
+  it("handles Jcode edit with old_string and new_string line derivation", () => {
+    const summary = editRowSummary("edit", {
+      status: "success",
+      input: {
+        file_path: "src/utils.ts",
+        old_string: "line 1\nline 2",
+        new_string: "line 1\nline 2 modified\nline 3",
+      },
+    });
+    expect(summary).toEqual({
+      verb: "Edited",
+      path: "src/utils.ts",
+      name: "utils.ts",
+      added: 3,
+      removed: 2,
+    });
+  });
+
+  it("handles Jcode write with plain text output", () => {
+    const created = editRowSummary("write", {
+      status: "success",
+      input: { file_path: "docs/readme.md", content: "hello\nworld" },
+      output: "Created docs/readme.md (2 lines)",
+    });
+    expect(created).toEqual({
+      verb: "Created",
+      path: "docs/readme.md",
+      name: "readme.md",
+      added: 2,
+      removed: 0,
+    });
+
+    const updated = editRowSummary("write", {
+      status: "success",
+      input: { file_path: "docs/readme.md", content: "new content" },
+      output: "Updated docs/readme.md (1 lines)",
+    });
+    expect(updated).toEqual({
+      verb: "Rewrote",
+      path: "docs/readme.md",
+      name: "readme.md",
+      added: 1,
+      removed: undefined,
+    });
+  });
+
+  it("handles Jcode apply_patch with patch_text line counting and path extraction", () => {
+    const patchText = `*** Update File: src/components/button.tsx
+@@ -10,2 +10,3 @@
+-old line
++new line 1
++new line 2`;
+    const summary = editRowSummary("apply_patch", {
+      status: "success",
+      input: { patch_text: patchText },
+    });
+    expect(summary).toEqual({
+      verb: "Patched",
+      path: "src/components/button.tsx",
+      name: "button.tsx",
+      added: 2,
+      removed: 1,
+    });
+  });
+
+  it("handles Jcode replace tool", () => {
+    const summary = editRowSummary("replace", {
+      status: "success",
+      input: {
+        path: "src/theme.ts",
+        pattern: "dark",
+        replacement: "light\nmode",
+      },
+    });
+    expect(summary).toEqual({
+      verb: "Replaced",
+      path: "src/theme.ts",
+      name: "theme.ts",
+      added: 2,
+      removed: 1,
+    });
+  });
+});
+
+describe("Jcode runtime stepKindOf mappings", () => {
+  it("maps exploration tools to explore", () => {
+    expect(stepKindOf("read")).toBe("explore");
+    expect(stepKindOf("ls")).toBe("explore");
+    expect(stepKindOf("open")).toBe("explore");
+    expect(stepKindOf("agentgrep", { mode: "grep" })).toBe("explore");
+    expect(stepKindOf("agentgrep", { mode: "find" })).toBe("explore");
+  });
+
+  it("maps agentgrep outline or trace mode to orient", () => {
+    expect(stepKindOf("agentgrep", { mode: "outline" })).toBe("orient");
+    expect(stepKindOf("agentgrep", { mode: "trace" })).toBe("orient");
+  });
+
+  it("maps execution tools to command", () => {
+    expect(stepKindOf("bash")).toBe("command");
+    expect(stepKindOf("bg")).toBe("command");
+    expect(stepKindOf("compile_remote")).toBe("command");
+  });
+
+  it("maps planning and delegation tools correctly", () => {
+    expect(stepKindOf("todo")).toBe("plan");
+    expect(stepKindOf("swarm")).toBe("delegate");
+    expect(stepKindOf("batch")).toBe("delegate");
+  });
+
+  it("maps web and memory tools", () => {
+    expect(stepKindOf("websearch")).toBe("search");
+    expect(stepKindOf("webfetch")).toBe("search");
+    expect(stepKindOf("browser")).toBe("search");
+    expect(stepKindOf("memory")).toBe("remember");
+    expect(stepKindOf("session_search")).toBe("orient");
+    expect(stepKindOf("jcode_docs")).toBe("orient");
+  });
 });

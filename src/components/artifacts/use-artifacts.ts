@@ -170,6 +170,10 @@ const EDIT_TOOLS = new Set<string>([
   DefaultToolName.EditFile,
   DefaultToolName.WriteFile,
   DefaultToolName.MultiEdit,
+  "edit",
+  "write",
+  "apply_patch",
+  "replace",
 ]);
 
 /** A tool part is unanswered exactly while its state has not passed input. */
@@ -197,6 +201,17 @@ function asPlanDecision(output: unknown): PlanDecision | undefined {
   return output as PlanDecision;
 }
 
+function extractPatchPath(patchText?: string): string | undefined {
+  if (!patchText || typeof patchText !== "string") return undefined;
+  const updateMatch = patchText.match(/\*\*\*\s+(?:Update|Add)\s+File:\s*([^\s\n]+)/i);
+  if (updateMatch) return updateMatch[1];
+  const diffMatch = patchText.match(/diff --git a\/([^\s\n]+)/);
+  if (diffMatch) return diffMatch[1];
+  const plusMatch = patchText.match(/\+\+\+\s+(?:b\/)?([^\s\n]+)/);
+  if (plusMatch && plusMatch[1] !== "/dev/null") return plusMatch[1];
+  return undefined;
+}
+
 /**
  * Paths a message's tool calls actually wrote to.
  *
@@ -211,7 +226,10 @@ function editedPaths(message: UIMessage): string[] {
     if (!EDIT_TOOLS.has(getToolName(part))) continue;
     if ((part as any).state !== "output-available") continue;
     const path =
-      (part as any).output?.path ?? (part as any).input?.path ?? undefined;
+      (part as any).output?.path ??
+      (part as any).input?.file_path ??
+      (part as any).input?.path ??
+      extractPatchPath((part as any).input?.patch_text);
     if (typeof path === "string" && path) paths.push(path);
   }
   return paths;
@@ -265,7 +283,8 @@ function deriveArtifacts(messages: UIMessage[], isRunning: boolean): Artifacts {
 
       if (
         name === DefaultToolName.TodoWrite ||
-        name === DefaultToolName.TodoRead
+        name === DefaultToolName.TodoRead ||
+        name === "todo"
       ) {
         // Prefer the server's counts, fall back to the input: the plan is
         // worth showing the instant the model writes it rather than a round
@@ -277,11 +296,26 @@ function deriveArtifacts(messages: UIMessage[], isRunning: boolean): Artifacts {
         // string, which is `undefined` on a parse it can't repair -- but not
         // reliably an array shape even when it is defined, since a value that
         // hasn't reached its opening `[` yet can still land here as `{}`.
-        const items: TodoItem[] = Array.isArray(output?.items)
+        const rawItems = Array.isArray(output?.items)
           ? output.items
           : Array.isArray(input?.items)
             ? input.items
-            : [];
+            : Array.isArray(output?.todos)
+              ? output.todos
+              : Array.isArray(input?.todos)
+                ? input.todos
+                : [];
+
+        const items: TodoItem[] = rawItems.map((item: any) => ({
+          content: typeof item?.content === "string" ? item.content : "",
+          status:
+            item?.status === "completed" || item?.status === "done"
+              ? "done"
+              : item?.status === "in_progress"
+                ? "in_progress"
+                : "pending",
+        }));
+
         todos = {
           items,
           done:
@@ -362,7 +396,8 @@ export function tabForTool(toolName: string): ArtifactTab | undefined {
   if (toolName === DefaultToolName.Walkthrough) return "walkthrough";
   if (
     toolName === DefaultToolName.TodoWrite ||
-    toolName === DefaultToolName.TodoRead
+    toolName === DefaultToolName.TodoRead ||
+    toolName === "todo"
   )
     return "tasks";
   return undefined;

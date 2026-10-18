@@ -359,12 +359,35 @@ describe("deriveArtifacts", () => {
     expect(__deriveArtifacts(messages, true).todos?.live).toBe(true);
     expect(__deriveArtifacts(messages, false).todos?.live).toBe(false);
   });
+
+  it("handles Jcode todo tool shape with completed status", () => {
+    const messages = [
+      assistant([
+        toolPart("todo", {
+          input: {
+            todos: [
+              { content: "A", status: "completed" },
+              { content: "B", status: "in_progress" },
+              { content: "C", status: "pending" },
+            ],
+          },
+        }),
+      ]),
+    ];
+    const { todos } = __deriveArtifacts(messages, false);
+    expect(todos).toBeDefined();
+    expect(todos?.done).toBe(1);
+    expect(todos?.inProgress).toBe(1);
+    expect(todos?.pending).toBe(1);
+    expect(todos?.items[0].status).toBe("done");
+  });
 });
 
 describe("tabForTool", () => {
   it("routes each artifact tool to its own tab", () => {
     expect(tabForTool(DefaultToolName.ProposePlan)).toBe("plan");
     expect(tabForTool(DefaultToolName.TodoWrite)).toBe("tasks");
+    expect(tabForTool("todo")).toBe("tasks");
     expect(tabForTool(DefaultToolName.Walkthrough)).toBe("walkthrough");
     expect(tabForTool(DefaultToolName.ReadFile)).toBeUndefined();
   });
