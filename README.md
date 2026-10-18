@@ -596,6 +596,8 @@ The living documents, worth reading in this order:
 | [`docs/VM-SETUP.md`](docs/VM-SETUP.md) | Full setup walkthrough, including WSL2 and headless |
 | [`docs/SCHEDULES.md`](docs/SCHEDULES.md) | Schedules user guide and daemon behaviour |
 | [`docs/AGENT.md`](docs/AGENT.md) | The Agent surfaces and how persona is delivered to the model |
+| [`docs/runtime-upstream-update.md`](docs/runtime-upstream-update.md) | Agent runbook for preserving Amiro customizations during pinned upstream runtime imports, tests and rollback |
+| [`.agents/skills/amiro-runtime-update/SKILL.md`](.agents/skills/amiro-runtime-update/SKILL.md) | Discoverable agent skill for the guarded update procedure |
 | [`docs/RUST-RUNTIME.md`](docs/RUST-RUNTIME.md) | The vendored runtime: provenance, crates, build |
 | [`docs/skills/README.md`](docs/skills/README.md) | Skill discovery, activation, authoring, and safety |
 | [`docs/testing/README.md`](docs/testing/README.md) | The test architecture, config, artifacts, and CI |

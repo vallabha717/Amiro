@@ -32,6 +32,12 @@ retired compatibility harness kept only for contract tests.
 | [_agent-visual-brief.md](_agent-visual-brief.md) | Visual design research, character references, and the decision record implementing OpenDots plush mascots. |
 | [_adapter-contract.md](_adapter-contract.md) | Specification for the retired Node compatibility harness (`adapter/`), used for running contract tests. |
 
+## Embedded runtime updates
+
+- [Runtime upstream update runbook](runtime-upstream-update.md): pinned imports, preservation inventory, mandatory tests, staging and rollback gates.
+- [Customization inventory](runtime-customizations.json): source anchors and regression checks that must survive an update.
+- [Agent skill: amiro-runtime-update](../.agents/skills/amiro-runtime-update/SKILL.md): concise agent workflow that requires the full runbook. A deterministic importer must be bootstrapped before the first upstream update.
+
 ## Feature and System Guides
 
 - **Skills:** [docs/skills/](skills/README.md)

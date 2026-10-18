@@ -43,6 +43,9 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Embedded runtime update contract
+        run: node scripts/verify-runtime-update-contract.mjs
+
       - name: Unit tests
         run: pnpm test
 

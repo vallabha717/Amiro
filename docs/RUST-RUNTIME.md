@@ -207,6 +207,12 @@ cargo test  --manifest-path runtime/Cargo.toml -p amiro-build-meta      # fork g
 cargo build --manifest-path runtime/Cargo.toml --no-default-features --bin amiro-runtime
 ```
 
+## Updating from upstream
+
+Follow [runtime-upstream-update.md](runtime-upstream-update.md) and the repository [amiro-runtime-update skill](../.agents/skills/amiro-runtime-update/SKILL.md). The runtime is a vendored source fork, not a submodule. Updating upstream Jcode does not update Amiro automatically. Imports require an isolated candidate, a proven normalized baseline, preservation of the complete Amiro delta, mandatory SDK/storage/browser tests and separate deployment approval. Never enable the upstream self-updater to update this fork.
+
+The [customization inventory](runtime-customizations.json) and `node scripts/verify-runtime-update-contract.mjs` provide structural guards. They do not constitute an implemented importer or proof that a future update is safe.
+
 ## Open items
 
 Deliberately not done in this change, in rough priority order:
