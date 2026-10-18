@@ -214,6 +214,7 @@ function skillsRoots(ctx, repoRoot) {
     process.env.JCODE_HOME ||
     path.join(os.homedir(), ".jcode");
   const codexHome = path.join(os.homedir(), ".codex");
+  const repoSkills = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../../.agents/skills");
   return [
     { dir: path.join(runtimeHome, "skills"), scope: "user", source: ".amiro" },
     {
@@ -224,6 +225,11 @@ function skillsRoots(ctx, repoRoot) {
     {
       dir: path.join(repoRoot, ".agents", "skills"),
       scope: "project",
+      source: ".agents",
+    },
+    {
+      dir: repoSkills,
+      scope: "user",
       source: ".agents",
     },
     { dir: path.join(codexHome, "skills"), scope: "user", source: ".codex" },

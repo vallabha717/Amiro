@@ -43,6 +43,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
 import { RewindConfirmDialog } from "./checkpoint/rewind-confirm-dialog";
 import { Markdown } from "./markdown";
 import { MessageEditor } from "./message-editor";
+import { parseInlineVisuals, VisualSurface } from "./visual/visual-surface";
 
 import {
   deleteMessage as deleteMessageAction,
@@ -404,6 +405,27 @@ export const AssistMessagePart = memo(function AssistMessagePart({
       .unwrap();
   };
 
+  const inlineVisualSegments = useMemo(
+    () =>
+      // Strip inline SECRET_PROMPT / <secret_prompt> blocks from prose so only
+      // the rendered SecretPromptCard box appears below the message.
+      parseInlineVisuals(
+        displayText
+          .replace(/<secret_prompt\b[^>]*>[\s\S]*?<\/secret_prompt>/gi, "")
+          .replace(/<secret_prompt\b[^>]*\/>/gi, "")
+          .replace(/^\s*SECRET_PROMPT\s*:?\s*\{[^\n]*\}\s*$/gim, ""),
+      ),
+    [displayText],
+  );
+  const cleanedDisplayText = useMemo(
+    () =>
+      displayText
+        .replace(/<secret_prompt\b[^>]*>[\s\S]*?<\/secret_prompt>/gi, "")
+        .replace(/<secret_prompt\b[^>]*\/>/gi, "")
+        .replace(/^\s*SECRET_PROMPT\s*:?\s*\{[^\n]*\}\s*$/gim, ""),
+    [displayText],
+  );
+
   return (
     <div
       className={cn(
@@ -421,7 +443,39 @@ export const AssistMessagePart = memo(function AssistMessagePart({
           },
         )}
       >
-        <Markdown isStreaming={isStreamingText}>{displayText}</Markdown>
+        {inlineVisualSegments ? (
+          inlineVisualSegments.map((seg, idx) =>
+            seg.type === "visual" ? (
+              <VisualSurface
+                key={seg.id}
+                surfaceId={seg.id}
+                html={seg.html}
+                height={seg.height}
+                title={seg.title}
+                onSendPrompt={
+                  sendMessage
+                    ? (prompt) =>
+                        sendMessage({
+                          role: "user",
+                          parts: [{ type: "text", text: prompt }],
+                        })
+                    : undefined
+                }
+              />
+            ) : seg.content.trim() ? (
+              <Markdown
+                key={`${message.id}-seg-${idx}`}
+                isStreaming={
+                  isStreamingText && idx === inlineVisualSegments.length - 1
+                }
+              >
+                {seg.content}
+              </Markdown>
+            ) : null,
+          )
+        ) : (
+          <Markdown isStreaming={isStreamingText}>{cleanedDisplayText}</Markdown>
+        )}
         {showCaret && (
           // Sibling after the markdown (not injected into it) so partial
           // markdown never breaks; it sits inline after the last block.

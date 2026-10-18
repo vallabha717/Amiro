@@ -13,6 +13,7 @@ import {
   WrenchIcon,
 } from "lucide-react";
 import { parseToolTiming } from "lib/ai/tools/timing";
+import { VisualPlaceholder, VisualSurface } from "../visual/visual-surface";
 import type { PresenterProps, ToolPresenter } from "./types";
 
 /* ------------------------------------------------------------------ */
@@ -402,12 +403,44 @@ const mcpSearch: ToolPresenter = {
 const applet: ToolPresenter = {
   glance: ({ input, status }) => {
     const title = input?.title ?? input?.action ?? "native ui";
+    const isHtmlVisual =
+      input?.view?.type === "html" && typeof input?.view?.source === "string";
+    if (isHtmlVisual) {
+      if (status === "pending") return `visualizing (${title})…`;
+      if (status === "error") return `visual failed`;
+      return `visual · ${title}`;
+    }
     if (status === "pending") return `applet (${title})…`;
     if (status === "error") return `applet failed`;
     return `applet · ${title}`;
   },
-  Compact: ({ input, output }: PresenterProps) => {
+  Compact: ({ input, output, status }: PresenterProps) => {
     const timing = parseToolTiming(output);
+    const htmlSource =
+      input?.view?.type === "html" && typeof input?.view?.source === "string"
+        ? input.view.source
+        : typeof input?.html === "string"
+          ? input.html
+          : null;
+    if (htmlSource) {
+      const height =
+        typeof input?.view?.height === "number"
+          ? input.view.height
+          : typeof input?.height === "number"
+            ? input.height
+            : 320;
+      if (status === "pending") {
+        return <VisualPlaceholder title={input?.title} height={height} />;
+      }
+      return (
+        <VisualSurface
+          html={htmlSource}
+          height={height}
+          title={input?.title}
+          surfaceId={input?.instance}
+        />
+      );
+    }
     return (
       <div className="w-full rounded-lg border bg-card overflow-hidden text-xs">
         <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/40">
@@ -426,6 +459,31 @@ const applet: ToolPresenter = {
   Expanded: ({ input, output, status, errorText }: PresenterProps) => {
     const timing = parseToolTiming(output);
     const clean = typeof output === "string" ? timing.cleanText : JSON.stringify(output, null, 2);
+    const htmlSource =
+      input?.view?.type === "html" && typeof input?.view?.source === "string"
+        ? input.view.source
+        : typeof input?.html === "string"
+          ? input.html
+          : null;
+    if (htmlSource && status !== "error") {
+      const height =
+        typeof input?.view?.height === "number"
+          ? input.view.height
+          : typeof input?.height === "number"
+            ? input.height
+            : 320;
+      if (status === "pending") {
+        return <VisualPlaceholder title={input?.title} height={height} />;
+      }
+      return (
+        <VisualSurface
+          html={htmlSource}
+          height={height}
+          title={input?.title}
+          surfaceId={input?.instance}
+        />
+      );
+    }
     return (
       <div className="w-full rounded-lg border bg-card overflow-hidden text-xs">
         <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/40">

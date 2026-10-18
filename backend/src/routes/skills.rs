@@ -13,6 +13,12 @@ use crate::state::{read_json, write_json, ApiError, AppState, AuthUser};
 
 pub const SKILL_NAME_MAX_LENGTH: usize = 64;
 
+/// Bundled `visualize` skill from `.agents/skills/visualize/SKILL.md` so every
+/// Amiro instance discovers it out of the box even before a user skills folder
+/// exists.
+const BUNDLED_VISUALIZE_SKILL_MD: &str =
+    include_str!("../../../.agents/skills/visualize/SKILL.md");
+
 fn now_iso() -> String {
     Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
 }
@@ -245,11 +251,14 @@ fn discover_skills(
         .unwrap_or_else(|| PathBuf::from("/root"))
         .join(".codex");
 
+    let repo_skills = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../.agents/skills");
     let roots = [
         (state.runtime_home.join("skills"), "user", ".amiro"),
         (repo_root.join(".amiro").join("skills"), "project", ".amiro"),
         (repo_root.join(".jcode").join("skills"), "project", ".amiro"),
         (repo_root.join(".agents").join("skills"), "project", ".agents"),
+        (repo_skills, "user", ".agents"),
         (codex_home.join("skills"), "user", ".codex"),
     ];
 
@@ -343,7 +352,57 @@ fn discover_skills(
         }
     }
 
+    if !discovered.contains_key("visualize") {
+        let parsed = parse_skill_markdown(BUNDLED_VISUALIZE_SKILL_MD, "visualize");
+        discovered.insert(
+            "visualize".to_string(),
+            DiscoveredSkill {
+                name: "visualize".to_string(),
+                description: parsed.description,
+                body: if parsed.body.is_empty() {
+                    BUNDLED_VISUALIZE_SKILL_MD.to_string()
+                } else {
+                    parsed.body
+                },
+                resources: Vec::new(),
+                license: parsed.license,
+                disable_model_invocation: parsed.disable_model_invocation,
+                allowed_tools: parsed.allowed_tools,
+                scope: "user".to_string(),
+                source: ".amiro".to_string(),
+                writable: false,
+                readonly: true,
+                path: "~/.amiro/skills/visualize/SKILL.md".to_string(),
+                updated_at: now_iso(),
+            },
+        );
+    }
+
     (discovered, diagnostics)
+}
+
+pub async fn resolve_skill_for_turn(
+    state: &AppState,
+    user_id: &str,
+    name: &str,
+    project_dir: Option<&Path>,
+) -> Option<(String, String, String)> {
+    let wanted = name.trim().to_lowercase();
+    if !is_safe_lookup_name(&wanted) || !is_valid_skill_name(&wanted) {
+        return None;
+    }
+    let (merged, _) = get_merged_skills(state, user_id, project_dir).await.ok()?;
+    let skill = merged.get(&wanted)?;
+    let (deliverable, _, _) = describe_capability(
+        &skill.body,
+        skill.disable_model_invocation,
+        &skill.name,
+        tools_exposed(),
+    );
+    if !deliverable {
+        return None;
+    }
+    Some((skill.name.clone(), skill.source.clone(), skill.body.clone()))
 }
 
 fn present_summary(skill: &DiscoveredSkill, tools_on: bool) -> Value {

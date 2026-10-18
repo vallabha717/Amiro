@@ -410,6 +410,29 @@ pub fn build_credential_prompt_block(home: &Path) -> String {
     out
 }
 
+/// Vellum-style credential security and inline visualization guidance for agent turns.
+pub fn build_capability_guidance_block(home: &Path) -> String {
+    let mut blocks = vec![
+        "## Credential Security (Encrypted Vault Box)\n\
+         Never ask users to paste or share raw secrets (API keys, tokens, passwords, webhook secrets) in plain chat. \
+         Whenever a task needs an API key, token, or secret that is not yet in the Stored Credentials list, \
+         emit a secure credential prompt card on its own line in your response so the UI renders a dedicated encrypted input box:\n\
+         `SECRET_PROMPT {\"service\":\"<service_slug>\",\"field\":\"<field_slug>\",\"label\":\"<Human Label>\",\"description\":\"<Why it is needed>\",\"purpose\":\"<Usage purpose>\",\"allowedDomains\":[\"<api.domain.com>\"]}`\n\
+         (For example: `SECRET_PROMPT {\"service\":\"openai\",\"field\":\"api_key\",\"label\":\"OpenAI API Key\",\"description\":\"Needed to call OpenAI endpoints\",\"allowedDomains\":[\"api.openai.com\"]}`). \
+         The user enters the key into that rendered box, which saves it directly to the encrypted vault (`$AMIRO_CRED_<SERVICE>_<FIELD>`) without the secret ever appearing in chat."
+            .to_string(),
+        "## Inline Visuals (`visualize` skill)\n\
+         The \"Visualize\" skill (`visualize`) is available to render polished interactive SVG diagrams, charts, comparisons, or explainers inline in the chat transcript. \
+         When asked to visualize something or when a diagram/chart explains a concept better than prose, use the `applet` tool with `placement: \"inline\"` and `view: { \"type\": \"html\", \"source\": \"<self-contained HTML/SVG fragment using CSS variables like var(--surface-lift), var(--content-default), var(--border-element)>\", \"height\": 320 }` (or load the `visualize` skill for full design-token and layout rules)."
+            .to_string(),
+    ];
+    let catalog = build_credential_prompt_block(home);
+    if !catalog.is_empty() {
+        blocks.push(catalog.trim_end().to_string());
+    }
+    blocks.join("\n\n")
+}
+
 /// `personaFingerprint` -- sha256 of the same canonical JSON payload as the adapter
 /// (same key order), truncated to 16 hex chars.
 pub fn persona_fingerprint(identity: &Value) -> String {

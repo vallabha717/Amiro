@@ -584,6 +584,22 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
   const voiceActive = useVoiceStore((s) => s.active);
   const voiceMinimized = useVoiceStore((s) => s.minimized);
 
+  // Relay `sendPrompt(text)` calls from inline VisualSurface iframes as real
+  // user turns on the active conversation.
+  useEffect(() => {
+    const onVisualPrompt = (event: Event) => {
+      const detail = (event as CustomEvent<{ prompt?: string }>).detail;
+      const prompt = typeof detail?.prompt === "string" ? detail.prompt.trim() : "";
+      if (!prompt) return;
+      void handleComposerSend({
+        role: "user",
+        parts: [{ type: "text", text: prompt }],
+      });
+    };
+    window.addEventListener("amiro:send-prompt", onVisualPrompt);
+    return () => window.removeEventListener("amiro:send-prompt", onVisualPrompt);
+  }, [handleComposerSend]);
+
   const space = useMemo(() => {
     if (!isLoading || error) return false;
     const lastMessage = messages.at(-1);

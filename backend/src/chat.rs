@@ -268,21 +268,10 @@ async fn chat_handler(
 
     let response_id = uuid::Uuid::new_v4().to_string();
     let state_for_stream = state.clone();
-    let reminder = body
+    let mentions_arr = body
         .get("mentions")
         .and_then(|mentions| mentions.as_array())
-        .map(|mentions| {
-            let names: Vec<String> = mentions
-                .iter()
-                .filter_map(|mention| mention.get("name").and_then(|n| n.as_str()))
-                .map(str::to_string)
-                .collect();
-            if names.is_empty() {
-                String::new()
-            } else {
-                format!("The user referenced: {}", names.join(", "))
-            }
-        })
+        .cloned()
         .unwrap_or_default();
 
     let stream = async_stream::stream! {
@@ -323,6 +312,62 @@ async fn chat_handler(
             .unwrap_or(false);
         let session_id = if rotation { None } else { previous_session.clone() };
         let working_dir = requested_dir.clone().unwrap_or(stored_dir);
+
+        let mut reminder_blocks: Vec<String> = vec![
+            crate::agent::build_capability_guidance_block(&state_for_stream.home),
+        ];
+        if !mentions_arr.is_empty() {
+            let names: Vec<String> = mentions_arr
+                .iter()
+                .filter_map(|m| m.get("name").and_then(|n| n.as_str()))
+                .map(str::to_string)
+                .collect();
+            if !names.is_empty() {
+                reminder_blocks.push(format!("The user referenced: {}", names.join(", ")));
+            }
+            for mention in &mentions_arr {
+                if mention.get("type").and_then(|t| t.as_str()) == Some("skill") {
+                    if let Some(skill_name) = mention.get("name").and_then(|n| n.as_str()) {
+                        if let Some((resolved_name, source, skill_body)) =
+                            crate::routes::skills::resolve_skill_for_turn(
+                                &state_for_stream,
+                                &uid,
+                                skill_name,
+                                Some(FsPath::new(&working_dir)),
+                            )
+                            .await
+                        {
+                            let clipped: String = skill_body.chars().take(12_000).collect();
+                            reminder_blocks.push(format!(
+                                "User-selected instruction set: \"{resolved_name}\" (stored by Amiro, source {source})\n\
+                                 --- begin \"{resolved_name}\" ---\n{clipped}\n--- end \"{resolved_name}\" ---"
+                            ));
+                        }
+                    }
+                }
+            }
+        } else if prompt.to_lowercase().contains("visualize") {
+            if let Some((resolved_name, source, skill_body)) =
+                crate::routes::skills::resolve_skill_for_turn(
+                    &state_for_stream,
+                    &uid,
+                    "visualize",
+                    Some(FsPath::new(&working_dir)),
+                )
+                .await
+            {
+                let clipped: String = skill_body.chars().take(12_000).collect();
+                reminder_blocks.push(format!(
+                    "Auto-activated skill for this request: \"{resolved_name}\" (source {source})\n\
+                     --- begin \"{resolved_name}\" ---\n{clipped}\n--- end \"{resolved_name}\" ---"
+                ));
+            }
+        }
+        let reminder = reminder_blocks
+            .into_iter()
+            .filter(|b| !b.trim().is_empty())
+            .collect::<Vec<_>>()
+            .join("\n\n");
 
         let plan = TurnPlan {
             session_id,

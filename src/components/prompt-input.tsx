@@ -60,6 +60,11 @@ import {
 import { FileUIPart, TextUIPart } from "ai";
 import { toast } from "sonner";
 import { useVoiceStore } from "@/lib/voice/voice-store";
+import {
+  ComposerSecretNoticeBar,
+  StoreCredentialModal,
+  useComposerSecretGuard,
+} from "./credentials/composer-secret-guard";
 
 interface PromptInputProps {
   placeholder?: string;
@@ -478,6 +483,8 @@ export default function PromptInput({
     [addMention],
   );
 
+  const secretGuard = useComposerSecretGuard({ input, setInput });
+
   const submit = () => {
     if (isLoading) return;
     if (uploadedFiles.some((file) => file.isUploading)) {
@@ -486,6 +493,12 @@ export default function PromptInput({
     }
     const userMessage = input?.trim() || "";
     if (userMessage.length === 0) return;
+
+    // Vellum secret ingress guard: never let raw API keys/secrets be sent in
+    // plain chat; prompt the user to store them in the encrypted vault box.
+    if (!secretGuard.checkBeforeSend(userMessage)) {
+      return;
+    }
 
     setInput("");
     const attachmentParts = uploadedFiles.reduce<
@@ -570,6 +583,21 @@ export default function PromptInput({
     <div className="max-w-3xl mx-auto fade-in animate-in">
       <div className="z-10 mx-auto w-full max-w-3xl relative">
         <fieldset className="flex w-full min-w-0 max-w-full flex-col px-4">
+          <ComposerSecretNoticeBar
+            matches={secretGuard.matches}
+            composerInput={input}
+            sendBlocked={secretGuard.sendBlocked}
+            dismissed={secretGuard.dismissed}
+            onDismiss={secretGuard.dismiss}
+            onStoreSecurely={() => secretGuard.setDialogOpen(true)}
+          />
+          <StoreCredentialModal
+            open={secretGuard.dialogOpen}
+            onOpenChange={secretGuard.setDialogOpen}
+            secret={secretGuard.matches[0] ?? null}
+            composerInput={input}
+            setInput={setInput}
+          />
 
           <div className="shadow-lg overflow-hidden rounded-4xl backdrop-blur-sm transition-all duration-200 bg-muted/60 relative flex w-full flex-col cursor-text z-10 items-stretch focus-within:bg-muted hover:bg-muted focus-within:ring-muted hover:ring-muted">
             {mentions.length > 0 && (
