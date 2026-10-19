@@ -63,16 +63,76 @@ Do **not** file security vulnerabilities as public issues. See `SECURITY.md`.
 
 ## Proposing changes
 
-1. Fork the repository and branch from `main`.
+1. Fork the repository (maintainers: just branch) and branch from `main`, for
+   example `feat/voice-barge-in` or `fix/schedule-timezone`.
 2. Keep the branch focused. One logical change per pull request is much easier
    to review than a mixed bag.
 3. Make the change, then run the pre-PR checks below.
-4. Open the pull request and fill in the template. Link the issue it resolves.
+4. Push the branch and open a pull request against `main`:
+
+   ```sh
+   git push -u origin feat/voice-barge-in
+   gh pr create --fill          # or open it on GitHub; the template guides you
+   ```
+
 5. Add a note under `## [Unreleased]` in `CHANGELOG.md` when your change is
    user-visible.
 
 Commit as you go. Force-pushing your own feature branch during review is fine.
-Do not push to `main` directly.
+
+## How `main` is protected and how PRs merge
+
+`main` is guarded by repository rulesets (Settings → Rules → Rulesets):
+
+| Ruleset | What it enforces | Bypass |
+| --- | --- | --- |
+| main: no force-push or deletion | `main` can't be deleted or force-pushed, and history stays linear | nobody |
+| main: changes via PR with green CI | changes land through a pull request; the **All required checks passed** CI job must be green; open review threads must be resolved | repository admins |
+| release tags are immutable | `v*` tags can't be moved or deleted | repository admins (release recovery only) |
+
+What that means in practice:
+
+- **Contributors and bots (including Dependabot)** open a PR. Once CI shows
+  *All required checks passed*, a maintainer merges it with **Squash and
+  merge** (default) or **Rebase and merge**. Merge commits are disabled, and
+  the branch is deleted after merging.
+- **Approvals:** none required (0 approving reviews), so a maintainer can
+  merge their own PR as soon as CI is green. Turn on **auto-merge**
+  (`gh pr merge --auto --squash`) to merge the moment checks pass.
+- **Maintainers (repo admins)** may push small, already-checked changes
+  straight to `main`; GitHub records it as a bypass ("Bypassed rule
+  violations"). Prefer a PR for anything non-trivial, so CI runs before the
+  change lands rather than after.
+- **Required check:** only *All required checks passed* (the `required` job
+  in `ci.yml`). To make another job required, add it to that job's `needs`
+  list; the ruleset doesn't need editing.
+
+Typical maintainer flow:
+
+```sh
+git switch -c fix/something
+# …change, commit…
+git push -u origin fix/something
+gh pr create --fill
+gh pr merge --auto --squash      # merges by itself when CI is green
+```
+
+Other workflows run on PRs only when relevant files change: **Desktop app**
+(`src-tauri/`), **Install smoke** (`install.sh`, `packaging/`) and
+**Workflow lint** (`.github/workflows/`, shell scripts). They are not
+required checks, but don't merge while one of them is red.
+
+## Releasing
+
+Releases are cut by maintainers from `main` (see [docs/SETUP.md](docs/SETUP.md#releases-cicd)):
+
+```sh
+gh workflow run release.yml -f version=v1.27.0   # or: git tag v1.27.0 && git push origin v1.27.0
+```
+
+`release.yml` builds the server archives and desktop installers, publishes
+the release with `SHA256SUMS`, provenance attestations and release notes, and
+then test-installs it on Linux and macOS.
 
 ## Commit conventions
 
