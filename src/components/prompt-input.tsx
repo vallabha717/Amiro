@@ -12,6 +12,7 @@ import equal from "lib/equal";
 import {
   AudioWaveformIcon,
   ChevronDown,
+  Clock,
   CornerRightUp,
   FileIcon,
   FileTextIcon,
@@ -51,7 +52,6 @@ import { DefaultToolIcon } from "./default-tool-icon";
 import { SelectModel } from "./select-model";
 
 import { useChatModels } from "@/hooks/queries/use-chat-models";
-import { isFilePartSupported, isIngestSupported } from "@/lib/ai/file-support";
 import { unlockAudio } from "@/lib/ai/speech/read-aloud-store";
 import {
   getCachedVoiceSettings,
@@ -59,6 +59,17 @@ import {
 } from "@/lib/backend/voice-api";
 import { FileUIPart, TextUIPart } from "ai";
 import { toast } from "sonner";
+import {
+  buildAttachmentParts,
+  type ComposerAttachmentPart,
+  countParkedFiles,
+  createPendingFollowUp,
+  hasUploadInProgress,
+  isIngestable,
+  isLoginCommand,
+  type PendingFollowUp,
+  previewQueuedText,
+} from "@/lib/chat/followup-queue";
 import { useVoiceStore } from "@/lib/voice/voice-store";
 import {
   ComposerSecretNoticeBar,
@@ -80,6 +91,17 @@ interface PromptInputProps {
   threadId?: string;
   disabledMention?: boolean;
   onFocus?: () => void;
+  /** Follow-up parked while the agent responds; rendered as a chip. */
+  pendingFollowUp?: PendingFollowUp | null;
+  /** Park the current draft instead of sending it right away. */
+  onQueueFollowUp?: (followUp: PendingFollowUp) => void;
+  /** Cancel the parked follow-up and hand its text back to the composer. */
+  onCancelFollowUp?: () => void;
+  /**
+   * Interrupt the live turn (stop it) and send the current draft at once.
+   * Wired to Cmd/Ctrl+Enter while streaming.
+   */
+  onInterruptAndSend?: (followUp: PendingFollowUp) => void;
 }
 
 const ChatMentionInput = dynamic(() => import("./chat-mention-input"), {
@@ -102,6 +124,10 @@ export default function PromptInput({
   voiceDisabled,
   threadId,
   disabledMention,
+  pendingFollowUp,
+  onQueueFollowUp,
+  onCancelFollowUp,
+  onInterruptAndSend,
 }: PromptInputProps) {
   const t = useTranslations("Chat");
   const liveVoiceActive = useVoiceStore((s) => s.active);
@@ -485,69 +511,110 @@ export default function PromptInput({
 
   const secretGuard = useComposerSecretGuard({ input, setInput });
 
-  const submit = () => {
-    if (isLoading) return;
-    if (uploadedFiles.some((file) => file.isUploading)) {
+  /**
+   * Snapshot the current draft into attachment parts plus the file ids they
+   * came from, so the queued message carries its files even if the user
+   * keeps attaching afterwards, and the flush only clears those it parked.
+   */
+  const captureDraft = useCallback(
+    (userMessage: string) => {
+      const attachmentParts = buildAttachmentParts(
+        uploadedFiles,
+        supportedFileMimeTypes,
+      );
+      const textPart = { type: "text", text: userMessage } as const;
+      return {
+        attachmentParts,
+        fileIds: uploadedFiles
+          .filter((file) => file.url || file.dataUrl)
+          .map((file) => file.id),
+        parts:
+          attachmentParts.length > 0
+            ? [...attachmentParts, textPart]
+            : [textPart],
+      };
+    },
+    [uploadedFiles, supportedFileMimeTypes],
+  );
+
+  const clearParkedFiles = useCallback(
+    (fileIds: string[]) => {
+      if (fileIds.length === 0 || !threadId) return;
+      const parked = new Set(fileIds);
+      appStoreMutate((prev) => {
+        const current = prev.threadFiles[threadId!] ?? [];
+        if (!current.some((file) => parked.has(file.id))) return prev;
+        return {
+          threadFiles: {
+            ...prev.threadFiles,
+            [threadId!]: current.filter((file) => !parked.has(file.id)),
+          },
+        };
+      });
+    },
+    [threadId, appStoreMutate],
+  );
+
+  const sendNow = useCallback(
+    (draft: { parts: ComposerAttachmentPart[] }) => {
+      sendMessage({
+        role: "user",
+        parts: draft.parts as Array<FileUIPart | TextUIPart | any>,
+      });
+    },
+    [sendMessage],
+  );
+
+  const submit = (options?: { interrupt?: boolean }) => {
+    if (hasUploadInProgress(uploadedFiles)) {
       toast.error("Please wait for files to finish uploading before sending.");
       return;
     }
     const userMessage = input?.trim() || "";
     if (userMessage.length === 0) return;
 
-    // Vellum secret ingress guard: never let raw API keys/secrets be sent in
-    // plain chat; prompt the user to store them in the encrypted vault box.
+    // The secret guard decides before anything is parked or sent.
     if (!secretGuard.checkBeforeSend(userMessage)) {
       return;
     }
 
-    setInput("");
-    const attachmentParts = uploadedFiles.reduce<
-      Array<FileUIPart | TextUIPart | any>
-    >((acc, file) => {
-      const isFileSupported = isFilePartSupported(
-        file.mimeType,
-        supportedFileMimeTypes,
-      );
-      const link = file.url || file.dataUrl || "";
-      if (!link) return acc;
-      if (isFileSupported) {
-        acc.push({
-          type: "file",
-          url: link,
-          mediaType: file.mimeType,
-          filename: file.name,
-        } as FileUIPart);
-      } else {
-        // Use a rich UI part for unsupported file types; will be filtered out for model input
-        acc.push({
-          type: "source-url",
-          url: link,
-          title: file.name,
-          mediaType: file.mimeType,
-        } as any);
-      }
-      return acc;
-    }, []);
-
-    if (attachmentParts.length) {
-      const summary = uploadedFiles
-        .map((file, index) => {
-          const type = file.mimeType || "unknown";
-          return `${index + 1}. ${file.name} (${type})`;
-        })
-        .join("\n");
-
-      attachmentParts.unshift({
-        type: "text",
-        text: `Attached files:\n${summary}`,
-        ingestionPreview: true,
+    // `/login` opens the local provider panel and never becomes a message,
+    // even when typed mid-turn.
+    if (isLoginCommand(userMessage)) {
+      setInput("");
+      sendMessage({
+        role: "user",
+        parts: [{ type: "text", text: userMessage }],
       });
+      return;
     }
 
-    sendMessage({
-      role: "user",
-      parts: [...attachmentParts, { type: "text", text: userMessage }],
-    });
+    if (isLoading) {
+      // While the agent responds, Enter parks the draft as the next turn
+      // and Cmd/Ctrl+Enter interrupts the live turn to send it at once.
+      // Single slot: a newer follow-up replaces the older one.
+      const draft = captureDraft(userMessage);
+      const pending = createPendingFollowUp(
+        options?.interrupt ? "interrupt" : "queued",
+        userMessage,
+        draft.attachmentParts,
+        draft.fileIds,
+        [...uploadedFiles],
+      );
+      setInput("");
+      clearParkedFiles(draft.fileIds);
+      if (options?.interrupt) {
+        onInterruptAndSend?.(pending);
+      } else {
+        onQueueFollowUp?.(pending);
+        toast.success(t("followUpQueued"));
+      }
+      return;
+    }
+
+    const draft = captureDraft(userMessage);
+    setInput("");
+    sendNow(draft);
     appStoreMutate((prev) => ({
       threadFiles: {
         ...prev.threadFiles,
@@ -555,6 +622,26 @@ export default function PromptInput({
       },
     }));
   };
+
+  const handleComposerKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      // Cmd/Ctrl+Enter interrupts the live turn and sends the follow-up
+      // immediately, Jcode-style. Plain Enter just queues it.
+      if (
+        isLoading &&
+        (e.metaKey || e.ctrlKey) &&
+        e.key === "Enter" &&
+        !e.shiftKey
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        submit({ interrupt: true });
+      }
+    },
+    // submit is intentionally recreated per render so it sees fresh input.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isLoading, input, uploadedFiles],
+  );
 
   // Handle ESC key to clear mentions
   useEffect(() => {
@@ -579,8 +666,15 @@ export default function PromptInput({
 
   // Drag overlay handled globally in ChatBot
 
+  const queuedFileCount = pendingFollowUp
+    ? countParkedFiles(pendingFollowUp.fileIds, uploadedFiles)
+    : 0;
+
   return (
-    <div className="max-w-3xl mx-auto fade-in animate-in">
+    <div
+      className="max-w-3xl mx-auto fade-in animate-in"
+      onKeyDownCapture={handleComposerKeyDown}
+    >
       <div className="z-10 mx-auto w-full max-w-3xl relative">
         <fieldset className="flex w-full min-w-0 max-w-full flex-col px-4">
           <ComposerSecretNoticeBar
@@ -600,6 +694,42 @@ export default function PromptInput({
           />
 
           <div className="shadow-lg overflow-hidden rounded-4xl backdrop-blur-sm transition-all duration-200 bg-muted/60 relative flex w-full flex-col cursor-text z-10 items-stretch focus-within:bg-muted hover:bg-muted focus-within:ring-muted hover:ring-muted">
+            {pendingFollowUp ? (
+              <div
+                data-testid="queued-followup-chip"
+                className="mx-2 mt-2 flex items-center gap-2 rounded-2xl border border-primary/30 bg-primary/10 px-3 py-2 text-left"
+              >
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                  <Clock className="size-3.5" />
+                </span>
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <span className="text-xs font-semibold text-primary">
+                    {pendingFollowUp.kind === "interrupt"
+                      ? t("followUpInterrupting")
+                      : t("followUpQueuedLabel")}
+                  </span>
+                  <span className="truncate text-sm text-foreground">
+                    {previewQueuedText(pendingFollowUp.text)}
+                    {queuedFileCount > 0
+                      ? t("followUpQueuedFiles", {
+                          count: queuedFileCount,
+                        })
+                      : null}
+                  </span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  data-testid="queued-followup-cancel"
+                  className="size-6 shrink-0 rounded-full"
+                  aria-label={t("followUpCancel")}
+                  title={t("followUpCancel")}
+                  onClick={() => onCancelFollowUp?.()}
+                >
+                  <XIcon className="size-3.5" />
+                </Button>
+              </div>
+            ) : null}
             {mentions.length > 0 && (
               <div className="bg-input rounded-b-sm rounded-t-3xl p-3 flex flex-col gap-4 mx-2 my-2">
                 {mentions.map((mention, i) => {
@@ -848,26 +978,36 @@ export default function PromptInput({
                     <TooltipContent>{t("VoiceChat.title")}</TooltipContent>
                   </Tooltip>
                 ) : (
-                  <div
-                    data-testid="chat-send-button"
-                    onClick={() => {
-                      if (isLoading) {
-                        onStop();
-                      } else {
-                        submit();
-                      }
-                    }}
-                    className="fade-in animate-in cursor-pointer text-muted-foreground rounded-full p-2 bg-secondary hover:bg-accent-foreground hover:text-accent transition-all duration-200"
-                  >
-                    {isLoading ? (
-                      <Square
-                        size={16}
-                        className="fill-muted-foreground text-muted-foreground"
-                      />
-                    ) : (
-                      <CornerRightUp size={16} />
-                    )}
-                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div
+                        data-testid="chat-send-button"
+                        onClick={() => {
+                          if (isLoading) {
+                            onStop();
+                          } else {
+                            submit();
+                          }
+                        }}
+                        title={
+                          isLoading ? t("followUpStopHint") : t("sendHint")
+                        }
+                        className="fade-in animate-in cursor-pointer text-muted-foreground rounded-full p-2 bg-secondary hover:bg-accent-foreground hover:text-accent transition-all duration-200"
+                      >
+                        {isLoading ? (
+                          <Square
+                            size={16}
+                            className="fill-muted-foreground text-muted-foreground"
+                          />
+                        ) : (
+                          <CornerRightUp size={16} />
+                        )}
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+{isLoading ? t("followUpStopHint") : t("sendHint")}
+                    </TooltipContent>
+                  </Tooltip>
                 )}
               </div>
 
@@ -881,7 +1021,7 @@ export default function PromptInput({
                     const displayName = file.name;
                     const displayExt =
                       file.name.split(".").pop()?.toUpperCase() || "FILE";
-                    const isSummarizable = isIngestSupported(file.mimeType);
+                    const isSummarizable = isIngestable(file.mimeType);
                     return (
                       <div
                         key={file.id}

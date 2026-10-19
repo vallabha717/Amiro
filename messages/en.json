@@ -294,7 +294,14 @@
       "exportDeleted": "Export deleted successfully",
       "failedToDeleteExport": "Failed to delete export"
     },
-    "contextCompacted": "Earlier context compacted — {count} messages summarized, ~{saved}k tokens freed"
+    "contextCompacted": "Earlier context compacted — {count} messages summarized, ~{saved}k tokens freed",
+    "followUpQueued": "Queued — sends when this turn finishes",
+    "followUpQueuedLabel": "Queued — sends when this turn finishes",
+    "followUpQueuedFiles": "+ {count, plural, one {# file} other {# files}}",
+    "followUpInterrupting": "Interrupting — sends now",
+    "followUpCancel": "Cancel queued message",
+    "followUpStopHint": "Stop responding. Type + Enter queues your follow-up; ⌘/Ctrl+Enter interrupts and sends it now.",
+    "sendHint": "Send (Enter)"
   },
   "Layout": {
     "admin": "Admin",
@@ -419,7 +426,8 @@
     "toggleVoiceChat": "Voice Mode",
     "toggleSessionPanel": "Toggle Session Panel",
     "previousPrompt": "Previous Prompt",
-    "nextPrompt": "Next Prompt"
+    "nextPrompt": "Next Prompt",
+    "sendFollowUpNow": "Interrupt and send follow-up now"
   },
   "User": {
     "Profile": {

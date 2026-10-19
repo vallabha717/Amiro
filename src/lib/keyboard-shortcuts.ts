@@ -132,6 +132,14 @@ const openShortcutsPopupShortcut: Shortcut = {
   },
 };
 
+const sendFollowUpNowShortcut: Shortcut = {
+  description: "sendFollowUpNow",
+  shortcut: {
+    key: "Enter",
+    command: true,
+  },
+};
+
 export const Shortcuts = {
   openNewChat: openNewChatShortcut,
   openChatPreferences: openChatPreferencesShortcut,
@@ -145,6 +153,7 @@ export const Shortcuts = {
   deleteThread: deleteThreadShortcut,
   toolMode: toolModeShortcut,
   openShortcutsPopup: openShortcutsPopupShortcut,
+  sendFollowUpNow: sendFollowUpNowShortcut,
 };
 
 const isMac = () =>

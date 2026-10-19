@@ -22,6 +22,7 @@ import {
 } from "ui/drawer";
 
 import PromptInput from "./prompt-input";
+import { type PendingFollowUp } from "@/lib/chat/followup-queue";
 import { ErrorMessage, PreviewMessage } from "./message";
 import { Settings2, X } from "lucide-react";
 import { Separator } from "ui/separator";
@@ -214,6 +215,7 @@ export function ChatBotTemporary() {
           setMessages={setMessages}
           stop={stop}
           status={status}
+          clearError={clearError}
         />
       </DrawerContent>
     </Drawer>
@@ -227,6 +229,7 @@ function DrawerTemporaryContent({
   sendMessage,
   status,
   error,
+  clearError,
   isLoading,
   setMessages,
   stop,
@@ -236,13 +239,60 @@ function DrawerTemporaryContent({
   setInput: (input: string) => void;
   sendMessage: UseChatHelpers<UIMessage>["sendMessage"];
   status: "submitted" | "streaming" | "ready" | "error";
-  isLoading: boolean;
   error: Error | undefined;
+  clearError: () => void;
+  isLoading: boolean;
   setMessages: UseChatHelpers<UIMessage>["setMessages"];
   stop: UseChatHelpers<UIMessage>["stop"];
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const t = useTranslations("Chat");
+
+  // Same single-slot follow-up queue as the main chat: Enter mid-turn parks
+  // the draft here and it flushes when the temporary turn settles.
+  const [pendingFollowUp, setPendingFollowUp] =
+    useState<PendingFollowUp | null>(null);
+  const pendingRef = useRef<PendingFollowUp | null>(null);
+  pendingRef.current = pendingFollowUp;
+
+  const flushPendingFollowUp = useCallback(
+    async (pending: PendingFollowUp) => {
+      try {
+        await sendMessage({
+          role: "user",
+          parts: pending.attachmentParts as any,
+        });
+      } catch {
+        clearError();
+        setInput(pending.text);
+      }
+    },
+    [sendMessage, clearError, setInput],
+  );
+
+  const interruptAndSend = useCallback(
+    (pending: PendingFollowUp) => {
+      setPendingFollowUp(pending);
+      void stop();
+    },
+    [stop],
+  );
+
+  const cancelPendingFollowUp = useCallback(() => {
+    const pending = pendingRef.current;
+    if (!pending) return;
+    setPendingFollowUp(null);
+    setInput(pending.text);
+  }, [setInput]);
+
+  useEffect(() => {
+    if (status !== "ready") return;
+    if (error) return;
+    const pending = pendingRef.current;
+    if (!pending) return;
+    setPendingFollowUp(null);
+    void flushPendingFollowUp(pending);
+  }, [status, error, flushPendingFollowUp]);
   const autoScrollRef = useRef(false);
 
   const [temporaryChat, appStoreMutate] = appStore(
@@ -360,6 +410,10 @@ function DrawerTemporaryContent({
           voiceDisabled
           isLoading={isLoading}
           onStop={stop}
+          pendingFollowUp={pendingFollowUp}
+          onQueueFollowUp={setPendingFollowUp}
+          onCancelFollowUp={cancelPendingFollowUp}
+          onInterruptAndSend={interruptAndSend}
         />
       </div>
     </div>

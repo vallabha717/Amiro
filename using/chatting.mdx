@@ -61,6 +61,16 @@ API keys and OAuth codes typed here are held in the panel only. They are never w
 - Click stop to end a turn early.
 - Tool calls appear inline as a work log. Use the tool filter menu in the chat toolbar to hide categories (terminal, files, web, connectors, agents, planning, other), or choose **Answers only** to hide every tool call. A tool call that needs your confirmation stays visible.
 
+## Send a follow-up while the agent responds
+
+You do not have to wait for the turn to finish. Type your next message and press Enter: the composer clears right away and your message is parked in a **Queued** chip above the composer. It sends automatically as the next turn the moment the current one settles.
+
+- Only one follow-up is parked at a time. Typing another one replaces the older draft, so there is never a hidden backlog.
+- Click the X on the chip to cancel. Your text (and any attached files) is handed back to the composer untouched.
+- Need it sent right now instead? Press **Cmd+Enter** (macOS) or **Ctrl+Enter** (Windows/Linux). That stops the live turn and sends your message immediately. It is also listed in the keyboard shortcuts popup.
+- If a plan is waiting for review when your follow-up sends, your message counts as the reply to that plan: the agent reads it before doing any work.
+- While the agent works through a confirmation (approve or deny a tool call), the queued message waits until you resolve the prompt.
+
 <img src="/docs/assets/readme/chat-plan-light.png" alt="Amiro chat: the agent plans a launch week, with the sidebar mascot, chat history, and the session panel" width="100%" />
 
 *The session at a glance: sidebar mascot, history, streaming answer, and the session panel with context, connectors, and files.*

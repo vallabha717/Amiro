@@ -42,6 +42,10 @@ import {
 import { useShallow } from "zustand/shallow";
 
 import { chatUxStore } from "@/app/store/chat-ux-store";
+import {
+  type PendingFollowUp,
+  restoreParkedFiles,
+} from "@/lib/chat/followup-queue";
 import { summarizeSession } from "lib/chat-ux/session-summary";
 import { applyRuntimeThreadTitle } from "@/lib/backend/runtime-thread-title";
 import { useFileDragOverlay } from "@/hooks/use-file-drag-overlay";
@@ -192,6 +196,17 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
   );
 
   const [input, setInput] = useState("");
+
+  // A follow-up typed while the agent is still responding. Enter parks it
+  // here instead of being swallowed; it flushes as the next turn once the
+  // current one settles. Single slot: a newer follow-up replaces the older
+  // one, so there is never an ambiguous backlog. Owned by thread key
+  // (ChatBot remounts per thread), so a thread switch drops the draft the
+  // same way it drops the composer's text.
+  const [pendingFollowUp, setPendingFollowUp] =
+    useState<PendingFollowUp | null>(null);
+  const pendingRef = useRef<PendingFollowUp | null>(null);
+  pendingRef.current = pendingFollowUp;
 
   // The ai SDK's makeRequest re-checks sendAutomaticallyWhen after *every*
   // request settles, including one the user just aborted via stop() --
@@ -573,6 +588,99 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
     [sendMessageAnsweringPlan],
   );
 
+  // The plan-aware send above, reachable from the queue flush below. A ref
+  // (not a dep) because the flush effect must not resubscribe or refire when
+  // the plan state changes mid-turn.
+  const sendAnsweringPlanRef = useRef(sendMessageAnsweringPlan);
+  sendAnsweringPlanRef.current = sendMessageAnsweringPlan;
+
+  /**
+   * Send a parked follow-up as a fresh turn, translating its plan-revision
+   * the same way a live reply would: answering a suspended plan first, then
+   * sending the follow-up text as the user's response to it.
+   */
+  const flushPendingFollowUp = useCallback(async (pending: PendingFollowUp) => {
+    try {
+      await sendAnsweringPlanRef.current({
+        role: "user",
+        parts: pending.attachmentParts as any,
+      });
+    } catch {
+      // The turn failed (offline, provider down): hand the text back so
+      // nothing the user typed is lost.
+      setInput(pending.text);
+    }
+  }, []);
+
+  /**
+   * Interrupt the live turn and send the follow-up at once (Cmd/Ctrl+Enter).
+   * The stop is desynced from the flush so the stop's abort-settle can never
+   * swallow the very message the user asked to send right now: the parked
+   * message waits for status to land on ready, then flushes. If the user
+   * parks something else in the meantime, that newer message wins.
+   */
+  const interruptAndSend = useCallback(
+    (pending: PendingFollowUp) => {
+      setPendingFollowUp(pending);
+      suppressNextAutoResumeRef.current = true;
+      stop();
+    },
+    [stop],
+  );
+
+  /**
+   * Cancel the parked follow-up. The composer is empty (parking cleared it),
+   * so hand the text and its files back untouched.
+   */
+  const cancelPendingFollowUp = useCallback(() => {
+    const pending = pendingRef.current;
+    if (!pending) return;
+    setPendingFollowUp(null);
+    setInput(pending.text);
+    if (pending.files.length > 0) {
+      appStoreMutate((prev) => ({
+        threadFiles: {
+          ...prev.threadFiles,
+          [threadId]: [
+            ...(prev.threadFiles[threadId] ?? []),
+            ...restoreParkedFiles(
+              prev.threadFiles[threadId] ?? [],
+              pending.files,
+            ),
+          ],
+        },
+      }));
+    }
+  }, [threadId, appStoreMutate]);
+
+  /**
+   * Park a follow-up typed while the agent responds. Single slot: a newer
+   * follow-up replaces the older one. If it arrives mid-stop (the previous
+   * turn was just interrupted and has not settled yet), it takes over as the
+   * message that flushes; otherwise it waits for the live turn to finish.
+   */
+  const queuePendingFollowUp = useCallback((pending: PendingFollowUp) => {
+    setPendingFollowUp(pending);
+  }, []);
+
+  /**
+   * Flush the parked follow-up once the transcript is idle again. Gated on
+   * `status` (not `isLoading`): an approval halt also has status ready, but
+   * its transcript cannot take a new turn until the tool call is resolved,
+   * hence the extra gate. Clears the slot *before* sending: a failed flush
+   * restores the text to the composer instead of leaving a stale chip that
+   * would flush twice.
+   */
+  useEffect(() => {
+    if (status !== "ready") return;
+    if (error) return;
+    const pending = pendingRef.current;
+    if (!pending) return;
+    if (isPendingToolCall) return;
+    setPendingFollowUp(null);
+    void flushPendingFollowUp(pending);
+  }, [status, error, isPendingToolCall, flushPendingFollowUp]);
+
   // Voice: spoken turns go through the same chat stream as typed ones, and
   // the answer streams back to the voice session to be spoken.
   useVoiceChatBridge({
@@ -942,6 +1050,10 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
                   isLoading={isLoading || isPendingToolCall}
                   onStop={handleStop}
                   onFocus={isFirstTime ? undefined : handleFocus}
+                  pendingFollowUp={pendingFollowUp}
+                  onQueueFollowUp={queuePendingFollowUp}
+                  onCancelFollowUp={cancelPendingFollowUp}
+                  onInterruptAndSend={interruptAndSend}
                 />
               </div>
               <DeleteThreadPopup
