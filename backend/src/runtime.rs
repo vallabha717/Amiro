@@ -1052,6 +1052,117 @@ pub async fn run_once(
     .await
 }
 
+/// Name of the custom tool the model test offers, so tool calling can be
+/// checked without running any real tool.
+pub const PROBE_TOOL: &str = "amiro_probe_echo";
+
+/// What one model-test round trip observed.
+#[derive(Debug, Clone, Default)]
+pub struct ModelProbe {
+    pub text: String,
+    pub usage: Option<TurnUsage>,
+    /// `(name, arguments)` of the probe tool call, when the model made one.
+    pub tool_call: Option<(String, String)>,
+}
+
+/// One live round trip against `model` in a throwaway session whose only tool
+/// is [`PROBE_TOOL`]. The tool is answered here, so nothing runs on the host.
+pub async fn probe_model(
+    state: &AppState,
+    working_dir: &str,
+    model: &str,
+) -> Result<ModelProbe, ApiError> {
+    ensure_bridge(state).await?;
+    let state = state.clone();
+    let (working_dir, model) = (working_dir.to_string(), model.to_string());
+    blocking("probe_model", move || {
+        let client = connect_client(&state, true)?;
+        let session = client
+            .create_session_with_options(CreateSessionOptions {
+                working_dir: Some(working_dir),
+                system_prompt: None,
+            })
+            .map_err(runtime_error)?;
+        let session_id = session.session_id.clone();
+        let outcome = (|| -> Result<ModelProbe, ApiError> {
+            let mut parameters = serde_json::Map::new();
+            parameters.insert("type".into(), Value::String("object".into()));
+            parameters.insert(
+                "properties".into(),
+                serde_json::json!({"text": {"type": "string", "description": "Text to echo back."}}),
+            );
+            parameters.insert("required".into(), serde_json::json!(["text"]));
+            client
+                .configure_tools(
+                    &session_id,
+                    ToolConfiguration {
+                        enabled: Some(Vec::new()),
+                        disabled: Vec::new(),
+                        custom: vec![amiro_sdk::SessionToolDefinition {
+                            name: PROBE_TOOL.to_string(),
+                            description: "Echoes the given text back. Used to check tool calling."
+                                .to_string(),
+                            parameters,
+                        }],
+                    },
+                )
+                .map_err(runtime_error)?;
+            client.set_model(&session_id, &model).map_err(runtime_error)?;
+
+            let seen = std::sync::Arc::new(std::sync::Mutex::new(None::<(String, String)>));
+            let (seen_cb, responder, sid) = (seen.clone(), client.clone(), session_id.clone());
+            let on_event = move |event: &ApiEvent| {
+                if let ApiEvent::ToolCall {
+                    call_id, name, input, ..
+                } = event
+                {
+                    *seen_cb.lock().unwrap() = Some((name.clone(), input.to_string()));
+                    let output = input
+                        .get("text")
+                        .and_then(Value::as_str)
+                        .unwrap_or("ok")
+                        .to_string();
+                    let (responder, sid, call_id) = (responder.clone(), sid.clone(), call_id.clone());
+                    // Answered off the event loop so the turn can keep streaming.
+                    std::thread::spawn(move || {
+                        let _ = responder.submit_tool_result(&sid, &call_id, &output, None);
+                    });
+                }
+            };
+            let prompt = format!(
+                "This is a connection test. First call the `{PROBE_TOOL}` tool once with text \"pong\". \
+                 After it returns, reply with one short sentence confirming you can hear me."
+            );
+            let turn = client
+                .run(
+                    &session_id,
+                    &prompt,
+                    RunOptions {
+                        images: Vec::new(),
+                        on_event: Some(Box::new(on_event)),
+                        auto_approve: false,
+                    },
+                )
+                .map_err(runtime_error)?;
+            let tool_call = seen.lock().unwrap().clone();
+            let text = if turn.final_text.trim().is_empty() {
+                turn.text
+            } else {
+                turn.final_text
+            };
+            Ok(ModelProbe {
+                text: text.trim().to_string(),
+                usage: turn.usage.map(usage_of),
+                tool_call,
+            })
+        })();
+        let _ = client.detach_session(&session_id);
+        let _ = client.archive_session(&session_id);
+        outcome
+    })
+    .await
+}
+
 // ---------------------------------------------------------------------------
 // Streaming turns
 // ---------------------------------------------------------------------------

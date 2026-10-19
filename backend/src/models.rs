@@ -569,12 +569,82 @@ async fn sync_provider_models(
     post_provider_models(State(state), user, Json(json!({"id": id}))).await
 }
 
+/// `POST /api/ai/providers/{id}/test` -- one live round trip against a model
+/// of this connection (`{model}` in), answering the shape the provider test
+/// page renders: reply text, latency, whether the model called the probe tool,
+/// and token usage. A provider that rejects the request answers `ok: false`
+/// with the runtime's error rather than an HTTP failure, so the page can show it.
+async fn test_provider_model(
+    State(state): State<AppState>,
+    user: AuthUser,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    require_admin(&user)?;
+    let model = body.get("model").and_then(Value::as_str).unwrap_or("").trim().to_string();
+    let Some(model_ref) = crate::runtime::resolve_model(&id, &model) else {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "model is required".to_string()));
+    };
+    let working_dir = state.workspace.to_string_lossy().to_string();
+    let started = Instant::now();
+    let probe = tokio::time::timeout(
+        PROVIDER_TEST_TIMEOUT,
+        crate::runtime::probe_model(&state, &working_dir, &model_ref),
+    )
+    .await;
+    let latency_ms = started.elapsed().as_millis() as u64;
+    let base = json!({ "model": model, "provider": id, "latencyMs": latency_ms });
+    let mut result = match probe {
+        Err(_) => json!({
+            "ok": false,
+            "text": "",
+            "error": format!("The model did not answer within {} seconds.", PROVIDER_TEST_TIMEOUT.as_secs()),
+        }),
+        Ok(Err(ApiError(_, message))) => json!({ "ok": false, "text": "", "error": message }),
+        Ok(Ok(probe)) => {
+            let tool_call = match &probe.tool_call {
+                Some((name, arguments)) => {
+                    json!({ "supported": true, "name": name, "arguments": arguments })
+                }
+                None => json!({
+                    "supported": false,
+                    "error": "The model answered without calling the test tool.",
+                }),
+            };
+            let mut value = json!({
+                "ok": !probe.text.is_empty() || probe.tool_call.is_some(),
+                "text": probe.text,
+                "toolCall": tool_call,
+            });
+            if let Some(usage) = probe.usage {
+                value["usage"] = json!({
+                    "PromptTokens": usage.prompt_tokens,
+                    "CompletionTokens": usage.completion_tokens,
+                    "TotalTokens": usage.total_tokens,
+                });
+            }
+            if value["ok"] == json!(false) {
+                value["error"] = json!("The model returned an empty response.");
+            }
+            value
+        }
+    };
+    for (key, value) in base.as_object().into_iter().flatten() {
+        result[key] = value.clone();
+    }
+    Ok(Json(result))
+}
+
+/// Upper bound for one provider test, so a stuck provider cannot hold the page.
+const PROVIDER_TEST_TIMEOUT: Duration = Duration::from_secs(120);
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/chat/models", get(get_chat_models))
         .route("/api/ai/providers", get(get_ai_providers))
         .route("/api/ai/providers/models", post(post_provider_models))
         .route("/api/ai/providers/{id}/sync-models", post(sync_provider_models))
+        .route("/api/ai/providers/{id}/test", post(test_provider_model))
         .route("/api/ai/providers/status", get(provider_status))
 }
 

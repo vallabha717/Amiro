@@ -32,9 +32,8 @@ export interface ProviderConfigInput {
 }
 
 /**
- * Token counts come back with Go's exported field names because
- * bifrostai.Usage carries no json tags -- matched here rather than renamed,
- * so the type tells the truth about the wire format.
+ * Token counts keep the PascalCase field names of the original wire format;
+ * backend/src/models.rs (`test_provider_model`) answers with the same names.
  */
 export interface ProviderTestUsage {
   PromptTokens: number;
