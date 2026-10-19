@@ -708,6 +708,27 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isShortcutEvent(e, Shortcuts.toggleSessionPanel)) {
+        e.preventDefault();
+        chatUxStore.getState().mutate((st) => ({ panelOpen: !st.panelOpen }));
+        return;
+      }
+      const toPrevious = isShortcutEvent(e, Shortcuts.previousPrompt);
+      if (toPrevious || isShortcutEvent(e, Shortcuts.nextPrompt)) {
+        // jcode's prompt jump: scroll to the previous / next message you sent.
+        const container = containerRef.current;
+        if (!container) return;
+        e.preventDefault();
+        const top = container.getBoundingClientRect().top;
+        const prompts = Array.from(
+          container.querySelectorAll<HTMLElement>('[data-message-role="user"]'),
+        ).map((el) => ({ el, y: el.getBoundingClientRect().top - top }));
+        const target = toPrevious
+          ? prompts.filter((p) => p.y < -4).at(-1)
+          : prompts.find((p) => p.y > 4);
+        target?.el.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
       const messages = latestRef.current.messages;
       if (messages.length === 0) return;
       const isLastMessageCopy = isShortcutEvent(e, Shortcuts.lastMessageCopy);
