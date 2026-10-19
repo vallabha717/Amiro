@@ -121,7 +121,7 @@ export default function SignIn() {
                 Amiro keeps no email recovery: it runs on your own machine. On
                 the computer or server running Amiro, run{" "}
                 <code className="rounded bg-muted px-1 py-0.5 font-mono">
-                  amiro-backend reset-password
+                  amiro reset-password
                 </code>{" "}
                 (for the desktop app, see docs/SETUP.md for where it lives). It
                 asks for a new password and signs out every session.

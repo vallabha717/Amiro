@@ -254,7 +254,7 @@ export function AccountStep({
       </Actions>
       <p className="mt-6 text-xs leading-relaxed text-muted-foreground">
         Forgot it later? On the machine running Amiro, run{" "}
-        <Kbd>amiro-backend reset-password</Kbd>.
+        <Kbd>amiro reset-password</Kbd>.
       </p>
     </form>
   );

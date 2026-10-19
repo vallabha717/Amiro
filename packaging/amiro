@@ -1,0 +1,319 @@
+#!/usr/bin/env bash
+# amiro: run and manage an Amiro server installed by install.sh.
+#
+#   amiro setup [--host H] [--port P]   create ~/.amiro/amiro.toml (once)
+#   amiro start [--foreground]          start the server (background by default)
+#   amiro stop | restart | status
+#   amiro logs [-f]                     server log
+#   amiro url                           where to open Amiro
+#   amiro service install [--system]    start at boot (systemd / launchd)
+#   amiro service uninstall | status
+#   amiro reset-password [--login L]    new owner password, signs everyone out
+#   amiro config [edit]                 show or edit amiro.toml
+#   amiro update [vX.Y.Z]               install the latest (or given) release
+#   amiro uninstall [--purge]           remove the app (--purge: and all data)
+#   amiro doctor                        check the install
+#   amiro version
+#
+# Everything lives in $AMIRO_HOME (default ~/.amiro): the app in app/, your
+# data next to it, settings in amiro.toml. See docs/SETUP.md.
+set -euo pipefail
+
+SELF="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || python3 -c 'import os,sys;print(os.path.realpath(sys.argv[1]))' "${BASH_SOURCE[0]}")"
+APP_DIR="$(cd "$(dirname "$SELF")" && pwd)"
+BACKEND="$APP_DIR/amiro-backend"
+export AMIRO_HOME="${AMIRO_HOME:-$HOME/.amiro}"
+CONFIG="${AMIRO_CONFIG:-$AMIRO_HOME/amiro.toml}"
+RUN_DIR="$AMIRO_HOME/run"
+PID_FILE="$RUN_DIR/amiro.pid"
+LOG_FILE="$RUN_DIR/amiro.log"
+REPO="${AMIRO_REPO:-vallabha717/Amiro}"
+OS="$(uname -s)"
+
+if [ -t 1 ]; then B=$'\033[1m'; D=$'\033[2m'; G=$'\033[32m'; R=$'\033[31m'; N=$'\033[0m'; else B= D= G= R= N=; fi
+say() { printf '%s\n' "$*"; }
+die() { printf '%serror:%s %s\n' "$R" "$N" "$*" >&2; exit 1; }
+
+toml_server() {
+  [ -f "$CONFIG" ] || return 0
+  awk -v key="$1" '
+    /^[[:space:]]*\[/ { section = $0; gsub(/[[:space:]\[\]]/, "", section); next }
+    section == "server" {
+      line = $0; sub(/#.*/, "", line)
+      split(line, kv, "=")
+      k = kv[1]; gsub(/[[:space:]]/, "", k)
+      if (k == key) { v = substr(line, index(line, "=") + 1); gsub(/^[[:space:]"]+|[[:space:]"]+$/, "", v); print v; exit }
+    }' "$CONFIG"
+}
+port() { local p="${AMIRO_PORT:-$(toml_server port)}"; printf '%s' "${p:-8787}"; }
+host() { local h="${AMIRO_HOST:-$(toml_server host)}"; printf '%s' "${h:-127.0.0.1}"; }
+
+running_pid() {
+  [ -f "$PID_FILE" ] || return 1
+  local pid; pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && { printf '%s' "$pid"; return 0; }
+  return 1
+}
+
+listening() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
+
+random_token() {
+  if command -v openssl >/dev/null 2>&1; then openssl rand -hex 32
+  else head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'; fi
+}
+
+print_urls() {
+  local p h; p="$(port)"; h="$(host)"
+  say "  ${B}http://localhost:$p${N}"
+  if [ "$h" = "0.0.0.0" ] || [ "$h" = "::" ]; then
+    local ips=""
+    if command -v hostname >/dev/null 2>&1 && hostname -I >/dev/null 2>&1; then ips="$(hostname -I)"
+    elif command -v ipconfig >/dev/null 2>&1; then ips="$(ipconfig getifaddr en0 2>/dev/null || true)"; fi
+    for ip in $ips; do case "$ip" in *:*) ;; *) say "  http://$ip:$p" ;; esac; done
+  else
+    say "  ${D}(this machine only; from another computer: ssh -L $p:127.0.0.1:$p <this-host>)${N}"
+  fi
+}
+
+cmd_setup() {
+  local host_arg="127.0.0.1" port_arg="3000"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --host) host_arg="$2"; shift 2 ;;
+      --port) port_arg="$2"; shift 2 ;;
+      --public) host_arg="0.0.0.0"; shift ;;
+      *) die "unknown option for setup: $1" ;;
+    esac
+  done
+  mkdir -p "$AMIRO_HOME"; chmod 700 "$AMIRO_HOME" 2>/dev/null || true
+  if [ -f "$CONFIG" ] && grep -q '^\[server\]' "$CONFIG"; then
+    say "Using existing $CONFIG"
+    return 0
+  fi
+  local block reference="$AMIRO_HOME/app/current/amiro.example.toml"
+  [ -f "$reference" ] || reference="$APP_DIR/amiro.example.toml"
+  block="$(cat <<EOF
+# Created by \`amiro setup\`. Every option: $reference
+# Owner account, agent and provider keys can also go here (docs/SETUP.md);
+# otherwise the onboarding wizard asks for them the first time you open Amiro.
+
+[server]
+host = "$host_arg"
+port = $port_arg
+# Shared secret every browser request carries; Amiro injects it into the
+# pages it serves, so you never type it.
+token = "$(random_token)"
+EOF
+)"
+  if [ -f "$CONFIG" ]; then
+    # Keep what is there (e.g. [composio]); add the server section on top.
+    { printf '%s\n\n' "$block"; cat "$CONFIG"; } > "$CONFIG.new" && mv "$CONFIG.new" "$CONFIG"
+  else
+    printf '%s\n' "$block" > "$CONFIG"
+  fi
+  chmod 600 "$CONFIG"
+  say "${G}✓${N} Wrote $CONFIG (listening on $host_arg:$port_arg)"
+}
+
+cmd_start() {
+  local fg=0
+  [ "${1:-}" = "--foreground" ] || [ "${1:-}" = "-f" ] && fg=1
+  [ -x "$BACKEND" ] || die "amiro-backend missing in $APP_DIR; reinstall with the install script"
+  [ -f "$CONFIG" ] || cmd_setup
+  if pid="$(running_pid)"; then say "Amiro is already running (pid $pid)."; print_urls; return 0; fi
+  local p; p="$(port)"
+  listening "$p" && die "port $p is already in use (change [server] port in $CONFIG)"
+  mkdir -p "$RUN_DIR"
+  cd "$AMIRO_HOME"
+  if [ "$fg" = 1 ]; then exec "$BACKEND"; fi
+  nohup "$BACKEND" >>"$LOG_FILE" 2>&1 &
+  echo $! > "$PID_FILE"
+  local i=0
+  until listening "$p"; do
+    i=$((i + 1))
+    if [ "$i" -gt 60 ] || ! kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+      say "${R}Amiro did not start.${N} Last log lines:"; tail -n 20 "$LOG_FILE" >&2; exit 1
+    fi
+    sleep 0.5
+  done
+  say "${G}✓${N} Amiro is running (pid $(cat "$PID_FILE")). Open:"
+  print_urls
+}
+
+cmd_stop() {
+  local pid
+  if pid="$(running_pid)"; then
+    kill -TERM "$pid" 2>/dev/null || true
+    for _ in $(seq 1 40); do kill -0 "$pid" 2>/dev/null || break; sleep 0.25; done
+    kill -KILL "$pid" 2>/dev/null || true
+    rm -f "$PID_FILE"; say "Stopped Amiro (pid $pid)."
+  else
+    rm -f "$PID_FILE"; say "Amiro is not running."
+  fi
+}
+
+cmd_status() {
+  say "${B}Amiro $(cat "$APP_DIR/VERSION" 2>/dev/null || echo dev)${N}  ($APP_DIR)"
+  say "  config: $CONFIG$([ -f "$CONFIG" ] || echo ' (missing: run amiro setup)')"
+  say "  data:   $AMIRO_HOME"
+  if pid="$(running_pid)"; then say "  state:  ${G}running${N} (pid $pid)"; print_urls
+  elif service_active; then say "  state:  ${G}running as a service${N}"; print_urls
+  else say "  state:  stopped (amiro start)"; fi
+}
+
+# --- services --------------------------------------------------------------
+UNIT=amiro.service
+PLIST="$HOME/Library/LaunchAgents/com.amiro.server.plist"
+service_active() {
+  if [ "$OS" = Darwin ]; then launchctl list 2>/dev/null | grep -q com.amiro.server
+  else systemctl --user is-active --quiet "$UNIT" 2>/dev/null || systemctl is-active --quiet "$UNIT" 2>/dev/null; fi
+}
+
+cmd_service() {
+  local action="${1:-status}"; shift || true
+  local system=0; [ "${1:-}" = "--system" ] && system=1
+  [ -f "$CONFIG" ] || cmd_setup
+  local current="$AMIRO_HOME/app/current"; [ -d "$current" ] || current="$APP_DIR"
+  if [ "$OS" = Darwin ]; then
+    case "$action" in
+      install)
+        mkdir -p "$(dirname "$PLIST")" "$RUN_DIR"
+        cat > "$PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.amiro.server</string>
+  <key>ProgramArguments</key><array><string>$current/amiro-backend</string></array>
+  <key>WorkingDirectory</key><string>$AMIRO_HOME</string>
+  <key>EnvironmentVariables</key><dict><key>AMIRO_HOME</key><string>$AMIRO_HOME</string></dict>
+  <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>$LOG_FILE</string>
+  <key>StandardErrorPath</key><string>$LOG_FILE</string>
+</dict></plist>
+EOF
+        cmd_stop >/dev/null
+        launchctl unload "$PLIST" 2>/dev/null || true
+        launchctl load -w "$PLIST"
+        say "${G}✓${N} Amiro starts at login (launchd). Open:"; print_urls ;;
+      uninstall) launchctl unload -w "$PLIST" 2>/dev/null || true; rm -f "$PLIST"; say "Removed the launchd service." ;;
+      status) service_active && say "service: running" || say "service: not running" ;;
+      *) die "usage: amiro service install|uninstall|status" ;;
+    esac
+    return
+  fi
+  command -v systemctl >/dev/null 2>&1 || die "systemd not found; use 'amiro start' (or your init system) instead"
+  local unit_body
+  unit_body="[Unit]
+Description=Amiro AI agent server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Environment=AMIRO_HOME=$AMIRO_HOME
+WorkingDirectory=$AMIRO_HOME
+ExecStart=$current/amiro-backend
+Restart=on-failure
+RestartSec=3
+$( [ "$system" = 1 ] && printf 'User=%s\n' "$(id -un)")
+[Install]
+WantedBy=$( [ "$system" = 1 ] && echo multi-user.target || echo default.target)
+"
+  case "$action" in
+    install)
+      cmd_stop >/dev/null
+      if [ "$system" = 1 ]; then
+        printf '%s' "$unit_body" | sudo tee "/etc/systemd/system/$UNIT" >/dev/null
+        sudo systemctl daemon-reload && sudo systemctl enable --now "$UNIT"
+      else
+        mkdir -p "$HOME/.config/systemd/user"
+        printf '%s' "$unit_body" > "$HOME/.config/systemd/user/$UNIT"
+        systemctl --user daemon-reload && systemctl --user enable --now "$UNIT"
+        if command -v loginctl >/dev/null 2>&1 && ! loginctl show-user "$(id -un)" -p Linger 2>/dev/null | grep -q yes; then
+          say "${D}Tip: keep it running after you log out: sudo loginctl enable-linger $(id -un)${N}"
+        fi
+      fi
+      say "${G}✓${N} Amiro runs as a service and starts at boot. Open:"; print_urls ;;
+    uninstall)
+      systemctl --user disable --now "$UNIT" 2>/dev/null || true
+      rm -f "$HOME/.config/systemd/user/$UNIT"
+      if [ -f "/etc/systemd/system/$UNIT" ]; then sudo systemctl disable --now "$UNIT" || true; sudo rm -f "/etc/systemd/system/$UNIT"; sudo systemctl daemon-reload; fi
+      systemctl --user daemon-reload 2>/dev/null || true
+      say "Removed the Amiro service." ;;
+    status) systemctl --user status "$UNIT" --no-pager 2>/dev/null || systemctl status "$UNIT" --no-pager ;;
+    *) die "usage: amiro service install [--system]|uninstall|status" ;;
+  esac
+}
+
+cmd_logs() {
+  if [ "$OS" != Darwin ] && service_active && command -v journalctl >/dev/null 2>&1 && [ ! -s "$LOG_FILE" ]; then
+    exec journalctl --user -u "$UNIT" ${1:+-f} -n 200
+  fi
+  [ -f "$LOG_FILE" ] || die "no log yet ($LOG_FILE)"
+  if [ "${1:-}" = "-f" ]; then exec tail -n 100 -f "$LOG_FILE"; else tail -n 200 "$LOG_FILE"; fi
+}
+
+cmd_update() {
+  local version="${1:-}"
+  local url="https://github.com/$REPO/releases/latest/download/install.sh"
+  [ -n "$version" ] && url="https://github.com/$REPO/releases/download/$version/install.sh"
+  local was_running=0; running_pid >/dev/null && was_running=1
+  curl -fsSL "$url" | AMIRO_NO_START=1 bash -s -- ${version:+--version "$version"}
+  if service_active; then
+    if [ "$OS" = Darwin ]; then launchctl unload "$PLIST"; launchctl load -w "$PLIST"
+    else systemctl --user restart "$UNIT" 2>/dev/null || sudo systemctl restart "$UNIT"; fi
+    say "Service restarted on the new version."
+  elif [ "$was_running" = 1 ]; then
+    "$AMIRO_HOME/app/current/amiro" restart
+  fi
+}
+
+cmd_uninstall() {
+  cmd_stop >/dev/null || true
+  service_active && cmd_service uninstall
+  rm -rf "$AMIRO_HOME/app"
+  for link in "$HOME/.local/bin/amiro" /usr/local/bin/amiro; do
+    [ -L "$link" ] && rm -f "$link" 2>/dev/null || true
+  done
+  if [ "${1:-}" = "--purge" ]; then
+    rm -rf "$AMIRO_HOME"; say "Removed Amiro and all of its data."
+  else
+    say "Removed the Amiro app. Your data and settings are still in $AMIRO_HOME (amiro uninstall --purge removes them)."
+  fi
+}
+
+cmd_doctor() {
+  local ok=1
+  check() { if eval "$2"; then say "  ${G}✓${N} $1"; else say "  ${R}✗${N} $1${3:+  ($3)}"; ok=0; fi; }
+  say "${B}amiro doctor${N}"
+  check "server binary" "[ -x '$BACKEND' ]"
+  check "agent runtime" "[ -x '$APP_DIR/amiro-runtime' ]"
+  check "web UI" "[ -f '$APP_DIR/ui/index.html' ]"
+  check "config file" "[ -f '$CONFIG' ]" "amiro setup"
+  if [ "$OS" = Linux ]; then
+    check "OpenSSL 3 (libssl.so.3)" "ldconfig -p 2>/dev/null | grep -q libssl.so.3 || ls /usr/lib*/libssl.so.3 /lib/*/libssl.so.3 >/dev/null 2>&1" "sudo apt install libssl3  /  sudo dnf install openssl-libs"
+  fi
+  check "port $(port) free or ours" "! listening $(port) || running_pid >/dev/null || service_active" "another program uses it"
+  [ "$ok" = 1 ] && say "All good." || exit 1
+}
+
+cmd="${1:-help}"; shift || true
+case "$cmd" in
+  setup|init) cmd_setup "$@" ;;
+  start) cmd_start "$@" ;;
+  stop) cmd_stop ;;
+  restart) cmd_stop >/dev/null; cmd_start "$@" ;;
+  status) cmd_status ;;
+  logs|log) cmd_logs "$@" ;;
+  url|open) print_urls ;;
+  service) cmd_service "$@" ;;
+  reset-password) exec "$BACKEND" reset-password "$@" ;;
+  config)
+    if [ "${1:-}" = "edit" ]; then [ -f "$CONFIG" ] || cmd_setup; exec "${EDITOR:-vi}" "$CONFIG"; fi
+    say "$CONFIG"; [ -f "$CONFIG" ] && sed -E 's/^([[:space:]]*(token|password|[a-z_]*api_key)[[:space:]]*=).*/\1 "•••"/' "$CONFIG" ;;
+  update|upgrade) cmd_update "$@" ;;
+  uninstall) cmd_uninstall "$@" ;;
+  doctor) cmd_doctor ;;
+  version|--version|-v) cat "$APP_DIR/VERSION" 2>/dev/null || echo dev ;;
+  help|-h|--help) sed -n '2,20p' "$SELF" | sed 's/^# \{0,1\}//' ;;
+  *) die "unknown command '$cmd' (amiro help)" ;;
+esac

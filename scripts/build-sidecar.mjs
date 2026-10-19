@@ -47,6 +47,8 @@ const sidecars = [
     manifest: "runtime/Cargo.toml",
     bin: "amiro-runtime",
     crateDir: "runtime",
+    // Same features as scripts/build-native.sh (the shipped runtime).
+    extra: ["--no-default-features"],
   },
 ];
 
@@ -61,6 +63,7 @@ for (const s of sidecars) {
   if (!existsSync(source) && build) {
     console.log(`building ${s.bin} (${target})…`);
     const cargoArgs = ["build", "--manifest-path", s.manifest, "--release", "--bin", s.bin];
+    if (s.extra) cargoArgs.push(...s.extra);
     if (!hostTarget) cargoArgs.push("--target", target);
     execFileSync("cargo", cargoArgs, { cwd: root, stdio: "inherit" });
   }

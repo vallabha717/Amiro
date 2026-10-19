@@ -132,11 +132,11 @@ export function ReadyStep({
           ) : null}
           <li>
             Forgot your password? On the machine running Amiro, run{" "}
-            <Kbd>amiro-backend reset-password</Kbd>.
+            <Kbd>amiro reset-password</Kbd>.
           </li>
           <li>
             Every choice here can also live in <Kbd>~/.amiro/amiro.toml</Kbd>{" "}
-            (run <Kbd>amiro-backend init-config</Kbd> for a commented starter).
+            (every option: <Kbd>amiro.example.toml</Kbd> next to the app).
           </li>
           <li>
             Run this setup again any time from{" "}

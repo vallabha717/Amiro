@@ -1,0 +1,162 @@
+name: Release
+
+# One release = desktop installers for macOS / Windows / Linux, plus server
+# archives that `install.sh` downloads:
+#
+#   curl -fsSL https://github.com/vallabha717/Amiro/releases/latest/download/install.sh | bash
+#
+# Start one by pushing a tag (git tag v1.27.0 && git push origin v1.27.0), or
+# from the Actions tab with a version. The release stays a draft until the
+# server archives and SHA256SUMS are uploaded, then it is published as latest.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release, e.g. v1.27.0 (the tag is created on this commit)
+        required: true
+      prerelease:
+        description: Mark as a pre-release (not "latest")
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.inputs.version || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ github.event.inputs.version || github.ref_name }}
+  GH_TOKEN: ${{ github.token }}
+  CARGO_TERM_COLOR: always
+
+jobs:
+  prepare:
+    name: Create draft release
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.release.outputs.id }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the version
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "::error::version must look like v1.2.3"; exit 1; }
+      - name: Create the draft
+        id: release
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            flags=(--draft --title "Amiro $TAG" --generate-notes --target "$GITHUB_SHA")
+            [ "${{ github.event.inputs.prerelease }}" = "true" ] && flags+=(--prerelease)
+            gh release create "$TAG" "${flags[@]}"
+          fi
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq ".[] | select(.tag_name == \"$TAG\") | .id" | head -1)
+          [ -n "$id" ] || { echo "::error::release $TAG not found"; exit 1; }
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+  ui:
+    name: Web UI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.2.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui
+          path: out
+          retention-days: 3
+
+  server:
+    name: Server ${{ matrix.target }}
+    needs: [prepare, ui]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: server-${{ matrix.target }}
+          workspaces: |
+            backend
+            runtime
+      - uses: actions/download-artifact@v4
+        with:
+          name: ui
+          path: out
+      - name: Build the server and the agent runtime
+        run: |
+          cargo build --release --manifest-path backend/Cargo.toml --bin amiro-backend
+          # Same features as scripts/build-native.sh (the shipped runtime).
+          cargo build --release --manifest-path runtime/Cargo.toml --bin amiro-runtime --no-default-features
+      - name: Smoke test
+        run: |
+          ./backend/target/release/amiro-backend --help | head -3
+          ./runtime/target/release/amiro-runtime --version || true
+      - name: Package
+        run: bash scripts/package-server.sh "$TAG" "${{ matrix.target }}" dist
+      - name: Upload to the release
+        run: gh release upload "$TAG" dist/amiro-server-${{ matrix.target }}.tar.gz --clobber
+
+  desktop:
+    name: Desktop
+    needs: prepare
+    uses: ./.github/workflows/desktop.yml
+    with:
+      release_id: ${{ needs.prepare.outputs.release_id }}
+    secrets: inherit
+
+  publish:
+    name: Publish
+    needs: [prepare, server, desktop]
+    # Server archives are what install.sh needs; publish even if one desktop
+    # platform failed (its installer is simply missing from the release).
+    if: ${{ !cancelled() && needs.server.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checksums and installer
+        run: |
+          mkdir -p assets && cd assets
+          gh release download "$TAG" --pattern 'amiro-server-*.tar.gz'
+          sha256sum amiro-server-*.tar.gz > SHA256SUMS
+          cp ../install.sh install.sh
+          gh release upload "$TAG" SHA256SUMS install.sh --clobber
+      - name: Publish
+        run: |
+          flags=(--draft=false)
+          if [ "${{ github.event.inputs.prerelease }}" != "true" ] && [[ "$TAG" != *-* ]]; then flags+=(--latest); fi
+          gh release edit "$TAG" "${flags[@]}"
+          {
+            echo "### Amiro $TAG"
+            echo
+            echo 'Install the server on Linux or macOS:'
+            echo '```bash'
+            echo "curl -fsSL https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/install.sh | bash"
+            echo '```'
+            echo "Desktop installers: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
+            echo
+            echo "Desktop builds: ${{ needs.desktop.result }}"
+          } >> "$GITHUB_STEP_SUMMARY"
