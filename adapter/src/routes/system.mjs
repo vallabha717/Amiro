@@ -11,6 +11,12 @@ import { readFileSync } from 'node:fs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { isIP } from 'node:net';
+import {
+  checkForUpdate,
+  clearUpdateCache,
+  parseVersion,
+  startUpdate,
+} from '../updates.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -153,6 +159,15 @@ const PKG_VERSION = JSON.parse(
   readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
 ).version || '0.0.0';
 
+function requireAdmin(req, res, ctx) {
+  const user = ctx.requireUser(req);
+  if (!user || user.role !== 'admin') {
+    ctx.error(res, 403, 'Forbidden');
+    return null;
+  }
+  return user;
+}
+
 export function register(app, ctx) {
   // GET /api/system -- version, deployment, CPU, memory, disk
   app.get('/api/system', async (req, res) => {
@@ -165,5 +180,57 @@ export function register(app, ctx) {
       memory: mem,
       disk: dsk,
     });
+  });
+
+  // GET /api/system/update -- is there a newer release? (admin only)
+  // Never 500s on network trouble: failures come back as checkFailed so
+  // the General page keeps working offline.
+  app.get('/api/system/update', async (req, res) => {
+    if (!requireAdmin(req, res, ctx)) return;
+    const url = new URL(req.url, 'http://localhost');
+    if (url.searchParams.get('refresh') === '1') clearUpdateCache();
+    try {
+      const result = await checkForUpdate(PKG_VERSION);
+      ctx.json(res, 200, result);
+    } catch (err) {
+      ctx.json(res, 200, {
+        current: PKG_VERSION,
+        latest: null,
+        updateAvailable: false,
+        releaseUrl: 'https://github.com/vallabha717/Amiro/releases',
+        publishedAt: null,
+        checkFailed: true,
+        noReleases: false,
+      });
+    }
+  });
+
+  // POST /api/system/update -- run the release installer detached, exactly
+  // like `amiro update` (admin only). The installer restarts the server, so
+  // it must outlive this response. Optional JSON body: { "version": "vX.Y.Z" }
+  // to install a specific release instead of latest. The version is strictly
+  // validated and only ever passed as a single argv element -- never a shell.
+  app.post('/api/system/update', async (req, res) => {
+    if (!requireAdmin(req, res, ctx)) return;
+    let version;
+    try {
+      const body = await ctx.readJson(req);
+      if (body && body.version != null) {
+        version = String(body.version).trim();
+        if (!parseVersion(version)) {
+          ctx.error(res, 400, `refusing to update to unparseable version: ${version}`);
+          return;
+        }
+      }
+    } catch {
+      // No (or unreadable) body means latest -- same as `amiro update`.
+      version = undefined;
+    }
+    try {
+      const result = await startUpdate({ version });
+      ctx.json(res, 200, result);
+    } catch (err) {
+      ctx.error(res, err.status === 404 || err.message?.includes('HTTP 404') ? 404 : 502, err.message || 'could not start update');
+    }
   });
 }
