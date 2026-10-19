@@ -670,13 +670,13 @@ const replaceTool: ToolPresenter = {
 };
 
 const openTool: ToolPresenter = {
-  glance: ({ input, output, status }) => {
+  glance: ({ input, status }) => {
     const target = input?.target ?? "";
     if (status === "pending") return `opening ${target}…`;
     if (status === "error") return `failed to open ${target}`;
     return `opened ${target}`;
   },
-  Compact: ({ input, output, status, errorText }: PresenterProps) => {
+  Compact: ({ input, status, errorText }: PresenterProps) => {
     const target = input?.target ?? "";
     return (
       <Shell

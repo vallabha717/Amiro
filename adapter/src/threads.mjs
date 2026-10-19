@@ -69,10 +69,6 @@ export function parseMessageId(id) {
   return { index: Number(m[1]), sessionId: m[2] };
 }
 
-function roleFor(role) {
-  return role === 'user' ? 'user' : 'assistant';
-}
-
 function extractThinkingAndText(content) {
   const thinkings = [];
   const openTag = '<thinking>';
