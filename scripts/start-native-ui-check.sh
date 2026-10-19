@@ -46,7 +46,7 @@ mkdir -p "$ROOT/run" "$ROOT/home/workspace" "$ROOT/runtime-home" "$ROOT/screens"
 python3 "$REPO_ROOT/scripts/native-stub-provider.py" "$STUB_PORT" > "$ROOT/stub.log" 2>&1 &
 PIDS+=($!)
 
-AMIRO_HOME=$ROOT/home \
+AMIRO_HOME=$ROOT/home AMIRO_SKIP_ONBOARDING=1 \
 AMIRO_RUNTIME_HOME=$ROOT/runtime-home \
 AMIRO_RUNTIME_DIR=$ROOT/run \
 AMIRO_API_SOCKET=$SOCKET \

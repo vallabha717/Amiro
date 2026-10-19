@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuthStatus } from "@/hooks/queries/use-auth-status";
+import { useOnboarding } from "@/lib/onboarding/onboarding-api";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useSession } from "./session-context";
@@ -15,21 +16,29 @@ import { useSession } from "./session-context";
  * logged-out user sees /sign-in instead of a page that 401s.
  *
  * On a fresh instance with no account at all, both gates send the user to
- * the first-run "Set up Amiro" page instead of the sign-in form.
+ * the onboarding wizard instead of the sign-in form; a signed-in owner who
+ * has not finished onboarding is sent back to it.
  */
 export function RequireAuth({ children }: { children: React.ReactNode }) {
   const { data: session, isPending } = useSession();
   const { data: status, isLoading } = useAuthStatus();
+  const isOwner = session?.user.role === "admin";
+  // The owner finishes (or skips through) onboarding before the app proper.
+  // A failed request never blocks the app: only an explicit `false` redirects.
+  const { data: onboarding } = useOnboarding(isOwner);
   const router = useRouter();
+  const needsOnboarding = isOwner && onboarding?.completed === false;
 
   useEffect(() => {
     if (isPending || isLoading) return;
     if (!session) {
-      router.replace(status?.needsSetup ? "/setup" : "/sign-in");
+      router.replace(status?.needsSetup ? "/onboarding" : "/sign-in");
+    } else if (needsOnboarding) {
+      router.replace("/onboarding");
     }
-  }, [isPending, isLoading, session, status, router]);
+  }, [isPending, isLoading, session, status, needsOnboarding, router]);
 
-  if (isPending || isLoading || !session) {
+  if (isPending || isLoading || !session || needsOnboarding) {
     return null;
   }
   return <>{children}</>;
@@ -52,9 +61,9 @@ export function RedirectIfAuthed({ children }: { children: React.ReactNode }) {
       router.replace("/");
       return;
     }
-    if (status?.needsSetup && pathname !== "/setup") {
-      router.replace("/setup");
-    } else if (!status?.needsSetup && pathname === "/setup") {
+    if (status?.needsSetup) {
+      router.replace("/onboarding");
+    } else if (pathname === "/setup") {
       router.replace("/sign-in");
     }
   }, [isPending, isLoading, session, status, pathname, router]);
@@ -74,7 +83,7 @@ export function RequireAdmin({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (isPending || isLoading) return;
     if (!session) {
-      router.replace(status?.needsSetup ? "/setup" : "/sign-in");
+      router.replace(status?.needsSetup ? "/onboarding" : "/sign-in");
     }
   }, [isPending, isLoading, session, status, router]);
 

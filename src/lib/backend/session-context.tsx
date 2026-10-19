@@ -102,12 +102,13 @@ export async function setupOwner(
   email: string,
   password: string,
   name?: string,
+  timezone?: string,
 ) {
   const resp = await apiJson<{ user: BackendUser; token: string }>(
     "/api/auth/setup",
     {
       method: "POST",
-      body: JSON.stringify({ email, password, name }),
+      body: JSON.stringify({ email, password, name, timezone }),
     },
   );
   setSessionToken(resp.token);

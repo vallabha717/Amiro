@@ -12,7 +12,12 @@ import useSWR from "swr";
  * the whole point is answering it *before* anyone can sign in.
  */
 export function useAuthStatus() {
-  return useSWR<{ needsSetup: boolean; isFirstUser?: boolean }>(
+  return useSWR<{
+    needsSetup: boolean;
+    isFirstUser?: boolean;
+    /** "desktop" | "local-server" | "vm-remote" */
+    mode?: string;
+  }>(
     "/api/auth/status",
     fetcher,
     {

@@ -1,7 +1,7 @@
 "use client";
-import { Sidebar, SidebarContent, SidebarFooter } from "ui/sidebar";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { Sidebar, SidebarContent, SidebarFooter } from "ui/sidebar";
 
 import { AppSidebarMenus } from "./app-sidebar-menus";
 import { AppSidebarSkills } from "./app-sidebar-skills";
@@ -9,9 +9,10 @@ import { AppSidebarThreads } from "./app-sidebar-threads";
 import { SidebarHeaderShared } from "./sidebar-header";
 import { VrndaLogo } from "./vrnda-logo";
 
-import { isShortcutEvent, Shortcuts } from "lib/keyboard-shortcuts";
-import { AppSidebarUser } from "./app-sidebar-user";
+import { SetupChecklist } from "@/components/onboarding/setup-checklist";
 import { BasicUser } from "app-types/user";
+import { Shortcuts, isShortcutEvent } from "lib/keyboard-shortcuts";
+import { AppSidebarUser } from "./app-sidebar-user";
 
 export function AppSidebar({
   user,
@@ -63,6 +64,7 @@ export function AppSidebar({
         </div>
       </SidebarContent>
       <SidebarFooter className="flex flex-col items-stretch space-y-2">
+        <SetupChecklist />
         <AppSidebarUser user={user} />
       </SidebarFooter>
     </Sidebar>

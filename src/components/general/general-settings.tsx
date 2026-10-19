@@ -1,7 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import {
+  COMMON_TIMEZONES,
+  detectBrowserTimezone,
+} from "@/components/schedules/schedule-helpers";
+import type { ProviderConfig } from "@/lib/backend/provider-api";
+import type { VoiceSettingsResponse } from "@/lib/backend/voice-api";
+import {
+  checkBrowserPermission,
+  isTauriDesktop,
+  useNotifications,
+} from "@/lib/notifications/notification-runtime";
+import { reopenOnboarding } from "@/lib/onboarding/onboarding-api";
+import { fetcher } from "lib/utils";
 import {
   ArrowRight,
   Bell,
@@ -22,8 +33,11 @@ import {
   Terminal,
   Volume2,
 } from "lucide-react";
-import useSWR from "swr";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import useSWR from "swr";
 import { Badge } from "ui/badge";
 import { Button } from "ui/button";
 import {
@@ -40,18 +54,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "ui/select";
-import { fetcher } from "lib/utils";
-import type { ProviderConfig } from "@/lib/backend/provider-api";
-import type { VoiceSettingsResponse } from "@/lib/backend/voice-api";
-import {
-  COMMON_TIMEZONES,
-  detectBrowserTimezone,
-} from "@/components/schedules/schedule-helpers";
-import {
-  useNotifications,
-  checkBrowserPermission,
-  isTauriDesktop,
-} from "@/lib/notifications/notification-runtime";
 
 export interface SystemInfo {
   version: string;
@@ -245,6 +247,46 @@ function ResourcesCard({
   );
 }
 
+function SetupCard() {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  return (
+    <Card data-testid="general-setup">
+      <CardHeader>
+        <CardTitle className="text-lg font-semibold">Setup</CardTitle>
+        <CardDescription>
+          Walk through the welcome wizard again: agent name and look, and AI
+          provider. Settings can also come from <code>amiro.toml</code> or a{" "}
+          <code>.env</code> file (see docs/SETUP.md).
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Button
+          variant="outline"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await reopenOnboarding();
+              router.push("/onboarding");
+            } catch (error) {
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : "Could not reopen setup.",
+              );
+              setBusy(false);
+            }
+          }}
+          data-testid="general-rerun-setup"
+        >
+          Run setup again
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 function VersionCard({ version }: { version?: string }) {
   return (
     <Card data-testid="general-version">
@@ -319,7 +361,8 @@ function DeploymentCard({
               Deployment &amp; Access (VM Web UI &amp; Desktop App)
             </CardTitle>
             <CardDescription>
-              Network topology, reachable URLs across devices, and launcher commands.
+              Network topology, reachable URLs across devices, and launcher
+              commands.
             </CardDescription>
           </div>
           <Badge
@@ -379,13 +422,16 @@ function DeploymentCard({
               Reachable Web UI URLs (Open in any browser / device)
             </span>
             <span>
-              {urls.length} reachable {urls.length === 1 ? "address" : "addresses"}
+              {urls.length} reachable{" "}
+              {urls.length === 1 ? "address" : "addresses"}
             </span>
           </div>
           <div className="space-y-1.5" data-testid="general-deployment-urls">
             {urls.length === 0 ? (
               <p className="text-xs text-muted-foreground italic">
-                {loading ? "Discovering access URLs…" : "No access URLs available."}
+                {loading
+                  ? "Discovering access URLs…"
+                  : "No access URLs available."}
               </p>
             ) : (
               urls.map((url) => {
@@ -414,7 +460,9 @@ function DeploymentCard({
                       {isCopied ? (
                         <>
                           <Check className="size-3 text-emerald-500" />
-                          <span className="text-emerald-500 text-[11px]">Copied</span>
+                          <span className="text-emerald-500 text-[11px]">
+                            Copied
+                          </span>
                         </>
                       ) : (
                         <>
@@ -771,6 +819,7 @@ export function GeneralSettings() {
       <ConfiguredDefaultsCard />
       <DeploymentCard deployment={data?.deployment} loading={isLoading} />
       <TimezoneCard />
+      <SetupCard />
       <VersionCard version={data?.version} />
       <ResourcesCard
         info={data}

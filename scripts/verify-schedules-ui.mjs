@@ -49,6 +49,7 @@ const child = spawn(binary, [], {
   env: {
     ...process.env,
     AMIRO_HOME: path.join(fixture, "home"),
+    AMIRO_SKIP_ONBOARDING: "1",
     AMIRO_RUNTIME_HOME: path.join(fixture, "runtime"),
     AMIRO_API_SOCKET: socket,
     AMIRO_RUNTIME_BIN: path.join(ROOT, "runtime/target/debug/amiro-runtime"),

@@ -1,7 +1,13 @@
-import SetupOwner from "@/components/auth/setup-owner";
+"use client";
 
-// First-run owner setup. The (auth) layout's RedirectIfAuthed gate shows this
-// only while /api/auth/status reports needsSetup.
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+
+/** Account creation moved into the onboarding wizard; keep old links working. */
 export default function SetupPage() {
-  return <SetupOwner />;
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/onboarding");
+  }, [router]);
+  return null;
 }

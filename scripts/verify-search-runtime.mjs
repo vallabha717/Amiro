@@ -70,6 +70,7 @@ const child = spawn(
     env: {
       ...process.env,
       AMIRO_HOME: home,
+      AMIRO_SKIP_ONBOARDING: "1",
       AMIRO_RUNTIME_DIR: run,
       AMIRO_SOCKET: path.join(run, "amiro.sock"),
       AMIRO_DEBUG_SOCKET: "1",

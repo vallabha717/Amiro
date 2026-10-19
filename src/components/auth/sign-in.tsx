@@ -67,7 +67,7 @@ export default function SignIn() {
         <CardContent className="flex flex-col min-h-[19rem]">
           <div className="flex flex-col gap-6">
             <div className="grid gap-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">Email or username</Label>
               <Input
                 id="email"
                 data-testid="signin-email-input"
@@ -75,8 +75,9 @@ export default function SignIn() {
                 disabled={loading}
                 value={formData.email}
                 onChange={(e) => setFormData({ email: e.target.value })}
-                type="email"
-                placeholder="user@example.com"
+                type="text"
+                autoComplete="username"
+                placeholder="you@example.com"
                 required
               />
             </div>
@@ -112,6 +113,20 @@ export default function SignIn() {
                 t("Auth.SignIn.signIn")
               )}
             </Button>
+            <details className="text-xs text-muted-foreground">
+              <summary className="cursor-pointer text-center hover:text-foreground">
+                Forgot your password?
+              </summary>
+              <p className="mt-3 leading-relaxed">
+                Amiro keeps no email recovery: it runs on your own machine. On
+                the computer or server running Amiro, run{" "}
+                <code className="rounded bg-muted px-1 py-0.5 font-mono">
+                  amiro-backend reset-password
+                </code>{" "}
+                (for the desktop app, see docs/SETUP.md for where it lives). It
+                asks for a new password and signs out every session.
+              </p>
+            </details>
           </div>
         </CardContent>
       </Card>

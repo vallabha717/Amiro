@@ -53,6 +53,7 @@ const child = spawn(path.resolve("backend/target/debug/amiro-backend"), [], {
       ),
     ),
     AMIRO_HOME: home,
+    AMIRO_SKIP_ONBOARDING: "1",
     AMIRO_RUNTIME_HOME: runtime,
     AMIRO_RUNTIME_DIR: runtime,
     AMIRO_API_SOCKET: path.join(runtime, "amiro-api.sock"),

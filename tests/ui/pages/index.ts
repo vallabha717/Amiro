@@ -26,10 +26,12 @@ export class SignInPage {
   }
 }
 
-// First-run owner setup (/setup): the single-account creation flow shown on a
-// fresh instance. There is no sign-up page anymore.
+// First-run onboarding wizard (/onboarding): welcome → account (the only
+// account-creation path) → agent → provider → ready. /setup redirects here.
 export class SetupPage {
   readonly page: Page;
+  readonly startButton: Locator;
+  readonly nameInput: Locator;
   readonly emailInput: Locator;
   readonly passwordInput: Locator;
   readonly confirmInput: Locator;
@@ -37,18 +39,23 @@ export class SetupPage {
 
   constructor(page: Page) {
     this.page = page;
-    this.emailInput = page.locator('[data-testid="setup-email-input"]');
-    this.passwordInput = page.locator('[data-testid="setup-password-input"]');
-    this.confirmInput = page.locator('[data-testid="setup-confirm-input"]');
-    this.submitButton = page.locator('[data-testid="setup-submit-button"]');
+    this.startButton = page.locator('[data-testid="onboarding-start"]');
+    this.nameInput = page.locator('[data-testid="onboarding-name"]');
+    this.emailInput = page.locator('[data-testid="onboarding-login"]');
+    this.passwordInput = page.locator('[data-testid="onboarding-password"]');
+    this.confirmInput = page.locator('[data-testid="onboarding-confirm"]');
+    this.submitButton = page.locator(
+      '[data-testid="onboarding-create-account"]',
+    );
   }
 
   async goto() {
-    await this.page.goto("/setup");
-    await this.page.waitForLoadState("domcontentloaded");
+    await this.page.goto("/onboarding");
+    await this.startButton.click();
   }
 
-  async setup(identifier: string, pass: string) {
+  async setup(identifier: string, pass: string, name = "") {
+    if (name) await this.nameInput.fill(name);
     await this.emailInput.fill(identifier);
     await this.passwordInput.fill(pass);
     await this.confirmInput.fill(pass);
@@ -59,22 +66,28 @@ export class SetupPage {
 export class OnboardingPage {
   readonly page: Page;
   readonly apiKeyInput: Locator;
-  readonly baseUrlInput: Locator;
-  readonly saveButton: Locator;
-  readonly skipButton: Locator;
+  readonly connectButton: Locator;
+  readonly agentSkip: Locator;
+  readonly agentContinue: Locator;
+  readonly providerSkip: Locator;
+  readonly providerContinue: Locator;
   readonly finishButton: Locator;
 
   constructor(page: Page) {
     this.page = page;
-    this.apiKeyInput = page.locator('[data-testid="onboarding-api-key-input"]');
-    this.baseUrlInput = page.locator(
-      '[data-testid="onboarding-base-url-input"]',
+    this.apiKeyInput = page.locator('[data-testid="onboarding-provider-key"]');
+    this.connectButton = page.locator(
+      '[data-testid="onboarding-provider-connect"]',
     );
-    this.saveButton = page.locator('[data-testid="onboarding-save-button"]');
-    this.skipButton = page.locator('[data-testid="onboarding-skip-button"]');
-    this.finishButton = page.locator(
-      '[data-testid="onboarding-finish-button"]',
+    this.agentSkip = page.locator('[data-testid="onboarding-agent-skip"]');
+    this.agentContinue = page.locator(
+      '[data-testid="onboarding-agent-continue"]',
     );
+    this.providerSkip = page.locator('[data-testid="onboarding-provider-skip"]');
+    this.providerContinue = page.locator(
+      '[data-testid="onboarding-provider-continue"]',
+    );
+    this.finishButton = page.locator('[data-testid="onboarding-finish"]');
   }
 
   async goto() {
@@ -88,20 +101,20 @@ export class OnboardingPage {
       .click();
   }
 
-  async configure(apiKey: string, baseUrl?: string) {
+  async configure(apiKey: string) {
     await this.apiKeyInput.fill(apiKey);
-    if (baseUrl && (await this.baseUrlInput.isVisible())) {
-      await this.baseUrlInput.fill(baseUrl);
-    }
-    await this.saveButton.click();
+    await this.connectButton.click();
   }
 
   async finish() {
     await this.finishButton.click();
   }
 
+  /** Skip every optional step and land in the app. */
   async skip() {
-    await this.skipButton.click();
+    await this.agentSkip.click();
+    await this.providerSkip.click();
+    await this.finishButton.click();
   }
 }
 

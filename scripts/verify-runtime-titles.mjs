@@ -53,6 +53,7 @@ const child = spawn(backendBin, [], {
   env: {
     ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !/(KEY|TOKEN|SECRET|PASSWORD|JCODE|AMIRO)/i.test(name))),
     AMIRO_HOME: home,
+    AMIRO_SKIP_ONBOARDING: "1",
     AMIRO_RUNTIME_HOME: runtimeHome,
     AMIRO_RUNTIME_DIR: runtimeHome,
     AMIRO_API_SOCKET: path.join(runtimeHome, "amiro-api.sock"),

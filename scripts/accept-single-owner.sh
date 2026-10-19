@@ -14,7 +14,7 @@ if [ -n "${KEY}" ]; then
   chmod 600 "${HOME_DIR}/amiro.toml"
 fi
 
-setsid env AMIRO_HOME="${HOME_DIR}" AMIRO_HOST=127.0.0.1 AMIRO_PORT="${PORT}" \
+setsid env AMIRO_HOME="${HOME_DIR}" AMIRO_SKIP_ONBOARDING=1 AMIRO_HOST=127.0.0.1 AMIRO_PORT="${PORT}" \
   AMIRO_OUT_DIR="${ROOT}/out" \
   AMIRO_RUNTIME_BIN="${ROOT}/runtime/target/debug/amiro-runtime" \
   AMIRO_NO_TELEMETRY=1 \
