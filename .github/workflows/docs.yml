@@ -1,0 +1,91 @@
+name: Docs
+
+# The Mintlify site (https://amiro.mintlify.app). Mintlify's GitHub app builds
+# a preview for every PR and deploys main by itself; this workflow adds:
+# - on PRs: a broken-link check, so a bad link fails before merge;
+# - on main: an explicit deploy through the Mintlify API, waits for it, and
+#   checks the live site answers. Needs the MINTLIFY_API_KEY secret and the
+#   MINTLIFY_PROJECT_ID repository variable (dashboard → Settings → API keys).
+on:
+  pull_request:
+    paths:
+      - "**/*.mdx"
+      - docs.json
+      - style.css
+      - logo/**
+      - docs/assets/**
+      - .mintignore
+      - .github/workflows/docs.yml
+  push:
+    branches: [main]
+    paths:
+      - "**/*.mdx"
+      - docs.json
+      - style.css
+      - logo/**
+      - docs/assets/**
+      - .mintignore
+      - .github/workflows/docs.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Broken links
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: docs.json is valid JSON
+        run: node -e "JSON.parse(require('fs').readFileSync('docs.json','utf8'))"
+      - name: mint broken-links
+        run: npx --yes mint@latest broken-links
+
+  deploy:
+    name: Deploy
+    needs: check
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      MINTLIFY_API_KEY: ${{ secrets.MINTLIFY_API_KEY }}
+      PROJECT_ID: ${{ vars.MINTLIFY_PROJECT_ID }}
+      SITE: https://amiro.mintlify.app
+    steps:
+      - name: Trigger and wait
+        run: |
+          if [ -z "$MINTLIFY_API_KEY" ] || [ -z "$PROJECT_ID" ]; then
+            echo "::notice::MINTLIFY_API_KEY or MINTLIFY_PROJECT_ID not set; relying on the Mintlify GitHub app to deploy."
+            exit 0
+          fi
+          api=https://api.mintlify.com/v1/project
+          status_id=$(curl -fsS -X POST "$api/update/$PROJECT_ID" \
+            -H "Authorization: Bearer $MINTLIFY_API_KEY" | jq -r .statusId)
+          echo "Mintlify update $status_id"
+          for _ in $(seq 1 60); do
+            body=$(curl -fsS "$api/update-status/$status_id" -H "Authorization: Bearer $MINTLIFY_API_KEY")
+            status=$(jq -r .status <<<"$body")
+            echo "status: $status"
+            case "$status" in
+              success) jq -r '.summary // empty' <<<"$body"; exit 0 ;;
+              failure) jq -r '.summary // empty, (.logs // [] | .[])' <<<"$body"; exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo "::error::Mintlify deploy did not finish in 10 minutes"; exit 1
+      - name: Live site answers
+        run: |
+          curl -fsSL -o /dev/null -w "%{http_code} $SITE\n" "$SITE"
+          {
+            echo "### Docs"
+            echo "Live: $SITE"
+          } >> "$GITHUB_STEP_SUMMARY"

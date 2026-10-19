@@ -1,13 +1,79 @@
 {
   "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
   "name": "Amiro",
   "description": "Amiro is a self-hostable personal-intelligence chat app. This guide shows how to install it and use it day to day: chat, personalize your agent, voice, schedules, files, and settings.",
   "colors": {
-    "primary": "#7C3AED",
-    "light": "#A78BFA",
-    "dark": "#6D28D9"
+    "primary": "#E9642F",
+    "light": "#F59A6B",
+    "dark": "#C2471B"
   },
-  "theme": "mint",
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg",
+    "href": "https://github.com/vallabha717/Amiro"
+  },
+  "favicon": "/logo/favicon.svg",
+  "background": {
+    "decoration": "gradient",
+    "color": {
+      "light": "#FFFAF5",
+      "dark": "#15110E"
+    }
+  },
+  "fonts": {
+    "heading": {
+      "family": "Fraunces",
+      "weight": 600
+    },
+    "body": {
+      "family": "Geist"
+    }
+  },
+  "appearance": {
+    "default": "system",
+    "strict": false
+  },
+  "icons": {
+    "library": "lucide"
+  },
+  "styling": {
+    "eyebrows": "breadcrumbs",
+    "codeblocks": "system"
+  },
+  "search": {
+    "prompt": "Search the Amiro docs…"
+  },
+  "contextual": {
+    "options": [
+      "copy",
+      "view",
+      "claude",
+      "chatgpt",
+      "cursor"
+    ]
+  },
+  "banner": {
+    "content": "**Amiro v1.26.1** is out: one-command server install and desktop apps for macOS, Windows and Linux. [Download →](https://github.com/vallabha717/Amiro/releases/latest)",
+    "dismissible": true,
+    "color": {
+      "light": "#E9642F",
+      "dark": "#C2471B"
+    }
+  },
+  "navbar": {
+    "links": [
+      {
+        "type": "github",
+        "href": "https://github.com/vallabha717/Amiro"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Download",
+      "href": "https://github.com/vallabha717/Amiro/releases/latest"
+    }
+  },
   "navigation": {
     "tabs": [
       {
@@ -79,5 +145,50 @@
         ]
       }
     ]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/vallabha717/Amiro"
+    },
+    "links": [
+      {
+        "header": "Get Amiro",
+        "items": [
+          {
+            "label": "Latest release",
+            "href": "https://github.com/vallabha717/Amiro/releases/latest"
+          },
+          {
+            "label": "Install on a server",
+            "href": "/installation"
+          },
+          {
+            "label": "Quickstart",
+            "href": "/quickstart"
+          }
+        ]
+      },
+      {
+        "header": "Project",
+        "items": [
+          {
+            "label": "Source code",
+            "href": "https://github.com/vallabha717/Amiro"
+          },
+          {
+            "label": "Report an issue",
+            "href": "https://github.com/vallabha717/Amiro/issues/new/choose"
+          },
+          {
+            "label": "Security",
+            "href": "https://github.com/vallabha717/Amiro/security/policy"
+          }
+        ]
+      }
+    ]
+  },
+  "thumbnails": {
+    "preset": "headline",
+    "surface": "brand"
   }
 }
