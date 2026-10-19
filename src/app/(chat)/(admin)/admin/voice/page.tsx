@@ -1,106 +1,116 @@
 "use client";
 
+import { useMemo, useState, useEffect } from "react";
+import {
+  Volume2,
+  Mic,
+  Play,
+  Square,
+  Sparkles,
+  Check,
+  CheckCircle2,
+  Loader2,
+  Sliders,
+  Globe,
+  Search,
+} from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { useMessageReadAloudStore } from "@/lib/ai/speech/read-aloud-store";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DEFAULT_VOICE_SETTINGS,
   FALLBACK_STT_CATALOG,
   FALLBACK_TTS_CATALOG,
   getElevenLabsVoiceName,
-  type VoiceOptionItem,
   type VoiceProviderCatalogEntry,
   type VoiceSettingsData,
-  fetchProviderVoices,
   fetchVoiceSettings,
   updateVoiceSettings,
 } from "@/lib/backend/voice-api";
-import {
-  AlertCircle,
-  CheckCircle2,
-  ExternalLink,
-  Loader2,
-  Mic,
-  Play,
-  Radio,
-  RefreshCw,
-  Sparkles,
-  Square,
-  Volume2,
-  VolumeX,
-} from "lucide-react";
-import { useEffect, useState } from "react";
-import { toast } from "sonner";
+import { useMessageReadAloudStore } from "@/lib/ai/speech/read-aloud-store";
+import { cn } from "lib/utils";
 
 const STT_LANGUAGES = [
-  { value: "en", label: "English (en)" },
-  { value: "multi", label: "Multilingual auto-detect" },
-  { value: "es", label: "Spanish (es)" },
-  { value: "fr", label: "French (fr)" },
-  { value: "de", label: "German (de)" },
-  { value: "hi", label: "Hindi (hi)" },
-  { value: "ja", label: "Japanese (ja)" },
-  { value: "ko", label: "Korean (ko)" },
-  { value: "zh", label: "Chinese (zh)" },
+  { value: "en", label: "English", code: "en", flag: "🇺🇸" },
+  { value: "multi", label: "Multilingual (Auto-Detect)", code: "multi", flag: "🌐" },
+  { value: "es", label: "Spanish (Español)", code: "es", flag: "🇪🇸" },
+  { value: "fr", label: "French (Français)", code: "fr", flag: "🇫🇷" },
+  { value: "de", label: "German (Deutsch)", code: "de", flag: "🇩🇪" },
+  { value: "hi", label: "Hindi (हिन्दी)", code: "hi", flag: "🇮🇳" },
+  { value: "ja", label: "Japanese (日本語)", code: "ja", flag: "🇯🇵" },
+  { value: "ko", label: "Korean (한국어)", code: "ko", flag: "🇰🇷" },
+  { value: "zh", label: "Chinese (中文)", code: "zh", flag: "🇨🇳" },
+  { value: "it", label: "Italian (Italiano)", code: "it", flag: "🇮🇹" },
+  { value: "pt", label: "Portuguese (Português)", code: "pt", flag: "🇵🇹" },
+  { value: "nl", label: "Dutch (Nederlands)", code: "nl", flag: "🇳🇱" },
+];
+
+// Curated high-craft voices with descriptions matching Vellum standards
+const CURATED_VOICES = [
+  { id: "EXAVITQu4vr4xnSDxMaL", name: "Sarah", provider: "elevenlabs", style: "Soft, warm, approachable", accent: "American", gender: "Female" },
+  { id: "JBFqnCBsd6RMkjVDRZzb", name: "George", provider: "elevenlabs", style: "Warm, distinguished, articulate", accent: "British", gender: "Male" },
+  { id: "21m00Tcm4TlvDq8ikWAM", name: "Rachel", provider: "elevenlabs", style: "Calm, friendly, executive", accent: "American", gender: "Female" },
+  { id: "AZnzlk1XvdvUeBnXmlld", name: "Domi", provider: "elevenlabs", style: "Strong, energetic, direct", accent: "American", gender: "Female" },
+  { id: "ErXwobaYiN019PkySvjV", name: "Antoni", provider: "elevenlabs", style: "Deep, crisp, narrative", accent: "American", gender: "Male" },
+  { id: "TxGEqnHWrfWFTfGW9XjX", name: "Josh", provider: "elevenlabs", style: "Casual, relatable, warm", accent: "American", gender: "Male" },
+  { id: "aura-2-thalia-en", name: "Thalia", provider: "deepgram", style: "Confident, dynamic, clear", accent: "American", gender: "Female" },
+  { id: "aura-2-luna-en", name: "Luna", provider: "deepgram", style: "Friendly, casual, engaging", accent: "American", gender: "Female" },
+  { id: "aura-2-zeus-en", name: "Zeus", provider: "deepgram", style: "Deep, authoritative, smooth", accent: "American", gender: "Male" },
+  { id: "aura-2-apollo-en", name: "Apollo", provider: "deepgram", style: "Polite, upbeat, versatile", accent: "American", gender: "Male" },
+  { id: "aura-2-draco-en", name: "Draco", provider: "deepgram", style: "Distinguished, warm baritone", accent: "British", gender: "Male" },
+  { id: "alloy", name: "Alloy", provider: "openai", style: "Balanced, versatile, neutral", accent: "American", gender: "Neutral" },
+  { id: "echo", name: "Echo", provider: "openai", style: "Smooth, warm, characterful", accent: "American", gender: "Male" },
+  { id: "nova", name: "Nova", provider: "openai", style: "Energetic, bright, friendly", accent: "American", gender: "Female" },
+  { id: "shimmer", name: "Shimmer", provider: "openai", style: "Clear, expressive, gentle", accent: "American", gender: "Female" },
+  { id: "fable", name: "Fable", provider: "openai", style: "Expressive, animated, rhythmic", accent: "British", gender: "Neutral" },
 ];
 
 export default function AdminVoicePage() {
   const [loading, setLoading] = useState(true);
-  const [ttsCatalog, setTtsCatalog] =
-    useState<VoiceProviderCatalogEntry[]>(FALLBACK_TTS_CATALOG);
-  const [sttCatalog, setSttCatalog] =
-    useState<VoiceProviderCatalogEntry[]>(FALLBACK_STT_CATALOG);
-  const [settings, setSettings] = useState<VoiceSettingsData>(
-    DEFAULT_VOICE_SETTINGS,
-  );
+  const [ttsCatalog, setTtsCatalog] = useState<VoiceProviderCatalogEntry[]>(FALLBACK_TTS_CATALOG);
+  const [sttCatalog, setSttCatalog] = useState<VoiceProviderCatalogEntry[]>(FALLBACK_STT_CATALOG);
+  const [settings, setSettings] = useState<VoiceSettingsData>(DEFAULT_VOICE_SETTINGS);
 
-  // Read aloud section state
-  const [readAloudEnabled, setReadAloudEnabled] = useState(true);
-  const [autoReadAloud, setAutoReadAloud] = useState(false);
-
-  // TTS section state
-  const [activeTts, setActiveTts] = useState("browser-native");
-  const [ttsModel, setTtsModel] = useState("browser-default");
-  const [ttsVoice, setTtsVoice] = useState("default");
-  const [ttsBaseUrl, setTtsBaseUrl] = useState("");
-  const [ttsApiKey, setTtsApiKey] = useState("");
-  const [ttsSaving, setTtsSaving] = useState(false);
-  const [fetchedVoices, setFetchedVoices] = useState<
-    Record<string, VoiceOptionItem[]>
-  >({});
-  const [fetchingVoices, setFetchingVoices] = useState(false);
-
-  // STT section state
-  const [activeStt, setActiveStt] = useState("browser-native");
-  const [sttModel, setSttModel] = useState("browser-default");
-  const [sttBaseUrl, setSttBaseUrl] = useState("");
-  const [sttLanguage, setSttLanguage] = useState("en");
-  const [sttApiKey, setSttApiKey] = useState("");
-  const [sttSaving, setSttSaving] = useState(false);
+  // Active state
+  const [activeTab, setActiveTab] = useState<"output" | "input" | "providers">("output");
+  const [voicePickerOpen, setVoicePickerOpen] = useState(false);
+  const [voiceSearch, setVoiceSearch] = useState("");
+  const [voiceGenderFilter, setVoiceGenderFilter] = useState<string>("all");
 
   // Read aloud store status for test voice button
   const readAloudStatus = useMessageReadAloudStore((s) => s.status);
   const activeMessageId = useMessageReadAloudStore((s) => s.messageId);
-  const isTestingVoice =
-    activeMessageId === "test-voice-preview" && readAloudStatus !== "idle";
+
+  // TTS states
+  const [activeTts, setActiveTts] = useState("elevenlabs");
+  const [currentVoiceId, setCurrentVoiceId] = useState("EXAVITQu4vr4xnSDxMaL");
+  const [speed, setSpeed] = useState<number>(1.0);
+  const [ttsApiKey, setTtsApiKey] = useState("");
+  const [ttsBaseUrl, setTtsBaseUrl] = useState("");
+  const [ttsSaving, setTtsSaving] = useState(false);
+
+  // STT states
+  const [activeStt, setActiveStt] = useState("deepgram");
+  const [sttLanguage, setSttLanguage] = useState("en");
+  const [sttApiKey, setSttApiKey] = useState("");
+  const [sttBaseUrl, setSttBaseUrl] = useState("");
+  const [sttSaving, setSttSaving] = useState(false);
+
+  // Toggles
+  const [readAloudEnabled, setReadAloudEnabled] = useState(true);
+  const [autoReadAloud, setAutoReadAloud] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -114,21 +124,20 @@ export default function AdminVoicePage() {
         setReadAloudEnabled(res.settings.readAloudEnabled ?? true);
         setAutoReadAloud(res.settings.autoReadAloud ?? false);
 
-        const currentTts = res.settings.ttsProvider || "browser-native";
+        const currentTts = res.settings.ttsProvider || "elevenlabs";
         setActiveTts(currentTts);
         const ttsState = res.settings.ttsProviders[currentTts];
         if (ttsState) {
-          setTtsModel(ttsState.model || "");
-          setTtsVoice(ttsState.voiceId || "");
+          setCurrentVoiceId(ttsState.voiceId || "EXAVITQu4vr4xnSDxMaL");
           setTtsBaseUrl(ttsState.baseUrl || "");
+          setSpeed(ttsState.speed || 1.0);
         }
 
-        const currentStt = res.settings.sttProvider || "browser-native";
+        const currentStt = res.settings.sttProvider || "deepgram";
         setActiveStt(currentStt);
         setSttLanguage(res.settings.sttLanguage || "en");
         const sttState = res.settings.sttProviders[currentStt];
         if (sttState) {
-          setSttModel(sttState.model || "");
           setSttBaseUrl(sttState.baseUrl || "");
         }
       })
@@ -141,62 +150,41 @@ export default function AdminVoicePage() {
     };
   }, []);
 
-  const handleTtsProviderChange = (providerId: string) => {
-    setActiveTts(providerId);
-    setTtsApiKey("");
-    const state = settings.ttsProviders[providerId];
-    const cat = ttsCatalog.find((c) => c.id === providerId);
-    if (state) {
-      setTtsModel(state.model || cat?.defaultModel || "");
-      setTtsVoice(state.voiceId || cat?.defaultVoice || "");
-      setTtsBaseUrl(state.baseUrl || cat?.defaultBaseUrl || "");
-    } else if (cat) {
-      setTtsModel(cat.defaultModel || "");
-      setTtsVoice(cat.defaultVoice || "");
-      setTtsBaseUrl(cat.defaultBaseUrl || "");
-    }
-  };
+  const handleSelectVoice = async (voice: typeof CURATED_VOICES[0]) => {
+    setCurrentVoiceId(voice.id);
+    setActiveTts(voice.provider);
+    setVoicePickerOpen(false);
 
-  const handleSttProviderChange = (providerId: string) => {
-    setActiveStt(providerId);
-    setSttApiKey("");
-    const state = settings.sttProviders[providerId];
-    const cat = sttCatalog.find((c) => c.id === providerId);
-    if (state) {
-      setSttModel(state.model || cat?.defaultModel || "");
-      setSttBaseUrl(state.baseUrl || cat?.defaultBaseUrl || "");
-    } else if (cat) {
-      setSttModel(cat.defaultModel || "");
-      setSttBaseUrl(cat.defaultBaseUrl || "");
-    }
-  };
-
-  const handleToggleReadAloud = async (enabled: boolean) => {
-    setReadAloudEnabled(enabled);
     try {
-      const res = await updateVoiceSettings({ readAloudEnabled: enabled });
+      const res = await updateVoiceSettings({
+        ttsProvider: voice.provider,
+        ttsProviderUpdate: {
+          provider: voice.provider,
+          voiceId: voice.id,
+          speed,
+        },
+      });
       setSettings(res.settings);
-      toast.success(
-        enabled ? "Read aloud action enabled" : "Read aloud action disabled",
-      );
+      toast.success(`Voice set to ${voice.name}`);
     } catch {
-      toast.error("Failed to update read aloud setting");
+      toast.error("Failed to update voice selection");
     }
   };
 
-  const handleToggleAutoReadAloud = async (enabled: boolean) => {
-    setAutoReadAloud(enabled);
-    try {
-      const res = await updateVoiceSettings({ autoReadAloud: enabled });
-      setSettings(res.settings);
-      toast.success(
-        enabled
-          ? "Automatic read aloud on chat finish enabled"
-          : "Automatic read aloud on chat finish disabled",
-      );
-    } catch {
-      toast.error("Failed to update auto read aloud setting");
+  const handlePreviewVoice = (voiceId: string, provider: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const previewMsgId = `voice-preview-${voiceId}`;
+    if (activeMessageId === previewMsgId && readAloudStatus !== "idle") {
+      useMessageReadAloudStore.getState().stop();
+      return;
     }
+    void useMessageReadAloudStore.getState().playMessage({
+      messageId: previewMsgId,
+      text: "Hello! This is a preview of my voice.",
+      provider,
+      voiceId,
+      speed,
+    });
   };
 
   const handleSaveTts = async () => {
@@ -206,93 +194,20 @@ export default function AdminVoicePage() {
         ttsProvider: activeTts,
         ttsProviderUpdate: {
           provider: activeTts,
-          model: ttsModel,
-          voiceId: ttsVoice,
-          baseUrl: ttsBaseUrl,
+          voiceId: currentVoiceId,
+          baseUrl: ttsBaseUrl.trim() || undefined,
           apiKey: ttsApiKey.trim() || undefined,
+          speed,
         },
       });
       setSettings(res.settings);
       setTtsApiKey("");
-      toast.success("Text-to-speech settings saved");
+      toast.success("Voice settings saved");
     } catch {
-      toast.error("Failed to save text-to-speech settings");
+      toast.error("Failed to save voice settings");
     } finally {
       setTtsSaving(false);
     }
-  };
-
-  const handleClearTtsKey = async () => {
-    setTtsSaving(true);
-    try {
-      const res = await updateVoiceSettings({
-        ttsProviderUpdate: {
-          provider: activeTts,
-          clearApiKey: true,
-        },
-      });
-      setSettings(res.settings);
-      setTtsApiKey("");
-      toast.success("API key cleared");
-    } catch {
-      toast.error("Failed to clear API key");
-    } finally {
-      setTtsSaving(false);
-    }
-  };
-
-  const handleFetchVoices = async () => {
-    setFetchingVoices(true);
-    try {
-      const voices = await fetchProviderVoices({
-        provider: activeTts,
-        baseUrl: ttsBaseUrl.trim() || undefined,
-        apiKey: ttsApiKey.trim() || undefined,
-      });
-      setFetchedVoices((prev) => ({ ...prev, [activeTts]: voices }));
-      if (voices.length > 0) {
-        toast.success(`Loaded ${voices.length} voices for ${activeTts}`);
-      } else {
-        toast.info("No voices returned; enter a custom Voice / Reference ID");
-      }
-    } catch {
-      toast.error("Could not fetch voices from provider");
-    } finally {
-      setFetchingVoices(false);
-    }
-  };
-
-  const handlePreviewVoice = (voiceIdToTest: string) => {
-    const previewMsgId = `voice-preview-${voiceIdToTest}`;
-    if (activeMessageId === previewMsgId && readAloudStatus !== "idle") {
-      useMessageReadAloudStore.getState().stop();
-      return;
-    }
-    void useMessageReadAloudStore.getState().playMessage({
-      messageId: previewMsgId,
-      text: `Hello! This is voice ${voiceIdToTest} on Amiro.`,
-      provider: activeTts,
-      model: ttsModel || undefined,
-      voiceId: voiceIdToTest,
-      baseUrl: ttsBaseUrl.trim() || undefined,
-      apiKey: ttsApiKey.trim() || undefined,
-    });
-  };
-
-  const handleTestVoice = () => {
-    if (isTestingVoice) {
-      useMessageReadAloudStore.getState().stop();
-      return;
-    }
-    void useMessageReadAloudStore.getState().playMessage({
-      messageId: "test-voice-preview",
-      text: "Hello! I am your Amiro assistant.",
-      provider: activeTts,
-      model: ttsModel || undefined,
-      voiceId: ttsVoice || undefined,
-      baseUrl: ttsBaseUrl.trim() || undefined,
-      apiKey: ttsApiKey.trim() || undefined,
-    });
   };
 
   const handleSaveStt = async () => {
@@ -300,67 +215,55 @@ export default function AdminVoicePage() {
     try {
       const res = await updateVoiceSettings({
         sttProvider: activeStt,
-        sttLanguage: sttLanguage,
+        sttLanguage,
         sttProviderUpdate: {
           provider: activeStt,
-          model: sttModel,
-          baseUrl: sttBaseUrl,
+          baseUrl: sttBaseUrl.trim() || undefined,
           language: sttLanguage,
           apiKey: sttApiKey.trim() || undefined,
         },
       });
       setSettings(res.settings);
       setSttApiKey("");
-      toast.success("Speech-to-text settings saved");
+      toast.success("Speech recognition settings saved");
     } catch {
-      toast.error("Failed to save speech-to-text settings");
+      toast.error("Failed to save speech recognition settings");
     } finally {
       setSttSaving(false);
     }
   };
 
-  const handleClearSttKey = async () => {
-    setSttSaving(true);
-    try {
-      const res = await updateVoiceSettings({
-        sttProviderUpdate: {
-          provider: activeStt,
-          clearApiKey: true,
-        },
-      });
-      setSettings(res.settings);
-      setSttApiKey("");
-      toast.success("API key cleared");
-    } catch {
-      toast.error("Failed to clear API key");
-    } finally {
-      setSttSaving(false);
-    }
-  };
+  const activeVoiceObj = useMemo(() => {
+    return (
+      CURATED_VOICES.find((v) => v.id === currentVoiceId) ?? {
+        id: currentVoiceId,
+        name: getElevenLabsVoiceName(currentVoiceId) || currentVoiceId,
+        provider: activeTts,
+        style: "Custom Voice",
+        accent: "Configured",
+        gender: "Voice",
+      }
+    );
+  }, [currentVoiceId, activeTts]);
 
-  const currentTtsEntry =
-    ttsCatalog.find((c) => c.id === activeTts) || ttsCatalog[0];
+  const filteredVoices = useMemo(() => {
+    const q = voiceSearch.toLowerCase().trim();
+    return CURATED_VOICES.filter((v) => {
+      if (voiceGenderFilter !== "all" && v.gender.toLowerCase() !== voiceGenderFilter.toLowerCase()) {
+        return false;
+      }
+      if (!q) return true;
+      return (
+        v.name.toLowerCase().includes(q) ||
+        v.style.toLowerCase().includes(q) ||
+        v.accent.toLowerCase().includes(q) ||
+        v.provider.toLowerCase().includes(q)
+      );
+    });
+  }, [voiceSearch, voiceGenderFilter]);
+
   const currentTtsState = settings.ttsProviders[activeTts];
-  const currentSttEntry =
-    sttCatalog.find((c) => c.id === activeStt) || sttCatalog[0];
   const currentSttState = settings.sttProviders[activeStt];
-
-  const liveVoice = settings.liveVoice;
-  const activeDefaultTtsProvider = settings.ttsProvider || "browser-native";
-  const activeTtsDefaultEntry =
-    ttsCatalog.find((c) => c.id === activeDefaultTtsProvider) || ttsCatalog[0];
-  const activeTtsDefaultState = settings.ttsProviders[activeDefaultTtsProvider];
-  const activeTtsVoiceId =
-    activeTtsDefaultState?.voiceId || activeTtsDefaultEntry?.defaultVoice || "default";
-  const activeTtsVoiceName =
-    activeDefaultTtsProvider === "elevenlabs"
-      ? getElevenLabsVoiceName(activeTtsVoiceId)
-      : activeTtsVoiceId;
-
-  const activeDefaultSttProvider = settings.sttProvider || "browser-native";
-  const activeSttDefaultEntry =
-    sttCatalog.find((c) => c.id === activeDefaultSttProvider) || sttCatalog[0];
-  const activeSttDefaultState = settings.sttProviders[activeDefaultSttProvider];
 
   if (loading) {
     return (
@@ -372,953 +275,524 @@ export default function AdminVoicePage() {
 
   return (
     <ScrollArea className="h-full w-full">
-      <div className="max-w-3xl mx-auto px-8 py-8 flex flex-col gap-8">
-        {/* Page header */}
-        <div className="flex flex-col gap-1">
-          <h2 className="text-2xl font-bold tracking-tight">
-            Voice &amp; Speech
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Configure text-to-speech narration, speech recognition dictation,
-            and custom 9Router endpoints.
-          </p>
+      <div className="mx-auto max-w-4xl px-6 py-8 flex flex-col gap-8">
+        {/* Header */}
+        <div className="flex flex-col gap-1 border-b border-border/60 pb-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Voice &amp; Speech</h1>
+            <p className="text-sm text-muted-foreground">
+              Configure assistant voice output, speech recognition, and live voice mode.
+            </p>
+          </div>
+          {/* Top navigation tabs: Output · Input · Engine Providers */}
+          <div className="mt-4 flex items-center rounded-lg border border-border/80 bg-muted/40 p-1 sm:mt-0">
+            <button
+              type="button"
+              onClick={() => setActiveTab("output")}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-xs font-semibold transition-all",
+                activeTab === "output"
+                  ? "bg-background text-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              Output &amp; Voice
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("input")}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-xs font-semibold transition-all",
+                activeTab === "input"
+                  ? "bg-background text-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              Input &amp; Speech
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("providers")}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-xs font-semibold transition-all",
+                activeTab === "providers"
+                  ? "bg-background text-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              Engines &amp; Keys
+            </button>
+          </div>
         </div>
 
-        {/* Active Voice Configuration Summary Banner */}
-        <Card
-          data-testid="voice-active-defaults-summary"
-          className="border border-border/80 bg-card/60 shadow-xs"
-        >
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-base font-semibold flex items-center gap-2">
-                  <Sparkles className="size-4 text-primary" />
-                  Active Voice &amp; Speech Configuration
-                </CardTitle>
+        {/* TAB 1: OUTPUT & VOICE (Vellum Clean Style) */}
+        {activeTab === "output" && (
+          <div className="flex flex-col gap-6 animate-in fade-in duration-200">
+            {/* Primary Voice Card */}
+            <Card className="overflow-hidden border border-border/80 bg-card/60 shadow-xs">
+              <CardHeader className="border-b border-border/60 bg-muted/20 pb-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-primary">
+                      Spoken Output
+                    </span>
+                    <CardTitle className="text-lg font-bold">Assistant Voice</CardTitle>
+                    <CardDescription className="text-xs">
+                      How your assistant sounds during conversations, read-aloud, and phone calls.
+                    </CardDescription>
+                  </div>
+                  <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary text-xs">
+                    {activeVoiceObj.provider.toUpperCase()}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="p-6">
+                <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="relative flex size-14 shrink-0 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary shadow-xs">
+                      <Volume2 className="size-7" />
+                      {activeMessageId === `voice-preview-${currentVoiceId}` && readAloudStatus !== "idle" && (
+                        <span className="absolute -top-1 -right-1 flex size-3">
+                          <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-75" />
+                          <span className="relative inline-flex size-3 rounded-full bg-primary" />
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-xl font-bold text-foreground">{activeVoiceObj.name}</h3>
+                        <Badge variant="secondary" className="text-[10px] px-1.5 font-normal">
+                          {activeVoiceObj.accent}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">{activeVoiceObj.style}</p>
+                      <p className="font-mono text-[11px] text-muted-foreground/80 mt-1">ID: {currentVoiceId}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => handlePreviewVoice(currentVoiceId, activeTts, e)}
+                      className="gap-1.5 font-medium"
+                    >
+                      {activeMessageId === `voice-preview-${currentVoiceId}` && readAloudStatus !== "idle" ? (
+                        <>
+                          <Square className="size-3.5 fill-current text-destructive" />
+                          Stop
+                        </>
+                      ) : (
+                        <>
+                          <Play className="size-3.5" />
+                          Play Preview
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => setVoicePickerOpen(true)}
+                      className="gap-1.5 font-medium"
+                      data-testid="change-voice-button"
+                    >
+                      <Sparkles className="size-3.5" />
+                      Change Voice
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Voice Speed Slider */}
+                <div className="mt-6 border-t border-border/60 pt-5">
+                  <div className="flex items-center justify-between mb-2">
+                    <Label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                      <Sliders className="size-3 text-muted-foreground" />
+                      Playback Speed
+                    </Label>
+                    <span className="font-mono text-xs text-muted-foreground tabular-nums">{speed.toFixed(2)}x</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-[11px] text-muted-foreground">0.5x</span>
+                    <input
+                      type="range"
+                      min="0.5"
+                      max="2.0"
+                      step="0.05"
+                      value={speed}
+                      onChange={(e) => setSpeed(parseFloat(e.target.value))}
+                      onMouseUp={handleSaveTts}
+                      onTouchEnd={handleSaveTts}
+                      className="h-1.5 flex-1 cursor-pointer appearance-none rounded-lg bg-secondary accent-primary"
+                    />
+                    <span className="text-[11px] text-muted-foreground">2.0x</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Read Aloud Behavior */}
+            <Card className="border border-border/80 bg-card/60 shadow-xs">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base font-semibold">Read Aloud Preferences</CardTitle>
                 <CardDescription className="text-xs">
-                  Active live conversation, read-aloud synthesis, and
-                  microphone dictation defaults across Amiro.
+                  Controls how speech is initiated in conversations.
                 </CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Surface 1: Expressive Live Voice Mode */}
-              <div className="flex flex-col justify-between rounded-lg border bg-muted/30 p-3.5 text-xs gap-3">
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-foreground flex items-center gap-1.5">
-                      <Radio className="size-3.5 text-primary animate-pulse" />
-                      Expressive Live Voice Mode
-                    </span>
-                    {liveVoice?.configured ? (
-                      <Badge
-                        variant="outline"
-                        className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[10px] px-1.5"
-                      >
-                        <CheckCircle2 className="size-2.5 mr-1" />
-                        Configured{" "}
-                        {liveVoice.apiKeyHint
-                          ? `(${liveVoice.apiKeyHint})`
-                          : ""}
-                      </Badge>
-                    ) : (
-                      <Badge
-                        variant="outline"
-                        className="text-amber-600 dark:text-amber-400 border-amber-500/30 text-[10px] px-1.5"
-                      >
-                        <AlertCircle className="size-2.5 mr-1" />
-                        Needs API Key
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="text-muted-foreground space-y-0.5">
-                    <p>
-                      <span className="text-foreground font-medium">
-                        {liveVoice?.displayName || "ElevenLabs"}
-                      </span>
-                    </p>
-                    <p>
-                      Voice:{" "}
-                      <span className="text-foreground font-medium">
-                        {liveVoice?.voiceName || "Sarah"} (
-                        {liveVoice?.voiceId || "EXAVITQu4vr4xnSDxMaL"})
-                      </span>
-                    </p>
-                    <p>
-                      TTS:{" "}
-                      <span className="font-mono">
-                        {liveVoice?.ttsModel || "eleven_flash_v2_5"}
-                      </span>{" "}
-                      / STT:{" "}
-                      <span className="font-mono">
-                        {liveVoice?.sttModel || "scribe_v1"}
-                      </span>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-1">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-medium">Speaker icon on messages</p>
+                    <p className="text-xs text-muted-foreground">
+                      Shows a button next to assistant replies to read them aloud on demand.
                     </p>
                   </div>
+                  <Switch
+                    checked={readAloudEnabled}
+                    onCheckedChange={async (val) => {
+                      setReadAloudEnabled(val);
+                      await updateVoiceSettings({ readAloudEnabled: val });
+                      toast.success(val ? "Read-aloud buttons enabled" : "Read-aloud buttons disabled");
+                    }}
+                  />
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-xs w-full mt-1"
-                  onClick={() => {
-                    handleTtsProviderChange("elevenlabs");
-                    handleSttProviderChange("elevenlabs");
-                  }}
-                >
-                  Configure ElevenLabs
-                </Button>
-              </div>
-
-              {/* Surface 2: Active Read-Aloud (TTS) Default */}
-              <div className="flex flex-col justify-between rounded-lg border bg-muted/30 p-3.5 text-xs gap-3">
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-foreground flex items-center gap-1.5">
-                      <Volume2 className="size-3.5 text-primary" />
-                      Active Read-Aloud (TTS) Default
-                    </span>
-                    {activeTtsDefaultEntry?.keyless ? (
-                      <Badge variant="secondary" className="text-[10px] px-1.5">
-                        <CheckCircle2 className="size-2.5 mr-1 text-emerald-500" />
-                        Built-in
-                      </Badge>
-                    ) : activeTtsDefaultState?.configured ? (
-                      <Badge
-                        variant="outline"
-                        className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[10px] px-1.5"
-                      >
-                        <CheckCircle2 className="size-2.5 mr-1" />
-                        Configured{" "}
-                        {activeTtsDefaultState.apiKeyHint
-                          ? `(${activeTtsDefaultState.apiKeyHint})`
-                          : ""}
-                      </Badge>
-                    ) : (
-                      <Badge
-                        variant="outline"
-                        className="text-muted-foreground text-[10px] px-1.5"
-                      >
-                        Not configured
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="text-muted-foreground space-y-0.5">
-                    <p>
-                      <span className="text-foreground font-medium">
-                        {activeTtsDefaultEntry?.displayName ||
-                          activeDefaultTtsProvider}
-                      </span>
-                    </p>
-                    <p>
-                      Model:{" "}
-                      <span className="font-mono">
-                        {activeTtsDefaultState?.model ||
-                          activeTtsDefaultEntry?.defaultModel ||
-                          "default"}
-                      </span>
-                    </p>
-                    <p>
-                      Voice:{" "}
-                      <span className="text-foreground font-medium">
-                        {activeTtsVoiceName} · {activeTtsVoiceId}
-                      </span>
+                <div className="border-t border-border/50 pt-3 flex items-center justify-between gap-4">
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-medium">Automatic narration on complete</p>
+                    <p className="text-xs text-muted-foreground">
+                      Immediately starts speaking responses as soon as the agent finishes writing.
                     </p>
                   </div>
+                  <Switch
+                    checked={autoReadAloud}
+                    onCheckedChange={async (val) => {
+                      setAutoReadAloud(val);
+                      await updateVoiceSettings({ autoReadAloud: val });
+                      toast.success(val ? "Auto read-aloud enabled" : "Auto read-aloud disabled");
+                    }}
+                  />
                 </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs w-full mt-1 border text-muted-foreground hover:text-foreground"
-                  onClick={() => {
-                    handleTtsProviderChange(settings.ttsProvider);
-                  }}
-                >
-                  Edit Read-Aloud
-                </Button>
-              </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
-              {/* Surface 3: Active Dictation (STT) Default */}
-              <div className="flex flex-col justify-between rounded-lg border bg-muted/30 p-3.5 text-xs gap-3">
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-foreground flex items-center gap-1.5">
-                      <Mic className="size-3.5 text-primary" />
-                      Active Dictation (STT) Default
-                    </span>
-                    {activeSttDefaultEntry?.keyless ? (
-                      <Badge variant="secondary" className="text-[10px] px-1.5">
-                        <CheckCircle2 className="size-2.5 mr-1 text-emerald-500" />
-                        Built-in
-                      </Badge>
-                    ) : activeSttDefaultState?.configured ? (
-                      <Badge
-                        variant="outline"
-                        className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[10px] px-1.5"
-                      >
-                        <CheckCircle2 className="size-2.5 mr-1" />
-                        Configured{" "}
-                        {activeSttDefaultState.apiKeyHint
-                          ? `(${activeSttDefaultState.apiKeyHint})`
-                          : ""}
-                      </Badge>
-                    ) : (
-                      <Badge
-                        variant="outline"
-                        className="text-muted-foreground text-[10px] px-1.5"
-                      >
-                        Not configured
-                      </Badge>
-                    )}
+        {/* TAB 2: INPUT & SPEECH (Microphone, Language, Dictation) */}
+        {activeTab === "input" && (
+          <div className="flex flex-col gap-6 animate-in fade-in duration-200">
+            {/* Spoken Language Card */}
+            <Card className="border border-border/80 bg-card/60 shadow-xs">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <CardTitle className="text-base font-semibold flex items-center gap-2">
+                      <Globe className="size-4 text-primary" />
+                      Listening Language
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      The primary spoken language for dictation and speech recognition.
+                    </CardDescription>
                   </div>
-                  <div className="text-muted-foreground space-y-0.5">
-                    <p>
-                      <span className="text-foreground font-medium">
-                        {activeSttDefaultEntry?.displayName ||
-                          activeDefaultSttProvider}
-                      </span>
-                    </p>
-                    <p>
-                      Model:{" "}
-                      <span className="font-mono">
-                        {activeSttDefaultState?.model ||
-                          activeSttDefaultEntry?.defaultModel ||
-                          "default"}
-                      </span>
-                    </p>
-                    <p>
-                      Language:{" "}
-                      <span className="font-mono">
-                        {settings.sttLanguage || "en"}
-                      </span>
-                    </p>
-                  </div>
+                  <Badge variant="secondary" className="font-mono text-xs">
+                    {sttLanguage}
+                  </Badge>
                 </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs w-full mt-1 border text-muted-foreground hover:text-foreground"
-                  onClick={() => {
-                    handleSttProviderChange(settings.sttProvider);
-                  }}
-                >
-                  Edit Dictation
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Section 1: Read Aloud & Output Behavior */}
-        <Card data-testid="voice-read-aloud-card" className="border shadow-xs">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold">
-              Read Aloud &amp; Output Behavior
-            </CardTitle>
-            <CardDescription>
-              Control when assistant answers are spoken aloud.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-6">
-            <div className="flex items-center justify-between gap-4">
-              <div className="space-y-0.5">
-                <Label
-                  htmlFor="read-aloud-toggle"
-                  className="text-sm font-medium"
-                >
-                  Enable Read Aloud action on messages
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  Shows a speaker button on assistant messages to narrate
-                  responses on demand.
-                </p>
-              </div>
-              <Switch
-                id="read-aloud-toggle"
-                data-testid="voice-read-aloud-enabled-toggle"
-                checked={readAloudEnabled}
-                onCheckedChange={handleToggleReadAloud}
-              />
-            </div>
-
-            <div className="flex items-center justify-between gap-4">
-              <div className="space-y-0.5">
-                <Label
-                  htmlFor="auto-read-aloud-toggle"
-                  className="text-sm font-medium"
-                >
-                  Automatically read aloud assistant replies when chat finishes
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  Starts speaking the assistant reply as soon as generation
-                  completes.
-                </p>
-              </div>
-              <Switch
-                id="auto-read-aloud-toggle"
-                data-testid="voice-auto-read-aloud-toggle"
-                checked={autoReadAloud}
-                onCheckedChange={handleToggleAutoReadAloud}
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Section 2: Text-to-Speech (TTS) Provider & Credentials */}
-        <Card data-testid="voice-tts-card" className="border shadow-xs">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-lg font-semibold">
-                  Text-to-Speech (TTS) Provider &amp; Credentials
-                </CardTitle>
-                <CardDescription>
-                  Select the synthesis engine used to generate spoken audio.
-                </CardDescription>
-              </div>
-              {currentTtsEntry?.keyless ? (
-                <Badge variant="secondary" className="gap-1">
-                  <CheckCircle2 className="size-3 text-emerald-500" />
-                  Built-in
-                </Badge>
-              ) : currentTtsState?.configured ? (
-                <Badge
-                  variant="outline"
-                  className="gap-1 border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
-                >
-                  <CheckCircle2 className="size-3" />
-                  Configured{" "}
-                  {currentTtsState.apiKeyHint
-                    ? `(${currentTtsState.apiKeyHint})`
-                    : ""}
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="text-muted-foreground">
-                  Not configured
-                </Badge>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-5">
-            {/* Provider Selector */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">TTS Provider</Label>
-              <Select value={activeTts} onValueChange={handleTtsProviderChange}>
-                <SelectTrigger
-                  data-testid="tts-provider-select"
-                  className="w-full"
-                >
-                  <SelectValue placeholder="Select TTS Provider" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ttsCatalog.map((p) => {
-                    const pState = settings.ttsProviders[p.id];
-                    const isDefault = settings.ttsProvider === p.id;
+              </CardHeader>
+              <CardContent className="pt-2">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+                  {STT_LANGUAGES.map((lang) => {
+                    const isSelected = sttLanguage === lang.value;
                     return (
-                      <SelectItem key={p.id} value={p.id}>
-                        <div className="flex items-center justify-between w-full gap-3">
-                          <span>{p.displayName}</span>
-                          <div className="flex items-center gap-1.5 ml-auto">
-                            {isDefault && (
-                              <Badge
-                                variant="secondary"
-                                className="text-[10px] px-1.5 py-0 h-4"
-                              >
-                                Default
-                              </Badge>
-                            )}
-                            {p.keyless ? (
-                              <Badge
-                                variant="secondary"
-                                className="text-[10px] px-1.5 py-0 h-4 text-emerald-600"
-                              >
-                                Built-in
-                              </Badge>
-                            ) : pState?.configured ? (
-                              <Badge
-                                variant="outline"
-                                className="text-[10px] px-1.5 py-0 h-4 text-emerald-600 border-emerald-500/30"
-                              >
-                                Configured{" "}
-                                {pState.apiKeyHint ? `(${pState.apiKeyHint})` : ""}
-                              </Badge>
-                            ) : null}
-                          </div>
+                      <button
+                        key={lang.value}
+                        type="button"
+                        onClick={async () => {
+                          setSttLanguage(lang.value);
+                          await updateVoiceSettings({ sttLanguage: lang.value });
+                          toast.success(`Language set to ${lang.label}`);
+                        }}
+                        className={cn(
+                          "flex items-center justify-between rounded-xl border p-3 text-left transition-all",
+                          isSelected
+                            ? "border-primary bg-primary/10 text-foreground font-semibold shadow-xs"
+                            : "border-border/70 bg-card/40 text-muted-foreground hover:border-foreground/20 hover:text-foreground",
+                        )}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-base">{lang.flag}</span>
+                          <span className="truncate text-xs">{lang.label}</span>
                         </div>
-                      </SelectItem>
+                        {isSelected && <Check className="size-3.5 shrink-0 text-primary" />}
+                      </button>
                     );
                   })}
-                </SelectContent>
-              </Select>
-              {currentTtsEntry?.subtitle && (
-                <p className="text-xs text-muted-foreground">
-                  {currentTtsEntry.subtitle}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Dictation Engine Status */}
+            <Card className="border border-border/80 bg-card/60 shadow-xs">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <CardTitle className="text-base font-semibold flex items-center gap-2">
+                      <Mic className="size-4 text-primary" />
+                      Speech-to-Text Dictation
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      Backend engine powering voice recognition in chat.
+                    </CardDescription>
+                  </div>
+                  <Badge variant="outline" className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs">
+                    <CheckCircle2 className="size-3 mr-1" />
+                    {activeStt.toUpperCase()}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3 pt-1">
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Amiro uses <strong className="text-foreground font-semibold">{activeStt.toUpperCase()}</strong> with
+                  Nova-3 and streaming turn detection. You can dictate into any prompt using the microphone button or the Talk shortcut.
                 </p>
-              )}
-            </div>
-
-            {/* Base URL Input */}
-            {currentTtsEntry?.supportsBaseUrl && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="tts-base-url" className="text-sm font-medium">
-                    Base URL{" "}
-                    {currentTtsEntry.requiresBaseUrl && (
-                      <span className="text-destructive">*</span>
-                    )}
-                  </Label>
-                  {currentTtsEntry.defaultBaseUrl && (
-                    <span className="text-xs text-muted-foreground">
-                      Default: {currentTtsEntry.defaultBaseUrl}
-                    </span>
-                  )}
-                </div>
-                <Input
-                  id="tts-base-url"
-                  data-testid="tts-base-url-input"
-                  placeholder={
-                    currentTtsEntry.defaultBaseUrl ||
-                    "http://localhost:20128/v1"
-                  }
-                  value={ttsBaseUrl}
-                  onChange={(e) => setTtsBaseUrl(e.target.value)}
-                />
-              </div>
-            )}
-
-            {/* API Key Input */}
-            {!currentTtsEntry?.keyless && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="tts-api-key" className="text-sm font-medium">
-                    API Key
-                  </Label>
-                  <div className="flex items-center gap-2">
-                    {currentTtsState?.configured && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-2 text-xs text-destructive hover:text-destructive"
-                        onClick={handleClearTtsKey}
-                      >
-                        Clear Key
-                      </Button>
-                    )}
-                    {currentTtsEntry?.docsUrl && (
-                      <a
-                        href={currentTtsEntry.docsUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                      >
-                        Docs <ExternalLink className="size-3" />
-                      </a>
-                    )}
-                  </div>
-                </div>
-                <Input
-                  id="tts-api-key"
-                  type="password"
-                  data-testid="tts-api-key-input"
-                  placeholder={
-                    currentTtsState?.configured
-                      ? "Key is configured (enter new key to replace)"
-                      : currentTtsEntry?.apiKeyPlaceholder || "Enter API key"
-                  }
-                  value={ttsApiKey}
-                  onChange={(e) => setTtsApiKey(e.target.value)}
-                />
-              </div>
-            )}
-
-            {/* Model Input / Selection */}
-            {currentTtsEntry?.supportsModelSelection && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="tts-model" className="text-sm font-medium">
-                    Model
-                  </Label>
-                  {currentTtsEntry.defaultModel && (
-                    <span className="text-xs text-muted-foreground">
-                      Default: {currentTtsEntry.defaultModel}
-                    </span>
-                  )}
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Input
-                    id="tts-model"
-                    data-testid="tts-model-input"
-                    placeholder={
-                      currentTtsEntry.defaultModel || "Enter model name"
-                    }
-                    value={ttsModel}
-                    onChange={(e) => setTtsModel(e.target.value)}
-                  />
-                  {currentTtsEntry.models &&
-                    currentTtsEntry.models.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        {currentTtsEntry.models.map((m) => (
-                          <button
-                            key={m}
-                            type="button"
-                            onClick={() => setTtsModel(m)}
-                            className={`rounded-md px-2 py-0.5 text-xs transition-colors border ${
-                              ttsModel === m
-                                ? "bg-primary text-primary-foreground border-primary"
-                                : "bg-muted hover:bg-accent text-muted-foreground hover:text-foreground border-transparent"
-                            }`}
-                          >
-                            {m}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                </div>
-              </div>
-            )}
-
-            {/* Voice / Reference ID Input / Selection */}
-            {currentTtsEntry?.supportsVoiceSelection && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="tts-voice" className="text-sm font-medium">
-                      Voice / Reference ID
-                    </Label>
-                    {currentTtsEntry.defaultVoice && (
-                      <span className="text-xs text-muted-foreground">
-                        Default:{" "}
-                        {currentTtsEntry.id === "elevenlabs"
-                          ? `${getElevenLabsVoiceName(currentTtsEntry.defaultVoice)} (${currentTtsEntry.defaultVoice})`
-                          : currentTtsEntry.defaultVoice}
-                      </span>
-                    )}
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    data-testid="tts-fetch-voices-button"
-                    disabled={fetchingVoices}
-                    onClick={handleFetchVoices}
-                    className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
-                  >
-                    <RefreshCw
-                      className={`size-3 ${fetchingVoices ? "animate-spin" : ""}`}
-                    />
-                    Fetch Available Voices
+                <div className="flex items-center gap-2 pt-2">
+                  <Button variant="outline" size="sm" onClick={() => setActiveTab("providers")}>
+                    Manage STT Provider &amp; Keys
                   </Button>
                 </div>
-                <div className="flex flex-col gap-2">
-                  <div className="flex gap-2">
-                    <Input
-                      id="tts-voice"
-                      data-testid="tts-voice-input"
-                      placeholder={
-                        currentTtsEntry.defaultVoice ||
-                        "Enter voice ID or reference ID"
-                      }
-                      value={ttsVoice}
-                      onChange={(e) => setTtsVoice(e.target.value)}
-                      className="flex-1"
-                    />
-                    {ttsVoice.trim() && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        data-testid="tts-preview-entered-voice-button"
-                        onClick={() => handlePreviewVoice(ttsVoice.trim())}
-                        className="shrink-0 gap-1.5"
-                      >
-                        {activeMessageId ===
-                          `voice-preview-${ttsVoice.trim()}` &&
-                        readAloudStatus !== "idle" ? (
-                          <>
-                            <Square className="size-3.5 fill-current text-destructive" />
-                            Stop
-                          </>
-                        ) : (
-                          <>
-                            <Play className="size-3.5" />
-                            Preview ID
-                          </>
-                        )}
-                      </Button>
-                    )}
-                  </div>
-                  {(() => {
-                    const voiceOptions: VoiceOptionItem[] =
-                      fetchedVoices[activeTts] ??
-                      (currentTtsEntry.voices || []).map((id) => ({
-                        id,
-                        name:
-                          activeTts === "elevenlabs"
-                            ? getElevenLabsVoiceName(id)
-                            : id,
-                      }));
-                    if (voiceOptions.length === 0) return null;
-                    return (
-                      <div
-                        className="flex flex-wrap gap-1.5 pt-1"
-                        data-testid="tts-voice-options-list"
-                      >
-                        {voiceOptions.map((v) => {
-                          const isSelected = ttsVoice === v.id;
-                          const isPreviewing =
-                            activeMessageId === `voice-preview-${v.id}` &&
-                            readAloudStatus !== "idle";
-                          const label =
-                            v.name !== v.id
-                              ? `${v.name} (${v.id})`
-                              : activeTts === "elevenlabs"
-                                ? `${getElevenLabsVoiceName(v.id)} (${v.id})`
-                                : v.id;
-                          return (
-                            <div
-                              key={v.id}
-                              className={`inline-flex items-center rounded-md border text-xs transition-colors ${
-                                isSelected
-                                  ? "bg-primary text-primary-foreground border-primary"
-                                  : "bg-muted/70 hover:bg-accent text-muted-foreground hover:text-foreground border-border/60"
-                              }`}
-                            >
-                              <button
-                                type="button"
-                                data-testid={`tts-voice-chip-${v.id}`}
-                                onClick={() => setTtsVoice(v.id)}
-                                className="px-2.5 py-1 font-medium"
-                                title={`Select voice ${v.name} (${v.id})`}
-                              >
-                                {label}
-                              </button>
-                              <button
-                                type="button"
-                                data-testid={`tts-voice-preview-${v.id}`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handlePreviewVoice(v.id);
-                                }}
-                                aria-label={`Test voice ${v.name}`}
-                                title={`Test voice ${v.name} before selecting`}
-                                className={`border-l px-1.5 py-1 transition-colors ${
-                                  isSelected
-                                    ? "border-primary-foreground/30 hover:bg-primary-foreground/15"
-                                    : "border-border/60 hover:bg-background/60"
-                                }`}
-                              >
-                                {isPreviewing ? (
-                                  <Square className="size-3 fill-current text-destructive" />
-                                ) : (
-                                  <Volume2 className="size-3" />
-                                )}
-                              </button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
-            )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
-            {/* Action Buttons */}
-            <div className="flex items-center justify-between pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                data-testid="tts-test-button"
-                onClick={handleTestVoice}
-                className="gap-2"
-              >
-                {isTestingVoice ? (
-                  <>
-                    <VolumeX className="size-4 text-destructive" />
-                    Stop Voice Preview
-                  </>
-                ) : (
-                  <>
-                    <Volume2 className="size-4" />
-                    Test Voice
-                  </>
-                )}
-              </Button>
-              <Button
-                type="button"
-                data-testid="tts-save-button"
-                size="sm"
-                disabled={ttsSaving}
-                onClick={handleSaveTts}
-              >
-                {ttsSaving && (
-                  <Loader2 className="size-3.5 animate-spin mr-2" />
-                )}
-                Save TTS Settings
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Section 3: Speech-to-Text (STT) Provider & Dictation */}
-        <Card data-testid="voice-stt-card" className="border shadow-xs">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-lg font-semibold">
-                  Speech-to-Text (STT) Provider &amp; Dictation
-                </CardTitle>
-                <CardDescription>
-                  Select the speech recognition provider for microphone
-                  dictation in the composer.
-                </CardDescription>
-              </div>
-              {currentSttEntry?.keyless ? (
-                <Badge variant="secondary" className="gap-1">
-                  <CheckCircle2 className="size-3 text-emerald-500" />
-                  Built-in
-                </Badge>
-              ) : currentSttState?.configured ? (
-                <Badge
-                  variant="outline"
-                  className="gap-1 border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
-                >
-                  <CheckCircle2 className="size-3" />
-                  Configured{" "}
-                  {currentSttState.apiKeyHint
-                    ? `(${currentSttState.apiKeyHint})`
-                    : ""}
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="text-muted-foreground">
-                  Not configured
-                </Badge>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-5">
-            {/* Provider Selector */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">STT Provider</Label>
-              <Select value={activeStt} onValueChange={handleSttProviderChange}>
-                <SelectTrigger
-                  data-testid="stt-provider-select"
-                  className="w-full"
-                >
-                  <SelectValue placeholder="Select STT Provider" />
-                </SelectTrigger>
-                <SelectContent>
-                  {sttCatalog.map((p) => {
-                    const pState = settings.sttProviders[p.id];
-                    const isDefault = settings.sttProvider === p.id;
-                    return (
-                      <SelectItem key={p.id} value={p.id}>
-                        <div className="flex items-center justify-between w-full gap-3">
-                          <span>{p.displayName}</span>
-                          <div className="flex items-center gap-1.5 ml-auto">
-                            {isDefault && (
-                              <Badge
-                                variant="secondary"
-                                className="text-[10px] px-1.5 py-0 h-4"
-                              >
-                                Default
-                              </Badge>
-                            )}
-                            {p.keyless ? (
-                              <Badge
-                                variant="secondary"
-                                className="text-[10px] px-1.5 py-0 h-4 text-emerald-600"
-                              >
-                                Built-in
-                              </Badge>
-                            ) : pState?.configured ? (
-                              <Badge
-                                variant="outline"
-                                className="text-[10px] px-1.5 py-0 h-4 text-emerald-600 border-emerald-500/30"
-                              >
-                                Configured{" "}
-                                {pState.apiKeyHint ? `(${pState.apiKeyHint})` : ""}
-                              </Badge>
-                            ) : null}
-                          </div>
-                        </div>
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-              {currentSttEntry?.subtitle && (
-                <p className="text-xs text-muted-foreground">
-                  {currentSttEntry.subtitle}
-                </p>
-              )}
-            </div>
-
-            {/* Base URL Input */}
-            {currentSttEntry?.supportsBaseUrl && (
-              <div className="space-y-2">
+        {/* TAB 3: ENGINES & KEYS (Technical Backend Settings) */}
+        {activeTab === "providers" && (
+          <div className="flex flex-col gap-6 animate-in fade-in duration-200">
+            {/* TTS Engine Config */}
+            <Card className="border border-border/80 bg-card/60 shadow-xs">
+              <CardHeader className="pb-3 border-b border-border/60">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="stt-base-url" className="text-sm font-medium">
-                    Base URL{" "}
-                    {currentSttEntry.requiresBaseUrl && (
-                      <span className="text-destructive">*</span>
-                    )}
-                  </Label>
-                  {currentSttEntry.defaultBaseUrl && (
-                    <span className="text-xs text-muted-foreground">
-                      Default: {currentSttEntry.defaultBaseUrl}
-                    </span>
+                  <div>
+                    <CardTitle className="text-base font-semibold">TTS Provider Configuration</CardTitle>
+                    <CardDescription className="text-xs">
+                      Configure your text-to-speech engine credentials and endpoints.
+                    </CardDescription>
+                  </div>
+                  {currentTtsState?.configured && (
+                    <Badge variant="outline" className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs">
+                      <CheckCircle2 className="size-3 mr-1" />
+                      Connected {currentTtsState.apiKeyHint && `(${currentTtsState.apiKeyHint})`}
+                    </Badge>
                   )}
                 </div>
-                <Input
-                  id="stt-base-url"
-                  data-testid="stt-base-url-input"
-                  placeholder={
-                    currentSttEntry.defaultBaseUrl ||
-                    "http://localhost:20128/v1"
-                  }
-                  value={sttBaseUrl}
-                  onChange={(e) => setSttBaseUrl(e.target.value)}
-                />
-              </div>
-            )}
+              </CardHeader>
+              <CardContent className="space-y-4 pt-4">
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold">Engine</Label>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {ttsCatalog.map((p) => {
+                      const selected = activeTts === p.id;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => {
+                            setActiveTts(p.id);
+                            if (p.defaultVoice) setCurrentVoiceId(p.defaultVoice);
+                          }}
+                          className={cn(
+                            "rounded-xl border p-2.5 text-center text-xs font-medium transition-all",
+                            selected
+                              ? "border-primary bg-primary/10 text-foreground font-semibold shadow-xs"
+                              : "border-border/70 bg-card/40 text-muted-foreground hover:bg-muted hover:text-foreground",
+                          )}
+                        >
+                          {p.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
 
-            {/* API Key Input */}
-            {!currentSttEntry?.keyless && (
-              <div className="space-y-2">
+                {/* API Key */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold">API Key</Label>
+                    <span className="text-[11px] text-muted-foreground">Stored encrypted in vault</span>
+                  </div>
+                  <Input
+                    type="password"
+                    placeholder={currentTtsState?.configured ? "•••• saved (paste new key to update)" : "Paste API key"}
+                    value={ttsApiKey}
+                    onChange={(e) => setTtsApiKey(e.target.value)}
+                    className="h-9 text-xs"
+                  />
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <Button size="sm" onClick={handleSaveTts} disabled={ttsSaving}>
+                    {ttsSaving && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
+                    Save TTS Engine
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* STT Engine Config */}
+            <Card className="border border-border/80 bg-card/60 shadow-xs">
+              <CardHeader className="pb-3 border-b border-border/60">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="stt-api-key" className="text-sm font-medium">
-                    API Key
-                  </Label>
-                  <div className="flex items-center gap-2">
-                    {currentSttState?.configured && (
+                  <div>
+                    <CardTitle className="text-base font-semibold">STT Provider Configuration</CardTitle>
+                    <CardDescription className="text-xs">
+                      Configure speech recognition models and credentials.
+                    </CardDescription>
+                  </div>
+                  {currentSttState?.configured && (
+                    <Badge variant="outline" className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs">
+                      <CheckCircle2 className="size-3 mr-1" />
+                      Connected {currentSttState.apiKeyHint && `(${currentSttState.apiKeyHint})`}
+                    </Badge>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-4">
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold">Engine</Label>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {sttCatalog.map((p) => {
+                      const selected = activeStt === p.id;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => setActiveStt(p.id)}
+                          className={cn(
+                            "rounded-xl border p-2.5 text-center text-xs font-medium transition-all",
+                            selected
+                              ? "border-primary bg-primary/10 text-foreground font-semibold shadow-xs"
+                              : "border-border/70 bg-card/40 text-muted-foreground hover:bg-muted hover:text-foreground",
+                          )}
+                        >
+                          {p.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* STT API Key */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold">API Key</Label>
+                    <span className="text-[11px] text-muted-foreground">Stored encrypted in vault</span>
+                  </div>
+                  <Input
+                    type="password"
+                    placeholder={currentSttState?.configured ? "•••• saved (paste new key to update)" : "Paste API key"}
+                    value={sttApiKey}
+                    onChange={(e) => setSttApiKey(e.target.value)}
+                    className="h-9 text-xs"
+                  />
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <Button size="sm" onClick={handleSaveStt} disabled={sttSaving}>
+                    {sttSaving && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
+                    Save STT Engine
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* VOICE PICKER MODAL (Vellum Catalog Experience) */}
+        <Dialog open={voicePickerOpen} onOpenChange={setVoicePickerOpen}>
+          <DialogContent className="max-w-2xl p-0 overflow-hidden rounded-2xl">
+            <DialogHeader className="p-6 border-b border-border/60 bg-muted/20">
+              <div className="flex items-center justify-between">
+                <div>
+                  <DialogTitle className="text-lg font-bold">Choose a Voice</DialogTitle>
+                  <DialogDescription className="text-xs">
+                    Audition and select how your assistant speaks across conversations.
+                  </DialogDescription>
+                </div>
+              </div>
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search by name, accent, or style…"
+                    value={voiceSearch}
+                    onChange={(e) => setVoiceSearch(e.target.value)}
+                    className="pl-9 h-9 text-xs rounded-full"
+                  />
+                </div>
+                <div className="flex items-center gap-1">
+                  {["all", "female", "male"].map((g) => (
+                    <button
+                      key={g}
+                      type="button"
+                      onClick={() => setVoiceGenderFilter(g)}
+                      className={cn(
+                        "rounded-full px-3 py-1 text-xs capitalize transition-colors",
+                        voiceGenderFilter === g
+                          ? "bg-foreground text-background font-semibold"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                      )}
+                    >
+                      {g}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </DialogHeader>
+
+            <ScrollArea className="max-h-[460px] p-6">
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                {filteredVoices.map((v) => {
+                  const isSelected = currentVoiceId === v.id;
+                  const isPlaying = activeMessageId === `voice-preview-${v.id}` && readAloudStatus !== "idle";
+                  return (
+                    <div
+                      key={v.id}
+                      onClick={() => handleSelectVoice(v)}
+                      className={cn(
+                        "group relative flex cursor-pointer items-start justify-between rounded-xl border p-3.5 transition-all",
+                        isSelected
+                          ? "border-primary bg-primary/10 shadow-xs"
+                          : "border-border/70 bg-card/60 hover:border-foreground/20 hover:bg-accent/40",
+                      )}
+                    >
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold text-sm text-foreground">{v.name}</span>
+                          <span className="text-xs text-muted-foreground font-normal">· {v.accent}</span>
+                          <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 uppercase tracking-wider ml-auto mr-1">
+                            {v.provider}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground line-clamp-1">{v.style}</p>
+                      </div>
+
                       <Button
                         type="button"
                         variant="ghost"
-                        size="sm"
-                        className="h-6 px-2 text-xs text-destructive hover:text-destructive"
-                        onClick={handleClearSttKey}
+                        size="icon"
+                        className={cn(
+                          "size-8 shrink-0 rounded-full ml-2",
+                          isPlaying ? "text-destructive" : "text-muted-foreground hover:text-foreground",
+                        )}
+                        onClick={(e) => handlePreviewVoice(v.id, v.provider, e)}
+                        title={`Listen to ${v.name}`}
                       >
-                        Clear Key
+                        {isPlaying ? <Square className="size-4 fill-current" /> : <Play className="size-4" />}
                       </Button>
-                    )}
-                    {currentSttEntry?.docsUrl && (
-                      <a
-                        href={currentSttEntry.docsUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                      >
-                        Docs <ExternalLink className="size-3" />
-                      </a>
-                    )}
-                  </div>
-                </div>
-                <Input
-                  id="stt-api-key"
-                  type="password"
-                  data-testid="stt-api-key-input"
-                  placeholder={
-                    currentSttState?.configured
-                      ? "Key is configured (enter new key to replace)"
-                      : currentSttEntry?.apiKeyPlaceholder || "Enter API key"
-                  }
-                  value={sttApiKey}
-                  onChange={(e) => setSttApiKey(e.target.value)}
-                />
+                    </div>
+                  );
+                })}
               </div>
-            )}
-
-            {/* Model Input / Selection */}
-            {currentSttEntry?.supportsModelSelection && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="stt-model" className="text-sm font-medium">
-                    Model
-                  </Label>
-                  {currentSttEntry.defaultModel && (
-                    <span className="text-xs text-muted-foreground">
-                      Default: {currentSttEntry.defaultModel}
-                    </span>
-                  )}
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Input
-                    id="stt-model"
-                    data-testid="stt-model-input"
-                    placeholder={
-                      currentSttEntry.defaultModel || "Enter model name"
-                    }
-                    value={sttModel}
-                    onChange={(e) => setSttModel(e.target.value)}
-                  />
-                  {currentSttEntry.models &&
-                    currentSttEntry.models.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        {currentSttEntry.models.map((m) => (
-                          <button
-                            key={m}
-                            type="button"
-                            onClick={() => setSttModel(m)}
-                            className={`rounded-md px-2 py-0.5 text-xs transition-colors border ${
-                              sttModel === m
-                                ? "bg-primary text-primary-foreground border-primary"
-                                : "bg-muted hover:bg-accent text-muted-foreground hover:text-foreground border-transparent"
-                            }`}
-                          >
-                            {m}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                </div>
-              </div>
-            )}
-
-            {/* Spoken Language Selector */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Spoken Language</Label>
-              <Select value={sttLanguage} onValueChange={setSttLanguage}>
-                <SelectTrigger
-                  data-testid="stt-language-select"
-                  className="w-full"
-                >
-                  <SelectValue placeholder="Select Language" />
-                </SelectTrigger>
-                <SelectContent>
-                  {STT_LANGUAGES.map((lang) => (
-                    <SelectItem key={lang.value} value={lang.value}>
-                      {lang.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Save Button */}
-            <div className="flex justify-end pt-2">
-              <Button
-                type="button"
-                data-testid="stt-save-button"
-                size="sm"
-                disabled={sttSaving}
-                onClick={handleSaveStt}
-              >
-                {sttSaving && (
-                  <Loader2 className="size-3.5 animate-spin mr-2" />
-                )}
-                Save STT Settings
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+            </ScrollArea>
+          </DialogContent>
+        </Dialog>
       </div>
     </ScrollArea>
   );
