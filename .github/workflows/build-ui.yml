@@ -1,0 +1,37 @@
+name: Build UI
+
+# Reusable: builds the static web UI (out/) once and uploads it as the `ui`
+# artifact for the jobs that package it.
+on:
+  workflow_call:
+    inputs:
+      artifact:
+        description: Artifact name for the built UI
+        type: string
+        default: ui
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Web UI
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.2.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact || 'ui' }}
+          path: out
+          retention-days: 3

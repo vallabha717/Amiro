@@ -1,0 +1,90 @@
+name: Install smoke
+
+# Installs Amiro the way users do and drives the `amiro` command: on PRs that
+# touch the installer from an archive built in this run, and after a release
+# from the published assets (curl | bash).
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Published release to install (curl | bash from GitHub)
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published release to install, e.g. v1.26.0 (empty = latest)
+        default: ""
+  pull_request:
+    paths:
+      - install.sh
+      - packaging/**
+      - scripts/package-server.sh
+      - .github/workflows/install-smoke.yml
+
+permissions:
+  contents: read
+
+jobs:
+  # PRs: no release exists for this code yet, so package one from the PR.
+  package:
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/build-server.yml
+    with:
+      version: pr-${{ github.event.number }}
+
+  smoke:
+    name: Install on ${{ matrix.os }}
+    needs: [package]
+    if: ${{ !cancelled() && (needs.package.result == 'success' || needs.package.result == 'skipped') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - os: macos-latest
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      AMIRO_HOME: ${{ github.workspace }}/../amiro-home
+      TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Archive from this PR
+        if: github.event_name == 'pull_request'
+        uses: actions/download-artifact@v4
+        with:
+          name: amiro-server-${{ matrix.target }}
+          path: dist
+      - name: Install
+        run: |
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            AMIRO_INSTALL_ARCHIVE="$PWD/dist/amiro-server-${{ matrix.target }}.tar.gz" bash install.sh --port 3999
+          elif [ -n "$TAG" ]; then
+            curl -fsSL "https://github.com/${{ github.repository }}/releases/download/$TAG/install.sh" | bash -s -- --version "$TAG" --port 3999
+          else
+            curl -fsSL "https://github.com/${{ github.repository }}/releases/latest/download/install.sh" | bash -s -- --port 3999
+          fi
+      - name: Drive the amiro command
+        run: |
+          amiro="$HOME/.local/bin/amiro"
+          "$amiro" version
+          "$amiro" doctor
+          "$amiro" status | grep -q running
+          token=$(grep '^token' "$AMIRO_HOME/amiro.toml" | cut -d'"' -f2)
+          curl -fsS -H "X-Amiro-Token: $token" http://127.0.0.1:3999/api/auth/status | tee /dev/stderr | grep -q '"needsSetup":true'
+          curl -fsS -o /dev/null http://127.0.0.1:3999/onboarding
+          printf 'smoke-test-pass-42\n' | "$amiro" reset-password --login smoke
+          curl -fsS -H "X-Amiro-Token: $token" -H 'content-type: application/json' \
+            -d '{"email":"smoke","password":"smoke-test-pass-42"}' http://127.0.0.1:3999/api/auth/login | grep -q token
+          "$amiro" restart
+          "$amiro" stop
+          "$amiro" uninstall --purge
+          test ! -e "$AMIRO_HOME"
+      - name: Server log
+        if: failure()
+        run: cat "$AMIRO_HOME/run/amiro.log" || true

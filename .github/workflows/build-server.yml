@@ -1,0 +1,86 @@
+name: Build server
+
+# Reusable (and manual): the server archives install.sh downloads, for Linux
+# and macOS on x86_64 and arm64. With `tag`, each archive is uploaded to that
+# GitHub release; otherwise they are workflow artifacts.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag to upload to (empty = artifacts only)
+        type: string
+        default: ""
+      version:
+        description: Version written into the archives
+        type: string
+        default: dev
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to upload to (empty = artifacts only)
+        default: ""
+      version:
+        description: Version written into the archives
+        default: dev
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  ui:
+    uses: ./.github/workflows/build-ui.yml
+
+  server:
+    name: Server ${{ matrix.target }}
+    needs: ui
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: server-${{ matrix.target }}
+          workspaces: |
+            backend
+            runtime
+      - uses: actions/download-artifact@v4
+        with:
+          name: ui
+          path: out
+      - name: Build the server and the agent runtime
+        run: |
+          cargo build --release --manifest-path backend/Cargo.toml --bin amiro-backend
+          # Same features as scripts/build-native.sh (the shipped runtime).
+          cargo build --release --manifest-path runtime/Cargo.toml --bin amiro-runtime --no-default-features
+      - name: Smoke test
+        run: |
+          ./backend/target/release/amiro-backend --help | head -3
+          ./runtime/target/release/amiro-runtime --version
+      - name: Package
+        run: bash scripts/package-server.sh "${{ inputs.version || 'dev' }}" "${{ matrix.target }}" dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: amiro-server-${{ matrix.target }}
+          path: dist/amiro-server-${{ matrix.target }}.tar.gz
+          retention-days: 7
+      - name: Upload to the release
+        if: ${{ inputs.tag != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ inputs.tag }}" dist/amiro-server-${{ matrix.target }}.tar.gz --clobber

@@ -1,13 +1,16 @@
 name: Release
 
-# One release = desktop installers for macOS / Windows / Linux, plus server
-# archives that `install.sh` downloads:
+# One release = server archives for install.sh + desktop installers for
+# macOS / Windows / Linux, verified by installing it:
 #
 #   curl -fsSL https://github.com/vallabha717/Amiro/releases/latest/download/install.sh | bash
 #
 # Start one by pushing a tag (git tag v1.27.0 && git push origin v1.27.0), or
-# from the Actions tab with a version. The release stays a draft until the
-# server archives and SHA256SUMS are uploaded, then it is published as latest.
+# from the Actions tab with a version. Pieces (each its own workflow):
+#   build-server.yml  server archives (Linux/macOS, x86_64/arm64)
+#   desktop.yml       desktop installers
+#   install-smoke.yml installs the published release and drives `amiro`
+# The release stays a draft until the server archives and SHA256SUMS are in.
 on:
   push:
     tags: ["v*"]
@@ -31,13 +34,13 @@ concurrency:
 env:
   TAG: ${{ github.event.inputs.version || github.ref_name }}
   GH_TOKEN: ${{ github.token }}
-  CARGO_TERM_COLOR: always
 
 jobs:
   prepare:
     name: Create draft release
     runs-on: ubuntu-latest
     outputs:
+      tag: ${{ steps.release.outputs.tag }}
       release_id: ${{ steps.release.outputs.id }}
     steps:
       - uses: actions/checkout@v4
@@ -54,77 +57,22 @@ jobs:
           fi
           # A new draft can take a few seconds to appear in the API.
           id=""
-          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+          for _ in 1 2 3 4 5 6 7 8 9 10; do
             id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq ".[] | select(.tag_name == \"$TAG\") | .id" | head -1)
             [ -n "$id" ] && break
             sleep 3
           done
           [ -n "$id" ] || { echo "::error::release $TAG not found"; exit 1; }
           echo "id=$id" >> "$GITHUB_OUTPUT"
-
-  ui:
-    name: Web UI
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.2.1
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ui
-          path: out
-          retention-days: 3
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
   server:
-    name: Server ${{ matrix.target }}
-    needs: [prepare, ui]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-          - os: ubuntu-22.04-arm
-            target: aarch64-unknown-linux-gnu
-          - os: macos-latest
-            target: aarch64-apple-darwin
-          - os: macos-15-intel
-            target: x86_64-apple-darwin
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: server-${{ matrix.target }}
-          workspaces: |
-            backend
-            runtime
-      - uses: actions/download-artifact@v4
-        with:
-          name: ui
-          path: out
-      - name: Build the server and the agent runtime
-        run: |
-          cargo build --release --manifest-path backend/Cargo.toml --bin amiro-backend
-          # Same features as scripts/build-native.sh (the shipped runtime).
-          cargo build --release --manifest-path runtime/Cargo.toml --bin amiro-runtime --no-default-features
-      - name: Smoke test
-        run: |
-          ./backend/target/release/amiro-backend --help | head -3
-          ./runtime/target/release/amiro-runtime --version || true
-      - name: Package
-        run: bash scripts/package-server.sh "$TAG" "${{ matrix.target }}" dist
-      - name: Upload to the release
-        run: gh release upload "$TAG" dist/amiro-server-${{ matrix.target }}.tar.gz --clobber
+    name: Server
+    needs: prepare
+    uses: ./.github/workflows/build-server.yml
+    with:
+      tag: ${{ needs.prepare.outputs.tag }}
+      version: ${{ needs.prepare.outputs.tag }}
 
   desktop:
     name: Desktop
@@ -137,7 +85,7 @@ jobs:
   publish:
     name: Publish
     needs: [prepare, server, desktop]
-    # Server archives are what install.sh needs; publish even if one desktop
+    # install.sh needs the server archives; publish even if one desktop
     # platform failed (its installer is simply missing from the release).
     if: ${{ !cancelled() && needs.server.result == 'success' }}
     runs-on: ubuntu-latest
@@ -158,11 +106,20 @@ jobs:
           {
             echo "### Amiro $TAG"
             echo
-            echo 'Install the server on Linux or macOS:'
             echo '```bash'
             echo "curl -fsSL https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/install.sh | bash"
             echo '```'
-            echo "Desktop installers: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
+            echo "Release: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
             echo
-            echo "Desktop builds: ${{ needs.desktop.result }}"
+            echo "| Part | Result |"
+            echo "| --- | --- |"
+            echo "| Server archives | ${{ needs.server.result }} |"
+            echo "| Desktop installers | ${{ needs.desktop.result }} |"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  verify:
+    name: Verify install
+    needs: [prepare, publish]
+    uses: ./.github/workflows/install-smoke.yml
+    with:
+      tag: ${{ needs.prepare.outputs.tag }}

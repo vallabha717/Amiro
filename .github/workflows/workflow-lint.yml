@@ -1,0 +1,39 @@
+name: Workflow lint
+
+# actionlint for the workflows, shellcheck for the shell the installer and
+# release depend on.
+on:
+  pull_request:
+    paths:
+      - .github/workflows/**
+      - install.sh
+      - packaging/**
+      - scripts/*.sh
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/**
+      - install.sh
+      - packaging/**
+      - scripts/*.sh
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: actionlint
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color -shellcheck=
+  shellcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck --severity=warning install.sh packaging/amiro scripts/package-server.sh scripts/amiro-server.sh
