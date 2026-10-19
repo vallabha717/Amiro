@@ -245,16 +245,23 @@ pub fn run() {
             let backend_port = reserve_loopback_port();
 
             // The sidecar slots (bundle.externalBin: ["binaries/backend",
-            // "binaries/runtime"]) are filled by src-tauri/build-sidecar.sh.
+            // "binaries/runtime"]) are filled by scripts/build-sidecar.mjs.
             let mut sidecar = app
                 .shell()
                 .sidecar("backend")
-                .expect("backend sidecar launcher not found next to the app executable (run src-tauri/build-sidecar.sh)")
+                .expect("backend sidecar launcher not found next to the app executable (run node scripts/build-sidecar.mjs --build)")
                 .env("AMIRO_DESKTOP", "1")
                 .env("AMIRO_PORT", backend_port.to_string())
                 .env("AMIRO_TOKEN", &shared_secret)
                 .env("AMIRO_ALLOWED_ORIGIN", allowed_origin)
                 .env("AMIRO_AUTH_TOKEN", &shared_secret);
+
+            // A desktop app is a single person on their own machine: keep
+            // them signed in for a month instead of the server default of a
+            // week (amiro.toml / .env can still override it).
+            if std::env::var_os("AMIRO_SESSION_TTL_DAYS").is_none() {
+                sidecar = sidecar.env("AMIRO_SESSION_TTL_DAYS", "30");
+            }
 
             // Pass environment variables to backend sidecar
             if let Ok(openai_compat_data) = std::env::var("OPENAI_COMPATIBLE_DATA") {

@@ -6,8 +6,8 @@
   "build": {
     "frontendDist": "../out",
     "devUrl": "http://localhost:3210",
-    "beforeDevCommand": "bash ./src-tauri/build-sidecar.sh && pnpm dev -p 3210",
-    "beforeBuildCommand": "bash ./src-tauri/build-sidecar.sh && pnpm build"
+    "beforeDevCommand": "node scripts/build-sidecar.mjs --build && pnpm dev -p 3210",
+    "beforeBuildCommand": "node scripts/build-sidecar.mjs --build && pnpm build"
   },
   "app": {
     "withGlobalTauri": true,
@@ -19,7 +19,10 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "externalBin": ["binaries/backend", "binaries/runtime"],
+    "externalBin": [
+      "binaries/backend",
+      "binaries/runtime"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -29,6 +32,26 @@
     ],
     "android": {
       "debugApplicationIdSuffix": ".debug"
+    },
+    "category": "Productivity",
+    "shortDescription": "Your own AI agent",
+    "longDescription": "Amiro is a personal AI agent that runs on your computer or your own server.",
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    },
+    "linux": {
+      "deb": {
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0",
+          "libnotify-bin"
+        ]
+      }
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
     }
   }
 }

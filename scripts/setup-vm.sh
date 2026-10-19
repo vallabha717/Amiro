@@ -353,9 +353,11 @@ printf '\n%sNext commands:%s\n' "$BOLD" "$RESET"
 cat <<'EOF'
   Start the native backend (serves out/ and spawns the runtime bridge):
     ./backend/target/release/amiro-backend
-    # then open http://127.0.0.1:8787 and complete the one-time "Set up Amiro"
-    # page to create the single owner account (or pre-set AMIRO_OWNER_EMAIL
-    # and AMIRO_OWNER_PASSWORD before first start)
+    # then open http://127.0.0.1:8787: the onboarding wizard creates the owner
+    # account and walks through agent + provider setup (each skippable).
+    # Prefer files? ./backend/target/release/amiro-backend init-config writes a
+    # commented ~/.amiro/amiro.toml (owner, agent, provider keys; docs/SETUP.md).
+    # Forgot the password later? amiro-backend reset-password
 
   Or run the dev loop (retired Node adapter on 8787 plus Next.js on 3210).
   The adapter is kept for contract tests, not shipped, so prefer the native

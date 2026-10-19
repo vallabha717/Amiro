@@ -56,11 +56,31 @@ LOG_FILE="$STATE_DIR/amiro-server.log"
 TOKEN_FILE="$STATE_DIR/amiro-token"
 UNIT_NAME="amiro.service"
 
-HOST="${AMIRO_HOST:-127.0.0.1}"
-PORT="${AMIRO_PORT:-3000}"
+# `[server] key = value` from amiro.toml (AMIRO_CONFIG, ./amiro.toml, then
+# ~/.amiro/amiro.toml), so the script and the backend agree on host/port/token.
+CONFIG_FILE="${AMIRO_CONFIG:-}"
+if [ -z "$CONFIG_FILE" ]; then
+  for candidate in "$PWD/amiro.toml" "${AMIRO_HOME:-$HOME/.amiro}/amiro.toml"; do
+    [ -f "$candidate" ] && { CONFIG_FILE="$candidate"; break; }
+  done
+fi
+toml_server() {
+  [ -n "$CONFIG_FILE" ] && [ -f "$CONFIG_FILE" ] || return 0
+  awk -v key="$1" '
+    /^[[:space:]]*\[/ { section = $0; gsub(/[[:space:]\[\]]/, "", section); next }
+    section == "server" {
+      line = $0; sub(/#.*/, "", line)
+      split(line, kv, "=")
+      k = kv[1]; gsub(/[[:space:]]/, "", k)
+      if (k == key) { v = substr(line, index(line, "=") + 1); gsub(/^[[:space:]"]+|[[:space:]"]+$/, "", v); print v; exit }
+    }' "$CONFIG_FILE"
+}
+
+HOST="${AMIRO_HOST:-$(toml_server host)}"; HOST="${HOST:-127.0.0.1}"
+PORT="${AMIRO_PORT:-$(toml_server port)}"; PORT="${PORT:-3000}"
 BACKEND=""
-ALLOWED_ORIGIN="${AMIRO_ALLOWED_ORIGIN:-}"
-TOKEN="${AMIRO_TOKEN:-}"
+ALLOWED_ORIGIN="${AMIRO_ALLOWED_ORIGIN:-$(toml_server allowed_origin)}"
+TOKEN="${AMIRO_TOKEN:-$(toml_server token)}"
 DAEMON=0
 ASSUME_YES=0
 SCOPE="user"
