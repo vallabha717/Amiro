@@ -11,6 +11,13 @@ on:
         type: string
         required: false
   workflow_dispatch:
+    inputs:
+      release_id:
+        description: Optional release id to attach the installers to
+        required: false
+      only:
+        description: Optional platform filter (macos, windows, linux)
+        required: false
   pull_request:
     paths:
       - "src-tauri/**"
@@ -25,24 +32,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - id: plan
+        env:
+          ONLY: ${{ inputs.only }}
+        run: |
+          all='[
+            {"name":"macOS (Apple silicon)","os":"macos-latest","target":"aarch64-apple-darwin","family":"macos"},
+            {"name":"macOS (Intel)","os":"macos-15-intel","target":"x86_64-apple-darwin","family":"macos"},
+            {"name":"Windows","os":"windows-latest","target":"x86_64-pc-windows-msvc","family":"windows"},
+            {"name":"Linux","os":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","family":"linux"}
+          ]'
+          echo "matrix=$(jq -c --arg only "$ONLY" '{include: [.[] | select($only == "" or .family == $only)]}' <<< "$all")" >> "$GITHUB_OUTPUT"
+
   build:
     name: ${{ matrix.name }}
+    needs: plan
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - name: macOS (Apple silicon)
-            os: macos-latest
-            target: aarch64-apple-darwin
-          - name: macOS (Intel)
-            os: macos-15-intel
-            target: x86_64-apple-darwin
-          - name: Windows
-            os: windows-latest
-            target: x86_64-pc-windows-msvc
-          - name: Linux
-            os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     env:
@@ -83,17 +96,35 @@ jobs:
       - name: Build sidecars
         run: node scripts/build-sidecar.mjs --build --target ${{ matrix.target }}
 
-      - name: Build the app
-        uses: tauri-apps/tauri-action@v0
+      # Sign with a Developer ID when the APPLE_* secrets exist; otherwise
+      # ad-hoc sign ("-") so the app still launches on Apple silicon. Empty
+      # secrets must not reach Tauri: it would try to import an empty cert.
+      - name: macOS signing
+        if: runner.os == 'macOS'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Optional signing; unsigned builds work without these.
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -n "$APPLE_CERTIFICATE" ]; then
+            for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+              if [ -n "${!v}" ]; then
+                { echo "$v<<__AMIRO_EOF__"; echo "${!v}"; echo "__AMIRO_EOF__"; } >> "$GITHUB_ENV"
+              fi
+            done
+            echo "Signing with a Developer ID certificate."
+          else
+            echo "APPLE_SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
+            echo "No APPLE_CERTIFICATE secret: ad-hoc signing."
+          fi
+
+      - name: Build the app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tauriScript: npx --yes @tauri-apps/cli@^2
           args: --target ${{ matrix.target }}
