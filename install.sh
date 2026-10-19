@@ -44,7 +44,7 @@ while [ $# -gt 0 ]; do
 done
 export AMIRO_HOME
 
-if [ -t 1 ]; then B=$'\033[1m'; D=$'\033[2m'; G=$'\033[32m'; R=$'\033[31m'; C=$'\033[36m'; N=$'\033[0m'; else B= D= G= R= C= N=; fi
+if [ -t 1 ]; then B=$'\033[1m'; D=$'\033[2m'; G=$'\033[32m'; R=$'\033[31m'; C=$'\033[36m'; N=$'\033[0m'; else B='' D='' G='' R='' C='' N=''; fi
 step() { printf '%s›%s %s\n' "$C" "$N" "$*"; }
 ok()   { printf '%s✓%s %s\n' "$G" "$N" "$*"; }
 die()  { printf '%s✗ %s%s\n' "$R" "$*" "$N" >&2; exit 1; }
@@ -52,8 +52,8 @@ die()  { printf '%s✗ %s%s\n' "$R" "$*" "$N" >&2; exit 1; }
 printf '\n%s  Amiro%s %s· your own AI agent%s\n\n' "$B" "$N" "$D" "$N"
 
 case "$(uname -s)" in
-  Linux) os=unknown-linux-gnu ;;
-  Darwin) os=apple-darwin ;;
+  Linux) os=linux ;;
+  Darwin) os=macos ;;
   *) die "Amiro's server installs on Linux and macOS. On Windows, use the desktop app or WSL2." ;;
 esac
 case "$(uname -m)" in
@@ -62,8 +62,8 @@ case "$(uname -m)" in
   *) die "unsupported CPU: $(uname -m)" ;;
 esac
 # Rosetta: prefer the native build on Apple silicon.
-if [ "$os" = apple-darwin ] && [ "$arch" = x86_64 ] && [ "$(sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)" = 1 ]; then arch=aarch64; fi
-target="$arch-$os"
+if [ "$os" = macos ] && [ "$arch" = x86_64 ] && [ "$(sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)" = 1 ]; then arch=aarch64; fi
+target="$os-$arch"
 asset="amiro-server-$target.tar.gz"
 
 command -v curl >/dev/null 2>&1 || die "curl is required"
@@ -101,7 +101,10 @@ rm -rf "$dest.partial"; mv "$tmp/amiro" "$dest.partial"
 rm -rf "$dest"; mv "$dest.partial" "$dest"
 ln -sfn "$dest" "$AMIRO_HOME/app/current"
 # Keep the previous two versions for a quick rollback.
-( cd "$AMIRO_HOME/app" && ls -1t | grep -v '^current$' | tail -n +4 | xargs -r rm -rf ) 2>/dev/null || true
+# shellcheck disable=SC2010,SC2012  # version dirs are ours: no odd file names
+ls -1dt "$AMIRO_HOME"/app/*/ 2>/dev/null | grep -v '/current/$' | tail -n +4 | while IFS= read -r old; do
+  rm -rf "$old"
+done
 if [ "$(uname -s)" = Darwin ]; then xattr -dr com.apple.quarantine "$dest" 2>/dev/null || true; fi
 ok "Installed Amiro $version to $dest"
 

@@ -22,8 +22,10 @@ on:
       - scripts/package-server.sh
       - .github/workflows/install-smoke.yml
 
+# build-server.yml (used for PR archives) may upload to a release, so the
+# caller must grant contents: write or the run fails at startup.
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   # PRs: no release exists for this code yet, so package one from the PR.
@@ -63,7 +65,7 @@ jobs:
       - name: Install
         run: |
           if [ "${{ github.event_name }}" = pull_request ]; then
-            AMIRO_INSTALL_ARCHIVE="$PWD/dist/amiro-server-${{ matrix.target }}.tar.gz" bash install.sh --port 3999
+            AMIRO_INSTALL_ARCHIVE="$(ls "$PWD"/dist/amiro-server-*.tar.gz)" bash install.sh --port 3999
           elif [ -n "$TAG" ]; then
             curl -fsSL "https://github.com/${{ github.repository }}/releases/download/$TAG/install.sh" | bash -s -- --version "$TAG" --port 3999
           else

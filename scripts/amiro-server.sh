@@ -81,7 +81,6 @@ PORT="${AMIRO_PORT:-$(toml_server port)}"; PORT="${PORT:-3000}"
 BACKEND=""
 ALLOWED_ORIGIN="${AMIRO_ALLOWED_ORIGIN:-$(toml_server allowed_origin)}"
 TOKEN="${AMIRO_TOKEN:-$(toml_server token)}"
-DAEMON=0
 ASSUME_YES=0
 SCOPE="user"
 

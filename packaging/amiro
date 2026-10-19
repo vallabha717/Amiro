@@ -30,7 +30,7 @@ LOG_FILE="$RUN_DIR/amiro.log"
 REPO="${AMIRO_REPO:-vallabha717/Amiro}"
 OS="$(uname -s)"
 
-if [ -t 1 ]; then B=$'\033[1m'; D=$'\033[2m'; G=$'\033[32m'; R=$'\033[31m'; N=$'\033[0m'; else B= D= G= R= N=; fi
+if [ -t 1 ]; then B=$'\033[1m'; D=$'\033[2m'; G=$'\033[32m'; R=$'\033[31m'; N=$'\033[0m'; else B='' D='' G='' R='' N=''; fi
 say() { printf '%s\n' "$*"; }
 die() { printf '%serror:%s %s\n' "$R" "$N" "$*" >&2; exit 1; }
 

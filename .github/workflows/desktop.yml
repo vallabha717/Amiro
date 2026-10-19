@@ -2,18 +2,19 @@ name: Desktop app
 
 # Builds the Tauri desktop app natively on macOS (Apple silicon and Intel),
 # Windows and Linux. Runs on demand and on PRs that touch the desktop shell;
-# release.yml calls it with a release id to attach the installers.
+# release.yml calls it with a tag to upload the installers. One installer
+# per platform, named amiro-desktop-<os>-<arch>.<ext>.
 on:
   workflow_call:
     inputs:
-      release_id:
-        description: GitHub release id to attach the installers to
+      tag:
+        description: Release tag to upload the installers to
         type: string
         required: false
   workflow_dispatch:
     inputs:
-      release_id:
-        description: Optional release id to attach the installers to
+      tag:
+        description: Optional release tag to upload the installers to
         required: false
       only:
         description: Optional platform filter (macos, windows, linux)
@@ -128,17 +129,31 @@ jobs:
         with:
           tauriScript: npx --yes @tauri-apps/cli@^2
           args: --target ${{ matrix.target }}
-          releaseId: ${{ inputs.release_id }}
+
+      - name: Collect installers
+        shell: bash
+        run: |
+          bundle="src-tauri/target/${{ matrix.target }}/release/bundle"
+          arch="${{ matrix.target }}"; arch="${arch%%-*}"
+          mkdir -p dist
+          case "${{ matrix.family }}" in
+            macos)   cp "$bundle"/dmg/*.dmg "dist/amiro-desktop-macos-$arch.dmg" ;;
+            windows) cp "$bundle"/nsis/*-setup.exe "dist/amiro-desktop-windows-$arch-setup.exe" ;;
+            linux)   cp "$bundle"/appimage/*.AppImage "dist/amiro-desktop-linux-$arch.AppImage"
+                     cp "$bundle"/deb/*.deb "dist/amiro-desktop-linux-$arch.deb" ;;
+          esac
+          ls -la dist
 
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
-          name: amiro-${{ matrix.target }}
-          path: |
-            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.dmg
-            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.msi
-            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.exe
-            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.deb
-            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.rpm
-            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.AppImage
-          if-no-files-found: warn
+          name: amiro-desktop-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Upload to the release
+        if: ${{ inputs.tag != '' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ inputs.tag }}" dist/* --clobber

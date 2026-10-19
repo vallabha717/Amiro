@@ -115,9 +115,17 @@ pnpm desktop:package                     # = npx @tauri-apps/cli@2 build
 
 | Asset | For |
 | --- | --- |
-| `amiro-server-{x86_64,aarch64}-unknown-linux-gnu.tar.gz`, `amiro-server-{aarch64,x86_64}-apple-darwin.tar.gz` | `install.sh` on servers and VMs |
-| `install.sh`, `SHA256SUMS` | the curl installer and its checksums |
-| `.dmg`, `.app.tar.gz` (macOS arm64 and x64), `.msi`, `.exe` (Windows), `.deb`, `.rpm`, `.AppImage` (Linux) | the desktop app |
+| `amiro-desktop-macos-aarch64.dmg`, `amiro-desktop-macos-x86_64.dmg` | Desktop app on Apple silicon / Intel Macs |
+| `amiro-desktop-windows-x86_64-setup.exe` | Desktop app on Windows 10/11 |
+| `amiro-desktop-linux-x86_64.AppImage`, `amiro-desktop-linux-x86_64.deb` | Desktop app on Linux (any distro / Debian-Ubuntu) |
+| `amiro-server-{linux,macos}-{x86_64,aarch64}.tar.gz` | Server builds; `install.sh` picks the right one |
+| `install.sh` | The curl installer |
+| `SHA256SUMS` | Checksums for every file (`sha256sum -c SHA256SUMS --ignore-missing`) |
+
+Each release also carries a GitHub build-provenance attestation for every
+file (`gh attestation verify <file> -R vallabha717/Amiro`). The release
+description comes from `.github/release/notes.md` plus the generated
+changelog.
 
 To cut a release, either:
 

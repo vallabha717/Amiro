@@ -3,7 +3,8 @@
 #
 #   scripts/package-server.sh <version> [target] [out-dir]
 #
-# amiro-server-<target>.tar.gz contains amiro/ with amiro-backend,
+# amiro-server-<os>-<arch>.tar.gz (os: linux|macos, arch: x86_64|aarch64)
+# contains amiro/ with amiro-backend,
 # amiro-runtime, ui/ (the static web UI), the `amiro` command,
 # amiro.example.toml and VERSION. Expects release builds of backend and
 # runtime for <target> and a built UI in out/ (pnpm build). Binaries can be
@@ -41,7 +42,13 @@ if [ "${AMIRO_PKG_NO_STRIP:-}" != 1 ]; then
   esac
 fi
 
+case "$TARGET" in
+  *-linux-*) os=linux ;;
+  *-apple-darwin) os=macos ;;
+  *) echo "unsupported target $TARGET" >&2; exit 1 ;;
+esac
+arch="${TARGET%%-*}"
 mkdir -p "$OUT"
-archive="$OUT/amiro-server-$TARGET.tar.gz"
+archive="$OUT/amiro-server-$os-$arch.tar.gz"
 tar -C "$stage" -czf "$archive" amiro
 echo "$archive ($(du -h "$archive" | cut -f1))"

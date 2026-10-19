@@ -79,7 +79,7 @@ jobs:
     needs: prepare
     uses: ./.github/workflows/desktop.yml
     with:
-      release_id: ${{ needs.prepare.outputs.release_id }}
+      tag: ${{ needs.prepare.outputs.tag }}
     secrets: inherit
 
   publish:
@@ -89,15 +89,39 @@ jobs:
     # platform failed (its installer is simply missing from the release).
     if: ${{ !cancelled() && needs.server.result == 'success' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v4
       - name: Checksums and installer
         run: |
           mkdir -p assets && cd assets
-          gh release download "$TAG" --pattern 'amiro-server-*.tar.gz'
-          sha256sum amiro-server-*.tar.gz > SHA256SUMS
+          gh release download "$TAG" --pattern 'amiro-*'
           cp ../install.sh install.sh
+          sha256sum amiro-* install.sh > SHA256SUMS
+          cat SHA256SUMS
           gh release upload "$TAG" SHA256SUMS install.sh --clobber
+      - name: Build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            assets/amiro-*
+            assets/install.sh
+            assets/SHA256SUMS
+      - name: Release notes
+        run: |
+          sed -e "s#__REPO__#$GITHUB_REPOSITORY#g" -e "s#__TAG__#$TAG#g" .github/release/notes.md > notes.md
+          prev=$(gh release list --exclude-drafts --limit 20 --json tagName --jq '.[].tagName' | grep -vx "$TAG" | head -1 || true)
+          {
+            echo
+            echo "## What's changed"
+            echo
+            gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$TAG" ${prev:+-f previous_tag_name="$prev"} --jq .body \
+              | sed '/^## What.s Changed/d'
+          } >> notes.md
+          gh release edit "$TAG" --notes-file notes.md
       - name: Publish
         run: |
           flags=(--draft=false)
@@ -106,9 +130,6 @@ jobs:
           {
             echo "### Amiro $TAG"
             echo
-            echo '```bash'
-            echo "curl -fsSL https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/install.sh | bash"
-            echo '```'
             echo "Release: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
             echo
             echo "| Part | Result |"

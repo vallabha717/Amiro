@@ -18,7 +18,13 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": [
+      "app",
+      "dmg",
+      "nsis",
+      "appimage",
+      "deb"
+    ],
     "externalBin": [
       "binaries/backend",
       "binaries/runtime"
