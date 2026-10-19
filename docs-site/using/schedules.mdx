@@ -1,0 +1,48 @@
+---
+title: "Schedules"
+description: "Put a prompt on a timer: once, on a cron pattern, or on an interval, with your results landing in a conversation."
+---
+
+Schedules run a saved prompt for you on a timer. Each schedule fires in its own timezone and records every firing in a run history you can inspect.
+
+## The three timing options
+
+- **Once**: runs a single time at a date and time you pick.
+- **Cron**: repeats on a cron pattern, for example weekday mornings.
+- **Interval**: repeats every so many minutes, hours, or days.
+
+## What happens when it fires
+
+- **Notify** posts the result as a message in the schedule's conversation, with no model call.
+- **Execute** runs a real agent turn with tools forced off and the model pinned server side. Describe a self contained task such as writing three focus lines for the day.
+
+A schedule that fires while paused stays quiet. Running it manually still works while paused and is recorded in history like any other run.
+
+## Creating a schedule
+
+<Steps>
+  <Step title="Open Schedules">
+    Go to Schedules from the sidebar.
+  </Step>
+  <Step title="Write the prompt">
+    Give it a name and write the prompt the way you would type it in chat.
+  </Step>
+  <Step title="Pick timing and timezone">
+    Choose once, cron, or interval, and set the timezone the wall time belongs to. Use Preview to confirm the upcoming runs before saving.
+  </Step>
+  <Step title="Save and watch the first run">
+    Save, then check the schedule's conversation and run history after the first firing.
+  </Step>
+</Steps>
+
+## Managing schedules
+
+Pause a schedule to stop its timer without deleting it. Resume to start it again. Run now fires it immediately, including while paused, and running a once schedule manually consumes it so the timer never fires it twice. Deleting a schedule keeps its past run history on disk even though the schedule itself is gone.
+
+## Times that do not exist
+
+A wall time that never happens, such as 2:30 on a spring forward day, or one that happens twice on a fall back day, is rejected with an error instead of being silently shifted. Pick a nearby time that exists exactly once.
+
+<Note>
+Schedules are the replacement for manual background runs. If you used to ask the agent to check something later by hand, make it a schedule instead.
+</Note>

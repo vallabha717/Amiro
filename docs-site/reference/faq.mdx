@@ -1,0 +1,98 @@
+---
+title: "FAQ"
+description: "Short answers to the questions people ask most about Amiro."
+---
+
+<AccordionGroup>
+<Accordion title="What is Amiro?">
+A personal AI agent you run yourself, on your own computer or your own server.
+It has a chat, a memory, schedules, and a workspace it can work in. It is
+self-hostable, which means your conversations and files stay on a machine you
+control.
+</Accordion>
+
+<Accordion title="Do I need my own API key?">
+Yes, for most providers. Amiro does not include a model. You connect a provider
+by pasting an API key, or by signing in through the provider's own OAuth flow.
+Some local endpoints connect with just an address.
+</Accordion>
+
+<Accordion title="Is Amiro free?">
+Amiro itself is free and open source. You pay your model provider for usage
+directly, at their rates. Amiro does not add a fee or a subscription.
+</Accordion>
+
+<Accordion title="Where does my data live?">
+Under your Amiro data directory, which is `~/.amiro` by default. That includes
+your account, threads, agent memory, schedules, connected credentials, and the
+agent's workspace. On a server install the data is on the server.
+</Accordion>
+
+<Accordion title="Can other people use my Amiro?">
+Amiro is built for one person: the owner. The first account you create is the
+only account, and there is no sign-up. If others can reach it, treat them as the
+owner.
+</Accordion>
+
+<Accordion title="How do I connect a provider?">
+Go to **Admin → Providers**, or type `/login` in the chat composer. Pick a
+provider and paste an API key, or complete the browser or device-code step. See
+[Connecting a provider](/settings/providers).
+</Accordion>
+
+<Accordion title="Why can I not chat yet?">
+No provider is connected by default. Connect at least one provider, then pick
+one of its models in the composer's model selector. Until then there is no model
+to answer.
+</Accordion>
+
+<Accordion title="Which models can I use?">
+Any model from a provider you have connected. The model selector lists them and
+namespaces each as `provider:model`. The owner can also set a default model or
+restrict the list.
+</Accordion>
+
+<Accordion title="How do I change my password?">
+Open your profile menu, choose **Settings**, then **Account**, and update it. If
+you have forgotten the password, reset it on the machine running Amiro with
+`amiro reset-password` (packaged install) or `amiro-backend reset-password`
+(source checkout).
+</Accordion>
+
+<Accordion title="What is the difference between notify and execute schedules?">
+**Notify** sends you a message in a thread when the schedule fires. **Execute**
+has the agent run a turn for you, with tools disabled and the model pinned to
+what the schedule saved. See [A tour of Amiro](/settings/overview-tour) for
+where schedules live.
+</Accordion>
+
+<Accordion title="Can the agent read my files or run commands?">
+Yes, by default. Tools are on, and the agent works in its workspace with your
+permissions. Amiro is meant to run inside a VM or sandbox; that sandbox is the
+safety boundary. Set `AMIRO_TOOL_PROFILE=none` if you want chat without tools.
+</Accordion>
+
+<Accordion title="Desktop app or server, which should I use?">
+Use the desktop app if you want everything on your own computer with nothing to
+configure. Use a server or VM if you want Amiro reachable from other devices and
+online all the time.
+</Accordion>
+
+<Accordion title="How do I update Amiro?">
+For a server install, run `amiro update`, or re-run the install command to move
+to the latest release. For the desktop app, install the new version over the old
+one.
+</Accordion>
+
+<Accordion title="Does Amiro send my data anywhere?">
+Model requests go to the provider you connected, because that is what runs the
+model. Beyond that, Amiro does not forward your usage to a third party: upstream
+telemetry and update beacons are off by default.
+</Accordion>
+
+<Accordion title="How do I back up or move my Amiro data?">
+Copy your Amiro data directory (default `~/.amiro`) to the new machine and point
+Amiro at it with `AMIRO_HOME`. Everything that matters, including your account,
+threads, and credentials, lives there.
+</Accordion>
+</AccordionGroup>

@@ -1,0 +1,71 @@
+---
+title: "Memory"
+description: "See what the agent remembers, read it as a map or cards, and ask the agent to remember something."
+---
+
+Amiro shows the agent's own memory graphs. This page is a window into the runtime's memory, not a second memory store.
+
+<Warning>
+Memory is an owner-only view. You need the admin (owner) account to open it, and the view is read-only. There is no create, reinforce, or forget action on this page.
+</Warning>
+
+## Open Memory
+
+Go to `/agent/memory` from the Agent hub, or click **Memory** in the sidebar under Agent.
+
+The view opens on the **Map**, with **Cards** available as a toggle on desktop and mobile.
+
+## Map view
+
+The map shows readable memory previews grouped by their real category, with headings that explain what each category means.
+
+- **Pan** by dragging, **zoom** and **fit** to frame the graph.
+- **Select** a memory to open its detail.
+- **Neighborhood focus** highlights the selected memory's neighbors.
+- The map starts with 20 category-balanced previews and expands to 60 for a large collection.
+- Solid lines are real runtime links. Shared-tag relationships are drawn differently and labeled as tag matches. Category grouping alone does not imply a relationship.
+- A **How to read this map** disclosure explains the visual language.
+
+## Cards view
+
+Cards is a plain, responsive grid that gives the memory text more room.
+
+- Each card shows the memory text, category, scope, relative update time, a superseded marker, tags, and relationship counts.
+- **Show 24 more** pages through the results, 24 memories at a time.
+- A live count reports how many memories match the current search and filters.
+
+## Search and filters
+
+Search and filters apply to both views:
+
+- Free-text **search**.
+- **Scope** filter (global or project).
+- **Category** filter.
+- **Recency** filter.
+
+A no-match state offers a clear reset for the search and filters.
+
+## Read one memory
+
+Selecting a memory opens a dialog named **Memory detail**. It shows:
+
+- The memory content.
+- Category, scope, and tags.
+- Created and updated times.
+- Linked memories.
+
+Trust, confidence, strength, reinforcement count, recall count, source session, memory id, and the scope path sit behind a **Technical details** disclosure. The main view stays readable without them.
+
+## What memory stores
+
+Memory holds durable facts the agent learned across conversations, such as facts, preferences, entities, and corrections. Records that were replaced show as superseded. Global memory applies everywhere. Project memory applies to the project folder it belongs to.
+
+<Note>
+Native memory is written by the runtime itself. This page only reads it. To change what the agent remembers, talk to it in chat and ask it to remember, update, or drop something. Its memory tools are the supported way to manage this data.
+</Note>
+
+## Related
+
+- [Chatting with Amiro](/using/chatting)
+- [Workspace and files](/using/workspace-files)
+- [Personalizing your agent](/using/personalizing-your-agent)

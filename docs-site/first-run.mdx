@@ -1,0 +1,177 @@
+---
+title: "First run"
+description: "From install to your first chat: choose desktop or server, open Amiro, create the owner account, connect a provider, and start talking."
+---
+
+This walkthrough takes you from nothing to your first conversation in a few
+minutes. Amiro sets itself up the first time you open it. There is no default
+password and no sign-up: the first account you create is the owner, and it is
+the only account. You can skip steps and finish them later.
+
+## Step 1: Install and open Amiro
+
+Choose the shape that fits you.
+
+<Tabs>
+<Tab title="Desktop app">
+Download and open the Amiro desktop app for your platform. It runs everything
+on your own computer and needs nothing else installed.
+
+When it opens, it starts its own copy of the app on a private local address, so
+you do not have to think about ports or servers.
+</Tab>
+<Tab title="On a server or VM">
+Install the server on Linux or macOS with one command:
+
+```bash
+curl -fsSL https://github.com/vallabha717/Amiro/releases/latest/download/install.sh | bash
+```
+
+To reach it from other machines on your network, add `--public`:
+
+```bash
+curl -fsSL https://github.com/vallabha717/Amiro/releases/latest/download/install.sh | bash -s -- --public
+```
+
+The installer downloads the right build for your operating system and CPU,
+checks it, sets it up under `~/.amiro`, writes a starter `amiro.toml`, and starts
+the server. It prints the address to open, so use that rather than guessing a
+port. Afterwards, `amiro status`, `amiro start`, and `amiro restart` manage it,
+and `amiro help` lists the rest.
+</Tab>
+</Tabs>
+
+<Note>
+On a network-reachable install, put TLS and a network boundary in front of Amiro
+before treating it as public. The owner sign-in protects the API, but plain HTTP
+on an open network is not enough.
+</Note>
+
+## Step 2: Create the owner account
+
+On a fresh install you land on the setup wizard. Work through the steps in
+order.
+
+<Steps>
+<Step title="Welcome">
+Amiro briefly says where it is running: on this computer, or on your server.
+</Step>
+<Step title="You">
+Enter your name, a login (an email address or a username), a password, and your
+timezone. The browser suggests a timezone; change it if it is wrong. This
+creates the owner account.
+
+Your password must be at least 12 characters and include a letter plus at least
+one number or symbol.
+
+<Warning>
+This is the only required step, and there is no password recovery by email.
+Store the password somewhere safe. If you lose it, reset it on the machine
+running Amiro (see below).
+</Warning>
+</Step>
+<Step title="Your agent">
+Give your agent a name and pick an avatar and color. The mascot updates as you
+choose. You can skip this and change everything later in **Agent → Customize**.
+</Step>
+<Step title="Brain">
+Connect your first model provider. The wizard offers the common single-key
+choices first: Anthropic, OpenAI, OpenRouter, and Google Gemini. You can also
+open the full list for OAuth sign-ins and local endpoints.
+
+You can skip this and connect a provider later, but you cannot chat until at
+least one provider is connected and its models are listed.
+</Step>
+<Step title="Ready">
+A checklist of what is done. Each skipped step says where to finish it.
+</Step>
+</Steps>
+
+## Step 3: Find a skipped step later
+
+Skipped steps stay reachable:
+
+- The sidebar shows a **Finish setting up** card that links straight to the
+  missing step. It disappears once the step is done, or when you dismiss it.
+- To run the whole wizard again, go to **Admin → General → Setup → Run setup
+  again**.
+
+## Step 4: Sign in from then on
+
+Once the owner exists, Amiro shows a sign-in page. Your login can be an email or
+a username, matched case-insensitively. See
+[Your account](/settings/account) for changing your email or password and for
+what single-owner means.
+
+## If you forget the password
+
+Amiro has no email recovery because it runs on your machine. Reset it on the
+machine running Amiro:
+
+```bash
+amiro reset-password                  # packaged server install (install.sh)
+amiro-backend reset-password          # from a source checkout; asks twice
+amiro-backend reset-password --login you@example.com   # also change the login
+```
+
+This signs out every session, so sign in again afterwards. In the desktop app,
+the backend binary sits next to the app:
+
+| OS | Command |
+| --- | --- |
+| macOS | `/Applications/Amiro.app/Contents/MacOS/backend reset-password` |
+| Windows | `"C:\Program Files\Amiro\backend.exe" reset-password` |
+| Linux (deb/rpm) | `/usr/bin/backend reset-password` |
+
+## Setting up from files instead
+
+Everything the wizard asks for also comes from files, which is how scripted or
+headless installs are provisioned. Precedence is: environment variables, then
+`.env` files, then `amiro.toml`. A file never overrides a variable that is
+already set. To get a commented starter file:
+
+```bash
+amiro-backend init-config
+```
+
+This writes `~/.amiro/amiro.toml`. The main sections are `[server]` (host, port,
+token), `[owner]` (email, password or password file, name, timezone), `[agent]`
+(name, avatar, color), and `[providers]` (API keys). Prefer `password_file` over
+`password`, so the secret is not sitting in the config file itself.
+
+For a headless first start you can also export the owner before starting Amiro:
+
+```bash
+export AMIRO_OWNER_EMAIL=owner@example.com
+export AMIRO_OWNER_PASSWORD='a-long-owner-password'
+# or: export AMIRO_OWNER_PASSWORD_FILE=/run/secrets/amiro-owner-password
+```
+
+## Step 5: Send your first message
+
+Go to **Chat** and type something. Try one of these:
+
+- "Summarize the main points of this article: " followed by a link.
+- "Make a list of 5 ideas for a weekend project."
+- "What's on my schedule this week?" if you have added schedules.
+
+If tools are enabled (the default), your agent can also read and edit files and
+run commands in its workspace, so it is worth knowing that Amiro is meant to run
+inside a VM or sandbox.
+
+## Next steps
+
+<CardGroup cols={2}>
+<Card title="Name and look" href="/settings/overview-tour">
+Give your agent a name, avatar, and color in Agent → Customize.
+</Card>
+<Card title="Connect more providers" href="/settings/providers">
+Add subscriptions, local models, and API-key providers.
+</Card>
+<Card title="Tour the app" href="/settings/overview-tour">
+See where every setting lives.
+</Card>
+<Card title="Fixes" href="/settings/troubleshooting">
+Plain-language answers if something does not work.
+</Card>
+</CardGroup>

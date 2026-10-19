@@ -1,0 +1,97 @@
+---
+title: "Troubleshooting"
+description: "Plain-language fixes for the most common Amiro problems: signing in, providers, voice, schedules, workspace folders, and the daemon or port."
+---
+
+Start here when something is not working. Each answer says what to check and
+what usually fixes it, without jargon.
+
+<AccordionGroup>
+<Accordion title="I cannot sign in">
+- Make sure you are using the **owner's** email and password. The first account
+  created is the owner; there are no other accounts.
+- If you tried several times and nothing happens, you may have hit the sign-in
+  rate limit: after 15 tries in 15 minutes, attempts pause for a while. Wait a
+  few minutes and try once more.
+- If you forgot the password, reset it from the machine running Amiro with
+  `amiro-backend reset-password`. It reads the new password from standard input
+  and signs you out everywhere, so sign in again afterwards.
+- If the page will not load at all, the app may not be running. See the daemon
+  and port item below.
+</Accordion>
+
+<Accordion title="My provider will not connect">
+- Check that the key you pasted is complete and has not been truncated. Most
+  providers start their keys with a recognizable prefix (for example `sk-`).
+- If the provider uses OAuth or a device code, make sure you finished the
+  browser step. Starting the login is not the same as approving it.
+- For a local endpoint, confirm the address is reachable from the machine
+  running Amiro and that the model server is actually listening.
+- A provider that is already connected may just need its key replaced: remove
+  its credentials and connect again.
+- If a turn fails with a message from the provider about limits or quota, the
+  provider itself is refusing. That is not an Amiro problem; check your usage on
+  the provider's site.
+</Accordion>
+
+<Accordion title="Voice is not working">
+- Voice needs a provider that supports speech, a working microphone, and a
+  browser that allows microphone access.
+- Check **Admin → Voice** to confirm a speech-to-text or text-to-speech
+  provider is configured.
+- When your browser asks for microphone permission, allow it. If you dismissed
+  the prompt, re-enable it in your browser's site settings for Amiro.
+- On a server install over plain HTTP, browsers often block the microphone.
+  Voice is most reliable on the desktop app or over HTTPS.
+</Accordion>
+
+<Accordion title="A schedule did not fire">
+- Open the schedule and confirm it is enabled and its timezone is what you
+  expect. A schedule that looks right in your head can be off by hours if its
+  timezone is wrong.
+- Check the time you picked against the schedule's timezone. Times that fall in
+  a daylight-saving gap are rejected when you save, so a valid-looking save
+  should fire.
+- Look at the schedule's run history. If it shows a recent run, the task ran;
+  check the thread it reported into.
+- If the app was not running at the scheduled moment, a one-off schedule will
+  not have fired. Amiro only runs schedules while the server is up.
+- Only one copy of Amiro ticks schedules at a time, so having two servers
+  pointed at the same data is not a workaround.
+</Accordion>
+
+<Accordion title="My workspace folder is missing or I cannot pick a folder">
+- Folder picking browses the machine that runs Amiro, not your local computer.
+  On a server install, the folders you see are the server's.
+- Some locations are intentionally hidden for safety, including SSH keys and
+  other secret directories. If a folder is not listed, it is likely protected.
+- If the agent complains that its working directory does not match, the folder
+  it started in changed. Start a new chat in the folder you want, or pick the
+  folder again.
+</Accordion>
+
+<Accordion title="The app will not load, or the port seems wrong">
+- Confirm Amiro is running. On a server install, `scripts/amiro-server.sh
+  status` prints whether the process is up, whether something is listening on
+  the port, and whether a system service is installed. `scripts/amiro-server.sh
+  urls` prints every address the UI answers on.
+- Two defaults cause confusion: the desktop app picks a fresh loopback port on
+  every launch, so its address changes each time, while a server install listens
+  on a fixed port (commonly 3000, or 8787 in a development checkout). Use the
+  URL the install or `urls` command prints rather than typing a port from
+  memory.
+- If a port is already in use, another program (or a second Amiro) has it.
+  Stop the other program or start Amiro on a different port.
+- If you reach Amiro through a reverse proxy and get an "origin not allowed"
+  message, the proxy's public address needs to be allowed for the instance. On a
+  VM, TLS and a network boundary belong in front of Amiro.
+- After updating the UI, hard-refresh the browser so you are not loading a
+  cached page.
+</Accordion>
+</AccordionGroup>
+
+<Note>
+If none of these help, restart Amiro and try again, then check the log the
+server prints. Most failures name the thing that went wrong, such as a provider
+refusing a request or the runtime not being reachable yet.
+</Note>

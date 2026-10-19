@@ -1,0 +1,106 @@
+---
+title: "API overview"
+description: "How to call the Amiro backend directly: base URL, bearer token, the single-owner model, the SSE streaming convention, and the shared error shape."
+---
+
+This page is for power users who want to automate Amiro from a script. Everything
+in the app has a normal UI path, and that is the path most people should take.
+The API is optional, and it is the same API the UI itself calls.
+
+<Note>
+If you are here to get something done rather than to script it, start with the
+task guides instead: [Chatting](/using/chatting),
+[Threads and history](/using/threads-and-history),
+[Schedules](/using/schedules), [Voice](/using/voice), and
+[Workspace files](/using/workspace-files).
+</Note>
+
+## Base URL
+
+The backend serves the UI and the API on one listener.
+
+- Default: `http://127.0.0.1:8787`
+- Override the port with `AMIRO_PORT`, the bind address with `AMIRO_HOST`.
+
+Unknown API paths answer as JSON, `{"error":"not found"}`, never as the UI shell.
+Source: `backend/src/main.rs`.
+
+## Sign in and send the token
+
+Two auth layers exist. Handle them in this order.
+
+1. **Sidecar secret.** When `AMIRO_TOKEN` is set, every `/api` request must
+   carry it as `X-Amiro-Token` (or `?token=`). The desktop shell and any
+   proxied deployment inject this for you. If `AMIRO_TOKEN` is empty, this
+   layer is skipped and the app is meant for local use only.
+2. **Bearer session.** First-run creates the single owner:
+
+```bash
+curl -X POST http://127.0.0.1:8787/api/auth/setup \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"owner@example.test","password":"correct-horse-battery"}'
+```
+
+The response is `{ "user": {...}, "token": "<bearer>" }`. Later sign-ins use
+`POST /api/auth/login` with `{ "email", "password" }` and the same response
+shape. Send the token on every subsequent call:
+
+```
+Authorization: Bearer <token>
+```
+
+`GET /api/auth/session` returns the current user. `POST /api/auth/logout`
+revokes the token. A `?bearer=` query parameter is accepted as a fallback.
+Sessions expire after 7 days by default (`AMIRO_SESSION_TTL_DAYS`).
+Source: `backend/src/auth.rs`.
+
+<Warning>
+`POST /api/auth/login` allows 15 attempts per identifier per 15 minutes.
+Further attempts return `429` with `too many login attempts, try again in 15
+minutes`.
+</Warning>
+
+## Single-owner model
+
+Amiro has exactly one owner account, created once. There is no sign-up and no
+second owner. The owner carries the `admin` role, and endpoints that change
+instance-wide state (providers, credentials, workspace writes, memory reads)
+require that role. Everyone else gets `403` with `admin required`.
+Source: `backend/src/auth.rs`, `backend/src/state.rs`.
+
+## Streaming convention
+
+Chat endpoints stream Server-Sent Events:
+
+- `Content-Type: text/event-stream`
+- Header `x-vercel-ai-ui-message-stream: v1`
+- Frames are `data: <json chunk>` plus a final `data: [DONE]`
+- A `keepalive` comment every 15 seconds
+
+The chunk types are the standard UI message stream ones: `start`, `start-step`,
+`text-start`, `text-delta`, `text-end`, `reasoning-start/delta/end`,
+`tool-input-start/delta/available`, `tool-output-available/error`, `finish-step`,
+`finish` (with `messageMetadata`), and `error` with `errorText`.
+Source: `backend/src/chat.rs`.
+
+## Error shape
+
+Every error is JSON with a single `error` string and a matching status code:
+
+```json
+{ "error": "thread not found" }
+```
+
+Common codes: `400` bad input, `401` not signed in, `403` admin required,
+`404` missing or not owned, `409` conflict, `429` rate limited, `501` not
+supported on this backend, `502` upstream runtime failure.
+Source: `backend/src/state.rs`.
+
+## About the adapter harness
+
+`adapter/` is a retired Node compatibility harness kept only to run contract
+tests (`node --test adapter/test/*.test.mjs`). The production backend is the
+native Rust service in `backend/`. Paths can differ from the harness, so if you
+find an endpoint documented elsewhere that is not in these pages, treat the
+native router as the source of truth. Sources: `backend/src/routes.rs`,
+`docs/_adapter-contract.md`.

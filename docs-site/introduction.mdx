@@ -1,0 +1,86 @@
+---
+title: "Introduction"
+description: "What Amiro is, what you can do with it, and how to get started in a few minutes."
+---
+
+Amiro is a personal-intelligence chat app that you run yourself, on your own
+computer or your own server. It is a chat product first: you talk to an agent,
+it remembers how you like to work, it can use tools, and it can act on a
+schedule. It ships as a desktop app and as a self-hosted web app, and your data
+stays in your own home directory.
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Install Amiro and send your first message in about five minutes.
+  </Card>
+  <Card title="Installation" icon="download" href="/installation">
+    Server, VM, desktop app, WSL2, and headless install paths.
+  </Card>
+  <Card title="First run" icon="wand-magic-sparkles" href="/first-run">
+    The setup wizard: your account, your agent, your first provider.
+  </Card>
+  <Card title="Using Amiro" icon="comments" href="/using/chatting">
+    Chat, threads, memory, voice, schedules, files, and settings.
+  </Card>
+</CardGroup>
+
+## What you can do
+
+- **Chat with models you choose.** Connect providers you already use, then pick
+  a model per chat. Responses stream as they are written.
+- **Give the agent a personality.** Set a name, a tagline, a look, and five
+  persona sliders.
+- **Let it remember.** Amiro keeps a memory the agent can read, and a set of
+  home files that load into every turn.
+- **Talk instead of type.** Dictate with a microphone, have replies read aloud,
+  or open live voice mode for a hands-free conversation.
+- **Put work on a timer.** Schedules run a saved prompt once, on a cron
+  expression, or every N minutes, each in its own timezone.
+- **Work with files.** Pick a workspace folder, browse it, preview files, and
+  let the agent read and edit inside allowed roots.
+- **Connect your tools.** Composio connectors and MCP servers extend what the
+  agent can reach.
+- **Keep secrets safe.** Provider keys and other secrets live in an encrypted
+  vault, and the agent never sees the raw values in its prompt.
+
+## What runs where
+
+Amiro is one product built from four parts in one repository. You do not need
+to know this to use it, but it explains why a running Amiro needs no Node.js.
+
+| Part | Path | What it does |
+|---|---|---|
+| Web UI | `src/` | The Next.js app, statically exported so the backend serves it with no Node runtime |
+| Backend | `backend/` | The `amiro-backend` service; it serves the UI and the API from one address |
+| Runtime | `runtime/` | The `amiro-runtime` agent engine; it runs models, sessions, tools, and provider routing |
+| Desktop shell | `src-tauri/` | The Tauri app that starts the backend and runtime for you on launch |
+
+<Note>
+Node.js is only needed to build and test the frontend. A shipped or installed
+Amiro runs without it.
+</Note>
+
+## Status
+
+Amiro is a working local and single-operator deployment, not a hardened
+multi-tenant service. Provider credentials are shared operator credentials, and
+tools run with the owner's permissions by default. Run Amiro inside a VM or
+sandbox and keep it bound to loopback unless you have put TLS and a real network
+boundary in front of it.
+
+<Warning>
+Before you expose Amiro to anyone but yourself, read
+[Settings and the security model](/settings/overview-tour). The restrictions are
+enforced by Amiro's own code, not by the operating system.
+</Warning>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Install Amiro" icon="download" href="/installation">
+    Pick the path for your machine: server, VM, desktop, or WSL2.
+  </Card>
+  <Card title="Send a first message" icon="paper-plane" href="/quickstart">
+    The shortest path from install to a reply.
+  </Card>
+</CardGroup>

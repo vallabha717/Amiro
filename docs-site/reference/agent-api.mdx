@@ -1,0 +1,112 @@
+---
+title: "Agent API"
+description: "Script your agent: read and update identity and personality, read memory, inspect the workspace, and manage skills."
+---
+
+These endpoints let you tune and inspect your agent without opening the UI. The
+everyday versions live in [Personalizing your agent](/using/personalizing-your-agent),
+[Skills](/using/skills-superpowers), [Memory](/using/memory), and
+[Workspace files](/using/workspace-files).
+
+## Identity
+
+`GET /api/agent/identity` returns your agent's identity: `name`, `handle`,
+`tagline`, `traits`, `accentHex`, `customImageUrl`, `sliders`,
+`personalitySummary`, `updatedAt`, and a `fingerprint`. Admins also get
+`memoryStats`.
+
+`PUT /api/agent/identity` updates it. Any subset of `name`, `handle`, `tagline`,
+`traits`, `accentHex`, `sliders`, and `customImageUrl` is accepted. Two rules
+matter:
+
+- `handle` must be `@` plus alphanumerics, 1 to 32 characters.
+- `customImageUrl` must be a `data:image/(png|jpeg|webp);base64,...` URL, decoded
+  to 2 MB or less. No `http` URLs and no SVG.
+
+The response is the updated identity with a new `fingerprint`. Updates are
+per-user and also sync the persona files into the workspace.
+Source: `backend/src/agent.rs`.
+
+## Personality
+
+`GET /api/agent/personality` returns the five `sliders`, `personalitySummary`,
+`accentHex`, `traits`, `name`, `updatedAt`, and `fingerprint`.
+
+`PUT /api/agent/personality` updates the sliders. Send either
+`{ "sliders": {...} }` or a bare slider object, and optionally `name`. Runtime
+global memory is never touched here.
+Source: `backend/src/agent.rs`.
+
+## Memory (read only)
+
+`GET /api/agent/memory` returns the memory graph with `readOnly: true` and an
+explanatory `message`. Admin only.
+
+The mutation routes exist but always answer `501`:
+
+- `POST /api/agent/memory`
+- `POST /api/agent/memory/{id}/reinforce`
+- `DELETE /api/agent/memory/{id}`
+
+Memory writes belong to the runtime. Source: `backend/src/agent.rs`.
+
+## Workspace browser
+
+The agent workspace is read-only through the API. `GET /api/agent/workspace`
+accepts `root` and `path` query parameters. The available roots are:
+
+| `root` | Contents |
+| --- | --- |
+| `runtime` | Runtime files (read-only) |
+| `amiro` | Your persona files: IDENTITY, SOUL, and prompt overlay (read-only) |
+| `project` | Files in the current project (read-only) |
+
+The response has `roots`, `activeRoot`, `currentPath`, `entries` (each with
+`name`, `path`, `kind`, `size`, `updatedAt`, `ext`), and `readOnly: true`.
+
+`GET /api/agent/workspace/file` with `root` and `path` returns one file with
+`content`, `language`, `writable`, and `truncated`. Secrets in TOML config are
+redacted on the way out. `PUT /api/agent/workspace/file` answers `501`, edit
+persona through the identity endpoint instead.
+
+Both routes are admin-gated and allowlisted, and paths are resolved and contained
+so escapes are rejected. Sources: `backend/src/agent.rs`,
+`backend/src/routes/agent_workspace.rs`.
+
+## Read and write the working workspace
+
+The chat working directory uses a different, writable API:
+
+- `GET /api/workspace/tree` with `path` and optional `showHidden=1` lists a
+  directory.
+- `GET /api/workspace/file` returns a file, `GET /api/workspace/file/raw`
+  streams the raw bytes with a safe `Content-Disposition`.
+- `GET /api/workspace/agent-files` returns IDENTITY.md and SOUL.md.
+- `POST /api/workspace/write`, `POST /api/workspace/mkdir`,
+  `POST /api/workspace/rename`, and `POST /api/workspace/delete` change it.
+
+Reads need a session, writes need the admin role. Paths are relative, normalized,
+and contained in the workspace, so `..`, hidden names, and sensitive names such
+as `.env` are refused. Source: `backend/src/routes/agent_workspace.rs`.
+
+## Skills
+
+- `GET /api/skills` lists your skills and bundled ones with `diagnostics`, and
+  accepts `?project=` to include a project directory.
+- `POST /api/skills` creates one from `{ name, description, body, resources }`.
+  Names must be lowercase letters, digits, and single hyphens, up to 64
+  characters.
+- `GET`, `PUT`, and `DELETE /api/skills/items/{name}` read, update, and remove a
+  skill.
+- `POST /api/skills/items/{name}/duplicate` copies a skill.
+- `POST /api/skills/generate` answers `501`, model-drafted skills are not
+  enabled in this deployment.
+
+Source: `backend/src/routes/skills.rs`.
+
+## Agent home and heartbeat
+
+`GET /api/agent-home` returns the agent-home file list (IDENTITY, SOUL, USER,
+NOW, HEARTBEAT, BOOTSTRAP), the journal count, and heartbeat state. Heartbeat
+controls are covered in the [Schedules API](/reference/schedules-api).
+Source: `backend/src/heartbeat.rs`.

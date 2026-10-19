@@ -1,0 +1,67 @@
+---
+title: "Workspace and files"
+description: "Browse the agent's files, read its home files, download results, and point chats at one of your project folders."
+---
+
+The agent keeps its own working folder. It is where chats run by default, where the agent saves notes and files, and where its identity files live. The Workspace page at `/agent/workspace` is the file browser for it.
+
+## Browse the workspace
+
+Open **Workspace** from the Agent hub, or go to `/agent/workspace`.
+
+The page has two panes:
+
+- **Left**: the folder tree, with search, sort by name or size, and a toggle for hidden files.
+- **Right**: the file viewer, with **formatted** and **source** views where both apply, plus a download action.
+
+An admin (owner) account also gets file actions in the tree: **New file**, **New folder**, **Rename**, and **Delete**. A non-admin sees the same files with those actions disabled.
+
+<Note>
+Hidden files are shown only when you turn the toggle on, and hidden names are never writable. Some names are never listed or readable at all, including environment files, key and PEM files, socket files, `users.json`, `credentials.json`, `sessions.json`, and private tool directories.
+</Note>
+
+## Download and upload
+
+- **Download** a file from the viewer. Images and binary files are fetched as bytes and saved to your machine.
+- **Upload** a file by pasting or dropping it into the chat composer. The agent gets the file for the turn, and Amiro also copies it into the workspace `attachments/` folder, named with the date, so you can find it later in the browser.
+
+## The Agent home bar
+
+Above the browser is the **Agent home** bar. It opens each home file directly and holds the heartbeat controls. These files load into the agent on every turn, so they are the clearest way to see who your agent is and what it knows right now.
+
+| File | What it is |
+| --- | --- |
+| `IDENTITY.md` | The agent's name, tagline, and personality in plain language. Managed by the Personality page, shown here read-only. |
+| `SOUL.md` | How the agent works: its core truths, boundaries, and what it has learned about working with you. |
+| `USER.md` | A one-page profile of you, lasting facts only. |
+| `NOW.md` | A present-tense scratchpad of current focus and open threads. Rewritten as things change. |
+| `HEARTBEAT.md` | The checklist the background heartbeat runs. |
+| `BOOTSTRAP.md` | The plan for your first conversation. It exists only on a fresh install, and the agent deletes it when the first chat winds down. |
+| `journal/` | Dated, append-only entries the agent writes. |
+
+The bar also opens the heartbeat panel, where you can turn the heartbeat on or off, change its interval, see the last and next run, and run it now. If the heartbeat has a note for you, it lands in a **Heartbeat** thread marked unread. A heartbeat that has nothing to say leaves no trace.
+
+## Notes for your agent
+
+Lines in a home file that start with `_ ` are notes for the agent. The runtime strips them from the prompt, and the Workspace formatted view shows them in a **Notes for your agent** callout. Select **Source** to see them as written.
+
+## Point a chat at your own folder
+
+The composer's folder control defaults to **Workspace**, the agent's own folder. To work in one of your projects:
+
+1. Click the folder control and choose **Choose a folder**.
+2. Browse the server folders (the browser works without a native OS dialog) and click **Use this folder**.
+3. The chosen folder becomes the working directory for the chat, and it is remembered in your recent folders.
+4. Clear the selection to return to the agent's own Workspace.
+
+The agent home files load either way. Changing the folder on an existing thread keeps the thread and its history but starts a fresh session pinned to the new folder.
+
+<Warning>
+The workspace stores files. It is not a credential store and it never exposes secret values. Engine configuration such as `config.toml` is readable but has credential-bearing values masked before it leaves the server. Credential files and session logs are not exposed at all.
+</Warning>
+
+## Related
+
+- [Memory](/using/memory)
+- [Personalizing your agent](/using/personalizing-your-agent)
+- [Chatting with Amiro](/using/chatting)

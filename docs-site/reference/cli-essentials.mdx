@@ -1,0 +1,121 @@
+---
+title: "Command line essentials"
+description: "The everyday commands: install options, start, stop, status, and the addresses Amiro answers on."
+---
+
+Most people run Amiro entirely from the app. These are the commands you might
+actually reach for: installing on a server, and starting, stopping, or checking
+it.
+
+## Installing on a server
+
+The install command downloads the right build for your operating system and
+CPU, verifies it, sets Amiro up under `~/.amiro`, and starts it.
+
+```bash
+curl -fsSL https://github.com/vallabha717/Amiro/releases/latest/download/install.sh | bash
+```
+
+Options come after `bash -s --`. Each one also has an environment variable.
+
+| Option | Environment variable | What it does |
+| --- | --- | --- |
+| `--version vX.Y.Z` | `AMIRO_VERSION` | Install a specific release instead of the latest |
+| `--public` | | Listen on all interfaces, for a VM you reach over the network |
+| `--port N` | | Port for the web UI (default 3000) |
+| `--host H` | | Bind a specific host |
+| `--service` | | Start at boot (systemd user service or launchd) |
+| `--no-start` | `AMIRO_NO_START=1` | Install only; do not start |
+| `--home DIR` | `AMIRO_HOME` | Data and app directory (default `~/.amiro`) |
+
+A few examples:
+
+```bash
+# A VM reachable on your network that survives reboots
+curl -fsSL https://github.com/vallabha717/Amiro/releases/latest/download/install.sh | bash -s -- --public --service
+
+# Install only, with a custom data directory
+curl -fsSL https://github.com/vallabha717/Amiro/releases/latest/download/install.sh | bash -s -- --no-start --home /srv/amiro
+```
+
+<Note>
+Nothing needs root unless you ask for a system-wide service. On Windows, use the
+desktop app or WSL2; the server installer targets Linux and macOS.
+</Note>
+
+## Managing a packaged server install
+
+After installing with `install.sh`, the `amiro` command is on your PATH (linked
+into `~/.local/bin`). The commands you are most likely to use:
+
+| Command | What it does |
+| --- | --- |
+| `amiro start` | Start the server |
+| `amiro stop` | Stop the server |
+| `amiro restart` | Restart the server |
+| `amiro status` | Show whether it is running |
+| `amiro service install` | Install and enable the boot service |
+| `amiro setup` | Re-run setup and write `amiro.toml` |
+| `amiro reset-password` | Set a new owner password |
+| `amiro help` | List everything else (service, logs, update, reset-password) |
+| `amiro uninstall` | Remove Amiro |
+
+<Note>
+If your shell cannot find `amiro` right after installing, open a new terminal or
+run `export PATH="$HOME/.local/bin:$PATH"`.
+</Note>
+
+## Managing a server from a source checkout
+
+If you are running Amiro from the repository rather than a packaged release, the
+server manager script covers the same ground.
+
+```bash
+scripts/amiro-server.sh start            # start in the foreground
+scripts/amiro-server.sh start --daemon   # start in the background
+scripts/amiro-server.sh stop
+scripts/amiro-server.sh restart
+scripts/amiro-server.sh status           # process, listener, and service state
+scripts/amiro-server.sh urls             # every address the UI answers on
+```
+
+Useful options:
+
+| Option | What it does |
+| --- | --- |
+| `--host H` | Bind host (default `$AMIRO_HOST`, or `127.0.0.1`) |
+| `--port P` | Port (default `$AMIRO_PORT`, or 3000) |
+| `--allowed-origin L` | Allow an extra origin, for a reverse proxy |
+| `--token T` | Sidecar secret; generated and reused across restarts when omitted |
+
+For a boot service on a checkout, `install-service` (and `uninstall-service`,
+`service-status`, `print-unit`) generate and manage a systemd unit. These accept
+`--user` or `--system`.
+
+## Finding the address to open
+
+- A packaged install prints the address when it starts. `amiro status` also
+  reports it.
+- On a checkout, `scripts/amiro-server.sh urls` prints every address the UI
+  answers on.
+- The desktop app picks a fresh private local address each launch, so there is
+  no fixed port to remember; open the app window rather than a URL.
+
+## Everyday command for the runtime CLI
+
+The `amiro` in this repository (as opposed to a packaged install) is a small
+delegation shim over the runtime engine. Its most common everyday commands:
+
+```bash
+amiro auth status --json          # connected providers and credential state
+amiro provider list --json        # the full provider catalog
+amiro model list -p <id> --json   # models available for one provider
+amiro usage --json                # quota and usage buckets
+amiro login <provider>            # connect a provider
+amiro run --json <prompt>         # run a headless turn
+```
+
+<Note>
+The desktop app and packaged install never require these. They exist for
+scripting and for checking state from a terminal.
+</Note>

@@ -1,0 +1,101 @@
+---
+title: "Your account"
+description: "How signing in works, what the first-run owner setup does, how to change your email or password, and what single-owner means for you."
+---
+
+Amiro has one account: the owner's. This page explains what that means for you
+and how to manage it.
+
+## What single-owner means
+
+Amiro is built for one person on their own machine or server. The first account
+you create is the **owner**. The owner is an admin, and admin-only pages (the
+whole **Admin** section) are visible only to the owner.
+
+There is no public sign-up. Once an owner exists, the setup page stops
+accepting new owners and answers with an error forever. That is intentional: an
+instance reachable over the network should not be claimable by a stranger.
+
+<Note>
+Provider connections belong to the instance, not to separate people. If you ever
+want multiple untrusted users, that needs separate credentials and per-user
+provider selection first. For now, treat everyone with access as the owner.
+</Note>
+
+## First run: creating the owner
+
+There are two ways the owner gets created.
+
+<Tabs>
+<Tab title="In the app">
+On a fresh instance, open Amiro and you land on the setup wizard. The **you**
+step is the only required one. Enter a name, a login (an email or a username), a
+password, and your timezone, and you are the owner. The password must be at
+least 12 characters and include a letter plus at least one number or symbol.
+</Tab>
+<Tab title="Fully scripted">
+If `AMIRO_OWNER_EMAIL` and `AMIRO_OWNER_PASSWORD` (or
+`AMIRO_OWNER_PASSWORD_FILE`) are set when Amiro first starts with an empty user
+store, the owner is created for you and the wizard skips the password step.
+</Tab>
+</Tabs>
+
+Either way you then sign in with that email and password.
+
+## Signing in
+
+- Go to the sign-in page and enter your email and password.
+- Your sign-in lasts for a while, so a page refresh does not sign you out. A
+  server install defaults to a shorter session than the desktop app, which keeps
+  you signed in for about a month.
+- Sign-in attempts are rate-limited: after 15 tries in 15 minutes, further
+  attempts are paused for a while. This protects a network-reachable instance.
+
+<Warning>
+There is no default password and no password reset by email. If you forget the
+owner password, use the command line to reset it (see below).
+</Warning>
+
+## Changing your email or password
+
+<Steps>
+<Step title="Open Settings">
+Open your profile menu at the bottom of the sidebar and choose **Settings**, then
+**Account**.
+</Step>
+<Step title="Update the field">
+Change your display name, email, or password and save.
+</Step>
+<Step title="Sign in again if your password changed">
+A password change takes effect right away and signs out every other session. You
+may need to sign in again on other devices.
+</Step>
+</Steps>
+
+## Resetting a forgotten password
+
+If you cannot sign in, reset the password from the machine running Amiro. The
+command reads the new password from standard input (it is hidden when you type
+it at a terminal), so it never appears in your shell history.
+
+```bash
+amiro reset-password                  # packaged server install (install.sh)
+amiro-backend reset-password          # from a source checkout; asks twice
+```
+
+You can name the account explicitly with `--login <email or username>` if there
+is more than one. Resetting the password signs out every session everywhere;
+sign in again afterwards.
+
+<Note>
+`amiro` and `amiro-backend` must be the Amiro server programs for your install.
+On a packaged server install, `amiro` is on your PATH and `amiro-backend` lives
+under your Amiro data directory. On a desktop install the backend runs inside
+the app; the exact binary paths are listed in [First run](/first-run).
+</Note>
+
+## Display name and how Amiro addresses you
+
+Your display name is shown in the app and used in greetings. Your agent's own
+name, avatar, and color are separate and live in **Agent → Customize**, not in
+your account settings.

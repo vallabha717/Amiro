@@ -1,0 +1,104 @@
+---
+title: "A tour of Amiro"
+description: "Where everything lives: the sidebar, the chat, the Agent hub, schedules, and the admin pages, plus which page holds which setting."
+---
+
+Amiro is one app with a chat in the middle and a set of pages around it. This
+page is a map, so you know where to go when you want to change something.
+
+## The sidebar
+
+The sidebar is your home base. From top to bottom it holds:
+
+- **New chat** and your chat threads, most recent first.
+- **Chat**: the main conversation with your agent.
+- **Agent**: your agent's hub, its name, look, memory, and abilities.
+- **Schedules**: recurring or one-off tasks.
+- **Archive**: threads you have tucked away.
+- **Connectors**: connected third-party apps.
+- **MCP**: external tool servers you have added.
+- **Skills**: reusable instructions your agent can load.
+- **Admin**: owner-only settings (providers, models, search, users, usage, and
+  more). You only see this if you are the owner.
+
+Your profile menu sits at the bottom of the sidebar. **Settings** for your
+account (name, email, password) and the app's theme live behind it.
+
+## The chat
+
+The chat is where you talk to your agent.
+
+- **Composer**: type here. Send with Enter. Use the model selector to choose
+  which model answers, and `/login` to connect a provider without leaving the
+  conversation.
+- **Session panel**: open it from the chat toolbar to see, for the current
+  thread, the agents involved, the task list, the context window, the
+  connectors used, and the files or images produced.
+- **Swarm strip**: when a task fans out to helper agents, a strip appears above
+  the composer. Select a member and open it as a pane beside the chat.
+- **Agent panes**: open one or more agents beside the main chat to watch them
+  work side by side.
+
+## The Agent hub
+
+Open **Agent** in the sidebar. This is your agent, not a list of features.
+
+- **Customize** (the main Agent page): your agent's name, avatar, and color.
+- **Personality** at `/agent/personality`: how your agent talks and behaves.
+- **Memory** at `/agent/memory`: things your agent remembers, shown as a
+  searchable list.
+- **Superpowers** at `/agent/superpowers`: the skills your agent can use.
+- **Workspace** at `/agent/workspace`: a read-only view of your agent's files.
+
+## Schedules
+
+**Schedules** at `/schedules` holds tasks that run on their own.
+
+- A schedule can be a one-off, an interval (every N minutes), or a cron
+  expression.
+- Each schedule has its own timezone.
+- You can have it notify you in a thread, or have the agent run a turn for you.
+- The schedule's model is saved with it, so it keeps using the model you chose.
+
+## The admin pages
+
+Admin pages are owner-only. Open **Admin** in the sidebar, or go directly:
+
+| Page | Path | What it holds |
+| --- | --- | --- |
+| Admin home | `/admin` | Overview and links |
+| General | `/admin/general` | App-wide basics |
+| Providers | `/admin/providers` | Connect and manage model providers |
+| Credentials | `/admin/credentials` | The encrypted credential vault |
+| Search | `/admin/search` | Web search providers |
+| Connectors | `/admin/integrations` | Composio connectors |
+| Notifications | `/admin/notifications` | How Amiro notifies you |
+| Voice | `/admin/voice` | Speech-to-text and text-to-speech |
+| Users | `/admin/users` | Accounts on this instance |
+| Usage | `/admin/usage` | Provider quota and usage |
+
+## Where each setting lives
+
+| You want to change | Go to |
+| --- | --- |
+| Your agent's name, avatar, color | Agent → Customize |
+| Your agent's behavior and tone | Agent → Personality |
+| What your agent remembers | Agent → Memory |
+| Which skills your agent has | Agent → Superpowers |
+| Light or dark mode, sidebar accent | Profile menu → Settings, or the sidebar theme picker |
+| Your email or password | Profile menu → Settings → Account |
+| Which model answers | The model selector in the chat composer |
+| Which providers are connected | Admin → Providers, or `/login` in the chat |
+| Stored API keys and secrets | Admin → Credentials |
+| Web search behavior | Admin → Search |
+| Connected third-party apps | Connectors |
+| External tool servers | MCP |
+| Recurring tasks | Schedules |
+| Notifications | Admin → Notifications |
+| Speech and voice | Admin → Voice |
+
+<Note>
+Anything you skipped during first-run setup stays reachable. The sidebar shows a
+short "Finish setting up" checklist that links straight to the missing step and
+disappears once you complete it.
+</Note>

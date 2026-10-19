@@ -1,0 +1,228 @@
+---
+title: "Installation"
+description: "Install Amiro on a server or VM, on macOS, under WSL2, headless, or as the desktop app."
+---
+
+Amiro runs on Linux and macOS as a self-hosted server, and on macOS, Windows,
+and Linux as a desktop app. Pick the path that matches your machine.
+
+<Tabs>
+  <Tab title="Server or VM (one command)">
+    The installer works on Linux and macOS, on x86_64 and arm64, and needs no
+    root. It downloads the release for your machine, checks its SHA-256, installs
+    it under `~/.amiro`, links the `amiro` command into `~/.local/bin`, writes
+    `~/.amiro/amiro.toml`, and starts the server.
+
+    ```bash
+    curl -fsSL https://github.com/vallabha717/Amiro/releases/latest/download/install.sh | bash
+    ```
+
+    Options go after `bash -s --`:
+
+    ```bash
+    # Reach it over the network and keep it running across reboots:
+    curl -fsSL https://github.com/vallabha717/Amiro/releases/latest/download/install.sh | bash -s -- --public --service
+
+    # Pick a version and a port, and do not start it yet:
+    curl -fsSL https://github.com/vallabha717/Amiro/releases/latest/download/install.sh | bash -s -- --version v1.26.0 --port 8080 --no-start
+    ```
+
+    | Option | Effect |
+    |---|---|
+    | `--public` | Listen on all interfaces, for a VM you reach over the network |
+    | `--service` | Start at boot (systemd user service, or launchd on macOS) |
+    | `--port N` | Port for the web UI (default 3000) |
+    | `--version vX.Y.Z` | Install a specific release |
+    | `--no-start` | Install only |
+    | `--home DIR` | Data and app directory (default `~/.amiro`) |
+
+    After installing, the `amiro` command manages the server:
+
+    | Command | What it does |
+    |---|---|
+    | `amiro start` / `stop` / `restart` / `status` | Run it in the background |
+    | `amiro url` | The address to open |
+    | `amiro logs -f` | Follow the server log |
+    | `amiro config edit` | Open `amiro.toml` in your editor |
+    | `amiro reset-password` | Set a new owner password |
+    | `amiro update` | Install the latest release and restart |
+    | `amiro doctor` | Check the install |
+    | `amiro uninstall` | Remove the app (`--purge` removes data too) |
+
+    <Warning>
+    With `--public` you are listening on every interface. Put TLS (Caddy or
+    nginx) in front of it and set a `token` in `amiro.toml` before exposing it
+    to anyone else.
+    </Warning>
+  </Tab>
+
+  <Tab title="Ubuntu or Debian (from source)">
+    Build from source when you want to modify Amiro or track the repository.
+    You need the build tools, the Tauri/WebKitGTK development packages, Rust, and
+    Node with pnpm.
+
+    ```bash
+    # 1. System packages
+    sudo apt-get update
+    sudo apt-get install -y \
+      build-essential pkg-config libssl-dev curl wget git file python3 \
+      libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
+      libjavascriptcoregtk-4.1-dev libayatana-appindicator3-dev \
+      librsvg2-dev libxdo-dev
+
+    # 2. Rust
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    . "$HOME/.cargo/env"
+
+    # 3. Node and pnpm
+    corepack enable
+    corepack prepare pnpm@10.2.1 --activate
+
+    # 4. Clone, install, build
+    git clone https://github.com/vallabha717/Amiro.git
+    cd Amiro
+    pnpm install
+    pnpm build
+    scripts/build-native.sh
+
+    # 5. Run
+    ./backend/target/release/amiro-backend
+    ```
+
+    Then open `http://127.0.0.1:8787`. The manual build listens on port 8787 and
+    keeps its data in `~/.amiro`.
+
+    <Tip>
+    There is a one-command wrapper that does the same steps, detects your OS,
+    and is safe to re-run: `./scripts/setup-vm.sh`. Add `--skip-desktop` on a
+    headless machine.
+    </Tip>
+  </Tab>
+
+  <Tab title="macOS (from source)">
+    ```bash
+    # 1. Xcode command line tools
+    xcode-select --install
+
+    # 2. Homebrew packages
+    brew install pkg-config openssl@3
+
+    # 3. Rust
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    . "$HOME/.cargo/env"
+
+    # 4. Node and pnpm
+    brew install node
+    corepack enable && corepack prepare pnpm@10.2.1 --activate
+
+    # 5. Clone, install, build, run
+    git clone https://github.com/vallabha717/Amiro.git
+    cd Amiro
+    pnpm install
+    pnpm build
+    scripts/build-native.sh
+    ./backend/target/release/amiro-backend
+    ```
+
+    Open `http://127.0.0.1:8787`.
+  </Tab>
+
+  <Tab title="WSL2">
+    Treat WSL2 as Ubuntu and run everything inside the Linux distro, not from
+    Windows:
+
+    ```bash
+    sudo apt-get update
+    sudo apt-get install -y build-essential pkg-config libssl-dev curl git wget file
+    ./scripts/setup-vm.sh --skip-desktop
+    ```
+
+    Keep the checkout on the Linux filesystem, for example `~/Amiro`, and not
+    under `/mnt/c`. Builds across the Windows bind mount are much slower. Amiro
+    binds to `127.0.0.1` by default, which Windows browsers can reach through
+    WSL2 localhost forwarding.
+  </Tab>
+
+  <Tab title="Headless server">
+    A VM with no display needs no GUI packages at all. Build without the desktop
+    libraries and run the backend:
+
+    ```bash
+    ./scripts/setup-vm.sh --skip-desktop --yes
+    ./backend/target/release/amiro-backend
+    ```
+
+    The backend listens on `127.0.0.1:8787` by default. Keep it on loopback and
+    reach it over an SSH tunnel from your laptop:
+
+    ```bash
+    ssh -L 8787:127.0.0.1:8787 you@your-server
+    ```
+
+    Then open `http://127.0.0.1:8787` and complete the
+    [setup wizard](/first-run).
+
+    <Note>
+    On Linux the agent runtime needs OpenSSL 3 (Ubuntu 22.04+, Debian 12+,
+    Fedora, RHEL 9). `amiro doctor` tells you how to install it if it is
+    missing.
+    </Note>
+  </Tab>
+
+  <Tab title="Desktop app">
+    Download the installer for your OS from the
+    [latest release](https://github.com/vallabha717/Amiro/releases/latest):
+
+    - macOS: `.dmg` for Apple silicon or Intel
+    - Windows: `.msi` or `.exe`
+    - Linux: `.deb`, `.rpm`, or `.AppImage`
+
+    Open Amiro and the setup wizard starts. The app runs its own private server
+    on a random local port with a fresh secret every launch, and keeps its data
+    in `~/.amiro` (`%USERPROFILE%\.amiro` on Windows). Sign-ins last 30 days.
+
+    To build the installers yourself:
+
+    ```bash
+    pnpm install
+    node scripts/build-sidecar.mjs --build
+    pnpm desktop:package
+    ```
+  </Tab>
+</Tabs>
+
+## Requirements
+
+| Tool | Minimum | When you need it |
+|---|---|---|
+| [Node.js](https://nodejs.org) | 20.9 | Build and test the frontend only, not to run a shipped Amiro |
+| [pnpm](https://pnpm.io) | 10.2.1 | The repo pins `pnpm@10.2.1` via `packageManager` |
+| [Rust and Cargo](https://rustup.rs) | 1.89 | Building the backend, the runtime, and the desktop shell |
+| Tauri CLI | 2.x | Only for the desktop shell (`cargo install tauri-cli --version "^2" --locked`) |
+| Python 3 | any 3.x | Only for the local stub provider used by acceptance checks |
+| curl | any | The installer and readiness scripts |
+
+<Info>
+A running Amiro needs no Node.js at all. Node is a build-time and test-time
+dependency.
+</Info>
+
+## Where your data lives
+
+Amiro keeps two homes, and knowing the difference avoids most confusion:
+
+- `AMIRO_HOME` (default `~/.amiro`) is the application home: your account,
+  threads, stores, and workspace.
+- `AMIRO_RUNTIME_HOME` (default `$AMIRO_HOME/runtime`) is the agent engine's own
+  home: memory, sessions, and the engine's credential layout.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="First run" icon="wand-magic-sparkles" href="/first-run">
+    Create the owner account and finish setup.
+  </Card>
+  <Card title="Settings tour" icon="sliders" href="/settings/overview-tour">
+    Where every control lives.
+  </Card>
+</CardGroup>

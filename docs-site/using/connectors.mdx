@@ -1,0 +1,37 @@
+---
+title: "Connectors"
+description: "Give your agent reach: connect apps through Composio and add your own MCP servers, all from one page."
+---
+
+Connectors are everything your agent can reach outside itself: apps connected through Composio and any MCP server, remote or local. They all live on one page at Connectors.
+
+## Connecting an app through Composio
+
+<Steps>
+  <Step title="Open Connectors">
+    Go to Connectors from the sidebar.
+  </Step>
+  <Step title="Add your Composio key">
+    If no key is set, the page shows a setup card. Paste your Composio API key to unlock the toolkit grid.
+  </Step>
+  <Step title="Connect a toolkit">
+    Find the app you want, choose Connect, and approve access in the redirect. The page polls until the connection is active, then syncs it to the agent automatically.
+  </Step>
+  <Step title="Filter connected apps">
+    Use the All and Connected filter to see what is live.
+  </Step>
+</Steps>
+
+Disconnecting removes the connection and syncs again so the agent stops seeing those tools.
+
+## Adding your own MCP server
+
+Custom servers are entries in the same list, remote over Streamable HTTP or SSE, or local as a command that runs on your machine. Secrets are never written into the server config: they stay in the encrypted credential vault and the config references them by placeholder, so connecting never exposes a key.
+
+## Letting the agent set things up
+
+Your agent can add connectors itself when you ask in chat, without ever seeing a secret. Approval and key handling stay on your side.
+
+<Note>
+Connector management is admin-only. Only connect apps and servers you trust, since their tools run with the owner's permissions.
+</Note>

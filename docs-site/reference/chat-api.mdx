@@ -1,0 +1,114 @@
+---
+title: "Chat API"
+description: "Script your own chats: create a thread by sending a message, stream the reply, read history, rename, delete, and export."
+---
+
+Use these endpoints to drive conversations from a script instead of the composer.
+The flow is always the same: pick a thread id, `POST /api/chat`, and read the
+streamed reply.
+
+<Note>
+In the app you do this by typing in the composer. See
+[Chatting](/using/chatting) and [Threads and history](/using/threads-and-history)
+for the everyday path.
+</Note>
+
+## Send a message and stream the reply
+
+`POST /api/chat` (SSE). This is also how a thread comes into existence: sending
+the first message with a new `id` creates the thread mapping.
+
+| Field | Meaning |
+| --- | --- |
+| `id` or `threadId` | Thread id. Required. Use any id, for example a UUID. |
+| `message` | A UI message object. Text lives in `parts` as `{ "type": "text", "text": "..." }`. Tool results come back as `tool-<name>` parts in state `output-available`. |
+| `chatModel` | `{ "provider": "...", "model": "..." }`. Falls back to the thread or default model. |
+| `permissionMode` | `auto` (default) or `edit`. Anything else is answered in-stream with a notice. |
+| `workingDir` | Optional absolute path inside the allowed browse roots. Changing it starts a fresh runtime session. |
+| `attachments` | Optional array. Inline `data:` URLs become images, other URLs become prompt text. |
+| `mentions` | Optional array of `{ "type": "skill", "name": "..." }` to pin instruction sets for the turn. |
+
+```bash
+curl -N http://127.0.0.1:8787/api/chat \
+  -H 'Authorization: Bearer <token>' -H 'Content-Type: application/json' \
+  -d '{"id":"demo-thread-1","message":{"parts":[{"type":"text","text":"Hello"}]}}'
+```
+
+The response is the SSE stream described in the [API overview](/reference/api-overview).
+Read `text-delta` for output and `finish` `messageMetadata` for model, duration,
+tool count, token usage, and the context window snapshot. A `data-thread-title`
+frame carries the auto-generated title. Runtime failures arrive as an `error`
+frame, not fabricated text.
+Source: `backend/src/chat.rs`.
+
+## Create a thread without a message
+
+There is no separate create call. The first `POST /api/chat` with a new `id`
+writes the mapping (`sessionId`, `userId`, `title`, timestamps) into the thread
+store. Source: `backend/src/chat.rs`, `backend/src/threads.rs`.
+
+## List and read threads
+
+`GET /api/thread` returns only threads owned by the signed-in user, sorted by id.
+Each row has `id`, `title`, `userId`, `createdAt`, `lastMessageAt`, `archived`,
+`workingDir`, `heartbeat`, `unread`. Titles refresh from the runtime unless a
+manual rename won.
+
+`GET /api/thread/{id}` returns the thread plus `messages`. Message ids look like
+`msg_<index>_<sessionId>`. Opening a thread clears its `unread` flag. History
+comes from the runtime session and is translated to UI messages with `parts`
+(text, `reasoning`, and `tool-<name>`).
+Source: `backend/src/threads.rs`.
+
+## Rename a thread
+
+`PUT /api/thread/{id}` with `{ "title": "..." }`. This marks the title as
+manually set (`titleSource: "manual"`) so later runtime titles never overwrite it,
+and renames the runtime session.
+Source: `backend/src/threads.rs`.
+
+## Delete and edit messages
+
+- `DELETE /api/thread/{id}` archives the runtime session and removes the mapping.
+- `DELETE /api/thread` removes all your threads. Add `?scope=unarchived` to keep
+  archived ones.
+- `DELETE /api/thread/messages/{id}` deletes one message.
+- `POST /api/thread/messages/{id}/truncate` keeps the thread up to and including
+  that message.
+
+All of these return `204`. Source: `backend/src/threads.rs`.
+
+<Note>
+Thread rows expose an `archived` flag, but the native backend has no route that
+sets it to `true`, the flag is written as `false` when a thread is created. Use
+delete if you want a thread gone.
+</Note>
+
+## Temporary chats and titles
+
+- `POST /api/chat/temporary` takes a `messages` array and an optional
+  `instructions` string, streams like `/api/chat`, then archives the session so
+  nothing is kept.
+- `POST /api/chat/title` takes `{ "threadId" }` and streams the current runtime
+  title as a text stream. It never invents a title with a second model call.
+
+Sources: `backend/src/chat.rs`.
+
+## Export a chat
+
+`POST /api/chat/export` with `{ "threadId" }` stores a snapshot and returns the
+new export id as a JSON string. Then:
+
+- `GET /api/export` lists your exports.
+- `GET /api/export/{id}` returns the full record with messages and comments.
+- `GET /api/export/{id}/comments` and `POST /api/export/{id}/comments` read and
+  add comments, and `DELETE /api/export/{id}/comments/{commentId}` removes one.
+- `DELETE /api/export/{id}` deletes the export.
+
+Sources: `backend/src/chat.rs`, `backend/src/routes/export.rs`.
+
+## Models and unsupported streaming
+
+`GET /api/chat/models` returns the connected providers and their selectable
+models. `POST /api/chat/openai-realtime` is not supported on this backend and
+answers `501`. Sources: `backend/src/models.rs`, `backend/src/chat.rs`.

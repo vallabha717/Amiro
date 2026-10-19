@@ -1,0 +1,82 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "name": "Amiro",
+  "description": "Amiro is a self-hostable personal-intelligence chat app. This guide shows how to install it and use it day to day: chat, personalize your agent, voice, schedules, files, and settings.",
+  "colors": {
+    "primary": "#7C3AED",
+    "light": "#A78BFA",
+    "dark": "#6D28D9"
+  },
+  "theme": "mint",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Get started",
+        "groups": [
+          {
+            "group": "Get started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation",
+              "first-run"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Using Amiro",
+        "groups": [
+          {
+            "group": "Day to day",
+            "pages": [
+              "using/chatting",
+              "using/threads-and-history",
+              "using/personalizing-your-agent",
+              "using/skills-superpowers",
+              "using/memory",
+              "using/workspace-files",
+              "using/voice",
+              "using/schedules",
+              "using/search",
+              "using/connectors",
+              "using/credentials",
+              "using/export-and-share"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Settings",
+        "groups": [
+          {
+            "group": "Settings",
+            "pages": [
+              "settings/overview-tour",
+              "settings/account",
+              "settings/providers",
+              "settings/troubleshooting"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Reference",
+        "groups": [
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/api-overview",
+              "reference/chat-api",
+              "reference/agent-api",
+              "reference/schedules-api",
+              "reference/voice-api",
+              "reference/cli-essentials",
+              "reference/faq"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,122 @@
+---
+title: "Connecting a provider"
+description: "Step by step: connect Anthropic, OpenAI, OpenRouter, Gemini, or any other provider using OAuth, a device code, an API key, or a local endpoint, then pick a model."
+---
+
+A provider is the service that actually runs the model your agent thinks with.
+Amiro ships with support for many providers, but none are connected until you
+connect one. You connect providers as the owner.
+
+## Before you start
+
+- Decide which provider you want to use first. Anthropic, OpenAI, OpenRouter,
+  and Google Gemini are the common single-key choices, and the setup wizard puts
+  them first.
+- Have your API key ready, or be prepared to sign in to the provider in your
+  browser for OAuth.
+
+<Note>
+Connecting and disconnecting providers is admin-only. The chat toolbar does not
+have ad-hoc connect buttons; provider management lives on the **Admin →
+Providers** page. You can also type `/login` in the chat composer to open the
+connection panel without leaving the conversation.
+</Note>
+
+## Connect a provider with an API key
+
+This is the fastest path for Anthropic, OpenAI, OpenRouter, and Gemini.
+
+<Steps>
+<Step title="Open the providers page">
+Go to **Admin → Providers**, or type `/login` in the chat composer.
+</Step>
+<Step title="Pick your provider">
+Choose the provider from the list. Each entry shows its connection type, so you
+can see whether it uses a key, OAuth, a device code, or a local endpoint.
+</Step>
+<Step title="Paste your key">
+Paste the API key. If your provider serves models from a custom address, there
+is a field for the API base too.
+</Step>
+<Step title="Save">
+Amiro stores the key in its encrypted credential store. The provider flips to
+connected, and its models become selectable right away.
+</Step>
+</Steps>
+
+<Tip>
+The wizard and the providers page link straight to each provider's key page, so
+you do not have to hunt for it.
+</Tip>
+
+## Connect a provider with OAuth or a device code
+
+Some providers sign you in through their own website instead of a key.
+
+<Tabs>
+<Tab title="OAuth (browser)">
+<Steps>
+<Step title="Start the login">
+Choose the provider and start the connection. Amiro shows an authorization URL.
+</Step>
+<Step title="Authorize in your browser">
+Open the URL, sign in to the provider, and approve access. Your provider
+password is entered on the provider's own page, never into Amiro.
+</Step>
+<Step title="Finish">
+Paste the callback URL or code back into the panel. Amiro waits for the provider
+to confirm, then marks the provider connected.
+</Step>
+</Steps>
+</Tab>
+<Tab title="Device code">
+<Steps>
+<Step title="Start the login">
+Choose the provider. Amiro shows a short code and a verification address.
+</Step>
+<Step title="Enter the code">
+Open the address in any browser, enter the code, and approve access.
+</Step>
+<Step title="Wait for confirmation">
+Amiro polls until the provider confirms, then marks the provider connected.
+</Step>
+</Steps>
+</Tab>
+</Tabs>
+
+<Note>
+Whether a provider supports OAuth is read from the live provider list, not a
+fixed table, so newly supported providers appear and work without an app update.
+</Note>
+
+## Connect a local endpoint
+
+Local endpoint providers (for example a model server running on your own
+machine) connect with a base address instead of a key. Choose the provider and
+enter the address where it is listening.
+
+## Choosing which model answers
+
+- The model selector in the chat composer lists the models of every connected
+  provider.
+- Model names are namespaced as `provider:model`, so it is always clear which
+  provider a model belongs to.
+- A provider you have not connected contributes no models.
+- If you never pick a model, new chats and schedules use the instance default.
+  The owner can pin a default or restrict the list to a chosen set.
+
+## Eligibility notes
+
+- A provider that needs an API key but is offered a mechanism it does not
+  support is refused with a clear message rather than doing nothing.
+- A provider whose usage limit is exhausted still appears in the list; a turn
+  against it fails with the provider's own message, so you know it is the
+  provider's limit and not Amiro.
+- Disconnecting a provider removes its stored credentials from the same place
+  they were written, so reconnecting later is a clean start.
+
+## Disconnecting or replacing a key
+
+Open **Admin → Providers**, find the connected provider, and remove its
+credentials. To replace a key, remove it and connect again, or paste the new key
+over the old one if the provider supports keys.

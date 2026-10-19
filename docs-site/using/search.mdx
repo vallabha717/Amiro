@@ -1,0 +1,38 @@
+---
+title: "Web search"
+description: "Let your agent search the web through the providers you configured, and manage search providers as an admin."
+---
+
+Your agent can search the web during a turn. Search runs through the search providers you configured, not through a hidden default, so what it can reach is exactly what you set up.
+
+## Searching in chat
+
+Just ask something that needs fresh information. The agent searches when the question calls for it and shows the search among its tool activity. There is nothing extra to install in the conversation.
+
+## Managing search providers
+
+Search providers are configured on the Admin, Search page.
+
+<Steps>
+  <Step title="Open the search page">
+    Go to Admin, Search.
+  </Step>
+  <Step title="Add a provider">
+    Create a provider entry with its name and connection details. Fresh installs start provider native as the default plus keyless and free engines.
+  </Step>
+  <Step title="Test it">
+    Use the test action to confirm the provider answers before relying on it in chats.
+  </Step>
+  <Step title="Set the default">
+    Mark which provider new chats should reach for when the agent searches.
+  </Step>
+</Steps>
+
+## What the agent can and cannot reach
+
+- Only configured providers are used. There is no implicit fallback to an unconfigured engine.
+- A custom config that fails validation is rejected rather than stored, so a broken provider cannot silently take over.
+
+<Note>
+Search provider management is admin-only. If search stops working in chat, ask the owner to check the Search page first.
+</Note>

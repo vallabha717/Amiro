@@ -1,0 +1,91 @@
+---
+title: "Schedules API"
+description: "Manage schedules from a script: once, cron, or interval timing, notify or execute modes, run history, and heartbeat controls."
+---
+
+Schedules run a saved prompt on a timer. The UI version is covered in
+[Schedules](/using/schedules). Use these endpoints when you want to create or
+audit schedules programmatically.
+
+## The shape of a schedule
+
+A schedule row has `id`, `name`, `prompt`, `mode`, `timezone`, `schedule`,
+optional `model`, `enabled`, `nextRunAt`, `lastRunAt`, `lastStatus`,
+`threadId`, `createdBy`, `createdAt`, `updatedAt`, and a server-computed
+`cadenceDescription`.
+
+`schedule` is a tagged object, one of:
+
+| Kind | Shape |
+| --- | --- |
+| `once` | `{ "kind": "once", "at": "2027-01-01T09:00:00Z" }` |
+| `cron` | `{ "kind": "cron", "expression": "0 9 * * 1-5" }` |
+| `interval` | `{ "kind": "interval", "minutes": 60 }` |
+
+`mode` is `notify`, `execute`, or `agent`:
+
+- `notify` posts the result as a visible thread message with no model call.
+- `execute` runs a model turn with tools forced off.
+- `agent` runs a full agent turn with tools on.
+
+`execute` and `agent` require a pinned `model`. `timezone` is a required IANA
+name, and the backend converts your wall time to UTC.
+Source: `backend/src/schedules.rs`.
+
+## Create, list, read, update, delete
+
+- `POST /api/schedules` creates one and returns `201 { "schedule": {...} }`.
+- `GET /api/schedules` returns `{ "schedules": [...] }`.
+- `GET /api/schedules/{id}` returns `{ "schedule": {...} }`.
+- `PATCH /api/schedules/{id}` updates the fields you send, including `enabled`.
+- `DELETE /api/schedules/{id}` returns `204`.
+
+Cross-owner ids answer `404` so existence is never leaked. Mutations on a standby
+backend that does not hold the scheduler lock answer `409`. There is a limit of
+50 schedules per owner. Source: `backend/src/routes/schedules.rs`,
+`backend/src/schedules.rs`.
+
+## Preview before you save
+
+`POST /api/schedules/preview` with `{ "schedule": {...}, "timezone": "..." }`
+returns `{ "nextRuns": [...] }`. A `once` returns exactly one time, a `cron` or
+`interval` returns the next five in ascending order. Preview is read-only and
+does not need the scheduler lock.
+
+Bad cadences are rejected with `400`, including a wall time that never exists on
+a spring-forward day or happens twice on a fall-back day. Pass an explicit offset
+such as `2029-11-04T01:30:00-04:00` to pick one instant. Sources:
+`backend/src/routes/schedules.rs`, `backend/src/schedules.rs`.
+
+## Run now and run history
+
+- `POST /api/schedules/{id}/run` fires it immediately and returns
+  `{ "schedule": {...}, "run": {...} }`. This works while paused, and running a
+  once schedule manually consumes it.
+- `GET /api/schedules/{id}/runs` returns `{ "runs": [...] }`.
+
+Each run has `id`, `scheduleId`, `scheduledAt`, `startedAt`, `finishedAt`,
+`status`, an `outputPreview`, and a `threadId` when it produced a thread. Run
+history is kept on disk even after a schedule is deleted, though the runs route
+for a deleted id answers `404`. Source: `backend/src/routes/schedules.rs`,
+`backend/src/schedules.rs`.
+
+## System tasks
+
+`GET /api/schedules/system` returns `{ "tasks": [...] }`, the built-in heartbeat
+and memory-upkeep tasks with their state.
+Source: `backend/src/routes/schedules.rs`.
+
+## Heartbeat controls
+
+The heartbeat is the agent's own periodic wake-up, separate from user schedules.
+
+- `GET /api/agent-home` returns heartbeat state along with the agent-home files.
+- `PUT /api/agent-home/heartbeat` merges settings: `enabled`, `intervalHours`
+  (0.25 to 168), `quietStart` and `quietEnd` as `HH:MM`, and `timezone`.
+- `POST /api/agent-home/heartbeat/run` runs one heartbeat now and returns
+  `{ result, outcome, heartbeat }`. Results include `message`, `quiet`, `skipped`,
+  or `error`.
+
+Both mutating routes require the owner role. Sources: `backend/src/heartbeat.rs`,
+`backend/src/routes/schedules.rs`.

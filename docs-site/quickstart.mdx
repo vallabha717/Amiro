@@ -1,0 +1,107 @@
+---
+title: "Quickstart"
+description: "Install Amiro, finish the setup wizard, connect one provider, and send your first message in about five minutes."
+---
+
+This is the shortest path from nothing to a reply. It uses the server installer,
+which works on Linux and macOS. If you would rather use the desktop app, see
+[Installation](/installation).
+
+<Info>
+You need a model provider to chat. Amiro ships no models and no default
+password. Connecting a provider is part of this walkthrough.
+</Info>
+
+<Steps>
+  <Step title="Install Amiro">
+    Run the installer. It downloads the release for your machine, checks its
+    checksum, installs it under `~/.amiro`, and starts the server.
+
+    ```bash
+    curl -fsSL https://github.com/vallabha717/Amiro/releases/latest/download/install.sh | bash
+    ```
+
+    To reach it over your network and keep it running across reboots, add
+    `--public --service`:
+
+    ```bash
+    curl -fsSL https://github.com/vallabha717/Amiro/releases/latest/download/install.sh | bash -s -- --public --service
+    ```
+
+    The installer prints the address to open. With the plain command it is
+    usually `http://127.0.0.1:3000`.
+  </Step>
+
+  <Step title="Open Amiro and create your account">
+    Open the printed address in a browser. On a fresh install the setup wizard
+    starts at the account step. Choose an email or username and a password.
+
+    Your password needs at least 12 characters, including a letter and at least
+    one number or symbol. There is no sign-up and no default password: this
+    first account is the owner.
+
+    <Tip>
+    Amiro has no email recovery. Keep the owner password somewhere safe, or
+    reset it later with `amiro reset-password` on the machine running Amiro.
+    </Tip>
+  </Step>
+
+  <Step title="Give your agent a look">
+    Pick a name for your agent, a plush character (Headphones, Sprout, Starfish,
+    or Dreamer), and a colour. You can skip this and change it any time under
+    **Agent, Customize**.
+  </Step>
+
+  <Step title="Connect your first provider">
+    On the **Brain** step, connect one AI provider. The fastest option is to
+    paste an API key for Anthropic, OpenAI, OpenRouter, or Google Gemini.
+
+    For subscription sign-ins and local models, open **Subscriptions, local
+    models and more providers** and follow the prompt. You can also connect
+    providers later in the admin providers page, or from the composer by typing
+    `/login`.
+
+    ```text
+    /login
+    ```
+
+    <Note>
+    API keys and authorization codes are entered in the dedicated connection
+    panel, never as ordinary chat messages.
+    </Note>
+  </Step>
+
+  <Step title="Send your first message">
+    Open a new chat and type a message. Pick a model from the chat toolbar if
+    the default is not the one you want. The reply streams as it is written.
+
+    ```text
+    Summarize what you can help me with, in three lines.
+    ```
+
+    That is it. The next useful things to try are
+    [personalizing your agent](/using/personalizing-your-agent) and
+    [putting a prompt on a schedule](/using/schedules).
+  </Step>
+</Steps>
+
+## If a step is missing
+
+- The wizard lets you skip your agent and your provider. Each skipped step
+  appears as a **Finish setting up** card at the bottom of the sidebar, with a
+  link that takes you back.
+- To run the wizard again, go to **Admin, General, Setup, Run setup again**.
+- To reach a VM's Amiro safely, forward the port instead of exposing it:
+  `ssh -L 3000:127.0.0.1:3000 you@your-vm`, then open
+  `http://127.0.0.1:3000`.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Start chatting" icon="comments" href="/using/chatting">
+    Models, attachments, and day-to-day chat.
+  </Card>
+  <Card title="Personalize your agent" icon="wand-magic-sparkles" href="/using/personalizing-your-agent">
+    Name, look, personality sliders, and voice.
+  </Card>
+</CardGroup>

@@ -1,0 +1,82 @@
+---
+title: "Chatting with Amiro"
+description: "Start a chat, pick a model, stream answers, and connect a provider without leaving the conversation."
+---
+
+Chat is the main surface in Amiro. You type a message, the agent answers, and the whole exchange stays in a thread you can reopen later.
+
+## Start a chat
+
+<Steps>
+  <Step title="Open a new chat">
+    Click **New Chat** in the sidebar, or the New Chat button in the sidebar menu. The chat page opens with an empty composer at the bottom.
+  </Step>
+  <Step title="Write your message">
+    Type in the composer. You can attach files by pasting or dropping them onto the composer.
+  </Step>
+  <Step title="Send">
+    Press Enter or click the send button. The answer starts streaming right away.
+  </Step>
+</Steps>
+
+Your first message also names the thread. Amiro asks the runtime for a title derived from your first prompt, so it does not spend a model call just to name the chat. See [Threads and history](/using/threads-and-history) for renaming.
+
+## Pick a model
+
+The model pill sits in the composer toolbar and shows the model that will answer.
+
+1. Click the model pill to open the picker.
+2. Type in **search model** to filter.
+3. Models are grouped by provider. Click one to select it.
+
+Each model is pinned as `provider:model` (for example `openai:gpt-4o`). A route is never silently swapped, so the provider you picked is the provider that runs the turn.
+
+<Note>
+Only providers that are connected appear as selectable. A provider group can appear greyed out until you connect it. To connect one, use `/login` in the composer (see below) or ask an admin to open the providers page.
+</Note>
+
+## Connect a provider from the composer
+
+You do not have to leave the chat to connect an account.
+
+1. Type `/login` in the composer and send it.
+2. `/login` is intercepted before the message is sent. It never reaches the model and never becomes a chat message.
+3. The login panel opens. Search for a provider, then follow its mechanism:
+   - **OAuth or device code**: the panel shows the provider URL or a device code, then takes the callback URL or code on a separate line.
+   - **API key**: paste the key (with an optional base URL) and save.
+4. The panel closes and the provider's models become selectable.
+
+<Warning>
+API keys and OAuth codes typed here are held in the panel only. They are never written into the transcript, a toast, or the console. Provider connection also lives in the admin panel, which is owner-only. On a shared machine, treat the owner account as the boundary.
+</Warning>
+
+## While the answer streams
+
+- Text is paced as it arrives, so it reads smoothly instead of jumping.
+- Reasoning models show a **Thinking** indicator with an elapsed counter, then a **Thought for Ns** summary.
+- Click stop to end a turn early.
+- Tool calls appear inline as a work log. Use the tool filter menu in the chat toolbar to hide categories (terminal, files, web, connectors, agents, planning, other), or choose **Answers only** to hide every tool call. A tool call that needs your confirmation stays visible.
+
+## Follow-ups
+
+Keep typing in the same thread to continue the conversation. The agent keeps the context of the thread, including earlier tool results. Follow-up turns reuse the same runtime session unless you change the folder.
+
+To start fresh, click **New Chat**. To reuse a previous conversation, open it from the sidebar (see [Threads and history](/using/threads-and-history)).
+
+## Attachments
+
+Files you paste or drop into the composer are uploaded for the turn. Amiro also keeps a copy in the agent's own `attachments/` folder and tells the agent where it is, so the file remains reachable after the message scrolls away.
+
+## Choose the folder the agent works in
+
+The folder control next to the composer defaults to **Workspace**, which is the agent's own folder. Use it to point the agent at one of your projects:
+
+1. Click the folder control and choose **Choose a folder**.
+2. The server folder browser opens. Pick a folder and click **Use this folder**.
+3. Recent folders are kept for quick reuse. Click the Workspace entry or the clear control to go back to the agent's own folder.
+
+Changing the folder on an existing thread starts a new runtime session pinned to that folder while keeping the thread and its history. See [Workspace and files](/using/workspace-files) for what lives in the agent's folder.
+
+<Tip>
+Chat tools are on by default, and they run with the owner's own permissions. Amiro is meant to run inside a VM or sandbox, and that sandbox is the real boundary. An operator can set `AMIRO_TOOL_PROFILE=none` to run chat without tools.
+</Tip>

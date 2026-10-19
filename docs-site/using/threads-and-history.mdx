@@ -1,0 +1,62 @@
+---
+title: "Threads and history"
+description: "Find old chats, rename them, pin a manual title, and clean up the sidebar."
+---
+
+Every conversation lives in a thread. Threads appear in the sidebar with a title, and opening one restores its history.
+
+## How titles work
+
+Amiro reuses the runtime's own title for a thread. The title comes from your first visible user prompt, is capped at 65 characters, and is generated without an extra model call. Examples of what the runtime skips:
+
+- A slash command such as `/model`.
+- A scheduled task prompt.
+- A background notification with no visible prompt.
+
+If a thread has no usable prompt, the sidebar shows **New Chat** until there is one.
+
+## Rename a thread and pin the title
+
+1. Hover the thread in the sidebar to reveal its menu button, or open the thread and use its dropdown.
+2. Choose **Rename Chat**.
+3. Type the new name and confirm.
+
+A manual rename sets the thread's title source to `manual`. From then on, runtime title updates are ignored for that thread, so a rename is never overwritten by a later model turn. The manual title survives a page reload.
+
+## Find an older chat
+
+- The sidebar lists recent threads.
+- When there are more threads than fit, a **View All Chats** button appears at the bottom of the list. Click it to expand the full list, and **Show Less Chats** to collapse again.
+- Archives group threads into named collections you can reopen later. See [Export and share](/using/export-and-share) for creating an archive and adding threads to it.
+
+<Note>
+A text search across chat history is not implemented yet. The sidebar shows recent chats and the View All Chats expansion, and archives are the current way to group related conversations so they stay reachable.
+</Note>
+
+## Delete chats
+
+<AccordionGroup>
+  <Accordion title="Delete one thread">
+    Open the thread menu and choose delete. The thread is removed and, if you were viewing it, the app returns to a new chat.
+  </Accordion>
+  <Accordion title="Delete all chats">
+    Use the sidebar options menu and choose **Delete All Chats**. This removes every thread for the account.
+  </Accordion>
+  <Accordion title="Delete unarchived chats only">
+    Use the sidebar options menu and choose the unarchived option. It deletes threads that are not part of an archive, leaving archived threads in place.
+  </Accordion>
+</AccordionGroup>
+
+<Warning>
+Deleting threads cannot be undone. Deleting unarchived chats keeps threads that belong to an archive, but anything else in the sidebar is removed.
+</Warning>
+
+## What a thread remembers
+
+A thread maps to a runtime session. Opening the thread reads its history from the runtime, so the transcript, tool calls, and session panel come back exactly as they were. The right-hand session panel is derived from the transcript, so a reopened thread shows the same cards (agents, tasks, context, connectors, outputs) as a live one.
+
+## Related
+
+- [Chatting with Amiro](/using/chatting)
+- [Export and share](/using/export-and-share)
+- [Workspace and files](/using/workspace-files)

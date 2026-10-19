@@ -1,0 +1,84 @@
+---
+title: "Voice API"
+description: "Power-user voice endpoints: read and update voice settings, synthesize speech, transcribe audio, and drive a live voice session."
+---
+
+These are the endpoints behind read-aloud, dictation, and live voice. The UI
+version is covered in [Voice](/using/voice). Use them when you want to add voice
+to your own tooling.
+
+## Settings
+
+`GET /api/voice/settings` returns `ttsCatalog`, `sttCatalog`, a merged
+`settings` object, and a `liveVoice` block. Each provider entry carries its
+`configured` flag and a masked `apiKeyHint`, never the key itself.
+
+`PUT /api/voice/settings` merges changes and returns the same payload. Accepted
+fields:
+
+| Field | Meaning |
+| --- | --- |
+| `readAloudEnabled` | Boolean. |
+| `autoReadAloud` | Boolean. |
+| `ttsProvider`, `sttProvider` | Selected provider id, validated against the catalog. |
+| `sttLanguage` | Language hint. |
+| `ttsProviderUpdate` | `{ provider, model, voiceId, baseUrl, speed, apiKey }`. `speed` is clamped to 0.25 to 4.0. |
+| `sttProviderUpdate` | `{ provider, model, baseUrl, language, apiKey }`. |
+
+API keys sent here are written to the encrypted credential store, never to the
+settings file. When resolving a key, the backend checks the provider slot first,
+then the shared `<provider>/api_key` slot. Source: `backend/src/routes/voice.rs`.
+
+## List voices
+
+`POST /api/tts/voices` with `{ "provider", "baseUrl" }` returns
+`{ "provider": "...", "voices": [ { "id", "name" } ] }`. Defaults come from the
+catalog and the saved settings. Source: `backend/src/routes/voice.rs`.
+
+## Synthesize speech
+
+`POST /api/tts/synthesize` proxies text to the selected provider and streams the
+audio back.
+
+| Field | Meaning |
+| --- | --- |
+| `text` | Required, up to 8192 characters. |
+| `provider` | TTS provider id. Defaults to your saved `ttsProvider`. |
+| `model`, `voiceId`, `baseUrl` | Optional overrides for the saved values. |
+| `apiKey` | Optional one-off key. |
+
+The response body is raw audio bytes with the upstream `Content-Type` (MP3 for
+OpenAI-compatible providers). A missing key answers `400`. Browser-native TTS is
+handled in the browser, not here. Source: `backend/src/routes/voice.rs`.
+
+## Transcribe audio
+
+`POST /api/stt/transcribe` accepts an object with `audio` (base64), and optional
+`provider`, `model`, `language`, `mimeType`, and `apiKey`. `audio` is required and
+capped at 25 MB when decoded. The response is:
+
+```json
+{ "status": "ok", "text": "...", "providerId": "deepgram" }
+```
+
+Unsupported or keyless providers answer `400`. Source:
+`backend/src/routes/voice.rs`.
+
+## Live voice
+
+Live voice uses ElevenLabs for both speech-to-text and text-to-speech and is
+therefore served by one WebSocket.
+
+1. `POST /api/live-voice/ticket` returns `{ "ticket": "...", "expiresInMs":
+   60000 }`. A ticket is single use and expires after 60 seconds.
+2. `GET /api/live-voice/preflight` returns `{ ready, stt, tts }` plus a friendly
+   `message` when the ElevenLabs key is missing.
+3. Connect to `GET /api/live-voice?ticket=<ticket>` as a WebSocket.
+
+Send a `start` frame with `audio` describing `audio/pcm` at 16000 Hz mono, then
+send raw PCM as binary frames. Server frames carry `seq` and a `type` such as
+`ready`, `speech_started`, `utterance_end`, `stt_final`, `tts_segment`,
+`tts_audio`, `tts_done`, `metrics`, `turn_cancelled`, and `error`. The server
+does VAD, turn detection, and barge-in. Audio output is 24000 Hz.
+
+Sources: `backend/src/routes/live_voice.rs`, `backend/src/routes/voice.rs`.
