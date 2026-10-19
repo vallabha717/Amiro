@@ -90,6 +90,28 @@ export function saveConnectorSecrets(name: string, secrets: Record<string, strin
   );
 }
 
+/** An MCP OAuth sign-in, as backend/src/routes/connectors.rs reports it. */
+export interface ConnectorOAuthFlow {
+  server: string;
+  status: "pending" | "authorized" | "error" | "expired";
+  authorizationUrl: string;
+  error?: string | null;
+}
+
+/** Starts the browser OAuth sign-in for a remote MCP connector. */
+export function startConnectorOAuth(name: string) {
+  return apiJson<ConnectorOAuthFlow>(
+    `/api/connectors/${encodeURIComponent(name)}/oauth/start`,
+    { method: "POST" },
+  );
+}
+
+export function connectorOAuthStatus(name: string) {
+  return apiJson<ConnectorOAuthFlow>(
+    `/api/connectors/${encodeURIComponent(name)}/oauth/status`,
+  );
+}
+
 export function setConnectorEnabled(name: string, enabled: boolean) {
   return apiJson<unknown>(`/api/connectors/${encodeURIComponent(name)}/enabled`, {
     method: "POST",

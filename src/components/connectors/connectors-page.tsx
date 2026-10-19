@@ -7,10 +7,12 @@ import useSWR from "swr";
 import {
   type ConnectorServer,
   type ConnectorStatus,
+  connectorOAuthStatus,
   removeCustomConnector,
   reloadConnectors,
   secretLabel,
   setConnectorEnabled,
+  startConnectorOAuth,
   useConnectors,
 } from "@/lib/backend/connectors-api";
 import { removeComposioConnection } from "@/lib/backend/composio-api";
@@ -21,6 +23,7 @@ import {
   GlobeIcon,
   KeyRoundIcon,
   Loader2,
+  LogInIcon,
   MoreHorizontalIcon,
   PencilIcon,
   PlusIcon,
@@ -31,7 +34,7 @@ import {
   UnplugIcon,
   WrenchIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useSWRConfig } from "swr";
 import { Badge } from "ui/badge";
@@ -110,6 +113,57 @@ function ServerRow({
       setBusy(false);
     }
   };
+  // Remote servers may use OAuth: the sign-in opens the provider's consent
+  // page in a new tab and polls the backend until the runtime holds a token.
+  const remote = server.transport !== "stdio";
+  const [signingIn, setSigningIn] = useState(false);
+  const poll = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => () => {
+    if (poll.current) clearInterval(poll.current);
+  }, []);
+  const authNeeded =
+    remote &&
+    server.status !== "connected" &&
+    server.status !== "disabled" &&
+    // Only an OAuth prompt: a 401 from a wrong bearer/API key needs a new
+    // key, not a sign-in.
+    /oauth|mcp login/i.test(server.error ?? "");
+  const signIn = async () => {
+    // Opened before the request so the browser treats it as a user action.
+    const tab = window.open("about:blank", "_blank");
+    setSigningIn(true);
+    try {
+      const flow = await startConnectorOAuth(server.name);
+      if (tab) tab.location.href = flow.authorizationUrl;
+      else window.open(flow.authorizationUrl, "_blank", "noopener");
+      if (poll.current) clearInterval(poll.current);
+      poll.current = setInterval(async () => {
+        try {
+          const next = await connectorOAuthStatus(server.name);
+          if (next.status === "pending") return;
+          if (poll.current) clearInterval(poll.current);
+          poll.current = null;
+          setSigningIn(false);
+          if (next.status === "authorized") {
+            toast.success(`Signed in to ${server.name}`);
+            await reloadConnectors().catch(() => undefined);
+            await mutate("/api/connectors");
+          } else {
+            toast.error(next.error || `Sign-in to ${server.name} ${next.status === "expired" ? "expired" : "failed"}. Try again.`);
+          }
+        } catch (e) {
+          if (poll.current) clearInterval(poll.current);
+          poll.current = null;
+          setSigningIn(false);
+          handleErrorWithToast(e as Error);
+        }
+      }, 2000);
+    } catch (e) {
+      tab?.close();
+      setSigningIn(false);
+      handleErrorWithToast(e as Error);
+    }
+  };
   const remove = async () => {
     if (!window.confirm(`Remove ${server.name}? Its saved keys are deleted too.`)) return;
     setBusy(true);
@@ -151,6 +205,12 @@ function ServerRow({
             Add {missing.length === 1 ? secretLabel(missing[0]) : `${missing.length} keys`}
           </Button>
         )}
+        {(authNeeded || signingIn) && (
+          <Button size="sm" variant="secondary" onClick={signIn} disabled={signingIn} data-testid="connector-sign-in">
+            {signingIn ? <Loader2 className="size-3.5 animate-spin" /> : <LogInIcon className="size-3.5" />}
+            {signingIn ? "Waiting for sign-in…" : "Sign in"}
+          </Button>
+        )}
         {tools.length > 0 && (
           <Button
             size="sm"
@@ -180,6 +240,11 @@ function ServerRow({
             <DropdownMenuItem onClick={() => onEdit(server)}>
               <PencilIcon className="size-4" /> Edit
             </DropdownMenuItem>
+            {remote && (
+              <DropdownMenuItem onClick={signIn} disabled={signingIn}>
+                <LogInIcon className="size-4" /> Sign in (OAuth)
+              </DropdownMenuItem>
+            )}
             {server.secrets.length > 0 && (
               <DropdownMenuItem onClick={() => onSecrets(server)}>
                 <KeyRoundIcon className="size-4" /> Update keys
