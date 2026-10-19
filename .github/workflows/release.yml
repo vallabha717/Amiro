@@ -49,10 +49,16 @@ jobs:
         run: |
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             flags=(--draft --title "Amiro $TAG" --generate-notes --target "$GITHUB_SHA")
-            [ "${{ github.event.inputs.prerelease }}" = "true" ] && flags+=(--prerelease)
+            if [ "${{ github.event.inputs.prerelease }}" = "true" ]; then flags+=(--prerelease); fi
             gh release create "$TAG" "${flags[@]}"
           fi
-          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq ".[] | select(.tag_name == \"$TAG\") | .id" | head -1)
+          # A new draft can take a few seconds to appear in the API.
+          id=""
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq ".[] | select(.tag_name == \"$TAG\") | .id" | head -1)
+            [ -n "$id" ] && break
+            sleep 3
+          done
           [ -n "$id" ] || { echo "::error::release $TAG not found"; exit 1; }
           echo "id=$id" >> "$GITHUB_OUTPUT"
 
