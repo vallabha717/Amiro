@@ -1378,7 +1378,7 @@ fn run_with_reminder(
     let deadline = std::time::Instant::now() + TURN_TIMEOUT;
     while let Some(remaining) = deadline.checked_duration_since(std::time::Instant::now()) {
         let Some(event) = events_next(client, session_id, &stream, remaining) else {
-            return Err("Amiro runtime closed before the turn finished".to_string());
+            return Err(stream_end_message(deadline));
         };
         if let Some(on_event) = &options.on_event {
             on_event(&event);
@@ -1405,14 +1405,22 @@ fn run_with_reminder(
 }
 
 /// Blocking next-event wait that never exceeds the turn deadline.
+///
+/// A quiet stream is not a closed one: a tool can legitimately run for longer
+/// than one wait slice (an OAuth discovery, a slow MCP server), so silence only
+/// ends the wait once the deadline passes. `None` means the connection closed
+/// or the deadline was reached.
 fn events_next(
     client: &AmiroClient,
     session_id: &str,
     stream: &amiro_sdk::EventStream,
     remaining: Duration,
 ) -> Option<ApiEvent> {
+    let deadline = std::time::Instant::now() + remaining;
     loop {
-        let wait = remaining.min(Duration::from_secs(30));
+        let left = deadline.checked_duration_since(std::time::Instant::now())?;
+        let wait = left.min(Duration::from_secs(30));
+        let started = std::time::Instant::now();
         match stream.next_timeout(wait) {
             Some(event) => {
                 if let Some(other) = event_session(&event) {
@@ -1422,13 +1430,19 @@ fn events_next(
                 }
                 return Some(event);
             }
-            None => {
-                if client.is_closed() {
-                    return None;
-                }
-                return None;
-            }
+            // An early `None` is a disconnected channel, not a timeout.
+            None if client.is_closed() || started.elapsed() < wait => return None,
+            None => continue,
         }
+    }
+}
+
+/// Why [`events_next`] stopped yielding events, for the turn error.
+fn stream_end_message(deadline: std::time::Instant) -> String {
+    if std::time::Instant::now() >= deadline {
+        "Amiro runtime turn timed out".to_string()
+    } else {
+        "Amiro runtime closed before the turn finished".to_string()
     }
 }
 
@@ -1462,7 +1476,7 @@ fn consume_events(
     let deadline = std::time::Instant::now() + TURN_TIMEOUT;
     while let Some(remaining) = deadline.checked_duration_since(std::time::Instant::now()) {
         let Some(event) = events_next(client, session_id, &stream, remaining) else {
-            return Err("Amiro runtime closed before the turn finished".to_string());
+            return Err(stream_end_message(deadline));
         };
         match &event {
             ApiEvent::TokenUsage {
