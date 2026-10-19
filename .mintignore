@@ -1,0 +1,19 @@
+# Only the Mintlify pages (see docs.json) and the assets they use are part of
+# the docs site. Everything below is source code or internal notes.
+node_modules/
+out/
+adapter/
+agent-home/
+agent-skills/
+backend/
+bin/
+messages/
+packaging/
+public/
+runtime/
+scripts/
+src/
+src-tauri/
+tests/
+docs/**/*.md
+*.md
