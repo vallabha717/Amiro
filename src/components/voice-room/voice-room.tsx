@@ -443,7 +443,7 @@ export function VoiceDock() {
   );
 }
 
-/** Global ⌘⇧I / Ctrl+Shift+I toggles voice; mounted once in the popup provider. */
+/** Global Ctrl+Space (jcode's voice key) toggles voice; mounted once in the popup provider. */
 export function VoiceHotkeys() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
