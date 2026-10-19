@@ -594,6 +594,7 @@ The living documents, worth reading in this order:
 | Document | Contents |
 |---|---|
 | [`docs/AMIRO-RUNTIME.md`](docs/AMIRO-RUNTIME.md) | The source of truth: architecture, login model, providers, models, restrictions |
+| [`docs/SETUP.md`](docs/SETUP.md) | First-run wizard, `amiro.toml` / `.env` setup, desktop app, password reset |
 | [`docs/VM-SETUP.md`](docs/VM-SETUP.md) | Full setup walkthrough, including WSL2 and headless |
 | [`docs/SCHEDULES.md`](docs/SCHEDULES.md) | Schedules user guide and daemon behaviour |
 | [`docs/AGENT.md`](docs/AGENT.md) | The Agent surfaces and how persona is delivered to the model |

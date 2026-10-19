@@ -188,7 +188,7 @@ The backend listens on `127.0.0.1:8787` by default (`AMIRO_HOST` and `AMIRO_PORT
 ssh -L 8787:127.0.0.1:8787 you@your-server
 ```
 
-Then open http://127.0.0.1:8787 locally and complete the one-time **Set up Amiro** page to create the single owner account (see First run setup). Never bind `AMIRO_HOST=0.0.0.0` without a real auth and TLS story in front of it; the backend logs a warning if it is bound to a non-loopback address without `AMIRO_TOKEN`. Sign-in is rate limited, but tools run with the owner's permissions, so keep Amiro inside the VM or sandbox.
+Then open http://127.0.0.1:8787 locally and complete the onboarding wizard, which creates the single owner account (see First run setup and [SETUP.md](SETUP.md)). Never bind `AMIRO_HOST=0.0.0.0` without a real auth and TLS story in front of it; the backend logs a warning if it is bound to a non-loopback address without `AMIRO_TOKEN`. Sign-in is rate limited, but tools run with the owner's permissions, so keep Amiro inside the VM or sandbox.
 
 On the server, `AMIRO_HOME` defaults to `~/.amiro`. For headless provisioning, set `AMIRO_OWNER_EMAIL` and `AMIRO_OWNER_PASSWORD` (or `AMIRO_OWNER_PASSWORD_FILE`) before first start instead of using the setup page.
 
@@ -213,9 +213,9 @@ Two behavior flags worth knowing:
 
 ## First run setup
 
-There is no default password and no sign-up. On a fresh home the app shows the one-time **Set up Amiro** page: choose the owner's email (or username) and a password of at least 12 characters with a letter and a number or symbol. That creates the single owner account, as an admin. `POST /api/auth/setup` refuses with `403` once any account exists.
+There is no default password and no sign-up. On a fresh home the app shows the onboarding wizard ([SETUP.md](SETUP.md)); its account step asks you to choose the owner's email (or username) and a password of at least 12 characters with a letter and a number or symbol. That creates the single owner account, as an admin. `POST /api/auth/setup` refuses with `403` once any account exists.
 
-For headless provisioning, create the owner at boot instead by exporting the owner email and a password source before first start:
+For headless provisioning, put `[owner]` in `~/.amiro/amiro.toml` (`amiro-backend init-config` writes a starter), or export the owner email and a password source before first start:
 
 ```sh
 export AMIRO_OWNER_EMAIL=owner@example.com
@@ -223,7 +223,7 @@ export AMIRO_OWNER_PASSWORD='a-long-owner-password'
 # or: export AMIRO_OWNER_PASSWORD_FILE=/run/secrets/amiro-owner-password
 ```
 
-Change the owner's email or password later from the settings popup's **Account** section (`PUT /api/auth/credentials`). If `AMIRO_HOME` is overridden, the owner lives in that home's `users.json`; `scripts/dev-backend.sh` defaults `AMIRO_HOME` to `~/.amiro-dev`.
+Change the owner's email or password later from the settings popup's **Account** section (`PUT /api/auth/credentials`). Forgot it? Run `amiro-backend reset-password` on the server. If `AMIRO_HOME` is overridden, the owner lives in that home's `users.json`; `scripts/dev-backend.sh` defaults `AMIRO_HOME` to `~/.amiro-dev`.
 
 ## Starting the app
 
