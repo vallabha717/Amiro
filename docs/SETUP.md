@@ -94,8 +94,10 @@ How each part behaves:
 
 ### Desktop app (macOS, Windows, Linux)
 
-Download the installer from the release page and open Amiro: the wizard
-starts. The app runs its own private server on a random local port with a
+Download the installer for your OS from the
+[latest release](https://github.com/vallabha717/Amiro/releases/latest)
+(`.dmg` for macOS, `.msi`/`.exe` for Windows, `.deb`/`.rpm`/`.AppImage` for
+Linux) and open Amiro: the wizard starts. The app runs its own private server on a random local port with a
 fresh secret every launch, and keeps its data in `~/.amiro`
 (`%USERPROFILE%\.amiro` on Windows). Sign-ins last 30 days.
 
@@ -107,13 +109,78 @@ node scripts/build-sidecar.mjs --build   # backend + runtime for this OS
 pnpm desktop:package                     # = npx @tauri-apps/cli@2 build
 ```
 
-The **Desktop app** workflow (`.github/workflows/desktop.yml`) builds
-installers natively on macOS (Apple silicon and Intel), Windows and Linux.
-Run it from the Actions tab or push a `v*` tag; tagged builds attach the
-installers to a draft release. Signing is optional: set the `APPLE_*`
+## Releases (CI/CD)
+
+`.github/workflows/release.yml` builds one release containing:
+
+| Asset | For |
+| --- | --- |
+| `amiro-server-{x86_64,aarch64}-unknown-linux-gnu.tar.gz`, `amiro-server-{aarch64,x86_64}-apple-darwin.tar.gz` | `install.sh` on servers and VMs |
+| `install.sh`, `SHA256SUMS` | the curl installer and its checksums |
+| `.dmg`, `.app.tar.gz` (macOS arm64 and x64), `.msi`, `.exe` (Windows), `.deb`, `.rpm`, `.AppImage` (Linux) | the desktop app |
+
+To cut a release, either:
+
+- push a tag: `git tag v1.27.0 && git push origin v1.27.0`; or
+- in the Actions tab, run **Release** and enter a version (it creates the tag).
+
+The release stays a draft while it builds, and is published as *latest* once
+the server archives and checksums are uploaded. That is when
+`releases/latest/download/install.sh` starts serving it. If a single desktop
+platform fails, the rest of the release still ships.
+
+The **Desktop app** workflow (`.github/workflows/desktop.yml`) can also run on
+its own, from the Actions tab or on PRs that touch `src-tauri/`; its
+installers are workflow artifacts. Signing is optional: set the `APPLE_*`
 secrets to sign and notarize on macOS.
 
-### On a server or VM
+To build a server archive locally, run
+`scripts/package-server.sh v1.2.3 [target] [out-dir]`. To test the installer
+against it, run
+`AMIRO_INSTALL_ARCHIVE=dist/amiro-server-….tar.gz bash install.sh`.
+
+### On a server or VM: one command
+
+```bash
+curl -fsSL https://github.com/vallabha717/Amiro/releases/latest/download/install.sh | bash
+```
+
+This works on Linux and macOS, on x86_64 and arm64, and needs no root. The
+installer:
+
+- downloads the release for this machine and checks its SHA-256;
+- installs it to `~/.amiro/app/<version>` and links the `amiro` command into
+  `~/.local/bin`;
+- writes `~/.amiro/amiro.toml` with port 3000 and a random token;
+- starts the server and prints the address to open.
+
+Useful options go after `bash -s --`:
+
+```bash
+# A VM you reach over the network, kept running across reboots:
+curl -fsSL https://github.com/vallabha717/Amiro/releases/latest/download/install.sh | bash -s -- --public --service
+# A specific version / port, install only:
+curl -fsSL https://github.com/vallabha717/Amiro/releases/latest/download/install.sh | bash -s -- --version v1.26.0 --port 8080 --no-start
+```
+
+Afterwards, `amiro` manages it:
+
+| Command | What it does |
+| --- | --- |
+| `amiro start` / `stop` / `restart` / `status` | Run it in the background (`start --foreground` to watch it). |
+| `amiro url` | The address to open. |
+| `amiro logs [-f]` | The server log. |
+| `amiro service install [--system]` | Start at boot (a systemd user service, or launchd on macOS). `--system` installs a system unit with sudo. |
+| `amiro config [edit]` | Show `amiro.toml` with secrets hidden, or open it in `$EDITOR`. |
+| `amiro reset-password` | Set a new owner password. |
+| `amiro update [vX.Y.Z]` | Install the latest (or given) release and restart. |
+| `amiro doctor` | Check the install, including OpenSSL 3, which the agent runtime needs on Linux. |
+| `amiro uninstall [--purge]` | Remove the app. `--purge` also removes all data. |
+
+On Linux the agent runtime needs OpenSSL 3 (Ubuntu 22.04+, Debian 12+,
+Fedora, RHEL 9). `amiro doctor` says how to install it if it's missing.
+
+### On a server or VM: from source
 
 ```bash
 scripts/setup-vm.sh                  # dependencies + build (Debian/Ubuntu, macOS)
@@ -138,7 +205,8 @@ Amiro has no email recovery: it runs on your machine. On the machine running
 Amiro, run:
 
 ```bash
-amiro-backend reset-password                 # asks for the new password twice
+amiro reset-password                         # installed with install.sh
+amiro-backend reset-password                 # from a source checkout; asks twice
 amiro-backend reset-password --login you@example.com   # also change the login
 ```
 

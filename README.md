@@ -16,6 +16,20 @@
 
 ---
 
+## Install
+
+**Server / VM (Linux, macOS):**
+
+```bash
+curl -fsSL https://github.com/vallabha717/Amiro/releases/latest/download/install.sh | bash
+```
+
+Add `-s -- --public --service` to reach it over the network and keep it
+running across reboots. **Desktop app:** download the installer for macOS,
+Windows or Linux from the [latest release](https://github.com/vallabha717/Amiro/releases/latest).
+Either way, the first launch opens a setup wizard; see [docs/SETUP.md](docs/SETUP.md).
+
+
 ## Table of contents
 
 - [What Amiro is](#what-amiro-is)
