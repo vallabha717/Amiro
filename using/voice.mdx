@@ -1,0 +1,75 @@
+---
+title: "Voice"
+description: "Dictate messages, hear replies read aloud, configure speech providers, and talk hands-free in the voice room."
+---
+
+Amiro has three voice surfaces: dictation for writing, read-aloud for hearing replies, and a hands-free live voice room. Configure the providers once, then use any of them.
+
+## Set up speech providers
+
+<Warning>
+The voice settings page is at `/admin/voice` and is owner-only. Only the admin account can change providers or store keys there.
+</Warning>
+
+1. Go to `/admin/voice`.
+2. Choose a **text-to-speech provider** and a **speech-to-text provider**. Amiro ships catalogs of seven of each.
+3. For a provider that needs a key, paste the API key. Keys are stored in the encrypted credential vault and are shown only as a masked hint afterward.
+4. Pick a model and voice, or fetch the provider's live voice list where it supports one.
+5. Click **Test Voice** or preview an individual voice to hear it before saving.
+6. Save. Toggle **Read Aloud** and auto read-aloud in the output behavior card.
+
+Providers include OpenAI, ElevenLabs, Deepgram, Fish Audio, xAI, a custom OpenAI-compatible endpoint (for example 9Router or LiteLLM), and the browser's own built-in speech (free, keyless, and dependent on your browser and OS).
+
+## Dictate a message
+
+The microphone button sits in the composer.
+
+1. Click the mic button in the composer.
+2. Speak. With a server STT provider, Amiro records and transcribes. With the browser-native provider, the browser's own recognition runs instead.
+3. The transcript lands in the composer so you can edit it before sending.
+4. Click the mic again to stop.
+
+## Hear a reply read aloud
+
+- Every assistant message has a **Read aloud** action. Click it to start, and **Stop reading** to stop.
+- Turn on the read-aloud action and auto read-aloud in `/admin/voice`. When auto read-aloud is on, each finished reply is spoken automatically.
+- During a live voice call, auto read-aloud is suppressed, because the live session already speaks every answer.
+
+## Live voice room
+
+Live voice is hands-free: you talk, the server finds the end of your sentence, the agent answers, and the answer is spoken as it is written. It uses ElevenLabs for both speech in and speech out.
+
+<Steps>
+  <Step title="Start a session">
+    Press Cmd+Shift+I (or Ctrl+Shift+I), or click the voice mode button in the composer or header.
+  </Step>
+  <Step title="Talk">
+    The room appears above the composer, with the agent's plush mascot reacting to your microphone. Speak normally and pause to finish a turn.
+  </Step>
+  <Step title="Interrupt if you need to">
+    Speak over the reply to barge in. The current answer is cancelled and the agent listens to you instead.
+  </Step>
+  <Step title="Finish">
+    Click End voice, press the shortcut again, or use the room controls. Minimizing leaves a small dock above the composer.
+  </Step>
+</Steps>
+
+### Room controls and shortcuts
+
+| Input | Action |
+| --- | --- |
+| Cmd+Shift+I or Ctrl+Shift+I | Start or end voice |
+| Space | Finish your turn while listening, or stop the answer while it is thinking or speaking |
+| M | Toggle your microphone mute |
+| Esc | Minimize the room without ending the call |
+
+The room shows captions for both sides. The buttons cover speaker mute, microphone mute, and End voice, and the centre button is either **I'm done talking** or **Stop answer** depending on the phase. Swarm members in the thread appear as small companions you can click to open beside the chat.
+
+<Note>
+Live voice needs a configured ElevenLabs key, microphone permission, and a browser that supports the audio path. If something is missing, the preflight check reports a human-readable reason instead of failing silently.
+</Note>
+
+## Related
+
+- [Chatting with Amiro](/using/chatting)
+- [Credentials](/using/credentials)

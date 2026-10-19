@@ -1,0 +1,63 @@
+---
+title: "Skills and Superpowers"
+description: "Find a skill, add it to your next message, and understand what skills can and cannot do."
+---
+
+A skill is a folder with a `SKILL.md` file: short metadata plus markdown instructions. When you use a skill, its instruction text is attached to your next message. The Superpowers page is where you browse them.
+
+## Find a skill
+
+<Steps>
+  <Step title="Open Superpowers">
+    Go to `/agent/superpowers` from the Agent hub. The old `/skills` address still works.
+  </Step>
+  <Step title="Search or filter">
+    Use the search box to match by name, description, or source. Filter with **all**, **builtin**, **custom**, or **project**.
+  </Step>
+  <Step title="Use it">
+    Click **Use** on a card. It adds the skill as a mention to your next message, shown as a chip above the composer.
+  </Step>
+  <Step title="Send your message">
+    Type your message and send. The skill instructions ride along with that turn only.
+  </Step>
+</Steps>
+
+If you are not in a thread yet, **Use** stores the skill as a pending mention until you open one. You can also pick skills from the composer's `/` mention picker while writing.
+
+## What the buttons do
+
+| Action | What it does |
+| --- | --- |
+| Use | Adds the skill to the next message |
+| Open | Opens the skill editor or detail page |
+| Duplicate | Makes an editable copy of a built-in skill |
+
+## Sources and permissions
+
+Skills come from three places:
+
+- **Built-in** skills shipped with Amiro.
+- **Project** skills found in the project folder you pointed the agent at.
+- **Custom** skills you author.
+
+A built-in skill that lives in the read-only area shows a lock and offers **Duplicate** instead of edit. Writable skills are labeled editable.
+
+## Limits to know
+
+- **Up to eight selected skills** are accepted per message.
+- Each skill body is bounded to **12 KB**, with an explicit truncation marker when it is clipped.
+- The combined reminder is bounded to **48 KB**. An oversized combined selection is rejected with an explanation instead of being silently trimmed.
+- An unsupported or disabled skill cannot be added. The action is disabled with the reason shown, and the server rejects an unknown name instead of substituting a different skill.
+
+<Warning>
+A skill supplies instructions, not permissions. Adding a skill does not enable an MCP server, does not widen the tool allowlist, and does not grant any new access. The agent still runs with the owner's permissions. Use a VM or sandbox when you need isolation.
+</Warning>
+
+## Where the instructions go
+
+Selected skill text is delivered as a system reminder on the same message frame as your prompt, including follow-ups, and is not persisted as visible user text in the thread. The agent's system prompt and its native memory context are unchanged.
+
+## Related
+
+- [Personalizing your agent](/using/personalizing-your-agent)
+- [Connectors](/using/connectors)

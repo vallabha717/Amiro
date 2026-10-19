@@ -1,0 +1,78 @@
+---
+title: "Schedules"
+description: "Run a saved prompt on a timer: once, cron, or interval, and read every run in its history."
+---
+
+A schedule runs a saved prompt on a timer, in its own timezone, and records every firing so you can see what happened. Open **Schedules** in the sidebar, or go to `/schedules`.
+
+## Create a schedule
+
+<Steps>
+  <Step title="Open the editor">
+    On the Schedules page, choose to create a new schedule.
+  </Step>
+  <Step title="Name and prompt">
+    Give it a name and write the prompt. Write it like a message to your agent, and keep it self contained so it still makes sense on its own.
+  </Step>
+  <Step title="Pick a mode">
+    Choose **Reminder**, **Text only**, or **Agent**. See the modes below for the difference.
+  </Step>
+  <Step title="Pick a cadence">
+    Choose once, a recurring schedule, or an interval. For a recurring schedule you can use daily, weekdays, weekly, or monthly shapes, or type a five-field cron expression.
+  </Step>
+  <Step title="Set the timezone">
+    Pick the IANA timezone the wall time belongs to. The preview shows the upcoming runs in that zone.
+  </Step>
+  <Step title="Preview and save">
+    Click **Preview** to confirm the cadence, then save. A once preview returns exactly one time. A recurring or interval preview returns five upcoming runs in order.
+  </Step>
+</Steps>
+
+## Modes
+
+| Mode | Label in the editor | What it does |
+| --- | --- | --- |
+| Reminder | Reminder | Posts your text as-is as a thread message. No model call. |
+| Text only | Text only | Runs a model turn with tools forced off and the model pinned server side. Writes a reply. |
+| Agent | Agent | Runs a full agent turn with the same tool and connector access a chat has, in the agent workspace, so its home files load. |
+
+<Note>
+A Reminder is the cheapest and most reliable option, because it never depends on the runtime. Text only and Agent pin the model you choose, so the schedule does not silently inherit a different default later.
+</Note>
+
+## Run history and controls
+
+Open a schedule to see its detail panel and run history.
+
+- **Run now** fires the schedule immediately, even while it is paused. A once schedule is consumed when you run it manually.
+- **Pause** stops all timer firings. **Resume** brings them back.
+- Each run row shows its status, output preview, and any error. Open the run's conversation to read the full result.
+- The **Recent runs** view lists the latest runs across every schedule.
+
+<AccordionGroup>
+  <Accordion title="A run was skipped">
+    Agent mode does not run while another runtime session is busy, for example a chat you have open. The run is recorded as skipped with a reason, and the next run stays scheduled.
+  </Accordion>
+  <Accordion title="A run failed">
+    Failures are shown in run history with the error text. The next firing still happens on schedule.
+  </Accordion>
+  <Accordion title="A time does not exist">
+    A wall time that never exists (the spring-forward gap) or happens twice (the fall-back fold) is rejected with an error instead of being silently shifted. Use an explicit UTC offset to pick one instant.
+  </Accordion>
+</AccordionGroup>
+
+## Built-in tasks
+
+The Schedules page also lists built-in tasks as read-only rows:
+
+- **Heartbeat**: the agent's periodic self-check. Its toggle and interval live in the Workspace heartbeat panel.
+- **Memory upkeep**: a runtime task that is not editable.
+
+## Create a schedule from chat
+
+You can also just ask. Say something like "every weekday at 8, send me a briefing" and the agent creates the schedule through its built-in scheduling tools. It is tagged as created in chat, and the detail panel links back to the conversation it came from. If no model is given, an agent-created schedule runs on the model you last chatted with, unless the deployment sets a default.
+
+## Related
+
+- [Chatting with Amiro](/using/chatting)
+- [Workspace and files](/using/workspace-files)

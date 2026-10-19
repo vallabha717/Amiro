@@ -1,0 +1,65 @@
+---
+title: "Connectors"
+description: "Connect apps through Composio and add MCP servers, all from one page."
+---
+
+Connectors are everything the agent can reach outside itself: apps connected through Composio, and MCP servers that are either remote (a URL) or local (a command on this machine). They all live on one page at `/connectors`. The old `/mcp` address forwards there.
+
+## Open the connectors page
+
+Click **Connectors** in the sidebar, or go to `/connectors`.
+
+The page has two parts:
+
+- **Your connectors**: the custom servers and connected Composio apps, each with its status, tool count, an on/off switch, and actions to edit, update keys, or remove it.
+- **App catalog**: the searchable Composio app grid, or the setup card if no Composio key is stored yet.
+
+## Connect Composio apps
+
+<Steps>
+  <Step title="Add the Composio key">
+    If Composio is not configured, the page shows a setup card. Paste your Composio API key there and save. The key is validated before it is stored, and it is never shown again, only a last-four hint.
+  </Step>
+  <Step title="Find an app">
+    Use the toolkit grid and the All or Connected filter to find an app.
+  </Step>
+  <Step title="Connect">
+    Click **Connect** and finish the sign-in in the browser window that opens. The page polls the connection until it becomes active, then syncs.
+  </Step>
+  <Step title="Use it">
+    Once connected, the app's tools reach the agent through the runtime's MCP configuration. Ask for the app by name in chat, for example "check Composio Gmail".
+  </Step>
+</Steps>
+
+Disconnecting an app removes the connection and re-syncs the runtime.
+
+## Add a custom MCP server
+
+1. Click **Add custom** on the connectors page.
+2. Choose a remote server and enter its URL with a bearer or API-key header, or choose a local command with environment variables.
+3. Mark any row that is a secret. Secret values go to the encrypted credential vault, and the config keeps only a placeholder reference.
+4. Save and turn the server on. The page reports its connection status and tools.
+
+You can also ask the agent to set one up mid-chat. It calls its `mcp add` tool, and a secure card appears in the chat asking for any missing key. Type the value there. It goes straight to the server, never into the transcript or the model's context, and the agent continues once the key is in.
+
+## How sync and reload work
+
+The page (and the agent's own tool) edits one source of truth, the runtime's MCP config. When a server definition changes, Amiro sends the runtime a reload command to every idle session. Sessions that are mid-turn are skipped and pick up the change on their next turn. The page's refresh action does the same and returns a fresh list.
+
+Secret values never sit in the config file. Instead the config references an environment placeholder, and Amiro keeps the resolved values in a private file the runtime reads. That is why a newly added key works on the next reload without restarting the runtime or dropping a turn.
+
+## Status and limits
+
+- **Status** is read from one session's MCP manager and cached briefly. With no session running, servers read as unknown.
+- **OAuth-only remote servers** still need a terminal login command, because there is no browser OAuth flow for custom servers yet.
+- **Composio's built-in Gmail tool** is separate from the Composio Gmail app. A vague "check my mail" prompt can pick the built-in tool and fail if Google is not configured. Ask for Composio explicitly, or leave the built-in tool unconfigured.
+
+<Warning>
+Changing the Composio key restarts the backend-owned runtime bridge and drops in-flight turns. If you supervise the runtime yourself, set its environment directly, because Amiro cannot inject the key there. Vault variables are visible to processes the runtime starts, so they are kept out of the prompt and transcript, not off the machine.
+</Warning>
+
+## Related
+
+- [Credentials](/using/credentials)
+- [Skills and Superpowers](/using/skills-superpowers)
+- [Chatting with Amiro](/using/chatting)

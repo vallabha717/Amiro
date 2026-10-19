@@ -448,6 +448,8 @@ privately through GitHub security advisories; see [SECURITY.md](SECURITY.md).
 
 ## Documentation
 
+The user guide lives in this repo root as Mintlify pages (`docs.json`, `introduction.mdx`, `using/`, `settings/`, `reference/`). Connect the repo in Mintlify to publish it, or preview with `npx mintlify dev`.
+
 | Document | Contents |
 |---|---|
 | [docs/SETUP.md](docs/SETUP.md) | First-run wizard, `amiro.toml` / `.env`, desktop app, installer, releases, password reset |

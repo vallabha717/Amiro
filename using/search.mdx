@@ -1,0 +1,43 @@
+---
+title: "Search"
+description: "How the agent searches the web, and how to choose which providers it may use."
+---
+
+The agent can search the web when a task needs current information. Search runs only through providers you configure, and Amiro seeds a sensible set on first setup.
+
+## How search runs
+
+- The agent calls a built-in web search tool when a request needs it. You do not need a special command.
+- Amiro exports your configured search providers to the runtime as a private registry. The agent can only use those providers.
+- The selected default is tried first. If it fails, the agent tries the other configured local providers in order.
+- Provider Native hosted search is available when it is the selected default and the model supports it. It is not an automatic fallback, and a selected local provider takes precedence.
+- If nothing is configured, the agent says so instead of quietly reaching an unconfigured free engine.
+
+## Choose providers
+
+<Warning>
+Search providers are configured at `/admin/search` and the page is owner-only.
+</Warning>
+
+1. Go to Admin, then **Search Providers**, or open `/admin/search`.
+2. Read the seeded list. On first setup, **Provider Native** is the default, with free **DuckDuckGo** and **Bing** already configured as local alternatives.
+3. To change the default, open a provider's card and make it the active default.
+4. To add another provider, click **Add Provider** and pick from the catalog: DuckDuckGo, Bing, Brave, Tavily, Exa, Serper, Firecrawl, SearXNG, Custom HTTP JSON, or Provider Native.
+5. Fill in the endpoint and key if the provider needs them, then save.
+
+Each card shows whether it is configured, whether it is the default, and how many fallbacks you have. A custom endpoint is validated before it is exported, so an incompatible configuration is rejected rather than silently failing later.
+
+<Note>
+Search keys and endpoints are kept in the private registry and the runtime config, never in the model's tool schema or in error messages. The agent sees provider IDs, not secrets. Only the default and other configured providers are eligible, so the agent cannot drift onto a service you did not choose.
+</Note>
+
+## When search returns nothing
+
+- Check the default provider on `/admin/search` and confirm it is configured.
+- If the default is Provider Native, hosted search needs a model that supports it. Select a configured local provider to search without that dependency.
+- Local fallback tries configured alternatives only. An unknown provider ID fails closed instead of using an unconfigured service.
+
+## Related
+
+- [Chatting with Amiro](/using/chatting)
+- [Connectors](/using/connectors)
