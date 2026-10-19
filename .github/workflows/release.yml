@@ -43,7 +43,7 @@ jobs:
       tag: ${{ steps.release.outputs.tag }}
       release_id: ${{ steps.release.outputs.id }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Check the version
         run: |
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "::error::version must look like v1.2.3"; exit 1; }
@@ -90,7 +90,7 @@ jobs:
     if: ${{ !cancelled() && needs.server.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Checksums and installer
         run: |
           mkdir -p assets && cd assets

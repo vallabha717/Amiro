@@ -53,10 +53,10 @@ jobs:
       AMIRO_HOME: ${{ github.workspace }}/../amiro-home
       TAG: ${{ inputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Archive from this PR
         if: github.event_name == 'pull_request'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: amiro-server-${{ matrix.target }}
           path: dist
