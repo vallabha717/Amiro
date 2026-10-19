@@ -79,3 +79,21 @@ jobs:
       # Same command as the runtime:check script in package.json.
       - name: Runtime check
         run: cargo check --manifest-path runtime/Cargo.toml --bin amiro-runtime --no-default-features
+
+  # The one check branch protection requires (like uv's "all required jobs
+  # passed"): add jobs to `needs` instead of editing the ruleset.
+  required:
+    name: All required checks passed
+    if: always()
+    needs: [frontend, rust]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check results
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: |
+          echo "$RESULTS"
+          if echo "$RESULTS" | grep -Eq '"(failure|cancelled|skipped)"'; then
+            echo "::error::a required job did not pass"; exit 1
+          fi
