@@ -336,16 +336,16 @@ mod tests {
     #[test]
     fn amiro_models_are_pinned_to_the_managed_transport() {
         assert_eq!(
-            AmiroProvider::runtime_model_spec("claude-opus-4-8"),
-            "openrouter:claude-opus-4-8"
+            AmiroProvider::runtime_model_spec("claude-opus-5-5"),
+            "openrouter:claude-opus-5-5"
         );
         assert_eq!(
-            AmiroProvider::runtime_model_spec("gpt-5.5"),
-            "openrouter:gpt-5.5"
+            AmiroProvider::runtime_model_spec("claude-haiku-5-5"),
+            "openrouter:claude-haiku-5-5"
         );
         assert_eq!(
-            AmiroProvider::runtime_model_spec("minimax-m2.5"),
-            "openrouter:minimax-m2.5"
+            AmiroProvider::runtime_model_spec("gpt-6.1-sol"),
+            "openrouter:gpt-6.1-sol"
         );
     }
 
@@ -354,33 +354,17 @@ mod tests {
         use crate::subscription_catalog::AmiroTier;
 
         let plus_routes = AmiroProvider::model_routes_for(AmiroTier::Plus);
-        let gpt_route = plus_routes
+        let claude_route = plus_routes
             .iter()
-            .find(|route| route.model == "gpt-5.5")
-            .expect("Plus tier includes GPT-5.5");
-        let route_selection = amiro_provider_core::RouteSelection::from_model_route(gpt_route);
+            .find(|route| route.model == "claude-sonnet-5-5")
+            .expect("Plus tier includes Claude Sonnet 5.5");
+        let route_selection = amiro_provider_core::RouteSelection::from_model_route(claude_route);
         let flagship_routes = AmiroProvider::model_routes_for(AmiroTier::Flagship);
         let expected_models = vec![
-            "claude-opus-4-8",
-            "claude-opus-5",
-            "claude-sonnet-4-6",
-            "gpt-5.5",
-            "claude-fable-5",
-            "gpt-5.6-sol",
-            "qwen3-coder-next",
-            "devstral-2-123b",
-            "deepseek-v3.2",
-            "nova-2-lite",
-            "minimax-m2.5",
-            "mistral-large-3",
-            "kimi-k2.5",
-            "kimi-k2-thinking",
-            "nemotron-nano-3-30b",
-            "gpt-oss-120b",
-            "gpt-oss-20b",
-            "qwen3-next-80b",
-            "glm-5",
-            "glm-4.7-flash",
+            "claude-opus-5-5",
+            "claude-sonnet-5-5",
+            "claude-haiku-5-5",
+            "gpt-6.1-sol",
         ];
 
         assert_eq!(
@@ -404,7 +388,7 @@ mod tests {
                 .map(|model| (*model).to_string())
                 .collect::<Vec<_>>()
         );
-        assert_eq!(route_selection.routed_model_spec(), "gpt-5.5");
+        assert_eq!(route_selection.routed_model_spec(), "claude-sonnet-5-5");
         assert_eq!(
             route_selection.runtime_key,
             amiro_provider_core::RuntimeKey::AmiroSubscription
@@ -412,11 +396,11 @@ mod tests {
         assert_eq!(route_selection.api_method, "jcode-subscription");
         assert_eq!(route_selection.provider_label, "Amiro Subscription");
         assert_eq!(plus_routes, flagship_routes);
-        assert_eq!(flagship_routes.len(), 20);
+        assert_eq!(flagship_routes.len(), 4);
         assert!(
-            flagship_routes
+            !flagship_routes
                 .iter()
-                .any(|route| route.model == "claude-fable-5")
+                .any(|route| route.model.starts_with("gpt-5."))
         );
     }
 }

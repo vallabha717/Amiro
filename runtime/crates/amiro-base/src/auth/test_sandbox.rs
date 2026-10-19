@@ -102,6 +102,7 @@ fn reset_global_auth_state() {
 fn tracked_env_vars() -> Vec<String> {
     let mut keys = [
         "AMIRO_HOME",
+        "AMIRO_EXPERIMENTAL_MUSE_SUBSCRIPTION",
         "XDG_CONFIG_HOME",
         "AMIRO_OPENROUTER_API_BASE",
         "AMIRO_OPENROUTER_API_KEY_NAME",

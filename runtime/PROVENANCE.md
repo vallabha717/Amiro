@@ -10,8 +10,8 @@ attribution stays auditable.
 |---|---|
 | Project | jcode |
 | Repository | https://github.com/1jehuang/jcode |
-| Commit vendored | `11952e02ac76fa1c335633e9c6113691c1cf3395` |
-| Version | `0.98.1` (root `Cargo.toml` `[package].version`) |
+| Commit vendored | `48aa83e919e235d6cca87b7ce42858a9bd8e1f26` (updated from `11952e02ac76fa1c335633e9c6113691c1cf3395`) |
+| Version | `0.99.0` + 54 commits on `master` (root `Cargo.toml` `[package].version`) |
 | Licence | MIT: Copyright (c) 2025 Jeremy Huang |
 | Licence text | `runtime/LICENSE`, copied verbatim from the upstream checkout |
 
@@ -86,3 +86,9 @@ Recorded in full in `../docs/RUST-RUNTIME.md`. In short:
 `runtime/Cargo.lock` pins the full registry dependency set, resolved from
 crates.io. Those crates keep their own licences and are not vendored here;
 `cargo` fetches them at build time.
+
+## Update history
+
+| Date | From | To | How |
+|---|---|---|---|
+| 2026-10-19 | `11952e02` (0.98.1) | `48aa83e9` (0.99.0+54) | Normalized with `scripts/runtime-update/normalize_upstream.py` (transform v2), three-way merged with the tracked runtime per `docs/runtime-upstream-update.md`. Conflicts: root `Cargo.toml` (kept `amiro-runtime`, took `0.99.0`), `Cargo.lock` (re-resolved by Cargo). 10 upstream deletions (swarm task-graph DAG) reviewed: unused by Amiro. |

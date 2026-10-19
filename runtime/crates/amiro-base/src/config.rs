@@ -70,8 +70,36 @@ snippet_pointer = "/summary"
     assert!(WebSearchConfig::default().custom.is_none());
 }
 
+#[cfg(test)]
+#[test]
+fn agents_jev_models_parse_and_default_unset() {
+    let config: AgentsConfig = toml::from_str(
+        r#"
+memory_jev_model = "typesafe/jev-1.14"
+browser_jev_model = "typesafe/jev-1.14"
+voice_jev_model = "typesafe/jev-1.14"
+"#,
+    )
+    .unwrap();
+    assert_eq!(
+        config.memory_jev_model.as_deref(),
+        Some("typesafe/jev-1.14")
+    );
+    assert_eq!(
+        config.browser_jev_model.as_deref(),
+        Some("typesafe/jev-1.14")
+    );
+    assert_eq!(config.voice_jev_model.as_deref(), Some("typesafe/jev-1.14"));
+    let defaults = AgentsConfig::default();
+    assert!(defaults.memory_jev_model.is_none());
+    assert!(defaults.browser_jev_model.is_none());
+    assert!(defaults.voice_jev_model.is_none());
+}
+
 const CONFIG_ENV_KEYS: &[&str] = &[
     "AMIRO_HIBERNATION_IDLE_SECS",
+    "AMIRO_HIBERNATION_MODE",
+    "AMIRO_REQUEST_COMPRESSION",
     "HOME",
     "AMIRO_COMMIT_LOG_KEY",
     "AMIRO_RESUME_PROJECT_SCOPE",
@@ -175,6 +203,14 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "AMIRO_MEMORY_EMBEDDING_MODEL",
     "AMIRO_MEMORY_ENABLED",
     "AMIRO_MEMORY_JEV_PROVIDER",
+    "AMIRO_BROWSER_JEV_PROVIDER",
+    "AMIRO_VOICE_JEV_PROVIDER",
+    "AMIRO_LAYA_BASE_URL",
+    "LAYA_BASE_URL",
+    "LAYA_API_KEY",
+    "AMIRO_MEMORY_JEV_MODEL",
+    "AMIRO_BROWSER_JEV_MODEL",
+    "AMIRO_VOICE_JEV_MODEL",
     "AMIRO_ENABLE_MERMAID",
     "AMIRO_MEMORY_MODEL",
     "AMIRO_MEMORY_SIDECAR_ENABLED",
@@ -233,7 +269,6 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "AMIRO_SWARM_ENABLED",
     "AMIRO_SWARM_EFFORT",
     "AMIRO_SWARM_ROOT_EFFORT",
-    "AMIRO_SWARM_DEEP_ROOT_EFFORT",
     "AMIRO_SWARM_MODEL",
     "AMIRO_SWARM_MAX_CONCURRENT_AGENTS",
     "AMIRO_SWARM_SPAWN_MODE",

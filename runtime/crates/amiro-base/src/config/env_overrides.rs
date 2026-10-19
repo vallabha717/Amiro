@@ -416,20 +416,9 @@ impl Config {
                 Some(trimmed.to_string())
             };
         }
-        for (key, target) in [
-            (
-                "AMIRO_SWARM_ROOT_EFFORT",
-                &mut self.agents.swarm_root_effort,
-            ),
-            (
-                "AMIRO_SWARM_DEEP_ROOT_EFFORT",
-                &mut self.agents.swarm_deep_root_effort,
-            ),
-        ] {
-            if let Ok(value) = std::env::var(key) {
-                let value = value.trim();
-                *target = (!value.is_empty()).then(|| value.to_string());
-            }
+        if let Ok(value) = std::env::var("AMIRO_SWARM_ROOT_EFFORT") {
+            let value = value.trim();
+            self.agents.swarm_root_effort = (!value.is_empty()).then(|| value.to_string());
         }
         if let Ok(v) = std::env::var("AMIRO_SWARM_SPAWN_MODE") {
             if let Some(parsed) = SwarmSpawnMode::parse(&v) {
@@ -460,6 +449,19 @@ impl Config {
         }
         if let Ok(v) = std::env::var("AMIRO_MEMORY_JEV_PROVIDER") {
             self.agents.memory_jev_provider = v.trim().to_ascii_lowercase();
+        }
+        for (key, target) in [
+            ("AMIRO_MEMORY_JEV_MODEL", &mut self.agents.memory_jev_model),
+            (
+                "AMIRO_BROWSER_JEV_MODEL",
+                &mut self.agents.browser_jev_model,
+            ),
+            ("AMIRO_VOICE_JEV_MODEL", &mut self.agents.voice_jev_model),
+        ] {
+            if let Ok(value) = std::env::var(key) {
+                let value = value.trim();
+                *target = (!value.is_empty()).then(|| value.to_string());
+            }
         }
         if let Ok(v) = std::env::var("AMIRO_MEMORY_MODEL") {
             let trimmed = v.trim();
@@ -817,6 +819,11 @@ impl Config {
                 self.session.hibernation_idle_secs = seconds;
             }
         }
+        if let Ok(v) = std::env::var("AMIRO_HIBERNATION_MODE") {
+            if let Some(mode) = amiro_config_types::HibernationMode::parse(&v) {
+                self.session.hibernation_mode = mode;
+            }
+        }
 
         // Power management
         if let Ok(v) = std::env::var("AMIRO_PREVENT_SLEEP_WHILE_STREAMING") {
@@ -910,6 +917,11 @@ impl Config {
             && parsed > 0
         {
             self.provider.retry_backoff_cap_secs = parsed;
+        }
+        if let Ok(v) = std::env::var("AMIRO_REQUEST_COMPRESSION")
+            && !v.trim().is_empty()
+        {
+            self.provider.request_compression = v.trim().to_ascii_lowercase();
         }
 
         // Copilot premium mode: env var overrides config

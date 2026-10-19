@@ -254,13 +254,16 @@ fn test_generic_auto_fallback_skips_excluded_preferred_and_checks_source_pool() 
         pool.save().unwrap();
         assert!(app.offer_fallback_after_error_with_payload("401 invalid API key", payload));
         assert!(app.pending_provider_failover.is_none());
+        // Unified router: pooled accounts outrank excluded ones even for
+        // the manual offer; the excluded route stays reachable only when no
+        // pooled alternative exists.
         assert_eq!(
             app.pending_fallback_offer
                 .as_ref()
                 .unwrap()
                 .selection
                 .api_method,
-            "claude-oauth@claude-otter"
+            "openai-oauth@openai-fox"
         );
     });
 }
@@ -362,6 +365,7 @@ fn test_rejected_remote_automatic_route_retains_old_identity_and_drops_payload()
                 provider_name: Some("Other".into()),
                 error: None,
                 provider_oauth_email: None,
+                provider_oauth_account_label: None,
                 resolved_credential: None,
                 reasoning_effort: None,
                 context_window: None,
@@ -379,6 +383,7 @@ fn test_rejected_remote_automatic_route_retains_old_identity_and_drops_payload()
                 provider_name: None,
                 error: Some("Target is no longer in the auto-switch pool".into()),
                 provider_oauth_email: None,
+                provider_oauth_account_label: None,
                 resolved_credential: None,
                 reasoning_effort: None,
                 context_window: None,
@@ -422,6 +427,37 @@ fn test_remote_failover_esc_cancels_without_route_request_or_resend() {
         assert!(app.pending_fallback_resend.is_none());
         assert!(app.pending_route_selection.is_none());
         assert_eq!(app.input, "hi");
+    });
+}
+
+#[test]
+fn test_remote_failover_typing_and_enter_queue_instead_of_canceling() {
+    with_temp_amiro_home(|| {
+        write_test_config("[provider]\ncross_provider_failover = \"countdown\"\n");
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let _guard = rt.enter();
+        let (mut app, mut remote) = remote_exact_failover_fixture();
+        app.input.clear();
+        app.cursor_pos = 0;
+        for key in [KeyCode::Char('n'), KeyCode::Char('x'), KeyCode::Enter] {
+            rt.block_on(remote::handle_remote_key_event(
+                &mut app,
+                crossterm::event::KeyEvent::new(key, KeyModifiers::NONE),
+                &mut remote,
+            ))
+            .unwrap();
+            assert!(
+                app.pending_provider_failover.is_some(),
+                "{key:?} must not cancel the account switch"
+            );
+        }
+        assert!(app.input.is_empty());
+        assert_eq!(app.queued_messages, vec!["nx".to_string()]);
+        assert!(
+            !app.display_messages
+                .iter()
+                .any(|message| message.content.contains("Auto-switch canceled"))
+        );
     });
 }
 
@@ -646,6 +682,7 @@ fn test_remote_fallback_offer_accept_stages_switch_and_resends() {
             provider_name: Some("Anthropic".to_string()),
             error: None,
             provider_oauth_email: None,
+            provider_oauth_account_label: None,
             resolved_credential: None,
             reasoning_effort: None,
         },
@@ -694,6 +731,7 @@ fn test_remote_fallback_resend_dropped_when_switch_fails() {
             provider_name: None,
             error: Some("switch failed".to_string()),
             provider_oauth_email: None,
+            provider_oauth_account_label: None,
             resolved_credential: None,
             reasoning_effort: None,
         },

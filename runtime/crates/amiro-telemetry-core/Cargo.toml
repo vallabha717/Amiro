@@ -9,6 +9,7 @@ name = "amiro_telemetry_core"
 path = "src/lib.rs"
 
 [dependencies]
+anyhow = "1"
 chrono = { version = "0.4", features = ["serde"] }
 amiro-build-meta = { path = "../amiro-build-meta" }
 amiro-core = { path = "../amiro-core" }
