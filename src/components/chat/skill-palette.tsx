@@ -25,6 +25,31 @@ export interface SkillPaletteProps {
 
 const MAX_DISPLAY_COUNT = 50;
 
+/**
+ * Skills matching the palette query, searched the way Agent → Superpowers
+ * searches (name, display name, description), name-prefix matches first.
+ */
+export function matchSkills<T extends Pick<SkillSummary, "name" | "description" | "displayName">>(
+  list: T[],
+  query: string,
+): T[] {
+  const lower = query.trim().toLowerCase();
+  if (!lower) return list;
+  const rank = (item: T) => {
+    const name = item.name.toLowerCase();
+    if (name.startsWith(lower)) return 0;
+    if (name.includes(lower)) return 1;
+    if ((item.displayName ?? "").toLowerCase().includes(lower)) return 2;
+    if ((item.description ?? "").toLowerCase().includes(lower)) return 3;
+    return -1;
+  };
+  return list
+    .map((item) => ({ item, score: rank(item) }))
+    .filter(({ score }) => score >= 0)
+    .sort((a, b) => a.score - b.score)
+    .map(({ item }) => item);
+}
+
 export function SkillPalette({
   top,
   left,
@@ -58,13 +83,8 @@ export function SkillPalette({
     [allItems],
   );
 
-  // Apply prefix filtering on skill names
   const filterByPrefix = useCallback(
-    (list: SkillSummary[]) => {
-      if (!query) return list;
-      const lower = query.toLowerCase();
-      return list.filter((item) => item.name.toLowerCase().startsWith(lower));
-    },
+    (list: SkillSummary[]) => matchSkills(list, query),
     [query],
   );
 
