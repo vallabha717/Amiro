@@ -264,6 +264,10 @@ export default function AdminVoicePage() {
 
   const currentTtsState = settings.ttsProviders[activeTts];
   const currentSttState = settings.sttProviders[activeStt];
+  // Keyless engines (in-browser) have nothing to paste; "saved" is claimed
+  // only when the vault really holds a key for the engine (it has a hint).
+  const ttsKeyless = ttsCatalog.find((p) => p.id === activeTts)?.keyless;
+  const sttKeyless = sttCatalog.find((p) => p.id === activeStt)?.keyless;
 
   if (loading) {
     return (
@@ -612,19 +616,21 @@ export default function AdminVoicePage() {
                 </div>
 
                 {/* API Key */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs font-semibold">API Key</Label>
-                    <span className="text-[11px] text-muted-foreground">Stored encrypted in vault</span>
+                {!ttsKeyless && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-semibold">API Key</Label>
+                      <span className="text-[11px] text-muted-foreground">Stored encrypted in vault</span>
+                    </div>
+                    <Input
+                      type="password"
+                      placeholder={currentTtsState?.apiKeyHint ? "•••• saved (paste new key to update)" : "Paste API key"}
+                      value={ttsApiKey}
+                      onChange={(e) => setTtsApiKey(e.target.value)}
+                      className="h-9 text-xs"
+                    />
                   </div>
-                  <Input
-                    type="password"
-                    placeholder={currentTtsState?.configured ? "•••• saved (paste new key to update)" : "Paste API key"}
-                    value={ttsApiKey}
-                    onChange={(e) => setTtsApiKey(e.target.value)}
-                    className="h-9 text-xs"
-                  />
-                </div>
+                )}
 
                 <div className="flex justify-end pt-2">
                   <Button size="sm" onClick={handleSaveTts} disabled={ttsSaving}>
@@ -679,19 +685,21 @@ export default function AdminVoicePage() {
                 </div>
 
                 {/* STT API Key */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs font-semibold">API Key</Label>
-                    <span className="text-[11px] text-muted-foreground">Stored encrypted in vault</span>
+                {!sttKeyless && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-semibold">API Key</Label>
+                      <span className="text-[11px] text-muted-foreground">Stored encrypted in vault</span>
+                    </div>
+                    <Input
+                      type="password"
+                      placeholder={currentSttState?.apiKeyHint ? "•••• saved (paste new key to update)" : "Paste API key"}
+                      value={sttApiKey}
+                      onChange={(e) => setSttApiKey(e.target.value)}
+                      className="h-9 text-xs"
+                    />
                   </div>
-                  <Input
-                    type="password"
-                    placeholder={currentSttState?.configured ? "•••• saved (paste new key to update)" : "Paste API key"}
-                    value={sttApiKey}
-                    onChange={(e) => setSttApiKey(e.target.value)}
-                    className="h-9 text-xs"
-                  />
-                </div>
+                )}
 
                 <div className="flex justify-end pt-2">
                   <Button size="sm" onClick={handleSaveStt} disabled={sttSaving}>
