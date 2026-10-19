@@ -303,6 +303,7 @@ async fn build_catalog(state: &AppState) -> Value {
                 .collect()
         })
         .unwrap_or_default();
+    let configured_default = runtime_default_route(state).await;
     for p in available {
         let id = p
             .get("id")
@@ -370,6 +371,13 @@ async fn build_catalog(state: &AppState) -> Value {
                 for name in &catalog.models {
                     push_model(&mut models, &Value::String(name.clone()));
                 }
+            }
+        }
+        // `model list -p <id>` reports the provider profile's built-in default,
+        // not the runtime's configured one; the configured default wins.
+        if let Some((provider, model)) = &configured_default {
+            if provider == &id && models.contains(model) {
+                selected = model.clone();
             }
         }
         if selected.is_empty() || !models.contains(&selected) {
@@ -569,6 +577,104 @@ async fn sync_provider_models(
     post_provider_models(State(state), user, Json(json!({"id": id}))).await
 }
 
+/// Point the runtime's startup default (`[provider] default_provider` and
+/// `default_model` in its `config.toml`) at `provider:model`, which is what the
+/// Admin provider card reports as "Default model" and what new chats start on.
+///
+/// The model must be one the connected provider lists, so a typo cannot leave
+/// the runtime pointing at a model that does not exist. Answers the stored
+/// `provider:model` route.
+pub async fn set_runtime_default_model(
+    state: &AppState,
+    provider: &str,
+    model: &str,
+) -> Result<String, ApiError> {
+    let provider = provider.trim().trim_start_matches("openai-compatible:").to_string();
+    let model = model.trim();
+    // Accept a qualified `provider:model` in the model field as well.
+    let model = model
+        .strip_prefix(&format!("{provider}:"))
+        .unwrap_or(model)
+        .to_string();
+    if provider.is_empty() || model.is_empty() {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "provider and model are required".into()));
+    }
+    let catalog = build_catalog(state).await;
+    let entry = catalog
+        .get("providers")
+        .and_then(Value::as_array)
+        .and_then(|providers| {
+            providers
+                .iter()
+                .find(|p| p.get("id").and_then(Value::as_str) == Some(provider.as_str()))
+        })
+        .ok_or_else(|| {
+            ApiError(StatusCode::NOT_FOUND, format!("provider \"{provider}\" is not connected"))
+        })?;
+    let listed = entry
+        .get("models")
+        .and_then(Value::as_array)
+        .is_some_and(|models| models.iter().any(|m| m.as_str() == Some(model.as_str())));
+    if !listed {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            format!("provider \"{provider}\" does not list a model named \"{model}\""),
+        ));
+    }
+
+    {
+        let _guard = state.store.lock().await;
+        let path = state.runtime_home.join("config.toml");
+        let contents = match tokio::fs::read_to_string(&path).await {
+            Ok(contents) => contents,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(error) => return Err(error.into()),
+        };
+        let updated = with_default_model(&contents, &provider, &model)?;
+        tokio::fs::create_dir_all(&state.runtime_home).await?;
+        let temporary = state
+            .runtime_home
+            .join(format!(".config-{}.tmp", uuid::Uuid::new_v4()));
+        tokio::fs::write(&temporary, updated).await?;
+        if let Err(error) = tokio::fs::rename(&temporary, &path).await {
+            let _ = tokio::fs::remove_file(&temporary).await;
+            return Err(error.into());
+        }
+    }
+    invalidate_catalog();
+    let route = format!("{provider}:{model}");
+    crate::schedules::remember_chat_model(state, &provider, &model).await;
+    Ok(route)
+}
+
+/// The runtime's configured `[provider] default_provider` / `default_model`.
+async fn runtime_default_route(state: &AppState) -> Option<(String, String)> {
+    let contents = tokio::fs::read_to_string(state.runtime_home.join("config.toml")).await.ok()?;
+    parse_default_route(&contents)
+}
+
+fn parse_default_route(contents: &str) -> Option<(String, String)> {
+    let config: toml::Table = toml::from_str(contents).ok()?;
+    let section = config.get("provider")?.as_table()?;
+    let provider = section.get("default_provider")?.as_str()?.trim();
+    let model = section.get("default_model")?.as_str()?.trim();
+    (!provider.is_empty() && !model.is_empty()).then(|| (provider.to_string(), model.to_string()))
+}
+
+/// `config.toml` text with `[provider]` defaults set, other settings kept.
+fn with_default_model(contents: &str, provider: &str, model: &str) -> Result<String, ApiError> {
+    let invalid = |what: &str| ApiError(StatusCode::INTERNAL_SERVER_ERROR, format!("runtime config.toml {what}"));
+    let mut config: toml::Table = toml::from_str(contents).map_err(|_| invalid("is invalid TOML"))?;
+    let section = config
+        .entry("provider")
+        .or_insert_with(|| toml::Value::Table(Default::default()))
+        .as_table_mut()
+        .ok_or_else(|| invalid("[provider] is not a table"))?;
+    section.insert("default_provider".into(), toml::Value::String(provider.into()));
+    section.insert("default_model".into(), toml::Value::String(model.into()));
+    toml::to_string(&config).map_err(|_| invalid("could not be written"))
+}
+
 /// `POST /api/ai/providers/{id}/test` -- one live round trip against a model
 /// of this connection (`{model}` in), answering the shape the provider test
 /// page renders: reply text, latency, whether the model called the probe tool,
@@ -662,6 +768,23 @@ mod tests {
             token: "test-token".to_string(),
             store: std::sync::Arc::new(tokio::sync::Mutex::new(())),
         }
+    }
+
+    #[test]
+    fn default_model_is_written_without_dropping_other_settings() {
+        let before = "[websearch]\nengine = \"duckduckgo\"\n\n[provider]\ndefault_model = \"deepseek-v4-pro\"\n";
+        let after: toml::Table =
+            toml::from_str(&with_default_model(before, "opencode-go", "kimi-k2").unwrap()).unwrap();
+        assert_eq!(after["provider"]["default_provider"].as_str(), Some("opencode-go"));
+        assert_eq!(after["provider"]["default_model"].as_str(), Some("kimi-k2"));
+        assert_eq!(after["websearch"]["engine"].as_str(), Some("duckduckgo"));
+        let fresh: toml::Table = toml::from_str(&with_default_model("", "openai", "gpt-5").unwrap()).unwrap();
+        assert_eq!(fresh["provider"]["default_model"].as_str(), Some("gpt-5"));
+        assert_eq!(
+            parse_default_route(&with_default_model(before, "opencode-go", "kimi-k2").unwrap()),
+            Some(("opencode-go".to_string(), "kimi-k2".to_string()))
+        );
+        assert_eq!(parse_default_route("[provider]\ndefault_model = \"x\"\n"), None);
     }
 
     fn names_of(document: Value) -> Vec<String> {
