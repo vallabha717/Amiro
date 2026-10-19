@@ -8,6 +8,7 @@ import {
 } from "@/lib/onboarding/onboarding-api";
 import { X } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 const DISMISS_KEY = "amiro:setup-checklist-dismissed";
@@ -19,8 +20,15 @@ const DISMISS_KEY = "amiro:setup-checklist-dismissed";
 export function SetupChecklist() {
   const { data: session } = useSession();
   const isOwner = session?.user.role === "admin";
-  const { data } = useOnboarding(isOwner);
+  const { data, mutate } = useOnboarding(isOwner);
   const [dismissed, setDismissed] = useState(true);
+  const pathname = usePathname();
+
+  // Steps get finished elsewhere (Admin → Providers, the agent in chat), so
+  // re-check on every navigation rather than trusting the first answer.
+  useEffect(() => {
+    if (isOwner) void mutate();
+  }, [pathname, isOwner, mutate]);
 
   useEffect(() => {
     setDismissed(localStorage.getItem(DISMISS_KEY) === data?.completedAt);
