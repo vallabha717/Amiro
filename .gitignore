@@ -21,3 +21,4 @@ src-tauri/gen/
 # Local build logs and the rustup installer setup-and-run.ps1 downloads
 build.log
 rustup-init.exe
+.amiro-server/
