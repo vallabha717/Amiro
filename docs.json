@@ -55,7 +55,8 @@
               "settings/overview-tour",
               "settings/account",
               "settings/providers",
-              "settings/troubleshooting"
+              "settings/troubleshooting",
+              "settings/where-settings-live"
             ]
           }
         ]

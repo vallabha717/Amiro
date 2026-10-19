@@ -1,43 +1,93 @@
 ---
 title: "Voice"
-description: "Dictate messages, hear replies read aloud, configure speech providers, and talk hands-free in the voice room."
+description: "Watch the voice setup, then follow the same steps to dictate messages, hear replies read aloud, and talk hands-free."
 ---
 
-Amiro has three voice surfaces: dictation for writing, read-aloud for hearing replies, and a hands-free live voice room. Configure the providers once, then use any of them.
+Amiro has three voice surfaces: dictation for writing, read-aloud for hearing replies, and a hands-free live voice room. You set the providers once on the **Admin → Voice** page, then use any surface.
 
-## Set up speech providers
+<img src="/docs/assets/docs/demo-voice-setup.gif" alt="Setting up voice: the Voice and Speech page with text-to-speech and speech-to-text providers, read-aloud toggles, and the voice picker" width="100%" />
 
-<Warning>
-The voice settings page is at `/admin/voice` and is owner-only. Only the admin account can change providers or store keys there.
-</Warning>
+*Setting up voice: providers on one page, read-aloud toggles, and the voice picker. The steps below walk the same path.*
 
-1. Go to `/admin/voice`.
-2. Choose a **text-to-speech provider** and a **speech-to-text provider**. Amiro ships catalogs of seven of each.
-3. For a provider that needs a key, paste the API key. Keys are stored in the encrypted credential vault and are shown only as a masked hint afterward.
-4. Pick a model and voice, or fetch the provider's live voice list where it supports one.
-5. Click **Test Voice** or preview an individual voice to hear it before saving.
-6. Save. Toggle **Read Aloud** and auto read-aloud in the output behavior card.
+## Do it yourself
 
-Providers include OpenAI, ElevenLabs, Deepgram, Fish Audio, xAI, a custom OpenAI-compatible endpoint (for example 9Router or LiteLLM), and the browser's own built-in speech (free, keyless, and dependent on your browser and OS).
+The steps below walk the same path the clip shows: pick the two providers, preview a voice, save, and turn on read-aloud.
 
-## Dictate a message
+<Steps>
+<Step title="Open the voice page">
+Click **Admin** in the sidebar, then **Voice**. The page is owner-only, so only the admin account can change providers or store keys here.
+</Step>
+<Step title="Pick a text-to-speech provider">
+Under **Text to speech**, choose the provider that reads replies out loud. Amiro ships a catalog of seven.
+</Step>
+<Step title="Pick a speech-to-text provider">
+Under **Speech to text**, choose the provider that turns your microphone into text for dictation.
+</Step>
+<Step title="Paste your keys">
+For any provider that needs a key, paste it here. Keys go into the encrypted credential vault and are shown back only as a masked hint.
+</Step>
+<Step title="Choose a model and voice">
+Pick a model and a voice for each provider. Where the provider supports it, use the button to fetch its live voice list so you can choose from real voices.
+</Step>
+<Step title="Preview before you commit">
+Click **Test Voice** to hear the configured voice, or play an individual voice chip to compare. Do this before saving so you know it sounds right.
+</Step>
+<Step title="Save">
+Save the page. Your choices take effect immediately.
+</Step>
+<Step title="Turn on read-aloud">
+In the output behavior card, toggle **Read Aloud** and auto read-aloud. Auto read-aloud speaks each finished reply without you clicking anything.
+</Step>
+</Steps>
 
-The microphone button sits in the composer.
+## Which path fits you
 
-1. Click the mic button in the composer.
-2. Speak. With a server STT provider, Amiro records and transcribes. With the browser-native provider, the browser's own recognition runs instead.
-3. The transcript lands in the composer so you can edit it before sending.
-4. Click the mic again to stop.
+| If you want... | Use this path | What you need ready |
+| --- | --- | --- |
+| Good-quality cloud voices | **API key provider** (OpenAI, ElevenLabs, Deepgram, Fish Audio, xAI) | The provider's key, pasted on this page |
+| Free, offline speech with no key | **Browser speech** (`browser-native`) | Nothing. Your browser and OS decide which voices exist and whether they work offline |
+| Your own speech server | **Local endpoint** (custom OpenAI-compatible, for example 9Router or LiteLLM) | The address where the server listens |
+| Hands-free two-way talking | **ElevenLabs** | An ElevenLabs key. Live voice always uses ElevenLabs, for speech in and speech out |
 
-## Hear a reply read aloud
+The browser-native path needs no key. Amiro hands synthesis and recognition to your browser, so the voices and languages you get depend on your browser and operating system.
 
-- Every assistant message has a **Read aloud** action. Click it to start, and **Stop reading** to stop.
-- Turn on the read-aloud action and auto read-aloud in `/admin/voice`. When auto read-aloud is on, each finished reply is spoken automatically.
-- During a live voice call, auto read-aloud is suppressed, because the live session already speaks every answer.
+## Verify it worked
+
+- Click **Test Voice** and hear the sentence spoken. If you hear it, text-to-speech is working.
+- Click the mic button in the composer and say a few words. The transcript should land in the composer for you to edit before sending.
+- Click **Read aloud** on any assistant message and hear it play, then try **Stop reading**.
+- Turn on auto read-aloud and send a message. The reply should be spoken when the turn finishes.
+
+## If it does not work
+
+<AccordionGroup>
+<Accordion title="There is no sound when I test a voice">
+- Check that a text-to-speech provider is selected and, if it needs a key, that the key is saved. A keyless browser provider still depends on your browser and OS having voices installed.
+- Make sure the model and voice you picked belong to the selected provider.
+- Turn your system volume up and confirm the browser tab is not muted.
+</Accordion>
+
+<Accordion title="The microphone button does nothing">
+- Give the browser permission to use the microphone. Look for the permission prompt near the address bar and allow it.
+- Check that a speech-to-text provider is selected.
+- If you are using a server provider, the audio is recorded and sent for transcription. A very short clip may come back empty, so speak for a second or two.
+</Accordion>
+
+<Accordion title="Live voice will not start">
+- Live voice needs a configured ElevenLabs key, microphone permission, and a browser that supports the audio path. The preflight check reports a plain-language reason if something is missing.
+- If you are on the browser-native provider for dictation, note that live voice ignores it and always uses ElevenLabs.
+- When a live session is running, auto read-aloud is paused on purpose, because the live session already speaks every answer.
+</Accordion>
+
+<Accordion title="Auto read-aloud stays silent">
+- Confirm that both the read-aloud action and auto read-aloud are turned on in the output behavior card.
+- Auto read-aloud is skipped while a live voice session is active. End the call and try again.
+</Accordion>
+</AccordionGroup>
 
 ## Live voice room
 
-Live voice is hands-free: you talk, the server finds the end of your sentence, the agent answers, and the answer is spoken as it is written. It uses ElevenLabs for both speech in and speech out.
+Live voice is hands-free: you talk, the server finds the end of your sentence, the agent answers, and the answer is spoken as it is written.
 
 <img src="/docs/assets/readme/voice-room.png" alt="Voice room: the plush mascot listening, with speaker, mic, stop-answer and end-call controls" width="100%" />
 
@@ -58,8 +108,6 @@ Live voice is hands-free: you talk, the server finds the end of your sentence, t
   </Step>
 </Steps>
 
-### Room controls and shortcuts
-
 | Input | Action |
 | --- | --- |
 | Cmd+Shift+I or Ctrl+Shift+I | Start or end voice |
@@ -67,13 +115,8 @@ Live voice is hands-free: you talk, the server finds the end of your sentence, t
 | M | Toggle your microphone mute |
 | Esc | Minimize the room without ending the call |
 
-The room shows captions for both sides. The buttons cover speaker mute, microphone mute, and End voice, and the centre button is either **I'm done talking** or **Stop answer** depending on the phase. Swarm members in the thread appear as small companions you can click to open beside the chat.
-
-<Note>
-Live voice needs a configured ElevenLabs key, microphone permission, and a browser that supports the audio path. If something is missing, the preflight check reports a human-readable reason instead of failing silently.
-</Note>
-
 ## Related
 
+- [Connecting a provider](/settings/providers)
 - [Chatting with Amiro](/using/chatting)
 - [Credentials](/using/credentials)

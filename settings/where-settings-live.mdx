@@ -1,0 +1,54 @@
+---
+title: "Where settings live"
+description: "The plain-language companion to setup: the wizard versus files, the two homes Amiro keeps, and where each guide picks up."
+---
+
+This page is the map. It answers one question: when you change a setting in Amiro, where does the setting actually live? You do not need it to use Amiro. Read it when you want to back up, script, or move an install.
+
+<img src="/docs/assets/docs/demo-provider-config.gif" alt="The four connection paths: the Add Provider catalog grouped by OAuth, device code, API key, CLI, and local endpoint" width="100%" />
+
+*Know your path before you start: OAuth, device code, API key, CLI, or a local endpoint. Pick the row that matches, then follow that guide.*
+
+## Wizard or files
+
+Every setting the wizard asks for can also come from files. You can click through the wizard, describe the whole setup in a config file, or mix the two. The same flow works in a browser, in the desktop app, and on a remote machine.
+
+| Way to set things | Best for | Where it lands |
+| --- | --- | --- |
+| The onboarding wizard | A first install you click through | Amiro's own store, under `AMIRO_HOME` |
+| `amiro.toml` | Scripted installs, servers, backups | The file you point Amiro at |
+| `.env` files | A few secrets without editing the main file | The `.env` file Amiro reads |
+| Environment variables | Containers and one-off overrides | The shell or service that starts Amiro |
+
+When the same setting is set in more than one place, higher wins:
+
+1. **Environment variables** always win.
+2. **`.env` files**, read in order, and the first file to set a key wins: `AMIRO_ENV_FILE`, then `./.env`, then `~/.amiro/.env`.
+3. **`amiro.toml`**: `--config <path>` or `AMIRO_CONFIG`, else `./amiro.toml`, else `~/.amiro/amiro.toml`.
+
+A file never overrides a variable that is already set.
+
+To get a commented starter file, run `amiro-backend init-config`. It writes `~/.amiro/amiro.toml`, or a path you pass. The full reference is [`amiro.example.toml`](../amiro.example.toml), and each setting in it names its environment variable too.
+
+<Note>
+Keys live in Amiro's encrypted credential vault, not in the config file. When a key comes from `amiro.toml` or an environment variable, Amiro imports it once per key and remembers a fingerprint, never the key itself. Change the key in the file, and it is imported again on the next start.
+</Note>
+
+## The two homes
+
+Amiro keeps two home folders. They are separate on purpose: one is yours, one belongs to the engine that runs the agent.
+
+| Home | Default location | What lives there |
+| --- | --- | --- |
+| `AMIRO_HOME` | `~/.amiro` (`%USERPROFILE%\.amiro` on Windows) | Your Amiro data: the owner account, chat history, the encrypted credential vault, `store/voice-settings.json`, and `search-providers.json` |
+| `AMIRO_RUNTIME_HOME` | `<AMIRO_HOME>/runtime`, else `~/.amiro/runtime` | The engine's own home: `config.toml`, `search-providers-runtime.json`, and per-provider `config/jcode/<provider>.env` files |
+
+Most people never touch either. They matter when you run Amiro as a service, move it to a new machine, or reset a password with `amiro-reset-password`, which must be run with the same homes as the server.
+
+## Where each guide picks up
+
+- **Connecting a provider**: watch it happen and follow the same steps, then pick the path that fits you. [Connecting a provider](/settings/providers)
+- **Voice**: set speech providers once, then dictate, hear replies, and talk hands-free. [Voice](/using/voice)
+- **Search**: choose which providers the agent may search with. [Search](/using/search)
+
+For the full install and release walkthrough, see [SETUP.md](https://github.com/vallabha717/Amiro/blob/main/docs/SETUP.md).

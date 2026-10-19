@@ -1,126 +1,88 @@
 ---
 title: "Connecting a provider"
-description: "Step by step: connect Anthropic, OpenAI, OpenRouter, Gemini, or any other provider using OAuth, a device code, an API key, or a local endpoint, then pick a model."
+description: "Watch a provider get added, then follow the same steps yourself with an API key, OAuth, a device code, or a local endpoint."
 ---
 
-A provider is the service that actually runs the model your agent thinks with.
-Amiro ships with support for many providers, but none are connected until you
-connect one. You connect providers as the owner.
+A provider is the service that actually runs the model your agent thinks with. Amiro supports many providers, but none are connected until you connect one. You connect providers as the owner, on the **Admin → Providers** page.
 
-## Before you start
+<img src="/docs/assets/docs/demo-add-provider.gif" alt="Adding a provider: typing /login in chat, opening the connect panel, pasting a key and base URL, and landing on the connected providers page" width="100%" />
 
-- Decide which provider you want to use first. Anthropic, OpenAI, OpenRouter,
-  and Google Gemini are the common single-key choices, and the setup wizard puts
-  them first.
-- Have your API key ready, or be prepared to sign in to the provider in your
-  browser for OAuth.
+*Adding a provider from chat: type `/login`, pick the provider, paste the key and base URL, and its models appear. Amiro shows demo names here; your page shows your real providers.*
 
-<Note>
-Connecting and disconnecting providers is admin-only. The chat toolbar does not
-have ad-hoc connect buttons; provider management lives on the **Admin →
-Providers** page. You can also type `/login` in the chat composer to open the
-connection panel without leaving the conversation.
-</Note>
+## Do it yourself
 
-## Connect a provider with an API key
-
-This is the fastest path for Anthropic, OpenAI, OpenRouter, and Gemini.
+The steps below are exactly what the clip shows. Short on time? Type `/login` in the chat composer and follow the same panel; it never touches your transcript.
 
 <Steps>
 <Step title="Open the providers page">
-Go to **Admin → Providers**, or type `/login` in the chat composer.
+Click **Admin** in the sidebar, then **Providers**. You can also type `/login` in the chat composer to open the same panel without leaving the conversation.
 </Step>
 <Step title="Pick your provider">
-Choose the provider from the list. Each entry shows its connection type, so you
-can see whether it uses a key, OAuth, a device code, or a local endpoint.
-
-<img src="/docs/assets/docs/providers-admin.png" alt="Models and Providers page: connected providers with their available models" width="100%" />
-
-*Connected providers, each with its available models. Amiro shows demo names here; your page shows your real providers.*
+Choose the provider from the list. Each entry shows how it connects, so you can see at a glance whether it uses a key, a browser sign-in, a short code, or a local address.
 </Step>
-<Step title="Paste your key">
-Paste the API key. If your provider serves models from a custom address, there
-is a field for the API base too.
+<Step title="Paste your key, or start the sign-in">
+For a provider that uses a key, paste it now. If the provider signs you in instead, click the connect button and follow the browser step. Some providers also let you set an API base if they serve models from a custom address.
 </Step>
 <Step title="Save">
-Amiro stores the key in its encrypted credential store. The provider flips to
-connected, and its models become selectable right away.
+Amiro stores the secret in its encrypted credential vault. The provider flips to connected, and its models become selectable right away.
+</Step>
+<Step title="Pick a model">
+Open the model selector in the chat composer and choose the model you want. Names are shown as `provider:model`, so it is always clear which provider a model belongs to.
 </Step>
 </Steps>
 
 <Tip>
-The wizard and the providers page link straight to each provider's key page, so
-you do not have to hunt for it.
+The wizard and the providers page link straight to each provider's key page, so you do not have to hunt for it.
 </Tip>
 
-## Connect a provider with OAuth or a device code
+## Which path fits you
 
-Some providers sign you in through their own website instead of a key.
+Pick the row that matches your provider. You do not need to know which one in advance: the provider's card tells you.
 
-<Tabs>
-<Tab title="OAuth (browser)">
-<Steps>
-<Step title="Start the login">
-Choose the provider and start the connection. Amiro shows an authorization URL.
-</Step>
-<Step title="Authorize in your browser">
-Open the URL, sign in to the provider, and approve access. Your provider
-password is entered on the provider's own page, never into Amiro.
-</Step>
-<Step title="Finish">
-Paste the callback URL or code back into the panel. Amiro waits for the provider
-to confirm, then marks the provider connected.
-</Step>
-</Steps>
-</Tab>
-<Tab title="Device code">
-<Steps>
-<Step title="Start the login">
-Choose the provider. Amiro shows a short code and a verification address.
-</Step>
-<Step title="Enter the code">
-Open the address in any browser, enter the code, and approve access.
-</Step>
-<Step title="Wait for confirmation">
-Amiro polls until the provider confirms, then marks the provider connected.
-</Step>
-</Steps>
-</Tab>
-</Tabs>
+| If your provider gives you... | Use this path | What you need ready |
+| --- | --- | --- |
+| A secret string that looks like `sk-...` | **API key** | The key, copied in full, with no spaces around it |
+| A website where you approve access | **OAuth (browser)** | A browser and your login on the provider's own site |
+| A short code and a web address to visit | **Device code** | Any browser or phone, to enter the code |
+| An address on your own machine or network | **Local endpoint** | The address where the server is listening, for example `http://localhost:8080` |
 
-<Note>
-Whether a provider supports OAuth is read from the live provider list, not a
-fixed table, so newly supported providers appear and work without an app update.
-</Note>
+OAuth and device code both keep your provider password on the provider's own page. You never type it into Amiro.
 
-## Connect a local endpoint
+## Verify it worked
 
-Local endpoint providers (for example a model server running on your own
-machine) connect with a base address instead of a key. Choose the provider and
-enter the address where it is listening.
+- The provider card shows **connected**, and any key you stored shows only as a masked hint like `••••1234`, never in full.
+- The model selector lists that provider's models.
+- Send a short message such as "hello" and get a reply. That proves the key and the model both work end to end.
+- If you connected an Anthropic, OpenAI, OpenRouter, or Gemini key, it also appears in the connection panel after a restart, because Amiro imports keys from files once per key.
 
-## Choosing which model answers
+## If it does not work
 
-- The model selector in the chat composer lists the models of every connected
-  provider.
-- Model names are namespaced as `provider:model`, so it is always clear which
-  provider a model belongs to.
-- A provider you have not connected contributes no models.
-- If you never pick a model, new chats and schedules use the instance default.
-  The owner can pin a default or restrict the list to a chosen set.
+<AccordionGroup>
+<Accordion title="The key is rejected">
+- Check that you copied the whole key, with no missing characters and no extra spaces at the start or end. Most keys begin with a recognizable prefix such as `sk-`.
+- Make sure the key belongs to the same provider you selected. An OpenAI key will not connect a different service.
+- If you pasted the key once already and it is still rejected, remove the stored credentials and paste the key again so it is saved fresh.
+</Accordion>
 
-## Eligibility notes
+<Accordion title="Nothing happens after I sign in">
+- Starting the sign-in is not the same as approving it. Finish the step on the provider's website, then return to Amiro.
+- For OAuth, paste the callback URL or code back into the panel if Amiro asks for it.
+- For a device code, enter the code at the address shown, approve access, and wait a few seconds. Amiro polls until the provider confirms, then marks the provider connected.
+</Accordion>
 
-- A provider that needs an API key but is offered a mechanism it does not
-  support is refused with a clear message rather than doing nothing.
-- A provider whose usage limit is exhausted still appears in the list; a turn
-  against it fails with the provider's own message, so you know it is the
-  provider's limit and not Amiro.
-- Disconnecting a provider removes its stored credentials from the same place
-  they were written, so reconnecting later is a clean start.
+<Accordion title="My local endpoint will not connect">
+- Confirm the address is reachable from the machine running Amiro, not just from your laptop.
+- Check that the model server is actually running and listening on the port you entered.
+- Use the exact address the server printed at startup, including any `/v1` suffix it expects.
+</Accordion>
+
+<Accordion title="No models show up after connecting">
+- Some providers list no models until their catalog loads. Reopen the providers page once.
+- A provider whose usage limit is exhausted still appears as connected, but a turn against it fails with the provider's own message. That tells you it is the provider's limit and not Amiro.
+- If you never pick a model, new chats use the instance default. The owner can pin a default or restrict the list to a chosen set.
+</Accordion>
+</AccordionGroup>
 
 ## Disconnecting or replacing a key
 
-Open **Admin → Providers**, find the connected provider, and remove its
-credentials. To replace a key, remove it and connect again, or paste the new key
-over the old one if the provider supports keys.
+Open **Admin → Providers**, find the connected provider, and remove its credentials. To replace a key, remove it and connect again, or paste the new key over the old one if the provider uses keys. Disconnecting removes the stored credentials from the same place they were written, so reconnecting later is a clean start.

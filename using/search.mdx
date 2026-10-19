@@ -1,47 +1,88 @@
 ---
 title: "Search"
-description: "How the agent searches the web, and how to choose which providers it may use."
+description: "Watch the search setup, then follow the same steps to choose which providers the agent may search with."
 ---
 
-The agent can search the web when a task needs current information. Search runs only through providers you configure, and Amiro seeds a sensible set on first setup.
+The agent can search the web when a task needs current information. Search runs only through the providers you configure, and Amiro seeds a sensible set on first setup.
 
-## How search runs
+<img src="/docs/assets/docs/demo-search-setup.gif" alt="Setting up search: reviewing the Search Providers page with Provider Native default and fallbacks" width="100%" />
 
-- The agent calls a built-in web search tool when a request needs it. You do not need a special command.
-- Amiro exports your configured search providers to the runtime as a private registry. The agent can only use those providers.
-- The selected default is tried first. If it fails, the agent tries the other configured local providers in order.
-- Provider Native hosted search is available when it is the selected default and the model supports it. It is not an automatic fallback, and a selected local provider takes precedence.
-- If nothing is configured, the agent says so instead of quietly reaching an unconfigured free engine.
+*Setting up search: the seeded list on this page with Provider Native as default. The steps below walk the same path.*
 
-## Choose providers
+## Do it yourself
 
-<Warning>
-Search providers are configured at `/admin/search` and the page is owner-only.
-</Warning>
+The steps below walk the same path the clip shows: review the seeded list, then set or add a default.
 
-1. Go to Admin, then **Search Providers**, or open `/admin/search`.
+<Steps>
+<Step title="Open the search providers page">
+Click **Admin** in the sidebar, then **Search Providers**. The page is owner-only.
+</Step>
+<Step title="Read the seeded list">
+On first setup, **Provider Native** is the default, with free **DuckDuckGo** and **Bing** already configured as local alternatives. You can use these as they are, or change them.
+</Step>
+<Step title="Change the default if you want">
+Open a provider's card and make it the active default. The default is the one the agent tries first.
+</Step>
+<Step title="Add another provider">
+Click **Add Provider** and pick from the catalog: DuckDuckGo, Bing, Brave, Tavily, Exa, Serper, Firecrawl, SearXNG, Custom HTTP JSON, or Provider Native.
+</Step>
+<Step title="Fill in the details and save">
+Enter the endpoint and key if the provider needs them, then save. A custom endpoint is checked before it is exported, so a bad configuration is rejected up front instead of failing later.
+</Step>
+</Steps>
 
-<img src="/docs/assets/docs/search-admin.png" alt="Search Providers page: Provider Native default with DuckDuckGo and Bing fallbacks" width="100%" />
+Each card shows whether it is configured, whether it is the default, and how many fallbacks you have.
 
-*Search Providers: Provider Native as the default, with DuckDuckGo and Bing as fallbacks.*
-2. Read the seeded list. On first setup, **Provider Native** is the default, with free **DuckDuckGo** and **Bing** already configured as local alternatives.
-3. To change the default, open a provider's card and make it the active default.
-4. To add another provider, click **Add Provider** and pick from the catalog: DuckDuckGo, Bing, Brave, Tavily, Exa, Serper, Firecrawl, SearXNG, Custom HTTP JSON, or Provider Native.
-5. Fill in the endpoint and key if the provider needs them, then save.
+## Which path fits you
 
-Each card shows whether it is configured, whether it is the default, and how many fallbacks you have. A custom endpoint is validated before it is exported, so an incompatible configuration is rejected rather than silently failing later.
+| If you want... | Use this path | What you need ready |
+| --- | --- | --- |
+| Free search with no key and no signup | **Keyless** (DuckDuckGo, Bing, SearXNG) | Nothing. These are seeded and ready to use |
+| A paid search API with a free tier | **API key** (Brave, Tavily, Exa, Serper, Firecrawl) | The provider's key and, for some, an endpoint |
+| To search through your model provider | **Provider Native** | A model that supports hosted web search. No separate key |
+| Your own search service | **Custom HTTP JSON** | The endpoint that returns search results |
+
+Provider Native uses your model provider's own hosted search. It is not an automatic fallback: it works only when it is the selected default and the model supports it, and a configured local provider takes precedence.
+
+## Verify it worked
+
+- The card you made active shows as the default on `/admin/search`.
+- Ask the agent a question that needs current information, for example a recent news headline, and check that the answer reflects the web.
+- If you added a keyed provider, the card shows it as configured and any key is kept private, shown only in the card and never to the model.
+- Confirm the list of fallbacks matches what you expect, since the agent tries the default first and then the other configured providers in order.
+
+## If it does not work
+
+<AccordionGroup>
+<Accordion title="Search returns nothing">
+- Check the default provider on the search providers page and confirm it is configured.
+- If the default is Provider Native, hosted search needs a model that supports it. Select a configured local provider instead if you want search without that dependency.
+- Local fallback tries configured alternatives only. An unknown provider fails closed rather than using a service you did not choose.
+</Accordion>
+
+<Accordion title="The agent says no providers are configured">
+- This means the default is missing or the list is empty on the search providers page. Add or activate at least one provider and save.
+- Reopen the page once, because the runtime reads the provider list fresh on each search.
+</Accordion>
+
+<Accordion title="My custom endpoint is rejected">
+- Confirm the address is reachable from the machine running Amiro.
+- Check that the service returns search results in the shape Amiro expects. A valid endpoint is validated before it is exported.
+- If a provider needs a key and the key is wrong, the card saves but searches fail. Remove and re-enter the key.
+</Accordion>
+
+<Accordion title="Search works but results look stale">
+- Search providers return what the web returns at that moment. Try again, since some keyless engines rate-limit repeated queries.
+- If Provider Native is the default but the model has no hosted search, the agent cannot fall back on its own. Switch the default to a configured local provider.
+</Accordion>
+</AccordionGroup>
 
 <Note>
-Search keys and endpoints are kept in the private registry and the runtime config, never in the model's tool schema or in error messages. The agent sees provider IDs, not secrets. Only the default and other configured providers are eligible, so the agent cannot drift onto a service you did not choose.
+Search keys and endpoints are kept in the private registry and the runtime config, never in the model's tool schema or in error messages. The agent sees provider IDs, not secrets. Only the default and the other configured providers are eligible, so the agent cannot drift onto a service you did not choose.
 </Note>
-
-## When search returns nothing
-
-- Check the default provider on `/admin/search` and confirm it is configured.
-- If the default is Provider Native, hosted search needs a model that supports it. Select a configured local provider to search without that dependency.
-- Local fallback tries configured alternatives only. An unknown provider ID fails closed instead of using an unconfigured service.
 
 ## Related
 
 - [Chatting with Amiro](/using/chatting)
 - [Connectors](/using/connectors)
+- [Where settings live](/settings/where-settings-live)
