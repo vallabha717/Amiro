@@ -99,6 +99,7 @@ function ToggleRow({
         <Switch
           id={id}
           data-testid={testId ?? id}
+          aria-label={label}
           checked={checked}
           onCheckedChange={onCheckedChange}
           disabled={loading}
@@ -231,7 +232,7 @@ export default function AdminNotificationsPage() {
       <div className="max-w-3xl mx-auto px-8 py-8 flex flex-col gap-8">
         {/* Page header */}
         <div className="flex flex-col gap-1">
-          <h2 className="text-2xl font-bold tracking-tight">Notifications</h2>
+          <h1 className="text-2xl font-bold tracking-tight">Notifications</h1>
           <p className="text-sm text-muted-foreground">
             Configure how and where Amiro alerts you across Web and Desktop.
           </p>

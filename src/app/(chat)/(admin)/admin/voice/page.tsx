@@ -418,6 +418,7 @@ export default function AdminVoicePage() {
                     <span className="text-[11px] text-muted-foreground">0.5x</span>
                     <input
                       type="range"
+                      aria-label="Playback Speed"
                       min="0.5"
                       max="2.0"
                       step="0.05"
@@ -450,6 +451,7 @@ export default function AdminVoicePage() {
                     </p>
                   </div>
                   <Switch
+                    aria-label="Speaker icon on messages"
                     checked={readAloudEnabled}
                     onCheckedChange={async (val) => {
                       setReadAloudEnabled(val);
@@ -466,6 +468,7 @@ export default function AdminVoicePage() {
                     </p>
                   </div>
                   <Switch
+                    aria-label="Automatic narration on complete"
                     checked={autoReadAloud}
                     onCheckedChange={async (val) => {
                       setAutoReadAloud(val);

@@ -301,7 +301,10 @@
     "followUpInterrupting": "Interrupting — sends now",
     "followUpCancel": "Cancel queued message",
     "followUpStopHint": "Stop responding. Type + Enter queues your follow-up; ⌘/Ctrl+Enter interrupts and sends it now.",
-    "sendHint": "Send (Enter)"
+    "sendHint": "Send (Enter)",
+    "dictate": "Dictate with voice",
+    "stopDictation": "Stop recording",
+    "transcribingDictation": "Transcribing audio…"
   },
   "Layout": {
     "admin": "Admin",

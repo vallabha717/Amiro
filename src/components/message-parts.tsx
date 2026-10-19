@@ -552,10 +552,11 @@ export const AssistMessagePart = memo(function AssistMessagePart({
                   <div>
                     <SelectModel onSelect={handleModelChange}>
                       <Button
-                        data-testid="message-edit-button data-[state=open]:bg-secondary!"
+                        data-testid="message-change-model-button"
                         variant="ghost"
                         size="icon"
-                        className="size-3! p-4!"
+                        className="size-3! p-4! data-[state=open]:bg-secondary!"
+                        aria-label="Change Model"
                       >
                         {<RefreshCw />}
                       </Button>

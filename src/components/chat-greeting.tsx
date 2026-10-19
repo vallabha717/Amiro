@@ -16,22 +16,28 @@ function getGreetingByTime() {
 }
 
 export const ChatGreeting = () => {
+  // Fetched on mount when nothing is cached yet; a missing name still gets a
+  // greeting, so the page heading is never empty.
   const { data: user } = useSWR<BasicUser>(`/api/user/details`, fetcher, {
-    revalidateOnMount: false,
+    revalidateIfStale: false,
   });
   const t = useTranslations("Chat.Greeting");
 
   const word = useMemo(() => {
-    if (!user?.name) return "";
-    const words = [
-      t(getGreetingByTime(), { name: user.name }),
-      t("niceToSeeYouAgain", { name: user.name }),
-      t("whatAreYouWorkingOnToday", { name: user.name }),
+    const anonymous = [
       t("letMeKnowWhenYoureReadyToBegin"),
       t("whatAreYourThoughtsToday"),
       t("whereWouldYouLikeToStart"),
-      t("whatAreYouThinking", { name: user.name }),
     ];
+    const words = user?.name
+      ? [
+          ...anonymous,
+          t(getGreetingByTime(), { name: user.name }),
+          t("niceToSeeYouAgain", { name: user.name }),
+          t("whatAreYouWorkingOnToday", { name: user.name }),
+          t("whatAreYouThinking", { name: user.name }),
+        ]
+      : anonymous;
     return words[Math.floor(Math.random() * words.length)];
   }, [user?.name]);
 
@@ -47,7 +53,7 @@ export const ChatGreeting = () => {
     >
       <div className="rounded-xl p-6 flex flex-col gap-2 leading-relaxed text-center">
         <h1 className="text-2xl md:text-3xl">
-          {word ? <FlipWords words={[word]} className="text-primary" /> : ""}
+          <FlipWords words={[word]} className="text-primary" />
         </h1>
       </div>
     </motion.div>

@@ -117,6 +117,7 @@ export function AppHeader() {
                   size={"icon"}
                   variant={"ghost"}
                   data-testid="header-voice-mode-button"
+                  aria-label={t("KeyboardShortcuts.toggleVoiceChat")}
                 className={cn(
                   "bg-secondary/40",
                   voiceActive && "bg-primary text-primary-foreground hover:bg-primary/90",
@@ -156,6 +157,7 @@ export function AppHeader() {
                 size={"icon"}
                 variant={"secondary"}
                 className="bg-secondary/40"
+                aria-label={t("KeyboardShortcuts.toggleTemporaryChat")}
                 onClick={() => {
                   appStoreMutate((state) => ({
                     temporaryChat: {

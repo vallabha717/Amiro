@@ -172,6 +172,7 @@ export const ProviderCard = memo(function ProviderCard({
               disabled={isLoading}
               onClick={() => router.push(`/admin/providers/modify?id=${id}`)}
               data-testid="provider-edit-button"
+              aria-label={t("edit")}
             >
               <WriteIcon className="size-4" />
             </Button>
@@ -190,6 +191,7 @@ export const ProviderCard = memo(function ProviderCard({
               disabled={isLoading}
               onClick={handleDelete}
               data-testid="provider-delete-button"
+              aria-label={t("delete")}
             >
               {isProcessing ? (
                 <Loader2 className="size-4 animate-spin" />

@@ -1,37 +1,18 @@
 "use client";
 
-import {
-  getShortcutKeyList,
-  isShortcutEvent,
-  Shortcuts,
-} from "lib/keyboard-shortcuts";
+import { getShortcutKeyList, Shortcuts } from "lib/keyboard-shortcuts";
 
 import { Dialog, DialogContent } from "ui/dialog";
 import { PopupShell } from "ui/popup-shell";
 import { useTranslations } from "next-intl";
 import { useShallow } from "zustand/shallow";
 import { appStore } from "@/app/store";
-import { useEffect } from "react";
 
 export function KeyboardShortcutsPopup({}) {
   const [openShortcutsPopup, appStoreMutate] = appStore(
     useShallow((state) => [state.openShortcutsPopup, state.mutate]),
   );
   const t = useTranslations("KeyboardShortcuts");
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (isShortcutEvent(e, Shortcuts.openShortcutsPopup)) {
-        e.preventDefault();
-        e.stopPropagation();
-        appStoreMutate((prev) => ({
-          openShortcutsPopup: !prev.openShortcutsPopup,
-        }));
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
 
   return (
     <Dialog

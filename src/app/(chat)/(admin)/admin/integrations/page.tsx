@@ -26,7 +26,7 @@ export default function AdminIntegrationsPage() {
     <ScrollArea className="h-full w-full">
       <div className="max-w-3xl mx-auto px-8 py-8 flex flex-col gap-6">
         <div>
-          <h3 className="text-xl font-semibold">Integrations &amp; MCP</h3>
+          <h1 className="text-xl font-semibold">Integrations &amp; MCP</h1>
           <p className="text-sm text-muted-foreground pt-2">
             Connect external apps, OAuth toolkits, and Model Context Protocol
             (MCP) servers so your assistant can work across your tools.

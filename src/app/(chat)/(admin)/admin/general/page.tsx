@@ -11,6 +11,7 @@ export default function AdminGeneralPage() {
   return (
     <ScrollArea className="h-full w-full">
       <div className="max-w-3xl mx-auto px-8 py-8">
+        <h1 className="mb-6 text-xl font-semibold">General</h1>
         <GeneralSettings />
       </div>
     </ScrollArea>

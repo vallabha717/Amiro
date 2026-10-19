@@ -843,6 +843,7 @@ export default function PromptInput({
                       size={"sm"}
                       className="rounded-full hover:bg-input! p-2! data-[state=open]:bg-input!"
                       disabled={!threadId}
+                      aria-label={t("uploadImage")}
                     >
                       <PlusIcon />
                     </Button>
@@ -927,6 +928,13 @@ export default function PromptInput({
                     <Button
                       type="button"
                       data-testid="composer-mic-button"
+                      aria-label={
+                        dictationState === "recording"
+                          ? t("stopDictation")
+                          : dictationState === "transcribing"
+                            ? t("transcribingDictation")
+                            : t("dictate")
+                      }
                       variant="ghost"
                       size="sm"
                       onClick={handleToggleDictation}
@@ -947,10 +955,10 @@ export default function PromptInput({
                   </TooltipTrigger>
                   <TooltipContent>
                     {dictationState === "recording"
-                      ? "Stop recording"
+                      ? t("stopDictation")
                       : dictationState === "transcribing"
-                        ? "Transcribing audio..."
-                        : "Dictate with voice"}
+                        ? t("transcribingDictation")
+                        : t("dictate")}
                   </TooltipContent>
                 </Tooltip>
                 {!isLoading && !input.length && !voiceDisabled ? (
@@ -959,6 +967,7 @@ export default function PromptInput({
                       <Button
                         size={"sm"}
                         data-testid="composer-voice-mode-button"
+                        aria-label={t("VoiceChat.title")}
                         onClick={() => {
                           const voice = useVoiceStore.getState();
                           if (liveVoiceActive) {

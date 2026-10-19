@@ -158,7 +158,7 @@ export const SearchProviderCard = memo(function SearchProviderCard({
           <TooltipTrigger asChild>
             {isLoading || !configured ? (
               <div className="hidden sm:block">
-                <Button variant="ghost" size="icon" disabled>
+                <Button variant="ghost" size="icon" disabled aria-label="Test Connection">
                   <FlaskConical className="size-3.5" />
                 </Button>
               </div>
@@ -167,8 +167,9 @@ export const SearchProviderCard = memo(function SearchProviderCard({
                 href={`/admin/search/test?id=${encodeURIComponent(id)}`}
                 className="cursor-pointer hidden sm:block"
                 data-testid="search-provider-test-link"
+                aria-label="Test Connection"
               >
-                <Button variant="ghost" size="icon">
+                <Button variant="ghost" size="icon" tabIndex={-1} aria-label="Test Connection">
                   <FlaskConical className="size-3.5" />
                 </Button>
               </Link>
@@ -192,6 +193,7 @@ export const SearchProviderCard = memo(function SearchProviderCard({
               disabled={isLoading}
               onClick={() => router.push(`/admin/search/modify?id=${id}`)}
               data-testid="search-provider-edit-button"
+              aria-label={t("edit")}
             >
               <WriteIcon className="size-4" />
             </Button>
@@ -210,6 +212,7 @@ export const SearchProviderCard = memo(function SearchProviderCard({
               disabled={isLoading}
               onClick={handleDelete}
               data-testid="search-provider-delete-button"
+              aria-label={t("delete")}
             >
               {isProcessing ? (
                 <Loader2 className="size-4 animate-spin" />

@@ -1,6 +1,9 @@
 "use client";
 
+import { appStore } from "@/app/store";
+import { isShortcutEvent, Shortcuts } from "lib/keyboard-shortcuts";
 import dynamic from "next/dynamic";
+import { useEffect } from "react";
 
 const KeyboardShortcutsPopup = dynamic(
   () =>
@@ -64,6 +67,21 @@ export function AppPopupProvider({
 }: {
   userSettingsComponent: React.ReactNode;
 }) {
+  // The shortcuts dialog is loaded lazily, so its hotkey lives here: it must
+  // work as soon as the page is interactive, not once the chunk has arrived.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!isShortcutEvent(e, Shortcuts.openShortcutsPopup)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      appStore.getState().mutate((prev) => ({
+        openShortcutsPopup: !prev.openShortcutsPopup,
+      }));
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   return (
     <>
       <KeyboardShortcutsPopup />

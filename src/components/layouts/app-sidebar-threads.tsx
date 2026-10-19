@@ -50,6 +50,7 @@ export function AppSidebarThreads() {
   const mounted = useMounted();
   const router = useRouter();
   const t = useTranslations("Layout");
+  const tCommon = useTranslations("Common");
   const [storeMutate, currentThreadId, generatingTitleThreadIds] = appStore(
     useShallow((state) => [
       state.mutate,
@@ -220,6 +221,7 @@ export function AppSidebarThreads() {
                             variant="ghost"
                             size="icon"
                             className="data-[state=open]:bg-input! opacity-0 data-[state=open]:opacity-100! group-hover/threads:opacity-100 transition-opacity"
+                            aria-label={tCommon("options")}
                           >
                             <MoreHorizontal />
                           </Button>
@@ -287,7 +289,10 @@ export function AppSidebarThreads() {
                               </TooltipContent>
                             </Tooltip>
 
-                            <SidebarMenuAction className="data-[state=open]:bg-input data-[state=open]:opacity-100 opacity-0 group-hover/thread:opacity-100">
+                            <SidebarMenuAction
+                              className="data-[state=open]:bg-input data-[state=open]:opacity-100 opacity-0 group-hover/thread:opacity-100"
+                              aria-label={tCommon("options")}
+                            >
                               <MoreHorizontal />
                             </SidebarMenuAction>
                           </div>
