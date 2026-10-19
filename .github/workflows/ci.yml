@@ -14,8 +14,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Docs-only changes (Markdown, the Mintlify site, docs/) skip the heavy jobs.
+  # CI itself must still run: branch protection waits for the `required` job.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          predicate-quantifier: every
+          filters: |
+            code:
+              - '**'
+              - '!**/*.md'
+              - '!**/*.mdx'
+              - '!docs/**'
+              - '!docs.json'
+              - '!architecture/**'
+              - '!reference/**'
+              - '!settings/**'
+              - '!using/**'
+              - '!LICENSE'
+              - '!.github/ISSUE_TEMPLATE/**'
+
   frontend:
     name: Frontend (types, lint, unit tests)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -51,6 +84,8 @@ jobs:
 
   rust:
     name: Rust (backend tests, runtime check)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -81,19 +116,25 @@ jobs:
         run: cargo check --manifest-path runtime/Cargo.toml --bin amiro-runtime --no-default-features
 
   # The one check branch protection requires (like uv's "all required jobs
-  # passed"): add jobs to `needs` instead of editing the ruleset.
+  # passed"): add jobs to `needs` instead of editing the ruleset. A job that
+  # was skipped because only docs changed counts as passed.
   required:
     name: All required checks passed
     if: always()
-    needs: [frontend, rust]
+    needs: [changes, frontend, rust]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Check results
         env:
           RESULTS: ${{ toJSON(needs.*.result) }}
+          CODE: ${{ needs.changes.outputs.code }}
         run: |
+          echo "code changed: $CODE"
           echo "$RESULTS"
-          if echo "$RESULTS" | grep -Eq '"(failure|cancelled|skipped)"'; then
-            echo "::error::a required job did not pass"; exit 1
+          if echo "$RESULTS" | grep -Eq '"(failure|cancelled)"'; then
+            echo "::error::a required job failed"; exit 1
+          fi
+          if [ "$CODE" = "true" ] && echo "$RESULTS" | grep -q '"skipped"'; then
+            echo "::error::code changed but a required job was skipped"; exit 1
           fi
