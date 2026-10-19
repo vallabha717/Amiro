@@ -150,11 +150,46 @@ fn socket_ready(path: &Path) -> bool {
             ),
         }
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        // The runtime listens on a named pipe derived from the socket path
+        // (amiro-transport's `path_to_pipe_name`). Opening it succeeds, or
+        // reports ERROR_PIPE_BUSY (231), when a server is up.
+        match std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(windows_pipe_name(path))
+        {
+            Ok(_) => true,
+            Err(error) => error.raw_os_error() == Some(231),
+        }
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = path;
         false
     }
+}
+
+/// Mirrors `amiro_transport::windows::path_to_pipe_name`.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn windows_pipe_name(path: &Path) -> String {
+    use sha2::{Digest, Sha256};
+    let stem: String = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("jcode")
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_'))
+        .take(32)
+        .collect();
+    let stem = if stem.is_empty() { "jcode" } else { &stem };
+    let normalized = path
+        .to_string_lossy()
+        .replace('\\', "/")
+        .to_ascii_lowercase();
+    let hash = hex::encode(Sha256::digest(normalized.as_bytes()));
+    format!(r"\\.\pipe\{}-{}", stem, &hash[..16])
 }
 
 fn set_private_dir(path: &Path) -> std::io::Result<()> {

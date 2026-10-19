@@ -353,8 +353,134 @@ async fn resolve_static_route(
     next.run(req).await
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+const USAGE: &str = "\
+Amiro server
+
+USAGE:
+    amiro-backend [--config <amiro.toml>]      start the server
+    amiro-backend init-config [<path>]         write a commented amiro.toml
+                                               (default: ~/.amiro/amiro.toml)
+    amiro-backend reset-password [--login <email-or-username>]
+                                               set a new owner password (read
+                                               from stdin) and sign out everywhere
+    amiro-backend --help
+
+Settings come from the environment, then .env files, then amiro.toml.
+See docs/SETUP.md.
+";
+
+enum Command {
+    Serve,
+    InitConfig(Option<PathBuf>),
+    ResetPassword(Option<String>),
+}
+
+fn parse_args() -> anyhow::Result<(Command, Option<PathBuf>)> {
+    let mut args = std::env::args().skip(1);
+    let mut config = None;
+    let mut command = Command::Serve;
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "-h" | "--help" | "help" => {
+                print!("{USAGE}");
+                std::process::exit(0);
+            }
+            "-c" | "--config" => {
+                config = Some(PathBuf::from(
+                    args.next().ok_or_else(|| anyhow::anyhow!("--config needs a path"))?,
+                ));
+            }
+            "init-config" => command = Command::InitConfig(args.next().map(PathBuf::from)),
+            "reset-password" => {
+                let mut login = None;
+                while let Some(flag) = args.next() {
+                    match flag.as_str() {
+                        "--login" | "--email" => login = args.next(),
+                        other => anyhow::bail!("unknown reset-password option {other}"),
+                    }
+                }
+                command = Command::ResetPassword(login);
+            }
+            other => anyhow::bail!("unknown argument {other}\n\n{USAGE}"),
+        }
+    }
+    Ok((command, config))
+}
+
+/// Reads a password from stdin. Hidden when stdin is a terminal (the echo is
+/// switched off with `stty` where available).
+fn read_password(prompt: &str) -> anyhow::Result<String> {
+    use std::io::{BufRead, IsTerminal, Write};
+    let tty = std::io::stdin().is_terminal();
+    let hide = |on: bool| {
+        if tty && cfg!(unix) {
+            let _ = std::process::Command::new("stty")
+                .arg(if on { "-echo" } else { "echo" })
+                .stdin(std::process::Stdio::inherit())
+                .status();
+        }
+    };
+    if tty {
+        eprint!("{prompt}");
+        std::io::stderr().flush().ok();
+    }
+    hide(true);
+    let mut line = String::new();
+    let result = std::io::stdin().lock().read_line(&mut line);
+    hide(false);
+    if tty {
+        eprintln!();
+    }
+    result?;
+    Ok(line.trim_end_matches(['\n', '\r']).to_string())
+}
+
+fn main() -> anyhow::Result<()> {
+    let (command, config) = parse_args()?;
+    // Before any thread exists: this sets process environment variables.
+    backend::config::apply(config);
+
+    match command {
+        Command::InitConfig(path) => {
+            let path = path.unwrap_or_else(|| AppState::from_env().home.join("amiro.toml"));
+            if backend::config::write_sample(&path)? {
+                println!("wrote {}", path.display());
+            } else {
+                println!("{} already exists; left it unchanged", path.display());
+            }
+            return Ok(());
+        }
+        Command::ResetPassword(login) => {
+            let password = read_password("New owner password: ")?;
+            let confirm = if std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+                read_password("Repeat it: ")?
+            } else {
+                password.clone()
+            };
+            if password != confirm {
+                anyhow::bail!("the passwords do not match");
+            }
+            let runtime = tokio::runtime::Runtime::new()?;
+            let state = AppState::from_env();
+            let login = runtime
+                .block_on(auth::reset_owner_password(&state, login.as_deref(), &password))
+                .map_err(|error| anyhow::anyhow!(error.1))?;
+            println!(
+                "Password updated for \"{login}\" in {}. Every session was signed out; sign in again.",
+                state.home.display()
+            );
+            return Ok(());
+        }
+        Command::Serve => {}
+    }
+
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(serve())
+}
+
+async fn serve() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .init();
@@ -398,6 +524,13 @@ async fn main() -> anyhow::Result<()> {
     backend::agent_home::seed(&state).await;
     backend::agent::ensure_owner_identity_file(&state).await;
     backend::schedules::load_last_chat_model(&state).await;
+    // Existing installs are already set up; only fresh ones see the wizard.
+    backend::onboarding::migrate_existing(&state).await;
+    // amiro.toml / .env: agent look and provider keys (needs the owner).
+    {
+        let state = state.clone();
+        tokio::spawn(async move { backend::onboarding::apply_config(&state).await });
+    }
 
     let out_dir: PathBuf = state.out_dir();
     tracing::info!(
@@ -417,6 +550,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(backend::models::router())
         .merge(backend::agent::router())
         .merge(backend::heartbeat::router())
+        .merge(backend::onboarding::router())
         .merge(backend::routes::router())
         // Unknown API paths answer as JSON, never as the UI shell.
         .route(

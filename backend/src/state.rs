@@ -25,13 +25,13 @@ pub struct AppState {
 fn expand_path(value: impl AsRef<Path>) -> PathBuf {
     let value = value.as_ref();
     match value.to_str().and_then(|s| s.strip_prefix("~/")) {
-        Some(rest) => PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(rest),
+        Some(rest) => crate::config::user_home().join(rest),
         None => value.to_owned(),
     }
 }
 impl AppState {
     pub fn from_env() -> Self {
-        let user_home = PathBuf::from(std::env::var_os("HOME").unwrap_or_else(|| ".".into()));
+        let user_home = crate::config::user_home();
         let home = std::env::var_os("AMIRO_HOME")
             .map(expand_path)
             .unwrap_or_else(|| user_home.join(".amiro"));

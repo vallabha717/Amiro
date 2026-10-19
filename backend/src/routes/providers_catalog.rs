@@ -230,6 +230,86 @@ async fn get_provider_catalog(
     Ok(Json(json!({ "providers": result_providers })))
 }
 
+/// Store one API key in the runtime's credential home (`runtime login`).
+/// Shared by the HTTP route and the amiro.toml / .env import at startup.
+pub async fn store_api_key(
+    state: &AppState,
+    provider_id: &str,
+    raw_key: &str,
+    api_base: &str,
+) -> Result<(), ApiError> {
+    if provider_id != "openai-compatible" && !api_base.is_empty() {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "apiBase is only supported for openai-compatible".to_string()));
+    }
+    if !can_accept_api_key(state, provider_id).await {
+        return Err(ApiError(StatusCode::BAD_REQUEST, format!(
+            "Provider '{provider_id}' does not support single-key setup. Use its OAuth or terminal setup flow."
+        )));
+    }
+
+    let mut cmd = runtime_command(state);
+
+    if provider_id == "openai-compatible" {
+        if api_base.is_empty() {
+            return Err(ApiError(
+                StatusCode::BAD_REQUEST,
+                "apiBase is required for openai-compatible".to_string(),
+            ));
+        }
+        cmd.args([
+            "login",
+            provider_id,
+            "--api-base",
+            api_base,
+            "--api-key",
+            raw_key,
+            "--no-validate",
+        ]);
+        cmd.stdin(Stdio::null());
+    } else {
+        cmd.args(["login", provider_id, "--no-validate"]);
+        cmd.stdin(Stdio::piped());
+    }
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+
+    let mut child = cmd.spawn().map_err(|e| {
+        ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
+
+    if provider_id != "openai-compatible" {
+        if let Some(mut stdin) = child.stdin.take() {
+            let _ = stdin.write_all(format!("{raw_key}\n").as_bytes()).await;
+            let _ = stdin.flush().await;
+        }
+    }
+
+    let output = tokio::time::timeout(
+        std::time::Duration::from_secs(30), child.wait_with_output()
+    ).await.map_err(|_| ApiError(StatusCode::GATEWAY_TIMEOUT, "API key setup timed out".to_string()))?
+    .map_err(|e| {
+        ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
+
+    if !output.status.success() {
+        let err_text = String::from_utf8_lossy(&output.stderr);
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            if err_text.trim().is_empty() {
+                "Failed to store API key".to_string()
+            } else {
+                err_text.trim().to_string()
+            },
+        ));
+    }
+
+    // The provider is connected from here on, with whatever catalog the
+    // runtime already has for it: drop Amiro's cached copy so its models show
+    // up immediately instead of after the catalog's TTL.
+    crate::models::invalidate_catalog();
+
+    Ok(())
+}
+
 async fn post_provider_api_key(
     State(state): State<AppState>,
     user: AuthUser,
@@ -270,74 +350,7 @@ async fn post_provider_api_key(
         .map(|s| s.trim())
         .unwrap_or("");
 
-    if provider_id != "openai-compatible" && !api_base.is_empty() {
-        return Err(ApiError(StatusCode::BAD_REQUEST, "apiBase is only supported for openai-compatible".to_string()));
-    }
-    if !can_accept_api_key(&state, &provider_id).await {
-        return Err(ApiError(StatusCode::BAD_REQUEST, format!(
-            "Provider '{provider_id}' does not support single-key setup. Use its OAuth or terminal setup flow."
-        )));
-    }
-
-    let mut cmd = runtime_command(&state);
-
-    if provider_id == "openai-compatible" {
-        if api_base.is_empty() {
-            return Err(ApiError(
-                StatusCode::BAD_REQUEST,
-                "apiBase is required for openai-compatible".to_string(),
-            ));
-        }
-        cmd.args([
-            "login",
-            &provider_id,
-            "--api-base",
-            api_base,
-            "--api-key",
-            raw_key,
-            "--no-validate",
-        ]);
-        cmd.stdin(Stdio::null());
-    } else {
-        cmd.args(["login", &provider_id, "--no-validate"]);
-        cmd.stdin(Stdio::piped());
-    }
-    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-
-    let mut child = cmd.spawn().map_err(|e| {
-        ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-    })?;
-
-    if provider_id != "openai-compatible" {
-        if let Some(mut stdin) = child.stdin.take() {
-            let _ = stdin.write_all(format!("{raw_key}\n").as_bytes()).await;
-            let _ = stdin.flush().await;
-        }
-    }
-
-    let output = tokio::time::timeout(
-        std::time::Duration::from_secs(30), child.wait_with_output()
-    ).await.map_err(|_| ApiError(StatusCode::GATEWAY_TIMEOUT, "API key setup timed out".to_string()))?
-    .map_err(|e| {
-        ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-    })?;
-
-    if !output.status.success() {
-        let err_text = String::from_utf8_lossy(&output.stderr);
-        return Err(ApiError(
-            StatusCode::BAD_REQUEST,
-            if err_text.trim().is_empty() {
-                "Failed to store API key".to_string()
-            } else {
-                err_text.trim().to_string()
-            },
-        ));
-    }
-
-    // The provider is connected from here on, with whatever catalog the
-    // runtime already has for it: drop Amiro's cached copy so its models show
-    // up immediately instead of after the catalog's TTL.
-    crate::models::invalidate_catalog();
+    store_api_key(&state, &provider_id, raw_key, api_base).await?;
 
     Ok(Json(json!({
         "ok": true,

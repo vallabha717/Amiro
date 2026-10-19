@@ -413,6 +413,21 @@ fn allowed_refs(_state: &AppState) -> Option<std::collections::HashSet<String>> 
     None
 }
 
+/// How many providers have at least one model (what the chat picker lists).
+pub async fn connected_provider_count(state: &AppState) -> usize {
+    build_catalog(state)
+        .await
+        .get("providers")
+        .and_then(Value::as_array)
+        .map(|providers| {
+            providers
+                .iter()
+                .filter(|p| p.get("models").and_then(Value::as_array).is_some_and(|m| !m.is_empty()))
+                .count()
+        })
+        .unwrap_or(0)
+}
+
 async fn get_chat_models(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
     let catalog = build_catalog(&state).await;
     let pinned = allowed_refs(&state);

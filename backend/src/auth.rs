@@ -237,9 +237,10 @@ pub async fn init(state: &AppState) -> Result<(), ApiError> {
         if let Some((email, password)) = owner {
             let email = identifier(&email)?;
             let timestamp = now();
+            let name = std::env::var("AMIRO_OWNER_NAME").map(Value::String).unwrap_or(Value::Null);
             let user = json!({
                 "id": uuid::Uuid::new_v4().to_string(),
-                "name": body_name_or_owner(Value::Null),
+                "name": body_name_or_owner(name),
                 "email": email,
                 "role": "admin",
                 "passwordHash": hash_password(&password).await?,
@@ -249,9 +250,77 @@ pub async fn init(state: &AppState) -> Result<(), ApiError> {
             tracing::info!(%email, "provisioned the owner account from AMIRO_OWNER_EMAIL/AMIRO_OWNER_PASSWORD");
             document["users"] = json!([user]);
             write_json(&file, &document).await?;
+            if let Ok(tz) = std::env::var("AMIRO_OWNER_TIMEZONE") {
+                let uid = user["id"].as_str().unwrap_or_default();
+                if let Err(error) = crate::onboarding::save_timezone(state, uid, tz.trim()).await {
+                    tracing::warn!(error = %error.1, "AMIRO_OWNER_TIMEZONE ignored");
+                }
+            }
         }
     }
     Ok(())
+}
+
+/// Rename an account (onboarding's profile step).
+pub async fn set_user_name(state: &AppState, user_id: &str, name: &str) -> Result<(), ApiError> {
+    let _guard = state.store.lock().await;
+    let file = state.home.join("users.json");
+    let mut document = read_json(&file, json!({"users":[]})).await?;
+    let users = document["users"]
+        .as_array_mut()
+        .ok_or_else(|| failure(StatusCode::INTERNAL_SERVER_ERROR, "invalid users database"))?;
+    let user = users
+        .iter_mut()
+        .find(|u| u["id"] == user_id)
+        .ok_or_else(|| failure(StatusCode::NOT_FOUND, "account not found"))?;
+    user["name"] = json!(body_name_or_owner(json!(name)));
+    write_json(&file, &document).await
+}
+
+/// Offline recovery (`amiro-backend reset-password`): set the owner's
+/// password, optionally its login, and sign out every session. Creates the
+/// owner when none exists yet. Returns the login identifier.
+pub async fn reset_owner_password(
+    state: &AppState,
+    new_identifier: Option<&str>,
+    password: &str,
+) -> Result<String, ApiError> {
+    validate_password(password)?;
+    let new_identifier = new_identifier.map(identifier).transpose()?;
+    let hash = hash_password(password).await?;
+    let _guard = state.store.lock().await;
+    tokio::fs::create_dir_all(&state.home).await?;
+    let file = state.home.join("users.json");
+    let mut document = read_json(&file, json!({"users":[]})).await?;
+    users_array(&document)?;
+    let users = document["users"].as_array_mut().expect("checked above");
+    let login = if let Some(owner) = users
+        .iter_mut()
+        .find(|u| u["role"] == "admin")
+    {
+        if let Some(id) = &new_identifier {
+            owner["email"] = json!(id);
+        }
+        owner["passwordHash"] = json!(hash);
+        owner["email"].as_str().unwrap_or_default().to_string()
+    } else {
+        let login = new_identifier.unwrap_or_else(|| "owner".to_string());
+        users.push(json!({
+            "id": uuid::Uuid::new_v4().to_string(),
+            "name": body_name_or_owner(Value::Null),
+            "email": login,
+            "role": "admin",
+            "passwordHash": hash,
+            "createdAt": now(),
+            "lastLogin": Value::Null
+        }));
+        login
+    };
+    write_json(&file, &document).await?;
+    write_json(&state.home.join("sessions.json"), &json!({"sessions":{}})).await?;
+    // A stale bootstrap password file would only mislead.
+    let _ = tokio::fs::remove_file(state.home.join("admin-initial-password")).await;
+    Ok(login)
 }
 
 fn body_name_or_owner(body: Value) -> String {
@@ -333,8 +402,11 @@ async fn status(State(state): State<AppState>) -> Result<Json<Value>, ApiError> 
     let document = read_json(&state.home.join("users.json"), json!({"users":[]})).await?;
     let needs_setup = users_array(&document)?.is_empty();
     // `isFirstUser` is retained as an alias so older clients keep working.
+    // `mode` lets the first-run wizard say where Amiro is running
+    // (desktop / this computer / a server); nothing account-specific.
+    let mode = crate::routes::system::deployment_info()["mode"].clone();
     Ok(Json(
-        json!({"needsSetup": needs_setup, "isFirstUser": needs_setup}),
+        json!({"needsSetup": needs_setup, "isFirstUser": needs_setup, "mode": mode}),
     ))
 }
 
@@ -350,6 +422,11 @@ async fn setup(
     let password = body["password"].as_str().unwrap_or("");
     validate_password(password)?;
     let name = body_name_or_owner(body.get("name").cloned().unwrap_or(Value::Null));
+    let timezone = body["timezone"]
+        .as_str()
+        .map(str::trim)
+        .filter(|tz| crate::onboarding::valid_timezone(tz))
+        .map(str::to_string);
     let _guard = state.store.lock().await;
     let file = state.home.join("users.json");
     let mut document = read_json(&file, json!({"users":[]})).await?;
@@ -378,11 +455,17 @@ async fn setup(
             .ok_or_else(|| failure(StatusCode::INTERNAL_SERVER_ERROR, "account has no id"))?,
     )
     .await?;
+    drop(_guard);
+    // Before seeding, so USER.md is written with the owner's timezone.
+    if let (Some(tz), Some(uid)) = (&timezone, user["id"].as_str()) {
+        crate::onboarding::save_timezone(&state, uid, tz).await?;
+    }
     // Seed the agent home (SOUL/USER/NOW/HEARTBEAT, first-run BOOTSTRAP).
     let seed_state = state.clone();
     tokio::spawn(async move {
         crate::agent_home::seed(&seed_state).await;
         crate::agent::ensure_owner_identity_file(&seed_state).await;
+        crate::onboarding::apply_config(&seed_state).await;
     });
     Ok(Json(json!({"user":public_user(&user),"token":token})))
 }

@@ -1,0 +1,66 @@
+# Amiro configuration
+#
+# Copy this file to ~/.amiro/amiro.toml (or next to where you start Amiro, or
+# point AMIRO_CONFIG / --config at it). Everything here is optional: anything
+# you leave out is set up in the onboarding wizard the first time you open
+# Amiro, or later in Settings.
+#
+# Precedence: real environment variables > .env files > this file.
+# Every setting below is also available as the environment variable shown.
+# Run `amiro-backend init-config` to write this file for you.
+
+[server]
+# Where the web UI listens. 127.0.0.1 = this computer only. Use 0.0.0.0 on a
+# VM you reach over the network (and set a token below).          AMIRO_HOST
+# host = "127.0.0.1"
+# Port for the web UI and API.                                     AMIRO_PORT
+# port = 3000
+# Shared secret every browser request must carry. Amiro injects it into
+# the pages it serves, so you never type it.                      AMIRO_TOKEN
+# token = "a-long-random-string"
+# Extra origins allowed to call the API (comma separated). AMIRO_ALLOWED_ORIGIN
+# allowed_origin = "https://amiro.example.com"
+# Where Amiro keeps its data.                                      AMIRO_HOME
+# home = "~/.amiro"
+# Days a sign-in lasts (0 = until you sign out).       AMIRO_SESSION_TTL_DAYS
+# session_ttl_days = 30
+
+[owner]
+# Create the owner account on first start, so the wizard skips the password
+# step. Prefer password_file over password: keep secrets out of config files.
+# email = "you@example.com"                                  AMIRO_OWNER_EMAIL
+# password_file = "~/.amiro/owner-password"          AMIRO_OWNER_PASSWORD_FILE
+# password = ""                                           AMIRO_OWNER_PASSWORD
+# name = "Ada"                                                AMIRO_OWNER_NAME
+# IANA timezone, used for schedules and the heartbeat.    AMIRO_OWNER_TIMEZONE
+# timezone = "Europe/London"
+
+[agent]
+# Applied once, while the agent has never been customised in the app.
+# name = "Amiro"                                              AMIRO_AGENT_NAME
+# headphones | sprout | starfish | dreamer                  AMIRO_AGENT_AVATAR
+# avatar = "headphones"
+# green | orange | pink | purple | teal | yellow | indigo | cobalt | black
+# color = "orange"                                           AMIRO_AGENT_COLOR
+# Model new chats and schedules use, as provider:model.     AMIRO_DEFAULT_MODEL
+# default_model = "anthropic-api:claude-sonnet-5-5"
+
+[providers]
+# Imported into Amiro's encrypted credential store on start, once per
+# provider (only while that provider has no key yet).
+# anthropic_api_key = ""                                     ANTHROPIC_API_KEY
+# openai_api_key = ""                                           OPENAI_API_KEY
+# openrouter_api_key = ""                                   OPENROUTER_API_KEY
+# gemini_api_key = ""                                           GEMINI_API_KEY
+
+[composio]
+# Composio key for the Connectors page (also settable in Admin → Integrations).
+# api_key = ""
+
+[onboarding]
+# true = never show the first-run wizard (fully scripted installs). AMIRO_SKIP_ONBOARDING
+# skip = false
+
+# [env]
+# Anything else, copied into the environment verbatim.
+# RUST_LOG = "info"

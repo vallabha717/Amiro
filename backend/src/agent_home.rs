@@ -57,6 +57,12 @@ pub fn strip_comment_lines(text: &str) -> String {
     kept.join("\n").trim().to_string()
 }
 
+/// Home files whose seeded text names the owner (re-rendered by onboarding
+/// while still untouched).
+pub fn owner_templates() -> [(&'static str, &'static str); 2] {
+    [("USER.md", USER_TEMPLATE), ("BOOTSTRAP.md", BOOTSTRAP_TEMPLATE)]
+}
+
 pub fn fill_placeholders(template: &str, name: &str, email: &str, timezone: &str) -> String {
     template
         .replace("{{user_name}}", name)
@@ -177,7 +183,7 @@ pub fn seed_files(
     report
 }
 
-async fn owner_has_threads(state: &AppState, owner_id: &str) -> bool {
+pub async fn owner_has_threads(state: &AppState, owner_id: &str) -> bool {
     let doc = crate::threads::read_threads(state).await.unwrap_or(json!({}));
     doc.as_object()
         .map(|map| {

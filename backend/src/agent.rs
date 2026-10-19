@@ -493,6 +493,12 @@ fn store_path(state: &AppState, key: &str) -> PathBuf {
 // Identity read
 // ---------------------------------------------------------------------------
 
+/// Whether this user's agent identity was ever saved (not just defaults).
+pub fn has_saved_identity(state: &AppState, user_id: &str) -> bool {
+    store_path(state, &identity_key_for_user(Some(user_id))).is_file()
+        || store_path(state, LEGACY_IDENTITY_KEY).is_file()
+}
+
 async fn is_legacy_owner_admin(state: &AppState, uid: &str) -> bool {
     let users = read_json_safe(&state.home.join("users.json"), json!({ "users": [] })).await;
     match users.get("users").and_then(|v| v.as_array()) {
@@ -1843,7 +1849,7 @@ async fn get_identity(
 }
 
 /// PUT /api/agent/identity -- per-user update with strict validation.
-async fn put_identity(
+pub(crate) async fn put_identity(
     State(state): State<AppState>,
     user: AuthUser,
     body: Option<Json<Value>>,
