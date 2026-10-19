@@ -40,41 +40,36 @@ fn ids_are_slugs_with_hex() {
     assert!(generate_instance_id("!!").starts_with("applet-"));
 }
 
+/// Amiro: upstream (73114dcf6) hides `applet` unless the client is a
+/// Desktop with an inline renderer. Amiro's web UI renders applets for every
+/// session (Visualize skill), so `applet` lives in the base registry and the
+/// Desktop capability toggles only `user_response`.
 #[tokio::test]
-async fn applet_requires_desktop_capability() {
+async fn applet_is_independent_of_desktop_capability() {
     let registry = crate::tool::Registry::empty();
+    assert!(
+        crate::tool::Registry::base_tools(&registry.skills).contains_key("applet"),
+        "Amiro keeps applet in the base registry"
+    );
     for enabled in [false, true, false] {
         registry.set_desktop_ui_enabled(enabled).await;
+        assert!(
+            !registry
+                .definitions(None)
+                .await
+                .iter()
+                .any(|d| d.name == "applet"),
+            "the Desktop capability must not add applet to a registry"
+        );
         assert_eq!(
             registry
                 .definitions(None)
                 .await
                 .iter()
-                .any(|d| d.name == "applet"),
-            enabled
-        );
-        assert_eq!(
-            registry
-                .definitions_for_session("applet-capability-test")
-                .await
-                .iter()
-                .any(|d| d.name == "applet"),
+                .any(|d| d.name == "user_response"),
             enabled,
-            "codemode must honor the same capability"
+            "user_response still follows the Desktop capability"
         );
-        if !enabled {
-            assert!(
-                registry
-                    .execute(
-                        "functions.applet",
-                        json!({"action":"list"}),
-                        context("applet-capability-test", "applet-denied"),
-                    )
-                    .await
-                    .is_err(),
-                "terminal clients must not execute applets"
-            );
-        }
     }
 }
 
@@ -85,8 +80,8 @@ async fn mount_patch_wait_and_close() {
     let tool = AppletTool::new();
     let registry = crate::tool::Registry::empty();
     assert!(
-        !crate::tool::Registry::base_tools(&registry.skills).contains_key("applet"),
-        "applet must not be registered for terminal/headless clients"
+        crate::tool::Registry::base_tools(&registry.skills).contains_key("applet"),
+        "Amiro registers applet for every client (see applet_is_independent_of_desktop_capability)"
     );
 
     let out = tool

@@ -49,10 +49,14 @@ async fn user_response_capability_updates_locked_tool_surface() {
             .any(|d| d.name == "user_response")
     );
     assert!(agent.locked_tools.is_some());
+    // Amiro: the Desktop capability gates only user_response. `applet` lives
+    // in the base registry (Amiro's web UI renders it; covered by
+    // tool::tests::only_the_known_open_world_tools_...), so toggling the
+    // capability must never add or remove it.
     assert!(!agent.tool_names().await.iter().any(|n| n == "applet"));
     agent.set_desktop_response_capability(true).await;
     assert!(agent.locked_tools.is_none());
-    assert!(agent.tool_names().await.iter().any(|n| n == "applet"));
+    assert!(!agent.tool_names().await.iter().any(|n| n == "applet"));
     assert!(
         agent
             .tool_definitions()

@@ -38,6 +38,10 @@ use Disposition::{ClientInternal, Covered, Gap};
 ///
 /// Sorted by name so additions produce clean diffs.
 const LEDGER: &[(&str, Disposition)] = &[
+    // Amiro: upstream 48aa83e9 added this TUI quota-hint request without a
+    // ledger entry (the test fails upstream too). It only hydrates TUI quota
+    // display state, so it is client-internal.
+    ("AccountUsage", ClientInternal),
     ("BackgroundTool", Covered),
     ("Cancel", Covered),
     ("CancelSoftInterrupts", Covered),

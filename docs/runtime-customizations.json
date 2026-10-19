@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/1jehuang/jcode",
-  "recordedUpstreamCommit": "11952e02ac76fa1c335633e9c6113691c1cf3395",
+  "recordedUpstreamCommit": "48aa83e919e235d6cca87b7ce42858a9bd8e1f26",
   "initialVendorCommit": "de88011ca23601a7af49241c2e69e459d680191d",
   "scope": "Baseline preservation inventory, not an exhaustive patch set or automatic importer. Refresh from the selected clean Amiro revision before every update.",
   "normalizer": {
-    "status": "not-implemented",
+    "status": "implemented (transform v3, scripts/runtime-update/normalize_upstream.py; deterministic, baseline residue classified as local delta)",
     "requiredGate": "Bootstrap a versioned deterministic rebrand/exclusion transform and prove the old-normalized plus complete local delta reproduces the tracked current runtime before merging new upstream."
   },
   "areas": [
@@ -15,11 +15,17 @@
       "sentinels": [
         {
           "path": "runtime/Cargo.toml",
-          "contains": ["name = \"amiro-runtime\"", "amiro_runtime"]
+          "contains": [
+            "name = \"amiro-runtime\"",
+            "amiro_runtime"
+          ]
         },
         {
           "path": "runtime/LICENSE",
-          "contains": ["MIT License", "Jeremy Huang"]
+          "contains": [
+            "MIT License",
+            "Jeremy Huang"
+          ]
         },
         {
           "path": "backend/Cargo.toml",
@@ -49,15 +55,21 @@
         },
         {
           "path": "runtime/crates/amiro-app-core/src/update.rs",
-          "contains": ["upstream_auto_update_enabled"]
+          "contains": [
+            "upstream_auto_update_enabled"
+          ]
         },
         {
           "path": "runtime/src/cli/startup.rs",
-          "contains": ["upstream_auto_update_enabled"]
+          "contains": [
+            "upstream_auto_update_enabled"
+          ]
         },
         {
           "path": "runtime/crates/amiro-telemetry-core/src/lib.rs",
-          "contains": ["upstream_telemetry_enabled"]
+          "contains": [
+            "upstream_telemetry_enabled"
+          ]
         }
       ],
       "checks": [
@@ -70,11 +82,17 @@
       "sentinels": [
         {
           "path": "runtime/crates/amiro-config-types/src/web_search.rs",
-          "contains": ["configured_providers_file", "native_enabled"]
+          "contains": [
+            "configured_providers_file",
+            "native_enabled"
+          ]
         },
         {
           "path": "runtime/crates/amiro-app-core/src/tool/websearch.rs",
-          "contains": ["execute_configured", "configured_provider_order"]
+          "contains": [
+            "execute_configured",
+            "configured_provider_order"
+          ]
         },
         {
           "path": "backend/src/routes/search_providers.rs",
@@ -95,15 +113,25 @@
       "sentinels": [
         {
           "path": "runtime/crates/amiro-session-types/src/title.rs",
-          "contains": ["prompt_title"]
+          "contains": [
+            "prompt_title"
+          ]
         },
         {
           "path": "backend/src/chat.rs",
-          "contains": ["prompt_title", "data-thread-title", "SessionRenamed"]
+          "contains": [
+            "prompt_title",
+            "data-thread-title",
+            "SessionRenamed"
+          ]
         },
         {
           "path": "backend/src/threads.rs",
-          "contains": ["sync_runtime_title", "titleSource", "manual"]
+          "contains": [
+            "sync_runtime_title",
+            "titleSource",
+            "manual"
+          ]
         },
         {
           "path": "backend/tests/runtime_titles.rs",
@@ -124,15 +152,22 @@
       "sentinels": [
         {
           "path": "runtime/crates/amiro-harness-api/src/runtime_commands.rs",
-          "contains": ["McpReload", "mcp_reload"]
+          "contains": [
+            "McpReload",
+            "mcp_reload"
+          ]
         },
         {
           "path": "runtime/crates/amiro-app-core/src/server/runtime_commands.rs",
-          "contains": ["McpReload"]
+          "contains": [
+            "McpReload"
+          ]
         },
         {
           "path": "runtime/crates/amiro-base/src/mcp/manager.rs",
-          "contains": ["McpManager"]
+          "contains": [
+            "McpManager"
+          ]
         }
       ],
       "checks": [
@@ -146,19 +181,31 @@
       "sentinels": [
         {
           "path": "runtime/crates/amiro-storage/src/lib.rs",
-          "contains": ["RUNTIME_HOME_ENV_ORDER", "JCODE_HOME"]
+          "contains": [
+            "RUNTIME_HOME_ENV_ORDER",
+            "JCODE_HOME"
+          ]
         },
         {
           "path": "backend/src/state.rs",
-          "contains": ["AMIRO_RUNTIME_HOME", "AMIRO_HOME"]
+          "contains": [
+            "AMIRO_RUNTIME_HOME",
+            "AMIRO_HOME"
+          ]
         },
         {
           "path": "backend/src/runtime.rs",
-          "contains": ["AMIRO_TOOL_PROFILE", "expose_tools"]
+          "contains": [
+            "AMIRO_TOOL_PROFILE",
+            "expose_tools"
+          ]
         },
         {
           "path": "backend/src/credentials.rs",
-          "contains": ["store.key", "credentials.enc"]
+          "contains": [
+            "store.key",
+            "credentials.enc"
+          ]
         }
       ],
       "checks": [
@@ -166,6 +213,28 @@
         "cargo test --locked --manifest-path backend/Cargo.toml",
         "node scripts/verify-settings-workflows.mjs",
         "target-specific prior-state migration and rollback rehearsal"
+      ]
+    },
+    {
+      "id": "applet-for-web-ui",
+      "requirement": "Keep the `applet` tool in the base registry for every client. Upstream 73114dcf6 gates it behind the Desktop user_response capability, but Amiro's web UI renders inline applets (Visualize skill, backend system prompt) while the backend reports supports_user_response=false. Only user_response follows the Desktop capability.",
+      "sentinels": [
+        {
+          "path": "runtime/crates/amiro-app-core/src/tool/mod.rs",
+          "contains": [
+            "Amiro: keep inline applets available to every client"
+          ]
+        },
+        {
+          "path": "runtime/crates/amiro-app-core/src/tool/applet_tests.rs",
+          "contains": [
+            "fn applet_is_independent_of_desktop_capability"
+          ]
+        }
+      ],
+      "checks": [
+        "cargo test --locked --manifest-path runtime/Cargo.toml -p amiro-app-core --no-default-features -- tool::applet tool::tests::only_the_known_open_world_tools_are_ineligible_for_openai_strict_mode agent::tests::user_response_capability_updates_locked_tool_surface",
+        "pnpm --dir tests e2e --project chat  # 'visualize skill renders an inline visual'"
       ]
     }
   ],
