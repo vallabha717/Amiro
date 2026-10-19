@@ -288,12 +288,18 @@ fn repo_slug() -> String {
     std::env::var("AMIRO_REPO").unwrap_or_else(|_| "vallabha717/Amiro".to_string())
 }
 
-/// "v1.26.0" -> (1, 26, 0, None). Anything else -> None, which compares as
-/// "not newer" so a weird tag can never trigger an update prompt.
+/// "v1.26.0" -> (1, 26, 0, None). Strict character allowlist for prerelease
+/// so dot-segments and slashes can never traverse the GitHub URL.
 fn parse_version(raw: &str) -> Option<(u64, u64, u64, Option<String>)> {
     let stripped = raw.trim().strip_prefix(['v', 'V']).unwrap_or(raw.trim());
     let (core, prerelease) = match stripped.split_once('-') {
-        Some((core, pre)) if !pre.is_empty() => (core, Some(pre.to_string())),
+        Some((core, pre)) if !pre.is_empty() => {
+            // Strictly alphanumeric, hyphens, and dots between alphanumeric components. No slashes or path navigation.
+            if !pre.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.') || pre.contains("..") || pre.starts_with('.') || pre.ends_with('.') {
+                return None;
+            }
+            (core, Some(pre.to_string()))
+        }
         _ => (stripped, None),
     };
     let mut parts = core.split('.');
@@ -506,7 +512,7 @@ async fn post_update(
     }
 
     let mut cmd = tokio::process::Command::new("bash");
-    cmd.arg(&script_path).arg("-s").arg("--");
+    cmd.arg(&script_path);
     if let Some(ref v) = version {
         cmd.arg("--version").arg(v);
     }

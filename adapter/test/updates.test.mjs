@@ -13,7 +13,8 @@ import {
 test('parseVersion handles plain and v-prefixed semver', () => {
   assert.deepEqual(parseVersion('v1.26.0'), { major: 1, minor: 26, patch: 0, prerelease: null });
   assert.deepEqual(parseVersion('1.26.0'), { major: 1, minor: 26, patch: 0, prerelease: null });
-  assert.deepEqual(parseVersion('v1.27.0-rc.1'), { major: 1, minor: 27, patch: 0, prerelease: 'rc.1' });
+  assert.deepEqual(parseVersion('v1.27.0-rc1'), { major: 1, minor: 27, patch: 0, prerelease: 'rc1' });
+  assert.equal(parseVersion('v1.27.0-../../traversal'), null);
   assert.equal(parseVersion('dev'), null);
   assert.equal(parseVersion('1.26'), null);
   assert.equal(parseVersion('1.26.0.1'), null);
@@ -128,7 +129,8 @@ test('startUpdate executes bash detached with validated argv', async () => {
   assert.equal(res.version, 'v1.27.0');
   assert.equal(res.pid, 4242);
   assert.equal(spawned.cmd, 'bash');
-  assert.equal(spawned.args.at(-2), '--version');
-  assert.equal(spawned.args.at(-1), 'v1.27.0');
+  assert.equal(spawned.args[0].endsWith('install.sh'), true);
+  assert.equal(spawned.args[1], '--version');
+  assert.equal(spawned.args[2], 'v1.27.0');
   assert.equal(spawned.opts.detached, true);
 });

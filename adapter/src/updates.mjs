@@ -43,19 +43,34 @@ export function installScriptUrl(version) {
 }
 
 // "v1.26.0" -> { major: 1, minor: 26, patch: 0, prerelease: null }.
-// Returns null when the string is not a plain dotted version.
+// Returns null when the string is not a plain dotted version or if prerelease
+// contains slashes, backslashes, or dot-dot navigation.
 export function parseVersion(raw) {
   if (typeof raw !== 'string') return null;
-  const m = raw
-    .trim()
-    .replace(/^[vV]/, '')
-    .match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/);
+  const stripped = raw.trim().replace(/^[vV]/, '');
+  const dash = stripped.indexOf('-');
+  const core = dash === -1 ? stripped : stripped.slice(0, dash);
+  const prerelease = dash === -1 ? null : stripped.slice(dash + 1);
+
+  const m = core.match(/^(\d+)\.(\d+)\.(\d+)$/);
   if (!m) return null;
+
+  if (prerelease !== null) {
+    if (
+      !/^[0-9A-Za-z.-]+$/.test(prerelease) ||
+      prerelease.includes('..') ||
+      prerelease.startsWith('.') ||
+      prerelease.endsWith('.')
+    ) {
+      return null;
+    }
+  }
+
   return {
     major: Number(m[1]),
     minor: Number(m[2]),
     patch: Number(m[3]),
-    prerelease: m[4] || null,
+    prerelease,
   };
 }
 
@@ -195,7 +210,7 @@ export async function startUpdate({
   const scriptPath = path.join(dir, 'install.sh');
   writeFileSync(scriptPath, script, { mode: 0o755 });
   const doSpawn = spawnImpl || spawn;
-  const args = [scriptPath, '-s', '--'];
+  const args = [scriptPath];
   if (version) args.push('--version', version);
   const child = doSpawn('bash', args, {
     detached: true,
