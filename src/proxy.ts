@@ -22,11 +22,12 @@ export function proxy(request: NextRequest) {
         { status: 403 },
       );
     }
-    headers.set(
-      "origin",
-      new URL(process.env.AMIRO_DEV_BACKEND_URL || "http://127.0.0.1:8787")
-        .origin,
-    );
+    // Next's rewrite proxy sends `X-Forwarded-Host: <this request's Host>`, and
+    // the backend checks Origin against that forwarded host (plus
+    // X-Forwarded-Proto, defaulting to http). Name exactly that origin.
+    const proto =
+      headers.get("x-forwarded-proto")?.split(",")[0].trim() || "http";
+    headers.set("origin", `${proto}://${host}`);
   }
   return NextResponse.next({ request: { headers } });
 }
