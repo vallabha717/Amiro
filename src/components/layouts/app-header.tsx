@@ -70,12 +70,24 @@ export function AppHeader() {
   }, [currentPaths, searchParams]);
 
   return (
-    <header className="sticky top-0 z-50 flex items-center px-3 py-1">
+    // The chat window's top bar. From `md` up the sidebar carries its own
+    // collapse toggle (VegaAI shell), so the one here is mobile-only.
+    // On admin pages the bar floats over the admin title row (only the bell
+    // shows there), so the main window doesn't get two stacked headers.
+    <header
+      className={cn(
+        "z-50 flex items-center px-3 py-1",
+        currentPaths.startsWith("/admin")
+          ? "pointer-events-none absolute inset-x-0 top-0 pt-3 [&_button]:pointer-events-auto"
+          : "sticky top-0",
+      )}
+    >
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
             variant="ghost"
             size="icon"
+            className="md:hidden"
             aria-label="Toggle Sidebar"
             onClick={(e) => {
               e.preventDefault();
@@ -118,77 +130,81 @@ export function AppHeader() {
                   variant={"ghost"}
                   data-testid="header-voice-mode-button"
                   aria-label={t("KeyboardShortcuts.toggleVoiceChat")}
-                className={cn(
-                  "bg-secondary/40",
-                  voiceActive && "bg-primary text-primary-foreground hover:bg-primary/90",
-                )}
-                onClick={() => {
-                  const voice = useVoiceStore.getState();
-                  if (voiceActive) {
-                    voice.setMinimized(!voiceMinimized);
-                  } else {
-                    void voice.start(searchParams.get("thread"));
-                  }
-                }}
-              >
-                <AudioWaveformIcon className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent align="end" side="bottom">
-              <div className="text-xs flex items-center gap-2">
-                {t("KeyboardShortcuts.toggleVoiceChat")}
-                <div className="text-xs text-muted-foreground flex items-center gap-1">
-                  {getShortcutKeyList(Shortcuts.toggleVoiceChat).map((key) => (
-                    <span
-                      className="w-5 h-5 flex items-center justify-center bg-muted rounded "
-                      key={key}
-                    >
-                      {key}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size={"icon"}
-                variant={"secondary"}
-                className="bg-secondary/40"
-                aria-label={t("KeyboardShortcuts.toggleTemporaryChat")}
-                onClick={() => {
-                  appStoreMutate((state) => ({
-                    temporaryChat: {
-                      ...state.temporaryChat,
-                      isOpen: !state.temporaryChat.isOpen,
-                    },
-                  }));
-                }}
-              >
-                <MessageCircleDashed className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent align="end" side="bottom">
-              <div className="text-xs flex items-center gap-2">
-                {t("KeyboardShortcuts.toggleTemporaryChat")}
-                <div className="text-xs text-muted-foreground flex items-center gap-1">
-                  {getShortcutKeyList(Shortcuts.toggleTemporaryChat).map(
-                    (key) => (
-                      <span
-                        className="w-5 h-5 flex items-center justify-center bg-muted rounded "
-                        key={key}
-                      >
-                        {key}
-                      </span>
-                    ),
+                  className={cn(
+                    "bg-secondary/40",
+                    voiceActive &&
+                      "bg-primary text-primary-foreground hover:bg-primary/90",
                   )}
+                  onClick={() => {
+                    const voice = useVoiceStore.getState();
+                    if (voiceActive) {
+                      voice.setMinimized(!voiceMinimized);
+                    } else {
+                      void voice.start(searchParams.get("thread"));
+                    }
+                  }}
+                >
+                  <AudioWaveformIcon className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent align="end" side="bottom">
+                <div className="text-xs flex items-center gap-2">
+                  {t("KeyboardShortcuts.toggleVoiceChat")}
+                  <div className="text-xs text-muted-foreground flex items-center gap-1">
+                    {getShortcutKeyList(Shortcuts.toggleVoiceChat).map(
+                      (key) => (
+                        <span
+                          className="w-5 h-5 flex items-center justify-center bg-muted rounded "
+                          key={key}
+                        >
+                          {key}
+                        </span>
+                      ),
+                    )}
+                  </div>
                 </div>
-              </div>
-            </TooltipContent>
-          </Tooltip>
-        </>)}
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size={"icon"}
+                  variant={"secondary"}
+                  className="bg-secondary/40"
+                  aria-label={t("KeyboardShortcuts.toggleTemporaryChat")}
+                  onClick={() => {
+                    appStoreMutate((state) => ({
+                      temporaryChat: {
+                        ...state.temporaryChat,
+                        isOpen: !state.temporaryChat.isOpen,
+                      },
+                    }));
+                  }}
+                >
+                  <MessageCircleDashed className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent align="end" side="bottom">
+                <div className="text-xs flex items-center gap-2">
+                  {t("KeyboardShortcuts.toggleTemporaryChat")}
+                  <div className="text-xs text-muted-foreground flex items-center gap-1">
+                    {getShortcutKeyList(Shortcuts.toggleTemporaryChat).map(
+                      (key) => (
+                        <span
+                          className="w-5 h-5 flex items-center justify-center bg-muted rounded "
+                          key={key}
+                        >
+                          {key}
+                        </span>
+                      ),
+                    )}
+                  </div>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          </>
+        )}
       </div>
     </header>
   );

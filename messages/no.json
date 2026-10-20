@@ -887,5 +887,10 @@
     "restoredToast": "Gjenopprettet {count} fil(er)",
     "restoredPartialToast": "Gjenopprettet {restored} fil(er), {failed} feilet",
     "restoreFailedToast": "Tilbakespoling mislyktes"
+  },
+  "SidebarFrame": {
+    "home": "Amiro-hjem",
+    "expandSidebar": "Utvid sidepanelet",
+    "collapseSidebar": "Skjul sidepanelet"
   }
 }

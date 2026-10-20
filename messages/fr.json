@@ -531,5 +531,10 @@
     "restoredToast": "{count} fichier(s) restauré(s)",
     "restoredPartialToast": "{restored} fichier(s) restauré(s), {failed} échoué(s)",
     "restoreFailedToast": "Échec du retour en arrière"
+  },
+  "SidebarFrame": {
+    "home": "Accueil Amiro",
+    "expandSidebar": "Déplier la barre latérale",
+    "collapseSidebar": "Replier la barre latérale"
   }
 }

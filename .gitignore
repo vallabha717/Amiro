@@ -22,3 +22,6 @@ src-tauri/gen/
 build.log
 rustup-init.exe
 .amiro-server/
+
+# Professional (enterprise) UI is closed source and never committed
+ui/professional/

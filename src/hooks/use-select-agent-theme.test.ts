@@ -95,16 +95,17 @@ describe("sidebar agent color selection", () => {
     expect(mocks.update).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects unmapped themes and keeps the chooser to canonical colors", async () => {
+  it("rejects unmapped themes", async () => {
     await useSelectAgentTheme().selectTheme("cyberpunk-neon");
     expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it("keeps the sidebar theme menu to the VegaAI palettes", () => {
     const source = readFileSync(
       "src/components/layouts/app-sidebar-user.tsx",
       "utf8",
     );
-    expect(source).toContain("Object.entries(COLOR_TO_SIDEBAR_THEME)");
-    expect(source).toContain("capitalizeFirstLetter(color)");
-    expect(source).toContain("disabled={disabled}");
+    expect(source).toContain("VEGA_PALETTES.map(");
     expect(source).not.toContain("BASE_THEMES");
   });
 });

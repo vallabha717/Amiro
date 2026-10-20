@@ -1,18 +1,21 @@
 /**
  * Unified Agent / sidebar theme colors.
  *
- * The Agent no longer owns an independent aura palette. Every Agent surface
- * uses the active sidebar theme token so a sidebar theme change is instantly
- * visible on the Agent with no backend write or effect loop.
+ * Every Agent surface (the plush, its habitat, the voice room) uses the
+ * colour picked for the agent in onboarding or the customizer:
+ * `--agent-accent`, which AgentAccentSync sets on <html> from the saved
+ * identity. Before an identity loads it falls back to the sidebar accent.
  *
- * - For DOM / CSS use `AGENT_ACCENT` (`var(--sidebar-primary)`) and
+ * - For DOM / CSS use `AGENT_ACCENT` (`var(--agent-accent)`) and
  *   `AGENT_ACCENT_FG` directly — no hex concatenation.
  * - For canvas / `toneForBg` (which parses `#RRGGBB`) use the resolved hex
  *   from `useAgentTheme`. `color-mix` is used for translucent washes
  *   instead of `${hex}18`-style alpha suffixes.
  */
-export const AGENT_ACCENT = "var(--sidebar-primary)" as const;
-export const AGENT_ACCENT_FG = "var(--sidebar-primary-foreground)" as const;
+export const AGENT_ACCENT =
+  "var(--agent-accent, var(--sidebar-primary))" as const;
+export const AGENT_ACCENT_FG =
+  "var(--agent-accent-foreground, var(--sidebar-primary-foreground))" as const;
 
 /** Translucent wash via CSS `color-mix` — never hex alpha concatenation. */
 export function agentWash(percent: number): string {

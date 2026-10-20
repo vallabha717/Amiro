@@ -1,60 +1,49 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* next-themes sets `attribute="class"`, so `dark:` must follow the `.dark`
-   class rather than Tailwind v4's default `prefers-color-scheme` media query.
-   Without this, `dark:` utilities track the OS while token colors track the
-   app theme, and the two disagree whenever they differ. */
-@custom-variant dark (&:where(.dark, .dark *));
+/* Amiro — VegaAI design system (shared with Pro); Amiro keeps its own fonts.
+ * Sections 1-4 are ported from app.vegaai.dev.v2/ui/app/globals.css so Pro and
+ * the VegaAI gateway share one look. Section 5 holds the Amiro-only helpers. */
 
-/* Lets translucent chrome fall back to a solid surface when the user has
-   asked for reduced transparency. */
+/* next-themes sets `attribute="class"`, so `dark:` follows the `.dark` class. */
+@custom-variant dark (&:where(.dark, .dark *));
 @custom-variant reduce-transparency (@media (prefers-reduced-transparency: reduce));
 
-/* Individual theme variants - themes from  https://github.com/rawestmoreland/theme-generator/blob/main/src/app/globals.css */
+/* =============================================================================
+ * Theming — this file is the ONLY place a color value may be written.
+ *
+ * Rules (guarded by lib/no-hardcoded-colors.test.ts):
+ *   1. No component, page, or lib file may contain a color literal (#hex,
+ *      rgb(), hsl(), oklch()) or a raw Tailwind palette utility
+ *      (bg-zinc-900, text-emerald-500, border-blue-200, ...). Only the
+ *      semantic utilities declared in section 1 below are allowed.
+ *   2. Because every color the UI paints resolves through a token, retheming
+ *      the whole product is a matter of editing section 2 — nothing else.
+ *
+ * Structure:
+ *   1. Token contract  — semantic names exposed as Tailwind utilities
+ *   2. Theme           — Graphite, light + dark
+ *   3. Vendor logos    — third-party brand marks
+ *   4. Base layer      — element defaults
+ * ========================================================================== */
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-fraunces);
-  --font-mono: var(--font-geist-mono);
-  --font-brand: var(--font-fraunces);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5, --input);
-  --color-chart-4: var(--chart-4, --input);
-  --color-chart-3: var(--chart-3, --input);
-  --color-chart-2: var(--chart-2, --input);
-  --color-chart-1: var(--chart-1, --input);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-}
-
+/* =============================================================================
+ * 1. TOKEN CONTRACT
+ *
+ * Maps each semantic token to a Tailwind color utility. `--color-foo: var(--foo)`
+ * makes `bg-foo` / `text-foo` / `border-foo` / `fill-foo` / `stroke-foo` (and
+ * opacity modifiers like `bg-foo/15`) available everywhere in the app.
+ *
+ * Nothing in this block carries a value — values live in section 2, so
+ * changing the theme re-colors every utility at once.
+ * ========================================================================== */
+/* =============================================================================
+ * 0. AGENT PALETTES (legacy)
+ * Amiro's agent colour themes. They match only an element that carries
+ * `data-theme` below <html> (the agent customizer preview). The app itself is
+ * coloured by the VegaAI palette on <html data-theme> in the sections below,
+ * which come later and therefore win for the root tokens.
+ * ========================================================================== */
 :root {
   --agent-default-primary: var(--sidebar-primary);
   --radius: 0.75rem;
@@ -1795,25 +1784,1928 @@
   --sidebar-ring: var(--ring);
 }
 
+@theme inline {
+  --font-sans: var(--font-fraunces);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-fraunces);
+
+  --font-brand: var(--font-fraunces);
+  /* Surfaces & text */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  /* Interactive */
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  /* Form controls & outline buttons — the shared "control" surface. Every
+   * outline button, input, select and trigger paints with these, which is why
+   * they all stay in sync with each other and with the tab bar. */
+  --color-control: var(--control);
+  --color-control-hover: var(--control-hover);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Status */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-error: var(--destructive);
+  --color-error-foreground: var(--destructive-foreground);
+
+  /* Money. This is the only token allowed on billing/INR surfaces, and it must
+   * never be used for a non-money interactive state. */
+  --color-billing: var(--billing);
+  --color-billing-foreground: var(--billing-foreground);
+
+  /* Categorical palette — chart series, provider accents, and request/status
+   * badges all draw from this one set, so they re-color together. Each value is
+   * tuned per mode to read both as text and as a soft `/10`-`/20` background. */
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-chart-7: var(--chart-7);
+  --color-chart-8: var(--chart-8);
+  --color-chart-9: var(--chart-9);
+  --color-chart-10: var(--chart-10);
+  --color-chart-11: var(--chart-11);
+  --color-chart-12: var(--chart-12);
+
+  /* Chart chrome */
+  --color-chart-grid: var(--chart-grid);
+  --color-chart-axis: var(--chart-axis);
+  --color-chart-cursor: var(--chart-cursor);
+  --color-chart-other: var(--chart-other);
+
+  /* Sidebar */
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Elevation. What separates a surface from the thing behind it is a border, a
+   * shadow, and — for anything modal — the scrim. All three are tokens, so a
+   * theme can never leave one of them behind and a popup can never be one flat
+   * plane of `--background`:
+   *
+   *   bg-canvas         the desk the shell's floating panels sit on
+   *   shadow-elevated   a resting card
+   *   shadow-floating   a popover, dropdown, select or combobox panel
+   *   shadow-modal      a dialog, sheet or drawer
+   *   shadow-panel      a docked shell panel — the sidebar, the main window
+   *   bg-overlay        the scrim behind a modal
+   *   bg-control-focus  the surface a field lifts to while focused
+   *   bg-control-knob   the travelling thumb inside a switch
+   *
+   * Shadow values are per-*mode*, not per-palette (see §2), because elevation is
+   * about how much light is in the room, not about the room's hue. */
+  --color-canvas: var(--canvas);
+  --color-overlay: var(--overlay);
+  --color-control-focus: var(--control-focus);
+  --color-control-knob: var(--control-knob);
+  --shadow-elevated: var(--elevation-elevated);
+  --shadow-floating: var(--elevation-floating);
+  --shadow-modal: var(--elevation-modal);
+  --shadow-panel: var(--elevation-panel);
+
+  /* Data surfaces. A table is not painted `bg-muted/40` on top of a card and
+   * hoped for the best — the header band and the row hover are their own roles,
+   * because both have to be legible in light *and* dark and both sit on a card
+   * whose own lightness differs by mode. One value per role, per mode. */
+  --color-table-header: var(--table-header);
+  --color-table-row-hover: var(--table-row-hover);
+  --color-track: var(--track);
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-3xl: 24px;
+  --radius-4xl: 28px;
+}
+
+/* =============================================================================
+ * 2. THEME REGISTRY
+ *
+ * Two independent axes:
+ *
+ *   mode   light | dark          next-themes writes `light`/`dark` onto <html>
+ *   theme  a palette name        ThemeStyleProvider writes `data-theme` onto <html>
+ *
+ * The "default" theme (Graphite) is the unattributed pair below — `:root` and
+ * `:root.dark`. It is the base every other theme inherits from, so a theme only
+ * declares the tokens whose values actually differ.
+ *
+ * ---------------------------------------------------------------------------
+ * Adding a theme
+ * ---------------------------------------------------------------------------
+ *   1. add a block pair here, scoped to your theme name:
+ *
+ *        :root:not(.dark)[data-theme="ocean"] { --primary: ...;  }
+ *        :root.dark[data-theme="ocean"]       { --primary: ...;  }
+ *
+ *   2. add "ocean" to BASE_THEMES in lib/constants/themes.ts
+ *
+ * The `:not(.dark)` / `.dark` split is what makes step 1 safe: each block beats
+ * the default regardless of source order and regardless of how few tokens it
+ * sets, so a partial theme inherits the rest of Graphite instead of rendering
+ * half-unstyled. Everything else — every component, every chart — re-colors on
+ * its own, because nothing outside this file holds a color value.
+ *
+ * `lib/theme-tokens.test.ts` fails the suite if a registered theme leaves a
+ * token valued in one mode but not the other.
+ * ========================================================================== */
+
+/* --- default (Graphite) — light ------------------------------------------------ */
+:root {
+  --radius: 12px;
+
+  --background: hsl(0 0% 100%);
+  --foreground: hsl(222.2 84% 4.9%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(222.2 84% 4.9%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(222.2 84% 4.9%);
+  --muted: hsl(210 40% 96.1%);
+  --muted-foreground: hsl(215.4 16.3% 46.9%);
+
+  --primary: hsl(222.2 47.4% 11.2%);
+  --primary-foreground: hsl(210 40% 98%);
+  --secondary: hsl(210 40% 96.1%);
+  --secondary-foreground: hsl(222.2 47.4% 11.2%);
+  --accent: hsl(210 40% 96.1%);
+  --accent-foreground: hsl(222.2 47.4% 11.2%);
+  --destructive: hsl(0 72.2% 50.6%);
+  --destructive-foreground: hsl(210 40% 98%);
+
+  /* The control surface. Every input, textarea, select, outline button and
+   * combobox paints this and nothing else, which is what keeps them all in sync
+   * with each other; a call site that re-specifies a background is the bug this
+   * token exists to prevent (lib/no-hardcoded-colors.test.ts enforces it).
+   *
+   * Light: a soft grey inset — a field is a shallow well pressed into a white
+   * card, so it reads as fillable rather than as a hole cut out of the page.
+   * Dark: the same well, deeper in *absolute* terms — `--control` sits below
+   * `--popover`, so a field on a popup is a recessed slot in a lit surface. */
+  --control: hsl(210 40% 96.1%);
+  --control-hover: hsl(214.3 31.8% 91.4%);
+  --control-focus: hsl(0 0% 100%);
+  --control-knob: hsl(0 0% 100%);
+  --border: hsl(214.3 31.8% 91.4%);
+  --input: hsl(214.3 31.8% 87%);
+  --ring: hsl(222.2 84% 4.9%);
+
+  /* Elevation, the scrim, the focus lift and the switch knob are mode-level: a
+   * palette changes the hue of a surface, not how far a field sits below it or
+   * how heavy a shadow reads. Declared here and in `:root.dark` only — every
+   * registry theme inherits them. */
+  --overlay: hsl(222.2 47.4% 11.2% / 0.4);
+  /* Derived from the palette's own `--card`/`--foreground` pair rather than
+   * fixed, so all eight themes get a band tuned to their own card lightness
+   * without a per-theme block. Light mixes toward the dark foreground at a
+   * gentler strength than dark mixes toward the light one. */
+  --table-header: color-mix(in oklab, var(--card) 97.5%, var(--foreground) 2.5%);
+  --table-row-hover: color-mix(in oklab, var(--card) 95%, var(--foreground) 5%);
+  --track: color-mix(in oklab, var(--card) 90%, var(--foreground) 10%);
+  --elevation-elevated:
+    0 1px 2px hsl(222.2 47.4% 11.2% / 0.05), 0 1px 3px hsl(222.2 47.4% 11.2% / 0.06);
+  --elevation-floating:
+    0 1px 1px hsl(222.2 47.4% 11.2% / 0.04), 0 6px 12px -4px hsl(222.2 47.4% 11.2% / 0.08),
+    0 20px 40px -12px hsl(222.2 47.4% 11.2% / 0.12);
+  --elevation-modal:
+    0 1px 1px hsl(222.2 47.4% 11.2% / 0.05), 0 12px 24px -6px hsl(222.2 47.4% 11.2% / 0.1),
+    0 40px 72px -24px hsl(222.2 47.4% 11.2% / 0.18);
+  /* Light windows sit above a softly tinted desk. Dark mode supplies its
+   * own contrasting desk and subtle navy-to-warm texture below. */
+  --canvas-texture: radial-gradient(ellipse 80% 60% at 15% -5%, rgba(167, 139, 250, 0.40), transparent 65%), radial-gradient(ellipse 70% 50% at 85% 85%, rgba(99, 102, 241, 0.30), transparent 65%), linear-gradient(160deg, #f8fafc, #edf2f7 65%);
+  --canvas: color-mix(in oklab, var(--background) 95%, var(--foreground) 5%);
+  --elevation-panel:
+    0 1px 2px hsl(222.2 47.4% 11.2% / 0.06), 0 8px 20px -6px hsl(222.2 47.4% 11.2% / 0.1),
+    0 24px 48px -12px hsl(222.2 47.4% 11.2% / 0.18);
+
+  --success: hsl(161.4 93.5% 30.4%);
+  --success-foreground: hsl(210 40% 98%);
+  --warning: hsl(32.1 94.6% 43.7%);
+  --warning-foreground: hsl(210 40% 98%);
+  --info: hsl(221.2 83.2% 53.3%);
+  --info-foreground: hsl(210 40% 98%);
+
+  --billing: hsl(176 84% 26%);
+  --billing-foreground: hsl(210 40% 98%);
+
+  --chart-1: hsl(161.4 93.5% 30.4%);
+  --chart-2: hsl(221.2 83.2% 53.3%);
+  --chart-3: hsl(32.1 94.6% 43.7%);
+  --chart-4: hsl(0 72.2% 50.6%);
+  --chart-5: hsl(262.1 83.3% 57.8%);
+  --chart-6: hsl(333.3 71.4% 50.6%);
+  --chart-7: hsl(192.9 82.3% 31%);
+  --chart-8: hsl(84.8 85.2% 34.5%);
+  --chart-9: hsl(20.5 90.2% 48.2%);
+  --chart-10: hsl(174.7 83.9% 31.6%);
+  --chart-11: hsl(45.4 93.4% 47.5%);
+  --chart-12: hsl(293.4 69.5% 48.8%);
+
+  --chart-grid: hsl(214.3 31.8% 91.4%);
+  --chart-axis: hsl(215.4 16.3% 46.9%);
+  --chart-cursor: hsl(215.4 16.3% 46.9%);
+  --chart-other: hsl(215.4 16.3% 46.9%);
+
+  --sidebar: hsl(210 40% 98%);
+  --sidebar-foreground: hsl(222.2 84% 4.9%);
+  --sidebar-primary: hsl(222.2 47.4% 11.2%);
+  --sidebar-primary-foreground: hsl(210 40% 98%);
+  --sidebar-accent: hsl(210 40% 96.1%);
+  --sidebar-accent-foreground: hsl(222.2 47.4% 11.2%);
+  --sidebar-border: hsl(214.3 31.8% 91.4%);
+  --sidebar-ring: hsl(222.2 84% 4.9%);
+}
+
+/* --- default (Graphite) — dark ----------------------------------------------
+ * Neutral charcoal windows, a navy-to-warm desk, and restrained lavender
+ * accents follow the supplied Teams reference. Separation comes from surface
+ * contrast, a fine edge highlight, and soft cast shadows rather than glow. */
+:root.dark {
+  --background: hsl(0 0% 15%);
+  --foreground: hsl(230 12% 94%);
+  --card: hsl(0 0% 0%);
+  --card-foreground: var(--foreground);
+  --popover: hsl(0 0% 4%);
+  --popover-foreground: var(--foreground);
+  --muted: hsl(0 0% 20%);
+  --muted-foreground: hsl(230 9% 76%);
+
+  /* Lavender belongs to actions and navigation, not every large surface. */
+  --primary: hsl(252 76% 81%);
+  --primary-foreground: hsl(244 22% 16%);
+  --secondary: var(--muted);
+  --secondary-foreground: var(--foreground);
+  --accent: hsl(0 0% 25%);
+  --accent-foreground: var(--foreground);
+  --destructive: hsl(0 78% 73%);
+  --destructive-foreground: hsl(222 16% 10%);
+
+  --control: hsl(0 0% 14.5%);
+  --control-hover: hsl(0 0% 21%);
+  --control-focus: color-mix(in oklab, var(--card) 50%, var(--popover) 50%);
+  --control-knob: var(--foreground);
+  --border: hsl(0 0% 28%);
+  --input: hsl(0 0% 34%);
+  --ring: var(--primary);
+
+  --overlay: hsl(220 15% 3% / 0.72);
+  --table-header: hsl(0 0% 3%);
+  --table-row-hover: hsl(0 0% 6%);
+  --track: color-mix(in oklab, var(--card) 90%, var(--foreground) 10%);
+  --elevation-elevated:
+    0 1px 3px 0 rgba(0, 0, 0, 0.7),
+    0 8px 24px -4px rgba(0, 0, 0, 0.85),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+  --elevation-floating:
+    0 2px 6px rgba(0, 0, 0, 0.6),
+    0 14px 32px -4px rgba(0, 0, 0, 0.9),
+    0 28px 56px -12px rgba(0, 0, 0, 0.98),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+  --elevation-modal:
+    0 4px 12px rgba(0, 0, 0, 0.7),
+    0 24px 48px -8px rgba(0, 0, 0, 0.9),
+    0 56px 96px -24px rgba(0, 0, 0, 0.98),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+  /* A darker tinted desk silhouettes the neutral floating windows. The
+   * texture stays on the canvas, never on controls or content surfaces. */
+  --canvas: color-mix(in oklab, var(--background) 45%, hsl(0 0% 0%) 55%);
+  --canvas-texture: radial-gradient(ellipse 80% 60% at 15% -5%, rgba(167, 139, 250, 0.16), transparent 65%), radial-gradient(ellipse 70% 50% at 85% 85%, rgba(99, 102, 241, 0.12), transparent 65%), linear-gradient(160deg, #12131d, #08090f 65%);
+  --elevation-panel:
+    inset 0 1px 0 hsl(0 0% 100% / 0.08),
+    0 4px 8px hsl(0 0% 0% / 0.5), 0 20px 40px -8px hsl(0 0% 0% / 0.65),
+    0 40px 80px -20px hsl(0 0% 0% / 0.75);
+
+  --success: hsl(153 52% 67%);
+  --success-foreground: hsl(222 16% 10%);
+  --warning: hsl(40 86% 72%);
+  --warning-foreground: hsl(222 16% 10%);
+  --info: hsl(210 82% 75%);
+  --info-foreground: hsl(222 16% 10%);
+
+  --billing: hsl(174 52% 65%);
+  --billing-foreground: hsl(222 16% 10%);
+
+  --chart-1: hsl(153 52% 67%);
+  --chart-2: hsl(210 82% 75%);
+  --chart-3: hsl(40 86% 72%);
+  --chart-4: hsl(0 78% 73%);
+  --chart-5: hsl(260 72% 78%);
+  --chart-6: hsl(330 66% 76%);
+  --chart-7: hsl(190 65% 70%);
+  --chart-8: hsl(85 50% 68%);
+  --chart-9: hsl(24 85% 73%);
+  --chart-10: hsl(174 52% 65%);
+  --chart-11: hsl(52 70% 73%);
+  --chart-12: hsl(290 58% 77%);
+
+  --chart-grid: var(--border);
+  --chart-axis: var(--muted-foreground);
+  --chart-cursor: var(--muted-foreground);
+  --chart-other: var(--muted-foreground);
+
+  --sidebar: hsl(0 0% 15%);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: color-mix(in oklab, var(--sidebar) 88%, var(--primary) 12%);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+}
+
+/* --- registered themes ------------------------------------------------------
+ *
+ * Ten alternatives to Graphite, picked from the account menu's Palette submenu.
+ * Each declares both modes. See the header of this section for the general
+ * shape of adding a theme.
+ *
+ * Which tokens a palette owns is a rule, not an accident:
+ *
+ *   per palette   the neutral ladder, canvas, actions and categorical accents
+ *   mode-level    elevation, focus lift and status semantics
+ *
+ * Status hues retain their meaning across palettes. Categorical chart accents
+ * may vary by palette while preserving distinct, readable series.
+ *
+ * `--canvas-texture` is the one opt-in: it inherits `none` in light mode and
+ * Graphite's desk gradient in dark, and a palette that wants its own depth
+ * declares one below.
+ *
+ * ------------------------------------------------------------------------- */
+
+/* --- Sapphire (stable storage id: mist). Light variant retained.
+ * Dark pairing uses adapted slate surfaces and Radix Sky / Iris accents.
+ * Source and role mapping: docs/appearance-design-guide.md. */
+:root:not(.dark)[data-theme="mist"] {
+  --background: hsl(214 30% 100%);
+  --foreground: hsl(214 36% 4.9%);
+  --card: hsl(214 30% 100%);
+  --card-foreground: var(--foreground);
+  --popover: hsl(214 30% 100%);
+  --popover-foreground: var(--foreground);
+  --muted: hsl(214 30% 96.1%);
+  --muted-foreground: hsl(214 22% 46.9%);
+  --primary: hsl(214 30% 12%);
+  --primary-foreground: hsl(214 30% 98%);
+  --secondary: var(--muted);
+  --secondary-foreground: var(--foreground);
+  --accent: hsl(214 30% 96.1%);
+  --accent-foreground: var(--foreground);
+  --control: hsl(214 30% 96.1%);
+  --control-hover: hsl(214 30% 91.4%);
+  --border: hsl(214 30% 91.4%);
+  --input: hsl(214 30% 86%);
+  --ring: var(--primary);
+  --canvas: hsl(214 26% 92.5%);
+  --sidebar: hsl(214 30% 98%);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: hsl(214 30% 96.1%);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+  --canvas-texture: radial-gradient(ellipse 80% 60% at 15% -5%, rgba(124, 196, 255, 0.50), transparent 65%), radial-gradient(ellipse 75% 55% at 85% 85%, rgba(59, 130, 246, 0.35), transparent 65%), radial-gradient(ellipse 50% 40% at 50% 40%, rgba(186, 230, 253, 0.40), transparent 60%), linear-gradient(160deg, #f0f7ff, #e0f2fe 65%);
+}
+/* Sapphire: unified charcoal chrome, azure actions, iris data accents.
+ * The workspace now paints the same dark surface as the navigation. */
+:root.dark[data-theme="mist"] {
+  --background: #15151f;
+  --foreground: #f4f4fa;
+  --card: #2d2d3d;
+  --card-foreground: var(--foreground);
+  --popover: #3b3b4e;
+  --popover-foreground: var(--foreground);
+  --muted: #262634;
+  --muted-foreground: #b6b6cc;
+  --primary: #7cc4ff;
+  --primary-foreground: #0c1a28;
+  --secondary: var(--muted);
+  --secondary-foreground: var(--foreground);
+  --accent: #1d2a4a;
+  --accent-foreground: #bcd4ff;
+  --control: #1a1a25;
+  --control-hover: #282838;
+  --border: #3d3d52;
+  --input: #5a5a75;
+  --ring: var(--primary);
+  --canvas: #0a0a10;
+  --canvas-texture: radial-gradient(ellipse 80% 60% at 15% -5%, rgba(124, 196, 255, 0.18), transparent 65%), radial-gradient(ellipse 75% 55% at 85% 85%, rgba(37, 99, 235, 0.14), transparent 65%), radial-gradient(ellipse 50% 40% at 50% 40%, rgba(14, 165, 233, 0.10), transparent 60%), linear-gradient(160deg, #0b111e, #050811 65%);
+  --sidebar: #15151f;
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: #1d2a4a;
+  --sidebar-accent-foreground: #bcd4ff;
+  --sidebar-border: #23232f;
+  --sidebar-ring: var(--ring);
+  --chart-2: #b1a9ff;
+  --chart-7: #7cc4ff;
+}
+
+/* --- Jade (stable storage id: sage). Light variant retained.
+ * Mineral neutrals keep mint and sky accents out of large content surfaces. */
+:root:not(.dark)[data-theme="sage"] {
+  --background: hsl(150 20% 100%);
+  --foreground: hsl(150 30% 4.9%);
+  --card: hsl(150 20% 100%);
+  --card-foreground: var(--foreground);
+  --popover: hsl(150 20% 100%);
+  --popover-foreground: var(--foreground);
+  --muted: hsl(150 20% 96.1%);
+  --muted-foreground: hsl(150 16% 41.65%);
+  --primary: hsl(150 24% 11.25%);
+  --primary-foreground: hsl(150 30% 98%);
+  --secondary: var(--muted);
+  --secondary-foreground: var(--foreground);
+  --accent: hsl(150 20% 96.1%);
+  --accent-foreground: var(--foreground);
+  --control: hsl(150 20% 96.1%);
+  --control-hover: hsl(150 20% 91.4%);
+  --border: hsl(150 20% 91.4%);
+  --input: hsl(150 20% 86%);
+  --ring: var(--primary);
+  --canvas: hsl(150 18% 92.5%);
+  --sidebar: hsl(150 20% 98%);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: hsl(150 20% 96.1%);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+  --canvas-texture: radial-gradient(ellipse 80% 60% at 15% -5%, rgba(167, 139, 250, 0.45), transparent 65%), radial-gradient(ellipse 75% 55% at 85% 85%, rgba(52, 211, 153, 0.35), transparent 65%), radial-gradient(ellipse 50% 40% at 50% 40%, rgba(196, 181, 253, 0.35), transparent 60%), linear-gradient(160deg, #f5f3ff, #ecfdf5 65%);
+}
+/* Jade: unified violet chrome, lavender actions, sky data accents.
+ * The workspace now paints the same dark surface as the navigation. */
+:root.dark[data-theme="sage"] {
+  --background: #161626;
+  --foreground: #f2f2fa;
+  --card: #2e2e46;
+  --card-foreground: var(--foreground);
+  --popover: #3d3d59;
+  --popover-foreground: var(--foreground);
+  --muted: #27273d;
+  --muted-foreground: #b4b4d6;
+  --primary: #a78bfa;
+  --primary-foreground: #181033;
+  --secondary: var(--muted);
+  --secondary-foreground: var(--foreground);
+  --accent: #241b45;
+  --accent-foreground: #d5c5ff;
+  --control: #1b1b2b;
+  --control-hover: #292940;
+  --border: #404064;
+  --input: #60608c;
+  --ring: var(--primary);
+  --canvas: #0b0b16;
+  --canvas-texture: radial-gradient(ellipse 80% 60% at 15% -5%, rgba(167, 139, 250, 0.18), transparent 65%), radial-gradient(ellipse 75% 55% at 85% 85%, rgba(16, 185, 129, 0.14), transparent 65%), radial-gradient(ellipse 50% 40% at 50% 40%, rgba(124, 58, 237, 0.10), transparent 60%), linear-gradient(160deg, #0d0f1b, #06070e 65%);
+  --sidebar: #161626;
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: #241b45;
+  --sidebar-accent-foreground: #d5c5ff;
+  --sidebar-border: #232338;
+  --sidebar-ring: var(--ring);
+  --chart-2: #75c7f0;
+  --chart-7: #a78bfa;
+}
+
+/* --- Amber (stable storage id: clay). Light variant retained.
+ * Warm graphite surfaces pair golden actions with iris data accents. */
+:root:not(.dark)[data-theme="clay"] {
+  --background: hsl(26 26% 100%);
+  --foreground: hsl(26 32% 4.9%);
+  --card: hsl(26 26% 100%);
+  --card-foreground: var(--foreground);
+  --popover: hsl(26 26% 100%);
+  --popover-foreground: var(--foreground);
+  --muted: hsl(26 26% 96.1%);
+  --muted-foreground: hsl(26 18% 44.65%);
+  --primary: hsl(26 26% 12%);
+  --primary-foreground: hsl(26 30% 98%);
+  --secondary: var(--muted);
+  --secondary-foreground: var(--foreground);
+  --accent: hsl(26 26% 96.1%);
+  --accent-foreground: var(--foreground);
+  --control: hsl(26 26% 96.1%);
+  --control-hover: hsl(26 26% 91.4%);
+  --border: hsl(26 26% 91.4%);
+  --input: hsl(26 26% 86%);
+  --ring: var(--primary);
+  --canvas: hsl(26 24% 92.5%);
+  --sidebar: hsl(26 26% 98%);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: hsl(26 26% 96.1%);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+  --canvas-texture: radial-gradient(ellipse 80% 60% at 15% -5%, rgba(252, 211, 77, 0.50), transparent 65%), radial-gradient(ellipse 75% 55% at 85% 85%, rgba(249, 115, 22, 0.35), transparent 65%), radial-gradient(ellipse 50% 40% at 50% 40%, rgba(254, 243, 199, 0.45), transparent 60%), linear-gradient(160deg, #fffbeb, #fef3c7 65%);
+}
+/* Amber: unified warm chrome, gold actions, iris data accents.
+ * The workspace now paints the same dark surface as the navigation. */
+:root.dark[data-theme="clay"] {
+  --background: #171310;
+  --foreground: #faf7f2;
+  --card: #302b21;
+  --card-foreground: var(--foreground);
+  --popover: #3f382b;
+  --popover-foreground: var(--foreground);
+  --muted: #28241b;
+  --muted-foreground: #cfc5b3;
+  --primary: #fcd34d;
+  --primary-foreground: #211a05;
+  --secondary: var(--muted);
+  --secondary-foreground: var(--foreground);
+  --accent: #3a3218;
+  --accent-foreground: #ffe9b3;
+  --control: #1b1813;
+  --control-hover: #29251e;
+  --border: #413a2d;
+  --input: #615641;
+  --ring: var(--primary);
+  --canvas: #0c0a08;
+  --canvas-texture: radial-gradient(ellipse 80% 60% at 15% -5%, rgba(252, 211, 77, 0.16), transparent 65%), radial-gradient(ellipse 75% 55% at 85% 85%, rgba(234, 88, 12, 0.14), transparent 65%), radial-gradient(ellipse 50% 40% at 50% 40%, rgba(245, 158, 11, 0.10), transparent 60%), linear-gradient(160deg, #15110c, #0a0805 65%);
+  --sidebar: #171310;
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: #3a3218;
+  --sidebar-accent-foreground: #ffe9b3;
+  --sidebar-border: #252017;
+  --sidebar-ring: var(--ring);
+  --chart-2: #b1a9ff;
+  --chart-7: #fcd34d;
+}
+
+/* --- obsidian — light: neutral graphite/white, no blue cast --------------- */
+:root:not(.dark)[data-theme="obsidian"] {
+  --background: hsl(0 0% 98%);
+  --foreground: hsl(0 0% 10%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(0 0% 10%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(0 0% 10%);
+  --muted: hsl(0 0% 94%);
+  --muted-foreground: hsl(0 0% 42%);
+
+  --primary: hsl(0 0% 9%);
+  --primary-foreground: hsl(0 0% 98%);
+  --secondary: hsl(0 0% 94%);
+  --secondary-foreground: hsl(0 0% 10%);
+  --accent: hsl(0 0% 90%);
+  --accent-foreground: hsl(0 0% 10%);
+  --destructive: hsl(0 72% 50%);
+  --destructive-foreground: hsl(0 0% 98%);
+
+  --control: hsl(0 0% 94%);
+  --control-hover: hsl(0 0% 90%);
+  --border: hsl(0 0% 88%);
+  --input: hsl(0 0% 86%);
+  --ring: hsl(0 0% 30%);
+
+  --success: hsl(142 63% 38%);
+  --success-foreground: hsl(0 0% 98%);
+  --warning: hsl(38 92% 45%);
+  --warning-foreground: hsl(0 0% 98%);
+  --info: hsl(199 89% 48%);
+  --info-foreground: hsl(0 0% 98%);
+
+  --billing: hsl(176 84% 26%);
+  --billing-foreground: hsl(0 0% 98%);
+
+  --chart-1: hsl(142 63% 38%);
+  --chart-2: hsl(199 89% 48%);
+  --chart-3: hsl(38 92% 45%);
+  --chart-4: hsl(0 72% 50%);
+  --chart-5: hsl(262 70% 55%);
+  --chart-6: hsl(330 70% 50%);
+  --chart-7: hsl(190 80% 42%);
+  --chart-8: hsl(84 70% 42%);
+  --chart-9: hsl(24 85% 48%);
+  --chart-10: hsl(172 60% 40%);
+  --chart-11: hsl(48 90% 45%);
+  --chart-12: hsl(292 60% 52%);
+
+  --chart-grid: hsl(0 0% 88%);
+  --chart-axis: hsl(0 0% 42%);
+  --chart-cursor: hsl(0 0% 42%);
+  --chart-other: hsl(0 0% 42%);
+
+  --sidebar: hsl(0 0% 96%);
+  --sidebar-foreground: hsl(0 0% 10%);
+  --sidebar-primary: hsl(0 0% 9%);
+  --sidebar-primary-foreground: hsl(0 0% 98%);
+  --sidebar-accent: hsl(0 0% 90%);
+  --sidebar-accent-foreground: hsl(0 0% 10%);
+  --sidebar-border: hsl(0 0% 88%);
+  --sidebar-ring: hsl(0 0% 30%);
+  --canvas-texture: radial-gradient(ellipse 80% 60% at 15% -5%, rgba(203, 213, 225, 0.55), transparent 65%), radial-gradient(ellipse 75% 55% at 85% 85%, rgba(148, 163, 184, 0.35), transparent 65%), linear-gradient(160deg, #f8fafc, #edf2f7 65%);
+}
+
+/* --- obsidian — dark: neutral graphite layers with a soft silver action accent --- */
+:root.dark[data-theme="obsidian"] {
+  --background: hsl(240 3% 9.5%);
+  --foreground: hsl(240 8% 93%);
+  --card: hsl(240 3% 11.5%);
+  --card-foreground: var(--foreground);
+  --popover: hsl(240 3% 16.5%);
+  --popover-foreground: var(--foreground);
+  --muted: hsl(240 3% 15.5%);
+  --muted-foreground: hsl(240 8% 70%);
+
+  --primary: hsl(240 5% 88%);
+  --primary-foreground: hsl(240 3% 10%);
+  --secondary: var(--muted);
+  --secondary-foreground: var(--foreground);
+  --accent: hsl(240 3% 19.5%);
+  --accent-foreground: var(--foreground);
+  --destructive: hsl(0 78% 73%);
+  --destructive-foreground: hsl(240 3% 10%);
+
+  --control: hsl(240 3% 10.0%);
+  --control-hover: hsl(240 3% 14.5%);
+  --border: hsl(240 3% 22.5%);
+  --input: hsl(240 3% 28.5%);
+  --ring: var(--primary);
+
+  --success: hsl(153 52% 67%);
+  --success-foreground: hsl(240 3% 10%);
+  --warning: hsl(40 86% 72%);
+  --warning-foreground: hsl(240 3% 10%);
+  --info: hsl(210 82% 75%);
+  --info-foreground: hsl(240 3% 10%);
+
+  --billing: hsl(174 52% 65%);
+  --billing-foreground: hsl(240 3% 10%);
+
+  --chart-1: hsl(240 5% 88%);
+  --chart-2: hsl(210 82% 75%);
+  --chart-3: hsl(40 86% 72%);
+  --chart-4: hsl(0 78% 73%);
+  --chart-5: hsl(260 72% 78%);
+  --chart-6: hsl(330 66% 76%);
+  --chart-7: hsl(190 65% 70%);
+  --chart-8: hsl(85 50% 68%);
+  --chart-9: hsl(24 85% 73%);
+  --chart-10: hsl(174 52% 65%);
+  --chart-11: hsl(52 70% 73%);
+  --chart-12: hsl(290 58% 77%);
+
+  --chart-grid: var(--border);
+  --chart-axis: var(--muted-foreground);
+  --chart-cursor: var(--muted-foreground);
+  --chart-other: var(--muted-foreground);
+
+  --sidebar: hsl(240 3% 9.5%);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: color-mix(in oklab, var(--sidebar) 88%, var(--primary) 12%);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+  --canvas-texture: radial-gradient(ellipse 80% 60% at 15% -5%, rgba(226, 232, 240, 0.12), transparent 65%), radial-gradient(ellipse 75% 55% at 85% 85%, rgba(71, 85, 105, 0.14), transparent 65%), linear-gradient(160deg, #111319, #07080b 65%);
+}
+
+/* --- deep-ocean — light: pale blue-teal surfaces, cyan primary ----------- */
+:root:not(.dark)[data-theme="deep-ocean"] {
+  --background: hsl(200 40% 97%);
+  --foreground: hsl(200 50% 10%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(200 50% 10%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(200 50% 10%);
+  --muted: hsl(200 35% 93%);
+  --muted-foreground: hsl(200 20% 42%);
+
+  --primary: hsl(199 80% 42%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(200 35% 93%);
+  --secondary-foreground: hsl(200 50% 10%);
+  --accent: hsl(199 40% 88%);
+  --accent-foreground: hsl(200 50% 10%);
+  --destructive: hsl(4 78% 52%);
+  --destructive-foreground: hsl(0 0% 100%);
+
+  --control: hsl(200 35% 93%);
+  --control-hover: hsl(199 40% 88%);
+  --border: hsl(200 30% 86%);
+  --input: hsl(200 30% 84%);
+  --ring: hsl(199 80% 42%);
+
+  --success: hsl(158 62% 36%);
+  --success-foreground: hsl(0 0% 100%);
+  --warning: hsl(38 90% 45%);
+  --warning-foreground: hsl(0 0% 100%);
+  --info: hsl(199 80% 45%);
+  --info-foreground: hsl(0 0% 100%);
+
+  --billing: hsl(182 82% 30%);
+  --billing-foreground: hsl(0 0% 100%);
+
+  --chart-1: hsl(168 65% 38%);
+  --chart-2: hsl(199 80% 45%);
+  --chart-3: hsl(38 90% 45%);
+  --chart-4: hsl(350 80% 55%);
+  --chart-5: hsl(255 70% 60%);
+  --chart-6: hsl(320 70% 55%);
+  --chart-7: hsl(185 70% 42%);
+  --chart-8: hsl(90 55% 42%);
+  --chart-9: hsl(24 85% 48%);
+  --chart-10: hsl(178 60% 38%);
+  --chart-11: hsl(48 90% 45%);
+  --chart-12: hsl(270 60% 55%);
+
+  --chart-grid: hsl(200 30% 86%);
+  --chart-axis: hsl(200 20% 42%);
+  --chart-cursor: hsl(200 20% 42%);
+  --chart-other: hsl(200 20% 42%);
+
+  --sidebar: hsl(200 45% 95%);
+  --sidebar-foreground: hsl(200 50% 10%);
+  --sidebar-primary: hsl(199 80% 42%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(199 40% 88%);
+  --sidebar-accent-foreground: hsl(200 50% 10%);
+  --sidebar-border: hsl(200 30% 86%);
+  --sidebar-ring: hsl(199 80% 42%);
+  --canvas-texture: radial-gradient(ellipse 80% 60% at 15% -5%, rgba(103, 232, 249, 0.50), transparent 65%), radial-gradient(ellipse 75% 55% at 85% 85%, rgba(56, 189, 248, 0.38), transparent 65%), linear-gradient(160deg, #ecfeff, #e0f2fe 65%);
+}
+
+/* --- deep-ocean — dark: quiet blue-teal surfaces with a sea-glass accent --- */
+:root.dark[data-theme="deep-ocean"] {
+  --background: hsl(205 22% 10%);
+  --foreground: hsl(205 8% 93%);
+  --card: hsl(205 22% 12%);
+  --card-foreground: var(--foreground);
+  --popover: hsl(205 22% 17%);
+  --popover-foreground: var(--foreground);
+  --muted: hsl(205 22% 16%);
+  --muted-foreground: hsl(205 8% 70%);
+
+  /* Cyan primary, not near-white — the deliberate signature of this palette. */
+  --primary: hsl(190 65% 70%);
+  --primary-foreground: hsl(205 22% 10%);
+  --secondary: var(--muted);
+  --secondary-foreground: var(--foreground);
+  --accent: hsl(205 22% 20%);
+  --accent-foreground: var(--foreground);
+  --destructive: hsl(0 78% 73%);
+  --destructive-foreground: hsl(205 22% 10%);
+
+  --control: hsl(205 22% 10.5%);
+  --control-hover: hsl(205 22% 15%);
+  --border: hsl(205 17% 23%);
+  --input: hsl(205 17% 29%);
+  --ring: var(--primary);
+
+  --success: hsl(153 52% 67%);
+  --success-foreground: hsl(205 22% 10%);
+  --warning: hsl(40 86% 72%);
+  --warning-foreground: hsl(205 22% 10%);
+  --info: hsl(210 82% 75%);
+  --info-foreground: hsl(205 22% 10%);
+
+  --billing: hsl(174 52% 65%);
+  --billing-foreground: hsl(205 22% 10%);
+
+  --chart-1: hsl(190 65% 70%);
+  --chart-2: hsl(210 82% 75%);
+  --chart-3: hsl(40 86% 72%);
+  --chart-4: hsl(0 78% 73%);
+  --chart-5: hsl(260 72% 78%);
+  --chart-6: hsl(330 66% 76%);
+  --chart-7: hsl(190 65% 70%);
+  --chart-8: hsl(85 50% 68%);
+  --chart-9: hsl(24 85% 73%);
+  --chart-10: hsl(174 52% 65%);
+  --chart-11: hsl(52 70% 73%);
+  --chart-12: hsl(290 58% 77%);
+
+  --chart-grid: var(--border);
+  --chart-axis: var(--muted-foreground);
+  --chart-cursor: var(--muted-foreground);
+  --chart-other: var(--muted-foreground);
+
+  --sidebar: hsl(205 22% 10%);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: color-mix(in oklab, var(--sidebar) 88%, var(--primary) 12%);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+  --canvas-texture: radial-gradient(ellipse 80% 60% at 15% -5%, rgba(34, 211, 238, 0.16), transparent 65%), radial-gradient(ellipse 75% 55% at 85% 85%, rgba(14, 165, 233, 0.14), transparent 65%), linear-gradient(160deg, #071722, #030d14 65%);
+}
+
+/* --- midnight-violet — light: pale lavender surfaces, indigo primary ------ */
+:root:not(.dark)[data-theme="midnight-violet"] {
+  --background: hsl(260 30% 97%);
+  --foreground: hsl(258 40% 12%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(258 40% 12%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(258 40% 12%);
+  --muted: hsl(258 25% 93%);
+  --muted-foreground: hsl(258 15% 42%);
+
+  --primary: hsl(258 55% 48%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(258 25% 93%);
+  --secondary-foreground: hsl(258 40% 12%);
+  --accent: hsl(262 40% 90%);
+  --accent-foreground: hsl(258 40% 12%);
+  --destructive: hsl(0 72% 50%);
+  --destructive-foreground: hsl(0 0% 100%);
+
+  --control: hsl(258 25% 93%);
+  --control-hover: hsl(262 40% 88%);
+  --border: hsl(258 25% 86%);
+  --input: hsl(258 25% 84%);
+  --ring: hsl(258 55% 48%);
+
+  --success: hsl(158 60% 40%);
+  --success-foreground: hsl(0 0% 100%);
+  --warning: hsl(43 90% 45%);
+  --warning-foreground: hsl(0 0% 100%);
+  --info: hsl(262 70% 50%);
+  --info-foreground: hsl(0 0% 100%);
+
+  --billing: hsl(176 80% 27%);
+  --billing-foreground: hsl(0 0% 100%);
+
+  --chart-1: hsl(262 65% 55%);
+  --chart-2: hsl(158 60% 40%);
+  --chart-3: hsl(43 90% 45%);
+  --chart-4: hsl(330 75% 55%);
+  --chart-5: hsl(213 85% 55%);
+  --chart-6: hsl(300 65% 55%);
+  --chart-7: hsl(190 75% 42%);
+  --chart-8: hsl(85 60% 42%);
+  --chart-9: hsl(27 90% 48%);
+  --chart-10: hsl(172 60% 40%);
+  --chart-11: hsl(48 85% 45%);
+  --chart-12: hsl(290 65% 55%);
+
+  --chart-grid: hsl(258 25% 86%);
+  --chart-axis: hsl(258 15% 42%);
+  --chart-cursor: hsl(258 15% 42%);
+  --chart-other: hsl(258 15% 42%);
+
+  --sidebar: hsl(258 35% 95%);
+  --sidebar-foreground: hsl(258 40% 12%);
+  --sidebar-primary: hsl(258 55% 48%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(262 40% 90%);
+  --sidebar-accent-foreground: hsl(258 40% 12%);
+  --sidebar-border: hsl(258 25% 86%);
+  --sidebar-ring: hsl(258 55% 48%);
+  --canvas-texture: radial-gradient(ellipse 80% 60% at 15% -5%, rgba(216, 180, 254, 0.50), transparent 65%), radial-gradient(ellipse 75% 55% at 85% 85%, rgba(244, 114, 182, 0.38), transparent 65%), linear-gradient(160deg, #faf5ff, #f3e8ff 65%);
+}
+
+/* --- midnight-violet — dark: smoky plum surfaces with a pale orchid accent --- */
+:root.dark[data-theme="midnight-violet"] {
+  --background: hsl(265 16% 11%);
+  --foreground: hsl(265 8% 93%);
+  --card: hsl(265 16% 13%);
+  --card-foreground: var(--foreground);
+  --popover: hsl(265 16% 18%);
+  --popover-foreground: var(--foreground);
+  --muted: hsl(265 16% 17%);
+  --muted-foreground: hsl(265 8% 70%);
+
+  --primary: hsl(270 65% 78%);
+  --primary-foreground: hsl(265 16% 10%);
+  --secondary: var(--muted);
+  --secondary-foreground: var(--foreground);
+  --accent: hsl(265 16% 21%);
+  --accent-foreground: var(--foreground);
+  --destructive: hsl(0 78% 73%);
+  --destructive-foreground: hsl(265 16% 10%);
+
+  --control: hsl(265 16% 11.5%);
+  --control-hover: hsl(265 16% 16%);
+  --border: hsl(265 11% 24%);
+  --input: hsl(265 11% 30%);
+  --ring: var(--primary);
+
+  --success: hsl(153 52% 67%);
+  --success-foreground: hsl(265 16% 10%);
+  --warning: hsl(40 86% 72%);
+  --warning-foreground: hsl(265 16% 10%);
+  --info: hsl(210 82% 75%);
+  --info-foreground: hsl(265 16% 10%);
+
+  --billing: hsl(174 52% 65%);
+  --billing-foreground: hsl(265 16% 10%);
+
+  --chart-1: hsl(270 65% 78%);
+  --chart-2: hsl(210 82% 75%);
+  --chart-3: hsl(40 86% 72%);
+  --chart-4: hsl(0 78% 73%);
+  --chart-5: hsl(260 72% 78%);
+  --chart-6: hsl(330 66% 76%);
+  --chart-7: hsl(190 65% 70%);
+  --chart-8: hsl(85 50% 68%);
+  --chart-9: hsl(24 85% 73%);
+  --chart-10: hsl(174 52% 65%);
+  --chart-11: hsl(52 70% 73%);
+  --chart-12: hsl(290 58% 77%);
+
+  --chart-grid: var(--border);
+  --chart-axis: var(--muted-foreground);
+  --chart-cursor: var(--muted-foreground);
+  --chart-other: var(--muted-foreground);
+
+  --sidebar: hsl(265 16% 11%);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: color-mix(in oklab, var(--sidebar) 88%, var(--primary) 12%);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+  --canvas-texture: radial-gradient(ellipse 80% 60% at 15% -5%, rgba(192, 132, 252, 0.18), transparent 65%), radial-gradient(ellipse 75% 55% at 85% 85%, rgba(217, 70, 239, 0.14), transparent 65%), linear-gradient(160deg, #140b22, #080312 65%);
+}
+
+/* --- warm-stone — light: warm sand/oatmeal surfaces, terracotta primary --- */
+:root:not(.dark)[data-theme="warm-stone"] {
+  --background: hsl(35 25% 97%);
+  --foreground: hsl(30 20% 12%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(30 20% 12%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(30 20% 12%);
+  --muted: hsl(35 20% 93%);
+  --muted-foreground: hsl(32 12% 42%);
+
+  --primary: hsl(24 75% 48%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(35 20% 93%);
+  --secondary-foreground: hsl(30 20% 12%);
+  --accent: hsl(30 25% 90%);
+  --accent-foreground: hsl(30 20% 12%);
+  --destructive: hsl(4 72% 50%);
+  --destructive-foreground: hsl(0 0% 100%);
+
+  --control: hsl(35 20% 93%);
+  --control-hover: hsl(30 25% 88%);
+  --border: hsl(35 18% 86%);
+  --input: hsl(35 18% 84%);
+  --ring: hsl(24 75% 48%);
+
+  --success: hsl(150 50% 38%);
+  --success-foreground: hsl(0 0% 100%);
+  --warning: hsl(42 88% 45%);
+  --warning-foreground: hsl(0 0% 100%);
+  --info: hsl(205 65% 48%);
+  --info-foreground: hsl(0 0% 100%);
+
+  --billing: hsl(174 80% 25%);
+  --billing-foreground: hsl(0 0% 100%);
+
+  --chart-1: hsl(150 50% 38%);
+  --chart-2: hsl(205 65% 48%);
+  --chart-3: hsl(42 88% 45%);
+  --chart-4: hsl(4 72% 50%);
+  --chart-5: hsl(268 55% 55%);
+  --chart-6: hsl(330 60% 50%);
+  --chart-7: hsl(190 55% 42%);
+  --chart-8: hsl(85 50% 42%);
+  --chart-9: hsl(24 75% 48%);
+  --chart-10: hsl(170 45% 38%);
+  --chart-11: hsl(48 75% 45%);
+  --chart-12: hsl(290 50% 52%);
+
+  --chart-grid: hsl(35 18% 86%);
+  --chart-axis: hsl(32 12% 42%);
+  --chart-cursor: hsl(32 12% 42%);
+  --chart-other: hsl(32 12% 42%);
+
+  --sidebar: hsl(35 30% 95%);
+  --sidebar-foreground: hsl(30 20% 12%);
+  --sidebar-primary: hsl(24 75% 48%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(30 25% 90%);
+  --sidebar-accent-foreground: hsl(30 20% 12%);
+  --sidebar-border: hsl(35 18% 86%);
+  --sidebar-ring: hsl(24 75% 48%);
+  --canvas-texture: radial-gradient(ellipse 80% 60% at 15% -5%, rgba(254, 215, 170, 0.50), transparent 65%), radial-gradient(ellipse 75% 55% at 85% 85%, rgba(251, 146, 60, 0.38), transparent 65%), linear-gradient(160deg, #fff7ed, #fef3c7 65%);
+}
+
+/* --- warm-stone — dark: warm graphite surfaces with a soft sand accent --- */
+:root.dark[data-theme="warm-stone"] {
+  --background: hsl(30 8% 11%);
+  --foreground: hsl(30 8% 93%);
+  --card: hsl(30 8% 13%);
+  --card-foreground: var(--foreground);
+  --popover: hsl(30 8% 18%);
+  --popover-foreground: var(--foreground);
+  --muted: hsl(30 8% 17%);
+  --muted-foreground: hsl(30 8% 70%);
+
+  /* Terracotta primary, not near-white — one saturated accent against a warm
+   * neutral field, per the "elevated neutrals + one strong accent" pattern. */
+  --primary: hsl(36 68% 72%);
+  --primary-foreground: hsl(30 8% 10%);
+  --secondary: var(--muted);
+  --secondary-foreground: var(--foreground);
+  --accent: hsl(30 8% 21%);
+  --accent-foreground: var(--foreground);
+  --destructive: hsl(0 78% 73%);
+  --destructive-foreground: hsl(30 8% 10%);
+
+  --control: hsl(30 8% 11.5%);
+  --control-hover: hsl(30 8% 16%);
+  --border: hsl(30 3% 24%);
+  --input: hsl(30 3% 30%);
+  --ring: var(--primary);
+
+  --success: hsl(153 52% 67%);
+  --success-foreground: hsl(30 8% 10%);
+  --warning: hsl(40 86% 72%);
+  --warning-foreground: hsl(30 8% 10%);
+  --info: hsl(210 82% 75%);
+  --info-foreground: hsl(30 8% 10%);
+
+  /* Teal, deliberately distinct from the terracotta primary so money never
+   * reads as "just another button." */
+  --billing: hsl(174 52% 65%);
+  --billing-foreground: hsl(30 8% 10%);
+
+  --chart-1: hsl(36 68% 72%);
+  --chart-2: hsl(210 82% 75%);
+  --chart-3: hsl(40 86% 72%);
+  --chart-4: hsl(0 78% 73%);
+  --chart-5: hsl(260 72% 78%);
+  --chart-6: hsl(330 66% 76%);
+  --chart-7: hsl(190 65% 70%);
+  --chart-8: hsl(85 50% 68%);
+  --chart-9: hsl(24 85% 73%);
+  --chart-10: hsl(174 52% 65%);
+  --chart-11: hsl(52 70% 73%);
+  --chart-12: hsl(290 58% 77%);
+
+  --chart-grid: var(--border);
+  --chart-axis: var(--muted-foreground);
+  --chart-cursor: var(--muted-foreground);
+  --chart-other: var(--muted-foreground);
+
+  --sidebar: hsl(30 8% 11%);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: color-mix(in oklab, var(--sidebar) 88%, var(--primary) 12%);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+  --canvas-texture: radial-gradient(ellipse 80% 60% at 15% -5%, rgba(251, 146, 60, 0.16), transparent 65%), radial-gradient(ellipse 75% 55% at 85% 85%, rgba(217, 119, 6, 0.14), transparent 65%), linear-gradient(160deg, #18110b, #0c0805 65%);
+}
+
+/* --- terminal — light: near-white, phosphor-green primary accent ---------- */
+:root:not(.dark)[data-theme="terminal"] {
+  --background: hsl(120 10% 97%);
+  --foreground: hsl(120 15% 10%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(120 15% 10%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(120 15% 10%);
+  --muted: hsl(120 8% 93%);
+  --muted-foreground: hsl(120 8% 42%);
+
+  --primary: hsl(142 70% 38%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(120 8% 93%);
+  --secondary-foreground: hsl(120 15% 10%);
+  --accent: hsl(142 30% 90%);
+  --accent-foreground: hsl(120 15% 10%);
+  --destructive: hsl(0 80% 50%);
+  --destructive-foreground: hsl(0 0% 100%);
+
+  --control: hsl(120 8% 93%);
+  --control-hover: hsl(142 20% 88%);
+  --border: hsl(120 8% 86%);
+  --input: hsl(120 8% 84%);
+  --ring: hsl(142 70% 38%);
+
+  --success: hsl(142 70% 38%);
+  --success-foreground: hsl(0 0% 100%);
+  --warning: hsl(45 90% 45%);
+  --warning-foreground: hsl(0 0% 100%);
+  --info: hsl(190 80% 42%);
+  --info-foreground: hsl(0 0% 100%);
+
+  --billing: hsl(174 84% 25%);
+  --billing-foreground: hsl(0 0% 100%);
+
+  --chart-1: hsl(142 70% 38%);
+  --chart-2: hsl(190 80% 42%);
+  --chart-3: hsl(45 90% 45%);
+  --chart-4: hsl(0 80% 50%);
+  --chart-5: hsl(260 60% 55%);
+  --chart-6: hsl(320 65% 50%);
+  --chart-7: hsl(170 60% 40%);
+  --chart-8: hsl(90 55% 42%);
+  --chart-9: hsl(38 85% 45%);
+  --chart-10: hsl(155 60% 38%);
+  --chart-11: hsl(50 85% 45%);
+  --chart-12: hsl(280 55% 52%);
+
+  --chart-grid: hsl(120 8% 86%);
+  --chart-axis: hsl(120 8% 42%);
+  --chart-cursor: hsl(120 8% 42%);
+  --chart-other: hsl(120 8% 42%);
+
+  --sidebar: hsl(120 12% 95%);
+  --sidebar-foreground: hsl(120 15% 10%);
+  --sidebar-primary: hsl(142 70% 38%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(142 30% 90%);
+  --sidebar-accent-foreground: hsl(120 15% 10%);
+  --sidebar-border: hsl(120 8% 86%);
+  --sidebar-ring: hsl(142 70% 38%);
+  --canvas-texture: radial-gradient(ellipse 80% 60% at 15% -5%, rgba(110, 231, 183, 0.50), transparent 65%), radial-gradient(ellipse 75% 55% at 85% 85%, rgba(52, 211, 153, 0.38), transparent 65%), linear-gradient(160deg, #ecfdf5, #f0fdf4 65%);
+}
+
+/* --- terminal — dark: subtle evergreen graphite with a restrained mint accent --- */
+:root.dark[data-theme="terminal"] {
+  --background: hsl(155 10% 9.5%);
+  --foreground: hsl(155 8% 93%);
+  --card: hsl(155 10% 11.5%);
+  --card-foreground: var(--foreground);
+  --popover: hsl(155 10% 16.5%);
+  --popover-foreground: var(--foreground);
+  --muted: hsl(155 10% 15.5%);
+  --muted-foreground: hsl(155 8% 70%);
+
+  --primary: hsl(151 48% 70%);
+  --primary-foreground: hsl(155 10% 10%);
+  --secondary: var(--muted);
+  --secondary-foreground: var(--foreground);
+  --accent: hsl(155 10% 19.5%);
+  --accent-foreground: var(--foreground);
+  --destructive: hsl(0 78% 73%);
+  --destructive-foreground: hsl(155 10% 10%);
+
+  --control: hsl(155 10% 10.0%);
+  --control-hover: hsl(155 10% 14.5%);
+  --border: hsl(155 5% 22.5%);
+  --input: hsl(155 5% 28.5%);
+  --ring: var(--primary);
+
+  --success: hsl(153 52% 67%);
+  --success-foreground: hsl(155 10% 10%);
+  --warning: hsl(40 86% 72%);
+  --warning-foreground: hsl(155 10% 10%);
+  --info: hsl(210 82% 75%);
+  --info-foreground: hsl(155 10% 10%);
+
+  --billing: hsl(174 52% 65%);
+  --billing-foreground: hsl(155 10% 10%);
+
+  --chart-1: hsl(151 48% 70%);
+  --chart-2: hsl(210 82% 75%);
+  --chart-3: hsl(40 86% 72%);
+  --chart-4: hsl(0 78% 73%);
+  --chart-5: hsl(260 72% 78%);
+  --chart-6: hsl(330 66% 76%);
+  --chart-7: hsl(190 65% 70%);
+  --chart-8: hsl(85 50% 68%);
+  --chart-9: hsl(24 85% 73%);
+  --chart-10: hsl(174 52% 65%);
+  --chart-11: hsl(52 70% 73%);
+  --chart-12: hsl(290 58% 77%);
+
+  --chart-grid: var(--border);
+  --chart-axis: var(--muted-foreground);
+  --chart-cursor: var(--muted-foreground);
+  --chart-other: var(--muted-foreground);
+
+  --sidebar: hsl(155 10% 9.5%);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: color-mix(in oklab, var(--sidebar) 88%, var(--primary) 12%);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+  --canvas-texture: radial-gradient(ellipse 80% 60% at 15% -5%, rgba(52, 211, 153, 0.16), transparent 65%), radial-gradient(ellipse 75% 55% at 85% 85%, rgba(5, 150, 105, 0.14), transparent 65%), linear-gradient(160deg, #071710, #030c08 65%);
+}
+
+/* --- aurora — light: pale neutral-violet, violet primary, cyan info -------- */
+:root:not(.dark)[data-theme="aurora"] {
+  --background: hsl(240 20% 97%);
+  --foreground: hsl(240 30% 12%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(240 30% 12%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(240 30% 12%);
+  --muted: hsl(240 18% 93%);
+  --muted-foreground: hsl(235 15% 42%);
+
+  --primary: hsl(258 70% 52%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(240 18% 93%);
+  --secondary-foreground: hsl(240 30% 12%);
+  --accent: hsl(240 25% 90%);
+  --accent-foreground: hsl(240 30% 12%);
+  --destructive: hsl(350 75% 50%);
+  --destructive-foreground: hsl(0 0% 100%);
+
+  --control: hsl(240 18% 93%);
+  --control-hover: hsl(240 25% 88%);
+  --border: hsl(240 18% 86%);
+  --input: hsl(240 18% 84%);
+  --ring: hsl(258 70% 52%);
+
+  --success: hsl(160 60% 40%);
+  --success-foreground: hsl(0 0% 100%);
+  --warning: hsl(38 90% 45%);
+  --warning-foreground: hsl(0 0% 100%);
+  --info: hsl(189 85% 42%);
+  --info-foreground: hsl(0 0% 100%);
+
+  --billing: hsl(176 82% 26%);
+  --billing-foreground: hsl(0 0% 100%);
+
+  --chart-1: hsl(258 70% 52%);
+  --chart-2: hsl(230 80% 55%);
+  --chart-3: hsl(205 85% 48%);
+  --chart-4: hsl(189 85% 42%);
+  --chart-5: hsl(160 60% 40%);
+  --chart-6: hsl(38 90% 45%);
+  --chart-7: hsl(350 75% 52%);
+  --chart-8: hsl(300 65% 52%);
+  --chart-9: hsl(27 90% 48%);
+  --chart-10: hsl(280 70% 52%);
+  --chart-11: hsl(48 85% 45%);
+  --chart-12: hsl(320 70% 52%);
+
+  --chart-grid: hsl(240 18% 86%);
+  --chart-axis: hsl(235 15% 42%);
+  --chart-cursor: hsl(235 15% 42%);
+  --chart-other: hsl(235 15% 42%);
+
+  --sidebar: hsl(240 25% 95%);
+  --sidebar-foreground: hsl(240 30% 12%);
+  --sidebar-primary: hsl(258 70% 52%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(240 25% 90%);
+  --sidebar-accent-foreground: hsl(240 30% 12%);
+  --sidebar-border: hsl(240 18% 86%);
+  --sidebar-ring: hsl(258 70% 52%);
+  --canvas-texture: radial-gradient(ellipse 80% 60% at 15% -5%, rgba(199, 210, 254, 0.50), transparent 65%), radial-gradient(ellipse 75% 55% at 85% 85%, rgba(249, 168, 212, 0.40), transparent 65%), linear-gradient(160deg, #eef2ff, #fdf2f8 65%);
+}
+
+/* --- aurora — dark: cool violet surfaces with a lavender action accent --- */
+:root.dark[data-theme="aurora"] {
+  --background: hsl(245 17% 11%);
+  --foreground: hsl(245 8% 93%);
+  --card: hsl(245 17% 13%);
+  --card-foreground: var(--foreground);
+  --popover: hsl(245 17% 18%);
+  --popover-foreground: var(--foreground);
+  --muted: hsl(245 17% 17%);
+  --muted-foreground: hsl(245 8% 70%);
+
+  --primary: hsl(255 68% 78%);
+  --primary-foreground: hsl(245 17% 10%);
+  --secondary: var(--muted);
+  --secondary-foreground: var(--foreground);
+  --accent: hsl(245 17% 21%);
+  --accent-foreground: var(--foreground);
+  --destructive: hsl(0 78% 73%);
+  --destructive-foreground: hsl(245 17% 10%);
+
+  --control: hsl(245 17% 11.5%);
+  --control-hover: hsl(245 17% 16%);
+  --border: hsl(245 12% 24%);
+  --input: hsl(245 12% 30%);
+  --ring: var(--primary);
+
+  --success: hsl(153 52% 67%);
+  --success-foreground: hsl(245 17% 10%);
+  --warning: hsl(40 86% 72%);
+  --warning-foreground: hsl(245 17% 10%);
+  --info: hsl(210 82% 75%);
+  --info-foreground: hsl(245 17% 10%);
+
+  --billing: hsl(174 52% 65%);
+  --billing-foreground: hsl(245 17% 10%);
+
+  --chart-1: hsl(255 68% 78%);
+  --chart-2: hsl(210 82% 75%);
+  --chart-3: hsl(40 86% 72%);
+  --chart-4: hsl(0 78% 73%);
+  --chart-5: hsl(260 72% 78%);
+  --chart-6: hsl(330 66% 76%);
+  --chart-7: hsl(190 65% 70%);
+  --chart-8: hsl(85 50% 68%);
+  --chart-9: hsl(24 85% 73%);
+  --chart-10: hsl(174 52% 65%);
+  --chart-11: hsl(52 70% 73%);
+  --chart-12: hsl(290 58% 77%);
+
+  --chart-grid: var(--border);
+  --chart-axis: var(--muted-foreground);
+  --chart-cursor: var(--muted-foreground);
+  --chart-other: var(--muted-foreground);
+
+  --sidebar: hsl(245 17% 11%);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: color-mix(in oklab, var(--sidebar) 88%, var(--primary) 12%);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+  --canvas-texture: radial-gradient(ellipse 80% 60% at 15% -5%, rgba(129, 140, 248, 0.18), transparent 65%), radial-gradient(ellipse 75% 55% at 85% 85%, rgba(244, 114, 182, 0.14), transparent 65%), linear-gradient(160deg, #120e26, #080614 65%);
+}
+
+/* --- cobalt — light: pale blue surfaces, royal-blue primary ---------------- */
+:root:not(.dark)[data-theme="cobalt"] {
+  --background: hsl(222 30% 97%);
+  --foreground: hsl(222 45% 12%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(222 45% 12%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(222 45% 12%);
+  --muted: hsl(221 25% 93%);
+  --muted-foreground: hsl(215 18% 42%);
+
+  --primary: hsl(217 85% 48%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(221 25% 93%);
+  --secondary-foreground: hsl(222 45% 12%);
+  --accent: hsl(221 30% 90%);
+  --accent-foreground: hsl(222 45% 12%);
+  --destructive: hsl(0 72% 50%);
+  --destructive-foreground: hsl(0 0% 100%);
+
+  --control: hsl(221 25% 93%);
+  --control-hover: hsl(221 30% 88%);
+  --border: hsl(221 25% 86%);
+  --input: hsl(221 25% 84%);
+  --ring: hsl(217 85% 48%);
+
+  --success: hsl(158 60% 40%);
+  --success-foreground: hsl(0 0% 100%);
+  --warning: hsl(38 90% 45%);
+  --warning-foreground: hsl(0 0% 100%);
+  --info: hsl(199 85% 45%);
+  --info-foreground: hsl(0 0% 100%);
+
+  --billing: hsl(178 82% 26%);
+  --billing-foreground: hsl(0 0% 100%);
+
+  --chart-1: hsl(217 85% 48%);
+  --chart-2: hsl(199 85% 45%);
+  --chart-3: hsl(158 60% 40%);
+  --chart-4: hsl(38 90% 45%);
+  --chart-5: hsl(0 72% 52%);
+  --chart-6: hsl(262 70% 55%);
+  --chart-7: hsl(330 70% 52%);
+  --chart-8: hsl(85 55% 42%);
+  --chart-9: hsl(27 90% 48%);
+  --chart-10: hsl(172 55% 38%);
+  --chart-11: hsl(48 85% 45%);
+  --chart-12: hsl(290 60% 55%);
+
+  --chart-grid: hsl(221 25% 86%);
+  --chart-axis: hsl(215 18% 42%);
+  --chart-cursor: hsl(215 18% 42%);
+  --chart-other: hsl(215 18% 42%);
+
+  --sidebar: hsl(222 35% 95%);
+  --sidebar-foreground: hsl(222 45% 12%);
+  --sidebar-primary: hsl(217 85% 48%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(221 30% 90%);
+  --sidebar-accent-foreground: hsl(222 45% 12%);
+  --sidebar-border: hsl(221 25% 86%);
+  --sidebar-ring: hsl(217 85% 48%);
+  --canvas-texture: radial-gradient(ellipse 80% 60% at 15% -5%, rgba(147, 197, 253, 0.50), transparent 65%), radial-gradient(ellipse 75% 55% at 85% 85%, rgba(96, 165, 250, 0.38), transparent 65%), linear-gradient(160deg, #eff6ff, #dbeafe 65%);
+}
+
+/* --- cobalt — dark: quiet ink-blue surfaces with a soft royal-blue accent --- */
+:root.dark[data-theme="cobalt"] {
+  --background: hsl(222 24% 10.5%);
+  --foreground: hsl(222 8% 93%);
+  --card: hsl(222 24% 12.5%);
+  --card-foreground: var(--foreground);
+  --popover: hsl(222 24% 17.5%);
+  --popover-foreground: var(--foreground);
+  --muted: hsl(222 24% 16.5%);
+  --muted-foreground: hsl(222 8% 70%);
+
+  --primary: hsl(218 90% 73%);
+  --primary-foreground: hsl(222 24% 10%);
+  --secondary: var(--muted);
+  --secondary-foreground: var(--foreground);
+  --accent: hsl(222 24% 20.5%);
+  --accent-foreground: var(--foreground);
+  --destructive: hsl(0 78% 73%);
+  --destructive-foreground: hsl(222 24% 10%);
+
+  --control: hsl(222 24% 11.0%);
+  --control-hover: hsl(222 24% 15.5%);
+  --border: hsl(222 19% 23.5%);
+  --input: hsl(222 19% 29.5%);
+  --ring: var(--primary);
+
+  --success: hsl(153 52% 67%);
+  --success-foreground: hsl(222 24% 10%);
+  --warning: hsl(40 86% 72%);
+  --warning-foreground: hsl(222 24% 10%);
+  --info: hsl(210 82% 75%);
+  --info-foreground: hsl(222 24% 10%);
+
+  --billing: hsl(174 52% 65%);
+  --billing-foreground: hsl(222 24% 10%);
+
+  --chart-1: hsl(218 90% 73%);
+  --chart-2: hsl(210 82% 75%);
+  --chart-3: hsl(40 86% 72%);
+  --chart-4: hsl(0 78% 73%);
+  --chart-5: hsl(260 72% 78%);
+  --chart-6: hsl(330 66% 76%);
+  --chart-7: hsl(190 65% 70%);
+  --chart-8: hsl(85 50% 68%);
+  --chart-9: hsl(24 85% 73%);
+  --chart-10: hsl(174 52% 65%);
+  --chart-11: hsl(52 70% 73%);
+  --chart-12: hsl(290 58% 77%);
+
+  --chart-grid: var(--border);
+  --chart-axis: var(--muted-foreground);
+  --chart-cursor: var(--muted-foreground);
+  --chart-other: var(--muted-foreground);
+
+  --sidebar: hsl(222 24% 10.5%);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: color-mix(in oklab, var(--sidebar) 88%, var(--primary) 12%);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+  --canvas-texture: radial-gradient(ellipse 80% 60% at 15% -5%, rgba(96, 165, 250, 0.18), transparent 65%), radial-gradient(ellipse 75% 55% at 85% 85%, rgba(29, 78, 216, 0.14), transparent 65%), linear-gradient(160deg, #091328, #040816 65%);
+}
+
+/* =============================================================================
+ * 3. VENDOR LOGO MARKS
+ *
+ * Third-party provider logos (OpenAI, Azure, Mistral, ...). These are identity
+ * colors, not theme colors — a logo must stay recognisable, so they are
+ * deliberately mode-independent and are NOT exposed as Tailwind utilities. They
+ * live here only so the "no color literal outside globals.css" rule holds
+ * without exception.
+ * ========================================================================== */
+:root {
+  --logo-azure: #0078d4;
+  --logo-bedrock-1: #6350fb;
+  --logo-bedrock-2: #3d8fff;
+  --logo-bedrock-3: #9ad8f8;
+  --logo-cerebras: #f15a29;
+  --logo-deepseek: #4d6bfe;
+  --logo-cohere-1: #39594d;
+  --logo-cohere-2: #d18ee2;
+  --logo-cohere-3: #ff7759;
+  --logo-groq: #f05237;
+  --logo-mistral-1: #ffd700;
+  --logo-mistral-2: #ffaf00;
+  --logo-mistral-3: #ff8205;
+  --logo-mistral-4: #fa500f;
+  --logo-mistral-5: #e10500;
+  --logo-parasail: #052259;
+  --logo-perplexity: #22b8cd;
+  --logo-sgl: #6366f1;
+  --logo-vertex-1: #4285f4;
+  --logo-vertex-2: #669df6;
+  --logo-vertex-3: #aecbfa;
+  --logo-vllm-1: #fdb515;
+  --logo-vllm-2: #30a2ff;
+  --logo-fireworks: #4a1dbd;
+  --logo-wafer-1: #fefefe;
+  --logo-wafer-2: #070707;
+  --logo-wafer-3: #fdfdfd;
+  /* Google's official "G" mark colors - used by the "Continue with Google"
+     login button (components/ui/google-icon.tsx), not the vertex-* set
+     above (those are Vertex AI's own accent, not Google's brand mark). */
+  --logo-google-blue: #4285f4;
+  --logo-google-green: #34a853;
+  --logo-google-yellow: #fbbc05;
+  --logo-google-red: #ea4335;
+}
+
+/* =============================================================================
+ * 4. BASE LAYER
+ * ========================================================================== */
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+
+  /* Ensure all buttons, links, tabs, form controls, and interactive elements show cursor: pointer on hover */
+  button,
+  [role="button"],
+  [role="tab"],
+  [role="menuitem"],
+  [role="menuitemcheckbox"],
+  [role="menuitemradio"],
+  [role="option"],
+  [role="checkbox"],
+  [role="switch"],
+  [role="radio"],
+  [role="combobox"],
+  a,
+  input[type="button"],
+  input[type="submit"],
+  input[type="reset"],
+  input[type="checkbox"],
+  input[type="radio"],
+  summary,
+  select,
+  label,
+  [data-slot="button"],
+  [data-slot="tabs-trigger"],
+  [data-slot="dropdown-menu-item"],
+  [data-slot="dropdown-menu-checkbox-item"],
+  [data-slot="dropdown-menu-radio-item"],
+  [data-slot="dropdown-menu-sub-trigger"],
+  [data-slot="select-trigger"],
+  [data-slot="select-item"],
+  [data-slot="checkbox"],
+  [onClick] {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [role="button"][aria-disabled="true"],
+  [aria-disabled="true"],
+  [disabled],
+  input:disabled,
+  select:disabled {
+    cursor: not-allowed !important;
+  }
+
+  /* Form input & interactive control transitions */
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="search"],
+  input[type="url"],
+  input[type="tel"],
+  textarea {
+    transition-property: color, background-color, border-color, box-shadow;
+    transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+    transition-duration: 150ms;
+  }
+
+  input[type="checkbox"],
+  input[type="radio"] {
+    accent-color: var(--primary);
+    cursor: pointer;
+    transition: transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  input[type="checkbox"]:active,
+  input[type="radio"]:active {
+    transform: scale(0.92);
+  }
+
+  select {
+    cursor: pointer;
+    transition-property: color, background-color, border-color, box-shadow;
+    transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+    transition-duration: 150ms;
+  }
+
+  html {
+    @apply font-sans bg-canvas;
+  }
+  body {
+    @apply bg-canvas text-foreground;
+    background-image: var(--canvas-texture);
+    background-attachment: fixed;
+    background-size: cover;
+  }
+}
+
+@layer utilities {
+  .workspace-canvas {
+    background-image: var(--canvas-texture);
+    background-attachment: fixed;
+    background-size: cover;
+  }
+
+  /* The palette swatch in the account menu's Palette submenu.
+   *
+   * Three bands — the window fill, the action accent, the muted label — read as
+   * a palette at a glance in a way a single dot cannot. The values are the
+   * *dark* mode literals for each palette, because that is the mode this UI
+   * leads with, and they are written out here rather than read from the palette
+   * because a custom property resolves to the palette that is currently ON, not
+   * the one the row is offering. `lib/theme-tokens.test.ts` fails the build if
+   * any of these drifts from the palette block it describes. */
+  .palette-preview {
+    flex: none;
+    width: 2.25rem;
+    height: 0.75rem;
+    border-radius: 9999px;
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 14%, transparent);
+  }
+  .palette-preview[data-palette="default"] {
+    background: linear-gradient(90deg, hsl(0 0% 10%) 0 40%, hsl(252 76% 81%) 40% 75%, hsl(230 9% 76%) 75%);
+  }
+  .palette-preview[data-palette="mist"] {
+    background: linear-gradient(90deg, #141420 0 40%, #7cc4ff 40% 75%, #b6b6cc 75%);
+  }
+  .palette-preview[data-palette="sage"] {
+    background: linear-gradient(90deg, #141424 0 40%, #a78bfa 40% 75%, #b4b4d6 75%);
+  }
+  .palette-preview[data-palette="clay"] {
+    background: linear-gradient(90deg, #19140f 0 40%, #fcd34d 40% 75%, #cfc5b3 75%);
+  }
+  .palette-preview[data-palette="obsidian"] {
+    background: linear-gradient(90deg, hsl(240 3% 8%) 0 40%, hsl(240 5% 88%) 40% 75%, hsl(240 8% 70%) 75%);
+  }
+  .palette-preview[data-palette="deep-ocean"] {
+    background: linear-gradient(90deg, hsl(205 22% 8%) 0 40%, hsl(190 65% 70%) 40% 75%, hsl(205 8% 70%) 75%);
+  }
+  .palette-preview[data-palette="midnight-violet"] {
+    background: linear-gradient(90deg, hsl(265 16% 8.5%) 0 40%, hsl(270 65% 78%) 40% 75%, hsl(265 8% 70%) 75%);
+  }
+  .palette-preview[data-palette="warm-stone"] {
+    background: linear-gradient(90deg, hsl(30 8% 8.5%) 0 40%, hsl(36 68% 72%) 40% 75%, hsl(30 8% 70%) 75%);
+  }
+  .palette-preview[data-palette="terminal"] {
+    background: linear-gradient(90deg, hsl(155 10% 7.8%) 0 40%, hsl(151 48% 70%) 40% 75%, hsl(155 8% 70%) 75%);
+  }
+  .palette-preview[data-palette="aurora"] {
+    background: linear-gradient(90deg, hsl(245 17% 8.5%) 0 40%, hsl(255 68% 78%) 40% 75%, hsl(245 8% 70%) 75%);
+  }
+  .palette-preview[data-palette="cobalt"] {
+    background: linear-gradient(90deg, hsl(222 24% 8.2%) 0 40%, hsl(218 90% 73%) 40% 75%, hsl(222 8% 70%) 75%);
+  }
+
+  :root.dark .palette-preview[data-palette="default"] {
+    background: linear-gradient(90deg, hsl(0 0% 0%) 0 40%, hsl(252 76% 81%) 40% 75%, hsl(230 9% 76%) 75%);
+  }
+  :root.dark .palette-preview[data-palette="mist"] {
+    background: linear-gradient(90deg, #2d2d3d 0 40%, #7cc4ff 40% 75%, #b6b6cc 75%);
+  }
+  :root.dark .palette-preview[data-palette="sage"] {
+    background: linear-gradient(90deg, #2e2e46 0 40%, #a78bfa 40% 75%, #b4b4d6 75%);
+  }
+  :root.dark .palette-preview[data-palette="clay"] {
+    background: linear-gradient(90deg, #302b21 0 40%, #fcd34d 40% 75%, #cfc5b3 75%);
+  }
+  :root.dark .palette-preview[data-palette="obsidian"] {
+    background: linear-gradient(90deg, hsl(240 3% 11.5%) 0 40%, hsl(240 5% 88%) 40% 75%, hsl(240 8% 70%) 75%);
+  }
+  :root.dark .palette-preview[data-palette="deep-ocean"] {
+    background: linear-gradient(90deg, hsl(205 22% 12%) 0 40%, hsl(190 65% 70%) 40% 75%, hsl(205 8% 70%) 75%);
+  }
+  :root.dark .palette-preview[data-palette="midnight-violet"] {
+    background: linear-gradient(90deg, hsl(265 16% 13%) 0 40%, hsl(270 65% 78%) 40% 75%, hsl(265 8% 70%) 75%);
+  }
+  :root.dark .palette-preview[data-palette="warm-stone"] {
+    background: linear-gradient(90deg, hsl(30 8% 13%) 0 40%, hsl(36 68% 72%) 40% 75%, hsl(30 8% 70%) 75%);
+  }
+  :root.dark .palette-preview[data-palette="terminal"] {
+    background: linear-gradient(90deg, hsl(155 10% 11.5%) 0 40%, hsl(151 48% 70%) 40% 75%, hsl(155 8% 70%) 75%);
+  }
+  :root.dark .palette-preview[data-palette="aurora"] {
+    background: linear-gradient(90deg, hsl(245 17% 13%) 0 40%, hsl(255 68% 78%) 40% 75%, hsl(245 8% 70%) 75%);
+  }
+  :root.dark .palette-preview[data-palette="cobalt"] {
+    background: linear-gradient(90deg, hsl(222 24% 12.5%) 0 40%, hsl(218 90% 73%) 40% 75%, hsl(222 8% 70%) 75%);
+  }
+
+  /* Modal / Dialog / Sheet / Drawer backdrop scrim.
+   *
+   * The tint is `--overlay`, not a fixed black. A single 60% navy works as a
+   * blackout in dark mode and reads as a cheap grey wash over a white page in
+   * light mode; `--overlay` carries a different value per mode instead. The blur
+   * is the layer between them — it is what makes the modal read as *in front of*
+   * the page rather than painted on top of a dimmed screenshot. */
+  .dialog-backdrop {
+    background-color: var(--overlay);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+
+  /* A visible-but-quiet scrollbar.
+   *
+   * `scrollbar-width` / `scrollbar-color` are the standard properties and do
+   * the real work in Chrome and Firefox. The `::-webkit-scrollbar` rules below
+   * are a fallback for engines that predate them — where `scrollbar-width` *is*
+   * supported the browser ignores the pseudo-elements entirely, so the two
+   * never fight.
+   *
+   * Note this cannot be verified in headless Chromium: it draws overlay
+   * scrollbars for every element, so a scrollbar reserves no width there even
+   * on a plain `overflow: auto` div. Check it in a real browser. */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--muted-foreground) transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+    border-radius: 4px;
+  }
+  .custom-scrollbar:hover::-webkit-scrollbar-thumb {
+    background-color: var(--muted-foreground);
+  }
+
+  /* ==========================================================================
+   * Glassmorphism & Floating Shell Panels
+   * Frosted glass translucent surfaces with backdrop blur and delicate sheen
+   * ========================================================================== */
+  [data-slot="sidebar-inner"],
+  [data-testid="main-window"] {
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    background-color: color-mix(in oklab, var(--background) 86%, transparent) !important;
+    border: 1px solid color-mix(in oklab, var(--border) 60%, transparent) !important;
+    box-shadow:
+      0 16px 40px -12px rgba(0, 0, 0, 0.38),
+      inset 0 1px 0 0 color-mix(in oklab, var(--foreground) 14%, transparent) !important;
+  }
+
+  [data-slot="sidebar-inner"] {
+    background-color: color-mix(in oklab, var(--sidebar) 86%, transparent) !important;
+    border: 1px solid color-mix(in oklab, var(--sidebar-border) 60%, transparent) !important;
+  }
+
+  #dashboard-root {
+    background-color: color-mix(in oklab, var(--background) 86%, transparent) !important;
+  }
+
+  :root:not(.dark) [data-slot="sidebar-inner"],
+  :root:not(.dark) [data-testid="main-window"] {
+    background-color: color-mix(in oklab, var(--background) 86%, transparent) !important;
+    border: 1px solid rgba(255, 255, 255, 0.75) !important;
+    box-shadow:
+      0 16px 40px -12px rgba(31, 38, 135, 0.12),
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.95) !important;
+  }
+
+  :root:not(.dark) [data-slot="sidebar-inner"] {
+    background-color: color-mix(in oklab, var(--sidebar) 86%, transparent) !important;
+    border: 1px solid rgba(255, 255, 255, 0.75) !important;
+  }
+
+  :root:not(.dark) #dashboard-root {
+    background-color: color-mix(in oklab, var(--background) 86%, transparent) !important;
+  }
+
+  /* Dark chrome is a unified charcoal plane, never a light glass wash.
+   * A restrained accent at the top fades into the shared base surface. */
+  :root.dark [data-slot="sidebar-inner"],
+  :root.dark [data-testid="main-window"],
+  :root.dark #dashboard-root {
+    background-image: linear-gradient(
+      155deg,
+      color-mix(in oklab, var(--background) 96%, var(--primary) 4%),
+      var(--background) 48%,
+      color-mix(in oklab, var(--background) 96%, black 4%)
+    ) !important;
+    background-color: color-mix(in oklab, var(--background) 86%, transparent) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    box-shadow:
+      0 16px 40px -12px rgba(0, 0, 0, 0.5),
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.08) !important;
+  }
+
+  /* In dark mode, cards, stat boxes, tables, dialogs, popovers, and sheets are pure full black (#000000)
+   * with a crisp, subtle border and deep floating elevation shadows over the charcoal workspace. */
+  :root.dark [data-slot="card"],
+  :root.dark [data-slot="stat-card"],
+  :root.dark [data-slot="table-container"],
+  :root.dark div:has(> table),
+  :root.dark [data-slot="dialog-content"],
+  :root.dark [data-slot="popover-content"],
+  :root.dark [data-slot="dropdown-menu-content"],
+  :root.dark [data-slot="sheet-content"] {
+    background-color: hsl(0 0% 0%) !important;
+    border-color: rgba(255, 255, 255, 0.12) !important;
+    box-shadow:
+      0 1px 3px 0 rgba(0, 0, 0, 0.7),
+      0 8px 24px -4px rgba(0, 0, 0, 0.85),
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.08) !important;
+  }
+
+  /* Glassmorphic cards inside */
+  [data-slot="card"] {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  /* ==========================================================================
+   * Highlighted Action Buttons
+   * Luminous accent glow, high contrast and tactile elevation
+   * ========================================================================== */
+  button[data-slot="button"][data-variant="default"],
+  .btn-primary,
+  button:where(.bg-primary) {
+    position: relative;
+    font-weight: 600;
+    box-shadow:
+      0 0 18px -2px color-mix(in oklab, var(--primary) 45%, transparent),
+      0 4px 12px 0 color-mix(in oklab, var(--primary) 30%, transparent);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  button[data-slot="button"][data-variant="default"]:hover,
+  button:where(.bg-primary):hover {
+    box-shadow:
+      0 0 26px 0 color-mix(in oklab, var(--primary) 65%, transparent),
+      0 6px 18px 0 color-mix(in oklab, var(--primary) 40%, transparent);
+    transform: translateY(-1px);
+  }
+
+  button[data-slot="button"][data-variant="default"]:active,
+  button:where(.bg-primary):active {
+    transform: translateY(0) scale(0.98);
+    box-shadow:
+      0 0 10px -2px color-mix(in oklab, var(--primary) 35%, transparent);
+  }
+
+}
+
+/* =============================================================================
+ * 5. AMIRO ADDITIONS
+ * Variables and helpers Amiro's components rely on. Agent colours map onto the
+ * VegaAI lavender so voice and agent surfaces stay on-brand.
+ * ========================================================================== */
+:root {
+  --agent-default-primary: var(--sidebar-primary);
+  --agent-hue: 252;
+  --agent-chroma: 60%;
+  --agent-wash: 80%;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.15);
+  --duration-instant: 100ms;
+  --duration-fast: 160ms;
+  --duration-normal: 220ms;
+  --duration-slow: 320ms;
+}
+
+@layer base {
   html,
   body,
   #root {
     max-width: 100vw;
     overflow-x: hidden;
   }
-  body {
-    @apply bg-background text-foreground;
-    font-family: var(--font-fraunces), serif;
-  }
+}
 
-  button {
-    @apply cursor-pointer;
-  }
-
+@layer utilities {
   .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;

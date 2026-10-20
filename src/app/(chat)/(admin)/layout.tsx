@@ -41,7 +41,8 @@ const ADMIN_SECTIONS: AdminSection[] = [
   {
     id: "notifications",
     title: "Notifications",
-    subtitle: "Web & desktop notification alerts, quiet hours & delivery channels",
+    subtitle:
+      "Web & desktop notification alerts, quiet hours & delivery channels",
     href: "/admin/notifications",
     icon: Bell,
     testId: "admin-sidebar-link-notifications",
@@ -111,8 +112,10 @@ function AdminShell({ children }: { children: ReactNode }) {
     ADMIN_SECTIONS[1];
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-1 flex-col p-3 sm:p-5 overflow-hidden">
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border/80 bg-card/40 backdrop-blur-sm shadow-sm">
+    // The admin area fills the main window edge to edge. The main window
+    // is already a floating panel (VegaAI shell), so no inner card/frame here.
+    <div className="flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {/* Top header bar */}
         <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border/60 px-5 py-3.5">
           <div className="flex min-w-0 items-center gap-3">

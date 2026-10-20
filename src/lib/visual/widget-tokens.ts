@@ -418,6 +418,11 @@ export function detectColorScheme(root?: Element | null): "light" | "dark" {
   if (element.classList?.contains("dark")) {
     return "dark";
   }
+  // next-themes marks light mode with a class too; `data-theme` on <html> is
+  // then the VegaAI palette name, not a colour scheme.
+  if (element.classList?.contains("light")) {
+    return "light";
+  }
   const dataTheme = element.getAttribute("data-theme");
   if (dataTheme) {
     return colorSchemeForTheme(dataTheme);

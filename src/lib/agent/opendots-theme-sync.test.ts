@@ -70,7 +70,9 @@ describe("OpenDots catalog and assets", () => {
   });
 
   it("sets the default avatar tint token to --sidebar-primary", () => {
-    expect(OPENDOTS_DEFAULT_TINT).toBe("var(--sidebar-primary)");
+    expect(OPENDOTS_DEFAULT_TINT).toBe(
+      "var(--agent-accent, var(--sidebar-primary))",
+    );
   });
 });
 

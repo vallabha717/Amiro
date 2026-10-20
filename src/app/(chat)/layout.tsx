@@ -36,7 +36,14 @@ function ChatLayoutInner({ children }: { children: React.ReactNode }) {
   const isCollapsed = useMemo(() => readSidebarCollapsedCookie(), []);
 
   return (
-    <SidebarProvider defaultOpen={!isCollapsed}>
+    // VegaAI shell (app.vegaai.dev): the provider paints the textured canvas;
+    // the sidebar and the chat window both float on it as rounded panels
+    // (globals.css `workspace-canvas`, `[data-slot="sidebar-inner"]`,
+    // `[data-testid="main-window"]`).
+    <SidebarProvider
+      defaultOpen={!isCollapsed}
+      className="h-svh overflow-hidden bg-canvas workspace-canvas motion-reduce:[&_*]:transition-none"
+    >
       <SWRConfigProvider>
         <AppPopupProvider
           userSettingsComponent={
@@ -46,10 +53,17 @@ function ChatLayoutInner({ children }: { children: React.ReactNode }) {
           }
         />
         <AppSidebar user={session!.user} />
-        <main className="relative bg-background flex-1 min-w-0 flex flex-col h-screen overflow-hidden">
-          <AppHeader />
-          <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden">{children}</div>
-        </main>
+        <div className="flex h-svh min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-2 md:py-4 md:pr-4 md:pl-2">
+          <main
+            data-testid="main-window"
+            className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border bg-background shadow-panel"
+          >
+            <AppHeader />
+            <div className="custom-scrollbar min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+              {children}
+            </div>
+          </main>
+        </div>
       </SWRConfigProvider>
     </SidebarProvider>
   );

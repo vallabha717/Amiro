@@ -4,11 +4,13 @@ import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import { useThemeStyle } from "./use-theme-style";
 
-/** Resolve the real sidebar token to sRGB for canvas and legacy tone helpers. */
+/** Resolve the agent accent (its chosen colour, else the sidebar token) to
+ * sRGB for canvas and legacy tone helpers. */
 export function readSidebarAccent(): string {
-  const color = getComputedStyle(document.body)
-    .getPropertyValue("--sidebar-primary")
-    .trim();
+  const style = getComputedStyle(document.body);
+  const color =
+    style.getPropertyValue("--agent-accent").trim() ||
+    style.getPropertyValue("--sidebar-primary").trim();
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = 1;
   const context = canvas.getContext("2d");

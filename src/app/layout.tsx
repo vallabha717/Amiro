@@ -9,6 +9,7 @@ import {
 import { Toaster } from "ui/sonner";
 import { LocaleProvider } from "@/components/layouts/locale-provider";
 import { BackendSessionProvider } from "@/lib/backend/session-context";
+import { VEGA_PALETTE_INIT_SCRIPT } from "@/lib/vega-themes";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -37,7 +38,21 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    // `data-theme="default"` selects VegaAI's Graphite palette (globals.css).
+    // The font variables sit on <html> so the root font stack (Tailwind's
+    // preflight reads `--font-sans` there) resolves to Fraunces everywhere.
+    <html
+      lang="en"
+      data-theme="default"
+      className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable}`}
+      suppressHydrationWarning
+    >
+      <head>
+        {/* Applies the saved VegaAI palette before first paint. */}
+        <script
+          dangerouslySetInnerHTML={{ __html: VEGA_PALETTE_INIT_SCRIPT }}
+        />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} antialiased`}
       >

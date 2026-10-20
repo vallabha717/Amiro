@@ -531,5 +531,10 @@
     "restoredToast": "Se revirtieron {count} archivo(s)",
     "restoredPartialToast": "Se revirtieron {restored} archivo(s), {failed} fallaron",
     "restoreFailedToast": "Error al retroceder"
+  },
+  "SidebarFrame": {
+    "home": "Inicio de Amiro",
+    "expandSidebar": "Expandir barra lateral",
+    "collapseSidebar": "Contraer barra lateral"
   }
 }

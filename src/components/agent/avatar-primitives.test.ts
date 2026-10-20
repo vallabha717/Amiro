@@ -3,9 +3,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { AgentCharacterAvatar } from "./avatar-primitives";
 
-const render = (
-  props: Parameters<typeof AgentCharacterAvatar>[0],
-): string => renderToStaticMarkup(createElement(AgentCharacterAvatar, props));
+const render = (props: Parameters<typeof AgentCharacterAvatar>[0]): string =>
+  renderToStaticMarkup(createElement(AgentCharacterAvatar, props));
 
 describe("Agent avatar rendering", () => {
   it("renders a single OpenDots plush SVG at the requested size", () => {
@@ -35,7 +34,9 @@ describe("Agent avatar rendering", () => {
       ["unknown-legacy-id", "/agent/opendots/blue.png"],
     ];
     for (const [bodyShape, src] of cases) {
-      const html = render({ traits: { bodyShape, eyeStyle: "round", color: "orange" } });
+      const html = render({
+        traits: { bodyShape, eyeStyle: "round", color: "orange" },
+      });
       expect(html, bodyShape).toContain(`href="${src}"`);
     }
   });
@@ -46,8 +47,11 @@ describe("Agent avatar rendering", () => {
     expect(html).toContain("<filter");
     expect(html).toContain('type="saturate"');
     expect(html).toContain('values="0"');
-    // Tint defaults to the sidebar-primary token and is alpha-masked to the sprite.
-    expect(html).toContain('fill="var(--sidebar-primary)"');
+    // Tint defaults to the agent's own colour (falling back to the sidebar
+    // accent) and is alpha-masked to the sprite.
+    expect(html).toContain(
+      'fill="var(--agent-accent, var(--sidebar-primary))"',
+    );
     expect(html).toContain("mix-blend-mode:color");
     expect(html).toContain('mask-type="alpha"');
     expect(html).toContain("<mask");
@@ -90,5 +94,4 @@ describe("Agent avatar rendering", () => {
     expect(html).not.toContain("feComponentTransfer");
     expect(html).not.toContain("data-agent-tint");
   });
-
 });

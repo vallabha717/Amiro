@@ -546,5 +546,10 @@
     "restoredToast": "{count}개 파일을 복원했습니다",
     "restoredPartialToast": "{restored}개 복원, {failed}개 실패",
     "restoreFailedToast": "되돌리기 실패"
+  },
+  "SidebarFrame": {
+    "home": "Amiro 홈",
+    "expandSidebar": "사이드바 펼치기",
+    "collapseSidebar": "사이드바 접기"
   }
 }

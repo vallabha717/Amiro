@@ -300,8 +300,6 @@ export function AgentCustomizerModal({
         data-theme={themeDraft}
         style={{
           ...(themeDraft === "default" ? defaultThemeStyle : {}),
-          fontFamily:
-            "var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif",
         }}
         className="flex max-h-[92vh] max-w-2xl flex-col overflow-hidden rounded-3xl border border-border/70 bg-background/95 p-0 shadow-2xl backdrop-blur-2xl"
       >
@@ -492,8 +490,8 @@ export function AgentCustomizerModal({
             />
 
             <p className="text-[11px] text-muted-foreground">
-              Save Identity applies this color and its matching sidebar theme
-              to your Agent. Cancel keeps your current look.
+              Save Identity applies this color and its matching sidebar theme to
+              your Agent. Cancel keeps your current look.
             </p>
           </div>
         </div>

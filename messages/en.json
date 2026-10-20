@@ -959,5 +959,10 @@
     "restoredToast": "Reverted {count} file(s)",
     "restoredPartialToast": "Reverted {restored} file(s), {failed} failed",
     "restoreFailedToast": "Rewind failed"
+  },
+  "SidebarFrame": {
+    "home": "Amiro home",
+    "expandSidebar": "Expand sidebar",
+    "collapseSidebar": "Collapse sidebar"
   }
 }

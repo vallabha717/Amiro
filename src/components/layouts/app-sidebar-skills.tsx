@@ -38,18 +38,12 @@ export function AppSidebarSkills() {
   // the active Personality / Superpowers / Memory / Workspace pill always
   // matches the agent look instead of a generic gray accent.
   const activePillStyle = {
-    borderColor:
-      "color-mix(in srgb, var(--sidebar-primary) 45%, transparent)",
+    borderColor: "color-mix(in srgb, var(--sidebar-primary) 45%, transparent)",
     background: agentWash(14),
   } as const;
 
   return (
-    <SidebarGroup
-      style={{
-        fontFamily:
-          "var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif",
-      }}
-    >
+    <SidebarGroup>
       <SidebarGroupContent className="group-data-[collapsible=icon]:hidden group/skills">
         <SidebarMenu className="group/skills" data-testid="skills-sidebar-menu">
           {/* Main Agent Hub Link (replaces Skills header) */}
@@ -143,7 +137,7 @@ export function AppSidebarSkills() {
                 />
                 <span className="truncate">Superpowers</span>
               </span>
-              <span className="font-mono text-[10px] opacity-75 tabular-nums">
+              <span className="text-[10px] opacity-75 tabular-nums">
                 {allSkills.length}
               </span>
             </Link>
@@ -171,7 +165,7 @@ export function AppSidebarSkills() {
                 />
                 <span className="truncate">Memory</span>
               </span>
-              <span className="font-mono text-[10px] opacity-75 tabular-nums">
+              <span className="text-[10px] opacity-75 tabular-nums">
                 {memoryTotal}
               </span>
             </Link>

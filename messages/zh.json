@@ -532,5 +532,10 @@
     "restoredToast": "已恢复 {count} 个文件",
     "restoredPartialToast": "已恢复 {restored} 个文件，{failed} 个失败",
     "restoreFailedToast": "回退失败"
+  },
+  "SidebarFrame": {
+    "home": "Amiro 首页",
+    "expandSidebar": "展开侧边栏",
+    "collapseSidebar": "收起侧边栏"
   }
 }

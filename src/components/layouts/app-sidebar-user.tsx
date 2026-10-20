@@ -32,7 +32,7 @@ import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
 import { appStore } from "@/app/store";
 import { COOKIE_KEY_LOCALE, SUPPORTED_LOCALES } from "lib/const";
-import { COLOR_TO_SIDEBAR_THEME } from "@/lib/agent/character-catalog";
+import { VEGA_PALETTES } from "@/lib/vega-themes";
 import { capitalizeFirstLetter, cn, fetcher } from "lib/utils";
 import { authClient } from "auth/client";
 import { useTranslations } from "next-intl";
@@ -40,7 +40,7 @@ import useSWR from "swr";
 import { getLocaleAction } from "@/i18n/get-locale";
 import { Suspense, useCallback } from "react";
 import { GithubIcon } from "ui/github-icon";
-import { useSelectAgentTheme } from "@/hooks/use-select-agent-theme";
+import { useVegaPalette } from "@/hooks/use-vega-palette";
 import { BasicUser } from "app-types/user";
 import { getUserAvatar } from "lib/user/utils";
 import { Skeleton } from "ui/skeleton";
@@ -189,7 +189,10 @@ function SelectTheme() {
 
   const { theme = "light", setTheme } = useTheme();
 
-  const { themeStyle = "default", selectTheme, disabled } = useSelectAgentTheme();
+  // The VegaAI palettes (app.vegaai.dev), independent of the agent colour.
+  const { palette, setPalette } = useVegaPalette();
+  const paletteLabel =
+    VEGA_PALETTES.find((p) => p.id === palette)?.label ?? "Graphite";
 
   return (
     <DropdownMenuSub>
@@ -198,9 +201,7 @@ function SelectTheme() {
         icon={
           <>
             <span className="text-muted-foreground text-xs min-w-0 truncate">
-              {`${capitalizeFirstLetter(theme)} ${capitalizeFirstLetter(
-                themeStyle,
-              )}`}
+              {`${capitalizeFirstLetter(theme)} ${paletteLabel}`}
             </span>
             <ChevronRight className="size-4 ml-2" />
           </>
@@ -242,18 +243,24 @@ function SelectTheme() {
             </div>
           </DropdownMenuLabel>
           <div className="max-h-96 overflow-y-auto">
-            {Object.entries(COLOR_TO_SIDEBAR_THEME).map(([color, t]) => (
+            {VEGA_PALETTES.map((p) => (
               <DropdownMenuCheckboxItem
-                key={t}
-                checked={themeStyle === t}
-                disabled={disabled}
+                key={p.id}
+                checked={palette === p.id}
                 onClick={(e) => {
                   e.preventDefault();
-                  void selectTheme(t);
+                  setPalette(p.id);
                 }}
                 className="text-sm"
+                data-testid={`palette-${p.id}`}
               >
-                {capitalizeFirstLetter(color)}
+                <span className="flex-1">{p.label}</span>
+                {/* Window fill · action accent · muted text, as in VegaAI. */}
+                <span
+                  aria-hidden="true"
+                  className="palette-preview"
+                  data-palette={p.id}
+                />
               </DropdownMenuCheckboxItem>
             ))}
           </div>
