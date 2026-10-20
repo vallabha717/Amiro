@@ -116,6 +116,7 @@ function GroupRow({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
+        data-testid="worklog-row"
         className={cn(
           "group/row flex items-center gap-1.5 text-left text-xs py-1 rounded-sm",
           "text-muted-foreground hover:text-foreground transition-colors",

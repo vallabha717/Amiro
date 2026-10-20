@@ -315,6 +315,24 @@ describe("phase 4 glance lines", () => {
   });
 });
 
+describe("namespaced agent-bridge tools resolve to their card", () => {
+  // Bare amiro_<tool> ids (older surfaces) resolve straight to the presenter.
+  it("amiro_artifact_create renders the same presenter as artifact_create", () => {
+    expect(getToolPresenter("amiro_artifact_create")).toBe(
+      getToolPresenter("artifact_create"),
+    );
+    expect(getToolPresenter("amiro_artifact_create")).toBeDefined();
+  });
+
+  it("never strips another server or a local tool", () => {
+    expect(getToolPresenter("other_artifact_create")).toBeUndefined();
+    // propose_plan must not resolve through plan.
+    expect(getToolPresenter("propose_plan")).toBe(
+      toolPresenters["propose_plan"],
+    );
+  });
+});
+
 describe("an approval answer is not a result", () => {
   const confirmed = {
     type: "tool-edit_file",

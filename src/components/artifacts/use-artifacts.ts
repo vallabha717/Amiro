@@ -26,7 +26,7 @@ import { useMemo } from "react";
 /* Types                                                               */
 /* ------------------------------------------------------------------ */
 
-export type ArtifactTab = "plan" | "tasks" | "walkthrough";
+export type ArtifactTab = "plan" | "tasks" | "walkthrough" | "files";
 
 /** One anchored comment on a plan. Mirrors planComment in plan.go. */
 export interface PlanComment {

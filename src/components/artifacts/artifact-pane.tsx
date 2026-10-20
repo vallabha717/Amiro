@@ -7,12 +7,14 @@ import { cn } from "lib/utils";
 import {
   ClipboardListIcon,
   FileTextIcon,
+  FolderOpenIcon,
   ListChecksIcon,
   XIcon,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect } from "react";
 import { useShallow } from "zustand/shallow";
+import { FilesTabView } from "./files-tab-view";
 import { PlanArtifactView } from "./plan-artifact";
 import { TodoPanel } from "./todo-panel";
 import type { ArtifactTab, Artifacts } from "./use-artifacts";
@@ -30,6 +32,7 @@ const TABS: { id: ArtifactTab; icon: typeof FileTextIcon }[] = [
   { id: "plan", icon: FileTextIcon },
   { id: "tasks", icon: ListChecksIcon },
   { id: "walkthrough", icon: ClipboardListIcon },
+  { id: "files", icon: FolderOpenIcon },
 ];
 
 /**
@@ -66,6 +69,8 @@ export function ArtifactPane({
         mutate((s) => ({
           artifactView: { ...s.artifactView, tab: "walkthrough" },
         }));
+      else
+        mutate((s) => ({ artifactView: { ...s.artifactView, tab: "files" } }));
     }
   }, [tab, plan, todos, walkthrough, mutate]);
 
@@ -77,6 +82,9 @@ export function ArtifactPane({
     plan: planNeedsAttention ? "•" : undefined,
     tasks: todos ? `${todos.done}/${todos.items.length}` : undefined,
     walkthrough: walkthrough ? "•" : undefined,
+    // File artifacts live in server state (SWR inside the tab), not in the
+    // transcript projection, so the pane has no count to badge with here.
+    files: undefined,
   };
 
   return (
@@ -163,6 +171,7 @@ export function ArtifactPane({
           ))}
         {tab === "tasks" && <TodoPanel todos={todos} />}
         {tab === "walkthrough" && <WalkthroughView walkthrough={walkthrough} />}
+        {tab === "files" && <FilesTabView todos={todos} threadId={threadId} />}
       </div>
     </div>
   );

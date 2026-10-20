@@ -83,8 +83,10 @@ export interface AppState {
    */
   artifactView: {
     isOpen: boolean;
-    tab: "plan" | "tasks" | "walkthrough";
+    tab: "plan" | "tasks" | "walkthrough" | "files";
     openedFor?: string;
+    /** File artifact to select when the Files tab opens (set by the chat card's Open button). */
+    fileId?: string;
   };
   /**
    * The permission mode in effect before the user switched to Plan.

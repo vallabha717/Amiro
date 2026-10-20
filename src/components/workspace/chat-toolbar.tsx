@@ -3,10 +3,12 @@
 import { chatUxStore } from "@/app/store/chat-ux-store";
 import type { SessionSummary } from "lib/chat-ux/session-summary";
 import { cn } from "lib/utils";
-import { PanelRightOpenIcon } from "lucide-react";
+import { FolderOpenIcon, PanelRightOpenIcon } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Button } from "ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
 import { useShallow } from "zustand/shallow";
+import { useOpenArtifact } from "../artifacts/plan-card";
 import { ToolFilterMenu } from "./tool-filter-menu";
 
 /**
@@ -25,6 +27,8 @@ export function ChatToolbar({
   const [panelOpen, mutate] = chatUxStore(
     useShallow((s) => [s.panelOpen, s.mutate] as const),
   );
+  const t = useTranslations("Chat.Artifact");
+  const openArtifact = useOpenArtifact();
   return (
     <div
       className={cn(
@@ -33,6 +37,21 @@ export function ChatToolbar({
       )}
     >
       <ToolFilterMenu counts={summary.toolCounts} />
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7"
+            onClick={() => openArtifact("files")}
+            aria-label={t("filesTitle")}
+            data-testid="artifacts-open"
+          >
+            <FolderOpenIcon className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{t("filesTitle")}</TooltipContent>
+      </Tooltip>
       {!panelOpen && (
         <Tooltip>
           <TooltipTrigger asChild>

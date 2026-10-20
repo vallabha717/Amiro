@@ -1,4 +1,8 @@
 import { agentPresenters } from "./agent-presenters";
+import {
+  artifactPresenters,
+  withArtifactMcpCard,
+} from "./artifact-presenters";
 import { codeIntelPresenters } from "./code-intel-presenters";
 import { filePresenters } from "./file-presenters";
 import { jcodePresenters } from "./jcode-presenters";
@@ -32,13 +36,33 @@ export const toolPresenters: ToolPresenterRegistry = {
   ...codeIntelPresenters,
   ...planPresenters,
   ...jcodePresenters,
+  ...artifactPresenters,
+  // Artifact operations dispatched through the runtime's mcp_call wrapper
+  // render the file card; every other MCP call keeps the generic card.
+  mcp_call: withArtifactMcpCard(jcodePresenters["mcp_call"]),
 };
 
 export function getToolPresenter(
   toolName: string | undefined,
 ): ToolPresenter | undefined {
   if (!toolName) return undefined;
-  return toolPresenters[toolName];
+  const direct = toolPresenters[toolName];
+  if (direct) return direct;
+  // Agent-bridge tools arrive namespaced with their server. The runtime
+  // dispatches MCP tools as mcp__<server>__<tool> (double underscores);
+  // older surfaces use single underscores. Resolve the bare tool so a
+  // namespaced call renders the same card. Scoped to the amiro server on
+  // purpose: stripping a segment off any unknown id could dress an
+  // unrelated tool in the wrong card (propose_plan must never resolve
+  // through plan).
+  let rest = toolName;
+  if (rest.startsWith("mcp__")) rest = rest.slice("mcp__".length);
+  else if (rest.startsWith("mcp_")) rest = rest.slice("mcp_".length);
+  if (rest.startsWith("amiro__")) rest = rest.slice("amiro__".length);
+  else if (rest.startsWith("amiro_")) rest = rest.slice("amiro_".length);
+  else return undefined;
+  if (!rest || rest === toolName) return undefined;
+  return toolPresenters[rest];
 }
 
 /**

@@ -18,6 +18,7 @@ import { cn } from "lib/utils";
 import {
   CalendarClockIcon,
   ChevronRight,
+  FilesIcon,
   FolderOpenIcon,
   FolderSearchIcon,
   PlugZapIcon,
@@ -31,6 +32,7 @@ import { SidebarGroup } from "ui/sidebar";
 import { Skeleton } from "ui/skeleton";
 import { WriteIcon } from "ui/write-icon";
 import { ArchiveDialog } from "../archive-dialog";
+import { useOpenArtifact } from "../artifacts/plan-card";
 import { AppSidebarAdmin } from "./app-sidebar-menu-admin";
 
 export function AppSidebarMenus({ user }: { user?: BasicUser }) {
@@ -50,6 +52,15 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
       setExpandedArchive(true);
     }
   }, [pathname]);
+
+  const openArtifact = useOpenArtifact();
+  const openArtifacts = useCallback(() => {
+    setOpenMobile(false);
+    // The pane is per-thread chat UI: outside a chat route, go home first,
+    // then open it — the store carries the tab across the navigation.
+    if (pathname !== "/") router.push("/");
+    openArtifact("files");
+  }, [openArtifact, pathname, router, setOpenMobile]);
 
   const { data: archives, isLoading: isLoadingArchives } = useArchives();
   const toggleArchive = useCallback(() => {
@@ -124,6 +135,19 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
                 Schedules
               </SidebarMenuButton>
             </Link>
+          </SidebarMenuItem>
+        </SidebarMenu>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              className="font-semibold"
+              data-testid="sidebar-artifacts-link"
+              aria-label={t("Layout.artifacts")}
+              onClick={openArtifacts}
+            >
+              <FilesIcon className="size-4" />
+              {t("Layout.artifacts")}
+            </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
         {user && <AppSidebarAdmin />}

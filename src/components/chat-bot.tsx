@@ -54,6 +54,7 @@ import { useMounted } from "@/hooks/use-mounted";
 import { useThreadFileUploader } from "@/hooks/use-thread-file-uploader";
 import { useMessageReadAloudStore } from "@/lib/ai/speech/read-aloud-store";
 import { deleteThread } from "@/lib/backend/chat-api";
+import { useFileArtifacts } from "@/lib/backend/artifacts-api";
 import { backendFetch } from "@/lib/backend/client";
 import { backendUrl } from "@/lib/backend/config";
 import { getCachedVoiceSettings } from "@/lib/backend/voice-api";
@@ -368,6 +369,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
 
   // The plan, task list and walkthrough, read back out of the transcript.
   const artifacts = useArtifacts(messages, isLoading);
+  const { data: fileArtifacts } = useFileArtifacts(true);
 
   // Agents, tasks, context, connectors and outputs for the session panel,
   // read back out of the same transcript the artifacts come from.
@@ -378,9 +380,16 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
   const sessionPanelOpen = chatUxStore((state) => state.panelOpen);
 
   const hasArtifact = Boolean(
-    artifacts.plan || artifacts.todos || artifacts.walkthrough,
+    artifacts.plan ||
+      artifacts.todos ||
+      artifacts.walkthrough ||
+      (fileArtifacts?.length ?? 0) > 0,
   );
-  const isArtifactViewActive = artifactView.isOpen && hasArtifact;
+  // The Files tab is server state rather than transcript state, and the
+  // toolbar opens it directly — so an explicitly opened Files tab counts as
+  // active even before the first file exists.
+  const isArtifactViewActive =
+    artifactView.isOpen && (hasArtifact || artifactView.tab === "files");
 
   // Swarm agents open side by side with this chat. The chat itself stays on
   // screen, exactly as the TUI keeps the main transcript while an agent is
