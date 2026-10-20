@@ -2,13 +2,25 @@
   "name": "@amiro/tests",
   "version": "0.0.0",
   "private": true,
-  "description": "Playwright half of the Amiro test system. Deliberately NOT part of the root pnpm workspace: Playwright and its browsers must not enter the shipped app's dependency graph. See docs/testing/01-architecture.md.",
+  "description": "Recorded Playwright E2E journeys (tests/e2e). Deliberately NOT part of the root pnpm workspace: Playwright and its browsers must not enter the shipped app's dependency graph.",
   "scripts": {
+    "e2e": "playwright test",
+    "e2e:headed": "playwright test --headed",
+    "e2e:onboarding": "playwright test --project onboarding",
+    "e2e:provider": "playwright test --project provider",
+    "e2e:voice": "playwright test --project voice",
+    "e2e:chat": "playwright test --project chat",
+    "e2e:connectors": "playwright test --project connectors",
+    "e2e:credentials": "playwright test --project credentials",
+    "e2e:agent-hub": "playwright test --project agent-hub",
+    "e2e:agent-driven": "playwright test --project agent-driven",
+    "e2e:voice-live": "playwright test --project voice-live",
+    "e2e:schedules": "playwright test --project schedules",
+    "e2e:ux-audit": "playwright test --project ux-audit",
     "test": "playwright test",
-    "test:headed": "playwright test --headed",
     "install-browsers": "playwright install --with-deps chromium",
-    "show-report": "playwright show-report logs/latest/ui/html",
-    "show-trace": "playwright show-trace"
+    "show-report": "playwright show-report",
+    "e2e:feature": "node e2e/support/feature-recording.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1"

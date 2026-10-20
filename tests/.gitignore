@@ -1,12 +1,13 @@
-# Yours, not the repo's. config.example.yaml is the committed template;
-# copy it to config.yaml and edit. Every key in it is optional.
-config.yaml
-config.local.yaml
+# Your values, not the repo's. e2e.config.example.json is the committed template.
+e2e.config.json
+e2e.config.local.json
 .env
 
-# Every run writes here. Pruned to logging.keepRuns automatically.
-logs/
+# Every E2E run writes its videos, stitched full-run video and review report here.
+recordings/
 
+# Playwright scratch output
 node_modules/
 test-results/
 playwright-report/
+.e2e-state/

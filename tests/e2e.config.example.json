@@ -1,0 +1,72 @@
+{
+  "$comment": "Copy to tests/e2e.config.json (gitignored) and fill in. Every value can also come from an AMIRO_E2E_* env var (see tests/e2e/support/config.ts). Specs that need a value you left empty are skipped with a reason, never failed.",
+
+  "target": {
+    "mode": "isolated",
+    "baseUrl": "",
+    "port": 38960,
+    "backendBin": "",
+    "runtimeBin": "",
+    "outDir": "",
+    "keepInstance": false
+  },
+
+  "owner": {
+    "name": "E2E Tester",
+    "email": "owner@amiro.test",
+    "password": "E2e-owner-pass-1",
+    "timezone": "UTC"
+  },
+
+  "agent": {
+    "name": "Nova",
+    "look": "Starfish",
+    "colour": "teal"
+  },
+
+  "provider": {
+    "label": "OpenCode Go",
+    "id": "opencode-go",
+    "apiKey": "",
+    "model": "muse-spark-1.2-contributor",
+    "fallbackModel": "deepseek-v4.1-flash"
+  },
+
+  "voice": {
+    "ttsEngine": "ElevenLabs",
+    "ttsApiKey": "",
+    "ttsVoiceId": "",
+    "sttEngine": "ElevenLabs Scribe",
+    "sttApiKey": ""
+  },
+
+  "search": {
+    "braveApiKey": ""
+  },
+
+  "composio": {
+    "apiKey": ""
+  },
+
+  "mcp": {
+    "fixturePort": 38970,
+    "bearerToken": "e2e-bearer-token-123456",
+    "apiKeyHeader": "X-Api-Key",
+    "apiKey": "e2e-api-key-abcdef",
+    "extraRemote": []
+  },
+
+  "recording": {
+    "video": "on",
+    "headless": true,
+    "slowMoMs": 150,
+    "viewport": { "width": 1440, "height": 900 },
+    "captions": true,
+    "stitch": true
+  },
+
+  "timeouts": {
+    "agentReplyMs": 180000,
+    "testMs": 600000
+  }
+}

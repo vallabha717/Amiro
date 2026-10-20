@@ -1,15 +1,14 @@
 # =============================================================================
 # Amiro Test Suite
 # =============================================================================
-# The legacy Go backend and Go test harness (cmd/amirotest) have been retired.
-# Amiro is now Rust-only on native surfaces (Tauri desktop shell, std-only tests/rust)
-# with the Node adapter as the backend runtime.
+# Amiro is Rust-only on native surfaces (backend/, runtime/, src-tauri/,
+# std-only tests/rust).
 #
 # Current test surfaces:
 # - adapter unit tests: node --test adapter/test/*.test.mjs
 # - cargo tests: tests/rust (std-only Rust testkit), src-tauri
 # - vitest: frontend unit and integration tests (pnpm test)
-# - playwright: end-to-end browser tests (pnpm test:e2e or cd tests && pnpm test)
+# - e2e: recorded Playwright journeys (pnpm test:e2e), see tests/e2e/README.md
 #
 # Install Task runner: https://taskfile.dev (or execute commands directly)
 version: "3"
@@ -48,24 +47,12 @@ tasks:
     cmds:
       - "pnpm test"
 
-  playwright:
-    desc: Run Playwright end-to-end browser tests
-    dir: tests
+  e2e:
+    desc: Recorded Playwright journeys on an isolated instance (video + REVIEW.md)
     cmds:
-      - "pnpm playwright test"
+      - "pnpm exec playwright test {{.CLI_ARGS}}"
 
-  playwright:headed:
-    desc: Run Playwright tests with headed browser
-    dir: tests
+  e2e:headed:
+    desc: Same, with a visible browser
     cmds:
-      - "pnpm playwright test --headed"
-
-  # ---------------------------------------------------------------------------
-  # LEGACY / RETIRED: Go harness tasks (cmd/amirotest) are dropped.
-  # The Go toolchain is no longer required or supported in Amiro.
-  # Historical reference only:
-  # - legacy:doctor was: go run ./cmd/amirotest doctor
-  # - legacy:list was: go run ./cmd/amirotest list
-  # - legacy:run was: go run ./cmd/amirotest run
-  # - legacy:smoke was: go run ./cmd/amirotest run --tag smoke
-  # ---------------------------------------------------------------------------
+      - "pnpm exec playwright test --headed {{.CLI_ARGS}}"

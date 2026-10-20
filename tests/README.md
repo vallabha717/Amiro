@@ -7,7 +7,7 @@ the engine is the vendored Rust runtime in `runtime/` (binary `amiro-runtime`).
 * Backend: native Rust backend (`backend/`, `amiro-backend`) over the vendored runtime
 * Desktop Shell: Tauri 2 and Rust (`src-tauri/`)
 * Rust Testkit: `tests/rust/` (`amiro-testkit`, std-only, offline)
-* Web and E2E: Vitest and Playwright (`tests/ui/`)
+* Web and E2E: Vitest and recorded Playwright journeys (`tests/e2e/`)
 * Retired harness: `adapter/`, kept only for its contract tests
 
 `adapter/` is **not** the backend and nothing starts it in production. It is a
@@ -27,7 +27,7 @@ pin the routes the native backend implements.
 | Retired adapter live smoke | `node adapter/test/live-smoke.mjs` | Requires a running, authenticated preview |
 | Rust Testkit | `cargo test --offline` (in `tests/rust`) | Std-only, zero network dependencies |
 | Tauri Desktop Check | `cargo check --offline` (in `src-tauri`) | Tauri shell check |
-| UI E2E (Playwright) | `pnpm --dir tests test` | Playwright browser tests |
+| E2E journeys (Playwright, recorded) | `pnpm test:e2e` | Isolated instance, video + `REVIEW.md`. See `e2e/README.md` |
 
 The backend integration tests spawn their own server per test and wait for
 readiness. They are reliable in CI, but if you run the frontend suite, a cold
@@ -40,9 +40,11 @@ can fail with a readiness or connection error. Re-run them alone, or with
 ```
 tests/
   rust/                 Std-only Rust test harness (amiro-testkit)
-  ui/                   Playwright browser specs
+  e2e/                  Recorded Playwright journeys (specs, support, fixtures)
   fixtures/             Test fixtures (MCP, skills, workspace)
   cassettes/            Recorded provider interactions
+  recordings/           E2E videos and review reports (gitignored)
+  e2e.config.example.json  Template for e2e.config.json (gitignored, your keys)
   Taskfile.yml          Task runner definitions
   playwright.config.ts  Playwright configuration
 ```

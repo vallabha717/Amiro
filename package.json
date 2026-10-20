@@ -31,8 +31,8 @@
     "build:local": "cross-env NO_HTTPS='1' next build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui",
+    "test:e2e": "pnpm --dir tests e2e",
+    "test:e2e:ui": "pnpm --dir tests e2e --ui",
     "test:native-backend": "cargo test --manifest-path backend/Cargo.toml",
     "verify:native-ui": "bash scripts/start-native-ui-check.sh",
     "verify:schedules-ui": "node scripts/verify-schedules-ui.mjs",
@@ -40,6 +40,7 @@
     "lint:fix": "biome lint --write --unsafe",
     "format": "biome format --write",
     "check-types": "tsc --noEmit",
+    "check:i18n": "node scripts/check-i18n.mjs",
     "prepare": "husky && node scripts/sync-pdf-worker.mjs",
     "playwright:install": "playwright install",
     "check": "pnpm lint:fix && pnpm check-types && pnpm test"
