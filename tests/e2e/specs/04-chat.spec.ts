@@ -363,9 +363,14 @@ test.describe("chat", () => {
     });
 
     await step("Tool calls show description only until clicked, then expand bash and file edit inline", async () => {
-      const workLogBtn = page.getByRole("button", { name: /^Worked/ }).first();
-      if (await workLogBtn.isVisible().catch(() => false)) {
-        await workLogBtn.click();
+      const dock = page.getByTestId("work-status-dock");
+      await expect.soft(dock, "Worked summary is docked above the composer").toBeVisible();
+      await expect.soft(dock).toContainText(/^Worked/);
+      const dockBox = await dock.boundingBox();
+      const composerBox = await composer(page).boundingBox();
+      if (dockBox && composerBox) {
+        expect.soft(dockBox.y, "dock sits above the composer, not at the top of the chat").toBeLessThan(composerBox.y);
+        expect.soft(composerBox.y - dockBox.y, "dock is right next to the composer").toBeLessThan(200);
       }
       const toggles = page.getByTestId("tool-call-toggle");
       const count = await toggles.count();

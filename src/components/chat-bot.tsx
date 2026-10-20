@@ -86,6 +86,7 @@ import {
   DialogTitle,
 } from "ui/dialog";
 import { Think } from "ui/think";
+import { WorkStatusDock } from "./work-status-dock";
 import { TextShimmer } from "ui/text-shimmer";
 
 type Props = {
@@ -1057,6 +1058,16 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
                   {voiceActive && voiceMinimized && (
                     <div key="voice-dock" className="max-w-3xl mx-auto px-6 mb-2">
                       <VoiceDock />
+                    </div>
+                  )}
+                </AnimatePresence>
+                <AnimatePresence>
+                  {!emptyMessage && (
+                    <div key="work-dock" className="max-w-3xl mx-auto px-6">
+                      <WorkStatusDock
+                        message={messages.at(-1)}
+                        running={isLoading}
+                      />
                     </div>
                   )}
                 </AnimatePresence>
