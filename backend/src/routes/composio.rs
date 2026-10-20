@@ -324,6 +324,175 @@ async fn require_key(state: &AppState) -> Result<ApiKey, ApiError> {
     })
 }
 
+pub async fn list_toolkits_for_user(
+    state: &AppState,
+    uid: &str,
+    search: Option<&str>,
+    limit: Option<&str>,
+) -> Result<Value, ApiError> {
+    let key = require_key(state).await?;
+    let base = composio_config::base_url();
+
+    let mut params: Vec<(&str, String)> = Vec::new();
+    if let Some(search) = search.map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        params.push(("search", search.to_string()));
+    }
+    if let Some(limit) = limit.filter(|l| !l.is_empty()) {
+        params.push(("limit", limit.to_string()));
+    }
+    params.push(("user_id", uid.to_string()));
+
+    let (status, body) = composio_get(&base, "/api/v3/toolkits", &key.value, &params).await?;
+    if !status.is_success() {
+        return Err(composio_rejected("toolkits request", status));
+    }
+
+    let connections = fetch_connections(&base, &key.value, uid).await?;
+    let index = connection_index(&connections);
+
+    let items: Vec<Value> = items_of(&body)
+        .iter()
+        .map(|toolkit| {
+            let slug = first_str(toolkit, &["slug", "key", "toolkit_slug"])
+                .unwrap_or("")
+                .to_string();
+            let name = first_str(toolkit, &["name"])
+                .map(str::to_string)
+                .unwrap_or_else(|| slug.clone());
+            let logo = nested_str(toolkit, "meta", "logo")
+                .or_else(|| first_str(toolkit, &["logo"]))
+                .unwrap_or("")
+                .to_string();
+            let description = nested_str(toolkit, "meta", "description")
+                .or_else(|| first_str(toolkit, &["description"]))
+                .unwrap_or("")
+                .to_string();
+            let categories = toolkit
+                .get("meta")
+                .and_then(|meta| meta.get("categories"))
+                .map(string_list)
+                .or_else(|| toolkit.get("categories").map(string_list))
+                .unwrap_or_default();
+            let auth_modes = ["auth_schemes", "auth_modes", "composio_managed_auth_schemes"]
+                .iter()
+                .find_map(|field| {
+                    let list = string_list(toolkit.get(*field).unwrap_or(&Value::Null));
+                    (!list.is_empty()).then_some(list)
+                })
+                .unwrap_or_default();
+
+            let (connection_id, connection_status) = match index.get(&slug) {
+                Some((id, status)) => (json!(id), json!(status)),
+                None => (Value::Null, Value::Null),
+            };
+            let connected = connection_status
+                .as_str()
+                .is_some_and(is_active);
+
+            json!({
+                "slug": slug,
+                "name": name,
+                "logo": logo,
+                "description": description,
+                "categories": categories,
+                "authModes": auth_modes,
+                "connected": connected,
+                "connectionId": connection_id,
+                "connectionStatus": connection_status,
+            })
+        })
+        .collect();
+
+    let next_cursor = body
+        .get("next_cursor")
+        .or_else(|| body.get("nextCursor"))
+        .and_then(Value::as_str)
+        .map(|c| json!(c))
+        .unwrap_or(Value::Null);
+
+    Ok(json!({ "items": items, "nextCursor": next_cursor }))
+}
+
+pub async fn start_connect_for_user(
+    state: &AppState,
+    uid: &str,
+    toolkit: &str,
+    callback_url: Option<&str>,
+) -> Result<Value, ApiError> {
+    let key = require_key(state).await?;
+    let base = composio_config::base_url();
+    let toolkit = toolkit.trim();
+    if toolkit.is_empty() {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "toolkit is required".to_string(),
+        ));
+    }
+    match tool_router_connect(&base, &key.value, uid, toolkit, callback_url).await {
+        Ok(result) => Ok(result),
+        Err(primary_error) => {
+            match legacy_connect(&base, &key.value, uid, toolkit, callback_url).await {
+                Ok(result) => Ok(result),
+                Err(_) => Err(primary_error),
+            }
+        }
+    }
+}
+
+pub async fn connection_status_for_user(
+    state: &AppState,
+    uid: &str,
+    id: &str,
+) -> Result<Value, ApiError> {
+    let key = require_key(state).await?;
+    let base = composio_config::base_url();
+
+    let (status, body) = composio_get(
+        &base,
+        &format!("/api/v3/connected_accounts/{id}"),
+        &key.value,
+        &[],
+    )
+    .await?;
+    if !status.is_success() {
+        return Err(composio_rejected("connection status request", status));
+    }
+
+    let account = body.get("item").unwrap_or(&body);
+    let connection_status = account_status(account);
+
+    let mut synced = false;
+    let mut reload = McpReloadOutcome::default();
+    if is_active(&connection_status) {
+        if let Ok((did_sync, outcome)) = sync_state(state, &base, &key.value, uid).await {
+            synced = did_sync;
+            reload = outcome;
+        }
+    }
+
+    Ok(json!({
+        "id": id,
+        "status": connection_status,
+        "synced": synced,
+        "reloaded": reload.reloaded(),
+        "reloadedSessions": reload.reloaded_sessions,
+        "skippedBusy": reload.skipped_busy,
+    }))
+}
+
+pub async fn sync_for_user(state: &AppState, uid: &str) -> Result<Value, ApiError> {
+    let key = require_key(state).await?;
+    let base = composio_config::base_url();
+    let (toolkits, reload) = sync_state_detailed(state, &base, &key.value, uid).await?;
+    Ok(json!({
+        "synced": true,
+        "toolkits": toolkits,
+        "reloaded": reload.reloaded(),
+        "reloadedSessions": reload.reloaded_sessions,
+        "skippedBusy": reload.skipped_busy,
+    }))
+}
+
 async fn list_toolkits(
     State(state): State<AppState>,
     user: AuthUser,

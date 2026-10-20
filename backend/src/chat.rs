@@ -403,9 +403,11 @@ async fn chat_handler(
                     }
                 }
             }
-        } else if {
+        } else {
             let lower = prompt.to_lowercase();
-            lower.contains("visualize")
+            let mut auto_skill: Option<&str> = None;
+
+            if lower.contains("visualize")
                 || lower.contains("visualise")
                 || lower.contains("diagram")
                 || lower.contains("flowchart")
@@ -413,39 +415,67 @@ async fn chat_handler(
                 || lower.contains("visual explainer")
                 || lower.contains("draw a ")
                 || lower.contains("draw an ")
-        } {
-            if let Some((resolved_name, source, skill_body)) =
-                crate::routes::skills::resolve_skill_for_turn(
-                    &state_for_stream,
-                    &uid,
-                    "visualize",
-                    Some(FsPath::new(&working_dir)),
-                )
-                .await
             {
-                let clipped: String = skill_body.chars().take(12_000).collect();
-                reminder_blocks.push(format!(
-                    "Auto-activated skill for this request: \"{resolved_name}\" (source {source})\n\
-                     --- begin \"{resolved_name}\" ---\n{clipped}\n--- end \"{resolved_name}\" ---"
-                ));
+                auto_skill = Some("visualize");
+            } else if is_scheduling_request(&prompt) {
+                auto_skill = Some("schedules");
+            } else if lower.contains("connect model")
+                || lower.contains("configure model")
+                || lower.contains("add model")
+                || lower.contains("set up model")
+                || lower.contains("setup model")
+                || lower.contains("llm provider")
+                || lower.contains("provider setup")
+                || lower.contains("change model")
+                || lower.contains("switch model")
+            {
+                auto_skill = Some("llm-provider-setup");
+            } else if lower.contains("voice")
+                || lower.contains("text to speech")
+                || lower.contains("tts")
+                || lower.contains("speech to text")
+                || lower.contains("stt")
+                || lower.contains("elevenlabs")
+                || lower.contains("deepgram")
+                || lower.contains("read aloud")
+            {
+                auto_skill = Some("voice-setup");
+            } else if lower.contains("search provider")
+                || lower.contains("web search")
+                || lower.contains("tavily")
+                || lower.contains("brave search")
+                || lower.contains("serper")
+                || lower.contains("firecrawl")
+                || lower.contains("searxng")
+            {
+                auto_skill = Some("web-search-setup");
+            } else if lower.contains("mcp")
+                || lower.contains("connector")
+                || lower.contains("composio")
+                || lower.contains("connect linear")
+                || lower.contains("connect notion")
+                || lower.contains("connect figma")
+                || lower.contains("connect github")
+            {
+                auto_skill = Some("mcp-setup");
             }
-        } else if is_scheduling_request(&prompt) {
-            // Scheduling asks go to the shared Amiro schedules (the Schedules
-            // page), not the runtime's private wake-up timer.
-            if let Some((resolved_name, source, skill_body)) =
-                crate::routes::skills::resolve_skill_for_turn(
-                    &state_for_stream,
-                    &uid,
-                    "schedules",
-                    Some(FsPath::new(&working_dir)),
-                )
-                .await
-            {
-                let clipped: String = skill_body.chars().take(12_000).collect();
-                reminder_blocks.push(format!(
-                    "Auto-activated skill for this request: \"{resolved_name}\" (source {source})\n\
-                     --- begin \"{resolved_name}\" ---\n{clipped}\n--- end \"{resolved_name}\" ---"
-                ));
+
+            if let Some(skill_id) = auto_skill {
+                if let Some((resolved_name, source, skill_body)) =
+                    crate::routes::skills::resolve_skill_for_turn(
+                        &state_for_stream,
+                        &uid,
+                        skill_id,
+                        Some(FsPath::new(&working_dir)),
+                    )
+                    .await
+                {
+                    let clipped: String = skill_body.chars().take(12_000).collect();
+                    reminder_blocks.push(format!(
+                        "Auto-activated skill for this request: \"{resolved_name}\" (source {source})\n\
+                         --- begin \"{resolved_name}\" ---\n{clipped}\n--- end \"{resolved_name}\" ---"
+                    ));
+                }
             }
         }
         // Best-effort: also keep a copy of sent files in the agent's workspace.

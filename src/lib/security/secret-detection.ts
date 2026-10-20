@@ -655,3 +655,72 @@ export function parseSecretPrompt(inputOrOutput: unknown): ParsedSecretPrompt | 
 
   return null;
 }
+
+export interface ParsedOAuthConnect {
+  id: string;
+  type: "provider" | "mcp" | "composio" | "custom";
+  provider?: string;
+  server?: string;
+  toolkit?: string;
+  connectionId?: string;
+  flow?: "authorization_code" | "device_code";
+  authorizationUrl?: string;
+  redirectUrl?: string;
+  userCode?: string;
+  verificationUri?: string;
+}
+
+export function parseOAuthConnect(inputOrOutput: unknown): ParsedOAuthConnect | null {
+  if (!inputOrOutput) return null;
+
+  if (typeof inputOrOutput === "string") {
+    const text = inputOrOutput.trim();
+    const markerRegex = /OAUTH_CONNECT\s*:?\s*(\{[\s\S]*?\})/i;
+    const match = markerRegex.exec(text);
+    if (match && match[1]) {
+      try {
+        const parsed = JSON.parse(match[1]);
+        if (parsed && typeof parsed === "object") {
+          return {
+            id: parsed.id || `oauth-${Date.now()}`,
+            type: parsed.type || (parsed.provider ? "provider" : parsed.toolkit ? "composio" : "mcp"),
+            provider: parsed.provider,
+            server: parsed.server,
+            toolkit: parsed.toolkit,
+            connectionId: parsed.connectionId || parsed.connection_id,
+            flow: parsed.flow,
+            authorizationUrl: parsed.authorizationUrl || parsed.authorization_url || parsed.redirectUrl || parsed.redirect_url,
+            redirectUrl: parsed.redirectUrl || parsed.redirect_url,
+            userCode: parsed.userCode || parsed.user_code,
+            verificationUri: parsed.verificationUri || parsed.verification_uri,
+          };
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return null;
+  }
+
+  if (typeof inputOrOutput === "object") {
+    const obj = inputOrOutput as Record<string, any>;
+    if (obj.authorizationUrl || obj.authorization_url || obj.redirectUrl || obj.userCode || obj.user_code) {
+      return {
+        id: obj.id || `oauth-${Date.now()}`,
+        type: obj.type || (obj.provider ? "provider" : obj.toolkit ? "composio" : "mcp"),
+        provider: obj.provider,
+        server: obj.server,
+        toolkit: obj.toolkit,
+        connectionId: obj.connectionId || obj.connection_id,
+        flow: obj.flow,
+        authorizationUrl: obj.authorizationUrl || obj.authorization_url || obj.redirectUrl || obj.redirect_url,
+        redirectUrl: obj.redirectUrl || obj.redirect_url,
+        userCode: obj.userCode || obj.user_code,
+        verificationUri: obj.verificationUri || obj.verification_uri,
+      };
+    }
+  }
+
+  return null;
+}
+

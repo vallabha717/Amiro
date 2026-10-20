@@ -277,7 +277,7 @@ fn catalog_belongs_to_provider(
         .any(|model| live_models.iter().any(|live| live == model))
 }
 
-async fn build_catalog(state: &AppState) -> Value {
+pub async fn build_catalog(state: &AppState) -> Value {
     {
         let lock = catalog_lock();
         let guard = lock.lock().unwrap();

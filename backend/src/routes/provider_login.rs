@@ -127,15 +127,13 @@ fn get_flow_store() -> FlowStore {
         .clone()
 }
 
-async fn post_oauth_start(
-    State(state): State<AppState>,
-    user: AuthUser,
-    Path(id): Path<String>,
-) -> Result<Json<Value>, ApiError> {
-    require_admin(&user)?;
-
+pub async fn start_oauth_for_user(
+    state: &AppState,
+    uid: &str,
+    id: &str,
+) -> Result<Value, ApiError> {
     let provider = id.trim().to_lowercase();
-    if !can_start_oauth_flow(&state, &provider).await {
+    if !can_start_oauth_flow(state, &provider).await {
         return Err(ApiError(
             StatusCode::BAD_REQUEST,
             format!("Interactive OAuth is not supported for provider '{provider}'. Please configure with an API key."),
@@ -225,7 +223,6 @@ async fn post_oauth_start(
         poll_task: None,
     };
 
-    let uid = user_id_of(&user);
     let store = get_flow_store();
     let mut lock = store.lock().await;
     if let Some(previous) = lock.insert(format!("{uid}:{provider}"), flow_record.clone()) {
@@ -268,7 +265,7 @@ async fn post_oauth_start(
         }
     }
 
-    Ok(Json(json!({
+    Ok(json!({
         "flow": flow_record.flow,
         "authorizationUrl": flow_record.auth_url,
         "userCode": flow_record.user_code,
@@ -276,18 +273,11 @@ async fn post_oauth_start(
         "interval": flow_record.interval,
         "expiresIn": expires_in,
         "flowId": flow_id,
-    })))
+    }))
 }
 
-async fn get_oauth_status(
-    _state: State<AppState>,
-    user: AuthUser,
-    Path(id): Path<String>,
-) -> Result<Json<Value>, ApiError> {
-    require_admin(&user)?;
-
+pub async fn oauth_status_for_user(uid: &str, id: &str) -> Result<Value, ApiError> {
     let provider = id.trim().to_lowercase();
-    let uid = user_id_of(&user);
     let store = get_flow_store();
     let mut lock = store.lock().await;
 
@@ -298,10 +288,35 @@ async fn get_oauth_status(
         flow.status = "expired".into();
     }
 
-    Ok(Json(json!({
+    Ok(json!({
         "status": flow.status,
         "error": flow.error,
-    })))
+        "flow": flow.flow,
+        "authorizationUrl": flow.auth_url,
+        "userCode": flow.user_code,
+        "verificationUri": flow.verification_uri,
+        "flowId": flow.flow_id,
+    }))
+}
+
+async fn post_oauth_start(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    require_admin(&user)?;
+    let uid = user_id_of(&user);
+    Ok(Json(start_oauth_for_user(&state, &uid, &id).await?))
+}
+
+async fn get_oauth_status(
+    _state: State<AppState>,
+    user: AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    require_admin(&user)?;
+    let uid = user_id_of(&user);
+    Ok(Json(oauth_status_for_user(&uid, &id).await?))
 }
 
 async fn post_oauth_callback(

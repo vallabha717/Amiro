@@ -7,7 +7,14 @@ import {
   SecretPromptCard,
   type SecretPromptRequest,
 } from "./credentials/secret-prompt-card";
-import { parseSecretPrompt } from "@/lib/security/secret-detection";
+import {
+  OAuthConnectCard,
+  type OAuthConnectRequest,
+} from "./credentials/oauth-connect-card";
+import {
+  parseSecretPrompt,
+  parseOAuthConnect,
+} from "@/lib/security/secret-detection";
 import { VisualPlaceholder, VisualSurface } from "./visual/visual-surface";
 import equal from "lib/equal";
 import { type ReactNode, memo, useMemo, useState } from "react";
@@ -418,6 +425,7 @@ const PurePreviewMessage = ({
             // The agent added a connector that still needs a key: the user
             // types it into a secure card, whatever the tool filter says.
             const connectorSetups: { server: string; missingSecrets: string[]; id: string }[] = [];
+            const oauthConnects: OAuthConnectRequest[] = [];
             // Vellum-style inline visuals (applet html view) and secret prompt cards
             // render directly in the transcript outside the collapsed work log.
             const inlineVisuals: {
@@ -437,6 +445,10 @@ const PurePreviewMessage = ({
                   const sp = parseSecretPrompt(part.text);
                   if (sp && !secretPrompts.some((x) => x.service === sp.service && x.field === sp.field)) {
                     secretPrompts.push({ ...sp, id: `${message.id}-sp-${i}-${sp.id}` });
+                  }
+                  const oc = parseOAuthConnect(part.text);
+                  if (oc && !oauthConnects.some((x) => x.id === oc.id || (x.provider && x.provider === oc.provider) || (x.server && x.server === oc.server) || (x.toolkit && x.toolkit === oc.toolkit))) {
+                    oauthConnects.push({ ...oc, id: `${message.id}-oc-${i}-${oc.id}` });
                   }
                 }
                 // Filtering hides tool calls only; the agent's prose stays.
@@ -497,6 +509,27 @@ const PurePreviewMessage = ({
                 secretPrompts.push({
                   ...spFromTool,
                   id: `${part.toolCallId}-${spFromTool.id}`,
+                });
+              }
+
+              const ocFromTool =
+                parseOAuthConnect(partInput) ||
+                (part.state === "output-available"
+                  ? parseOAuthConnect(part.output)
+                  : null);
+              if (
+                ocFromTool &&
+                !oauthConnects.some(
+                  (x) =>
+                    x.id === ocFromTool.id ||
+                    (x.provider && x.provider === ocFromTool.provider) ||
+                    (x.server && x.server === ocFromTool.server) ||
+                    (x.toolkit && x.toolkit === ocFromTool.toolkit),
+                )
+              ) {
+                oauthConnects.push({
+                  ...ocFromTool,
+                  id: `${part.toolCallId}-${ocFromTool.id}`,
                 });
               }
               const partImages =
@@ -730,6 +763,22 @@ const PurePreviewMessage = ({
                         id: `${message.id}-tail-sp-${i}-${sp.id}`,
                       });
                     }
+                    const oc = parseOAuthConnect(part.text);
+                    if (
+                      oc &&
+                      !oauthConnects.some(
+                        (x) =>
+                          x.id === oc.id ||
+                          (x.provider && x.provider === oc.provider) ||
+                          (x.server && x.server === oc.server) ||
+                          (x.toolkit && x.toolkit === oc.toolkit),
+                      )
+                    ) {
+                      oauthConnects.push({
+                        ...oc,
+                        id: `${message.id}-tail-oc-${i}-${oc.id}`,
+                      });
+                    }
                   }
                   return renderPart(part, lastToolIndex + 1 + i);
                 })}
@@ -770,6 +819,22 @@ const PurePreviewMessage = ({
                     onDone={
                       isLastMessage && sendMessage
                         ? (text) => sendMessage({ role: "user", parts: [{ type: "text", text }] })
+                        : undefined
+                    }
+                  />
+                ))}
+                {oauthConnects.map((oc) => (
+                  <OAuthConnectCard
+                    key={oc.id}
+                    connect={oc}
+                    readonly={readonly}
+                    onDone={
+                      isLastMessage && sendMessage
+                        ? (text) =>
+                            sendMessage({
+                              role: "user",
+                              parts: [{ type: "text", text }],
+                            })
                         : undefined
                     }
                   />

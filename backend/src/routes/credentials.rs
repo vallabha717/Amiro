@@ -68,6 +68,43 @@ async fn list(State(state): State<AppState>, _user: AuthUser) -> Result<Json<Val
     Ok(Json(json!({ "items": items })))
 }
 
+/// Map bare or `-api` service names to the runtime's API-key provider IDs so
+/// saving a credential in the vault (via the UI or SECRET_PROMPT card) also
+/// provisions the runtime provider immediately.
+fn runtime_provider_for_service(service: &str) -> Option<&'static str> {
+    match service.trim().to_ascii_lowercase().as_str() {
+        "openai" | "openai-api" => Some("openai-api"),
+        "anthropic" | "anthropic-api" | "claude-api" => Some("anthropic-api"),
+        "gemini" | "gemini-api" | "google" | "google-gemini" => Some("gemini-api"),
+        "openrouter" => Some("openrouter"),
+        "groq" => Some("groq"),
+        "xai" | "grok" => Some("xai"),
+        "deepseek" => Some("deepseek"),
+        "mistral" => Some("mistral"),
+        "together" => Some("together"),
+        "fireworks" => Some("fireworks"),
+        "cerebras" => Some("cerebras"),
+        "perplexity" => Some("perplexity"),
+        "cohere" => Some("cohere"),
+        _ => None,
+    }
+}
+
+/// Map search-related vault service names (`tavily`, `search.tavily`, etc.) to
+/// the search provider catalog `(kind, default_label)`.
+fn search_provider_for_service(service: &str) -> Option<(&'static str, &'static str)> {
+    let raw = service.trim().to_ascii_lowercase();
+    let stripped = raw.strip_prefix("search.").unwrap_or(&raw);
+    match stripped {
+        "brave" => Some(("brave", "Brave Search")),
+        "tavily" => Some(("tavily", "Tavily")),
+        "exa" => Some(("exa", "Exa")),
+        "serper" => Some(("serper", "Serper")),
+        "firecrawl" => Some(("firecrawl", "Firecrawl")),
+        _ => None,
+    }
+}
+
 async fn put_credential(
     State(state): State<AppState>,
     user: AuthUser,
@@ -113,6 +150,47 @@ async fn put_credential(
     // Any credential is exported to runtime processes as AMIRO_CRED_*, so a
     // running bridge must pick up the new environment.
     crate::composio_config::refresh_runtime_key(&state);
+
+    // Best-effort automatic provisioning when an API key is saved in the vault:
+    // 1. Sync to runtime LLM provider if service matches a known API-key provider.
+    if matches!(field, "api_key" | "key" | "token") && !value.trim().is_empty() {
+        if let Some(provider_id) = runtime_provider_for_service(service) {
+            let _ = crate::routes::providers_catalog::store_api_key(
+                &state,
+                provider_id,
+                value.trim(),
+                "",
+            )
+            .await;
+        }
+        // 2. Sync to search providers if service is a search provider (e.g. tavily, brave, search.tavily).
+        if let Some((kind, default_label)) = search_provider_for_service(service) {
+            let existing_id = crate::routes::search_providers::list_search_providers_payload(&state)
+                .await
+                .ok()
+                .and_then(|list| {
+                    list.into_iter().find_map(|p| {
+                        (p.get("provider").and_then(Value::as_str) == Some(kind))
+                            .then(|| p.get("id").and_then(Value::as_str).map(str::to_string))
+                            .flatten()
+                    })
+                });
+            let mut payload = json!({
+                "name": label.unwrap_or(default_label),
+                "provider": kind,
+                "apiKey": value.trim(),
+            });
+            if let Some(id) = existing_id {
+                payload["id"] = json!(id);
+            }
+            let _ = crate::routes::search_providers::upsert_search_provider(&state, &payload).await;
+        }
+        // 3. Reload MCP connectors if a connector secret (`mcp.<slug>`) was saved.
+        if service.starts_with("mcp.") {
+            crate::routes::connectors::reload(&state).await;
+        }
+    }
+
     Ok(Json(serde_json::to_value(metadata)?))
 }
 

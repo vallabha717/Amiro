@@ -44,17 +44,8 @@ import { cn } from "lib/utils";
 
 const STT_LANGUAGES = [
   { value: "en", label: "English", code: "en", flag: "🇺🇸" },
-  { value: "multi", label: "Multilingual (Auto-Detect)", code: "multi", flag: "🌐" },
-  { value: "es", label: "Spanish (Español)", code: "es", flag: "🇪🇸" },
-  { value: "fr", label: "French (Français)", code: "fr", flag: "🇫🇷" },
-  { value: "de", label: "German (Deutsch)", code: "de", flag: "🇩🇪" },
   { value: "hi", label: "Hindi (हिन्दी)", code: "hi", flag: "🇮🇳" },
-  { value: "ja", label: "Japanese (日本語)", code: "ja", flag: "🇯🇵" },
-  { value: "ko", label: "Korean (한국어)", code: "ko", flag: "🇰🇷" },
-  { value: "zh", label: "Chinese (中文)", code: "zh", flag: "🇨🇳" },
-  { value: "it", label: "Italian (Italiano)", code: "it", flag: "🇮🇹" },
-  { value: "pt", label: "Portuguese (Português)", code: "pt", flag: "🇵🇹" },
-  { value: "nl", label: "Dutch (Nederlands)", code: "nl", flag: "🇳🇱" },
+  { value: "multi", label: "Multilingual (Auto-Detect)", code: "multi", flag: "🌐" },
 ];
 
 // Curated high-craft voices with descriptions matching Vellum standards

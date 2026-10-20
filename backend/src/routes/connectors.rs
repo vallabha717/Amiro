@@ -525,7 +525,7 @@ async fn runtime_status(state: &AppState) -> Option<Value> {
 // Payloads
 // ---------------------------------------------------------------------------
 
-async fn servers_payload(state: &AppState) -> Result<Value, ApiError> {
+pub async fn servers_payload(state: &AppState) -> Result<Value, ApiError> {
     let composio_configured = crate::composio_config::resolve(state)
         .await
         .map(|key| key.is_some())
@@ -567,7 +567,7 @@ async fn server_response(state: &AppState, name: &str) -> Result<Value, ApiError
     Ok(build_server(name, &entry, &vars, None))
 }
 
-async fn reload(state: &AppState) -> McpReloadOutcome {
+pub async fn reload(state: &AppState) -> McpReloadOutcome {
     invalidate_status_cache();
     crate::runtime::reload_mcp_idle_sessions(state).await
 }
@@ -966,12 +966,10 @@ async fn list(State(state): State<AppState>, _user: AuthUser) -> Result<Json<Val
     Ok(Json(servers_payload(&state).await?))
 }
 
-async fn upsert_custom(
-    State(state): State<AppState>,
-    user: AuthUser,
-    Json(body): Json<Value>,
-) -> Result<Json<Value>, ApiError> {
-    require_admin(&user)?;
+pub async fn upsert_custom_server(
+    state: &AppState,
+    body: &Value,
+) -> Result<Value, ApiError> {
     let name_hint = body
         .get("name")
         .and_then(Value::as_str)
@@ -979,33 +977,42 @@ async fn upsert_custom(
         .trim()
         .to_string();
     let existing = if is_valid_slug(&name_hint) {
-        read_server(&state, &name_hint).await?
+        read_server(state, &name_hint).await?
     } else {
         None
     };
-    let plan = plan_custom(&body, existing.as_ref())?;
+    let plan = plan_custom(body, existing.as_ref())?;
     let service = vault_service(&plan.slug);
 
     for (field, label, value) in &plan.secrets {
         if value.is_empty() {
             continue;
         }
-        credentials::set(&state, &service, field, value, Some(label)).await?;
+        credentials::set(state, &service, field, value, Some(label)).await?;
     }
-    write_mcp_entry_named(&state, &plan.slug, Some(&plan.entry)).await?;
+    write_mcp_entry_named(state, &plan.slug, Some(&plan.entry)).await?;
 
     // Drop vault values the edited entry no longer references.
     if let Some(old) = existing.as_ref() {
         let keep: HashSet<String> = plan.secrets.iter().map(|(f, _, _)| f.clone()).collect();
         for old_ref in secret_refs(&plan.slug, old) {
             if !keep.contains(&old_ref.field) {
-                let _ = credentials::delete(&state, &service, &old_ref.field).await;
+                let _ = credentials::delete(state, &service, &old_ref.field).await;
             }
         }
     }
 
-    reload(&state).await;
-    Ok(Json(server_response(&state, &plan.slug).await?))
+    reload(state).await;
+    server_response(state, &plan.slug).await
+}
+
+async fn upsert_custom(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    require_admin(&user)?;
+    Ok(Json(upsert_custom_server(&state, &body).await?))
 }
 
 async fn put_secrets(
@@ -1053,22 +1060,16 @@ async fn put_secrets(
     Ok(Json(server_response(&state, &name).await?))
 }
 
-async fn set_enabled(
-    State(state): State<AppState>,
-    user: AuthUser,
-    Path(name): Path<String>,
-    Json(body): Json<Value>,
-) -> Result<Json<Value>, ApiError> {
-    require_admin(&user)?;
+pub async fn set_server_enabled(
+    state: &AppState,
+    name: &str,
+    enabled: bool,
+) -> Result<Value, ApiError> {
     if name == AMIRO {
         return Err(bad("the built-in \"amiro\" connector cannot be disabled"));
     }
-    let enabled = body
-        .get("enabled")
-        .and_then(Value::as_bool)
-        .ok_or_else(|| bad("enabled must be a boolean"))?;
-    let (found, _) = mutate_mcp_servers(&state, Some(&name), |servers| {
-        match servers.get_mut(&name).and_then(Value::as_object_mut) {
+    let (found, _) = mutate_mcp_servers(state, Some(name), |servers| {
+        match servers.get_mut(name).and_then(Value::as_object_mut) {
             Some(entry) => {
                 entry.insert("enabled".into(), json!(enabled));
                 entry.remove("disabled");
@@ -1084,33 +1085,45 @@ async fn set_enabled(
             "connector not found".into(),
         ));
     }
-    reload(&state).await;
-    Ok(Json(server_response(&state, &name).await?))
+    reload(state).await;
+    server_response(state, name).await
 }
 
-async fn delete_custom(
+async fn set_enabled(
     State(state): State<AppState>,
     user: AuthUser,
     Path(name): Path<String>,
+    Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
     require_admin(&user)?;
-    if name == COMPOSIO || name == AMIRO || !is_valid_slug(&name) {
+    let enabled = body
+        .get("enabled")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| bad("enabled must be a boolean"))?;
+    Ok(Json(set_server_enabled(&state, &name, enabled).await?))
+}
+
+pub async fn delete_custom_server(
+    state: &AppState,
+    name: &str,
+) -> Result<Value, ApiError> {
+    if name == COMPOSIO || name == AMIRO || !is_valid_slug(name) {
         return Err(bad("invalid connector name"));
     }
     let (removed, _) =
-        mutate_mcp_servers(&state, Some(&name), |servers| servers.remove(&name)).await?;
+        mutate_mcp_servers(state, Some(name), |servers| servers.remove(name)).await?;
     let Some(entry) = removed else {
         return Err(ApiError(
             StatusCode::NOT_FOUND,
             "connector not found".into(),
         ));
     };
-    let service = vault_service(&name);
-    let mut fields: HashSet<String> = secret_refs(&name, &entry)
+    let service = vault_service(name);
+    let mut fields: HashSet<String> = secret_refs(name, &entry)
         .into_iter()
         .map(|s| s.field)
         .collect();
-    if let Ok(items) = credentials::list_metadata(&state).await {
+    if let Ok(items) = credentials::list_metadata(state).await {
         fields.extend(
             items
                 .into_iter()
@@ -1119,10 +1132,19 @@ async fn delete_custom(
         );
     }
     for field in fields {
-        let _ = credentials::delete(&state, &service, &field).await;
+        let _ = credentials::delete(state, &service, &field).await;
     }
-    reload(&state).await;
-    Ok(Json(json!({ "success": true })))
+    reload(state).await;
+    Ok(json!({ "success": true }))
+}
+
+async fn delete_custom(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(name): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    require_admin(&user)?;
+    Ok(Json(delete_custom_server(&state, &name).await?))
 }
 
 async fn reload_route(
@@ -1138,6 +1160,211 @@ async fn reload_route(
     Ok(Json(payload))
 }
 
+// ---------------------------------------------------------------------------
+// Interactive MCP OAuth (start / status / cancel)
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Debug)]
+struct McpOAuthFlow {
+    server: String,
+    authorization_url: String,
+    status: String,
+    error: Option<String>,
+    started_at: Instant,
+    task: Option<tokio::task::AbortHandle>,
+}
+
+type McpFlowStore = std::sync::Arc<tokio::sync::Mutex<HashMap<String, McpOAuthFlow>>>;
+
+fn mcp_flow_store() -> McpFlowStore {
+    static STORE: OnceLock<McpFlowStore> = OnceLock::new();
+    STORE
+        .get_or_init(|| std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new())))
+        .clone()
+}
+
+fn extract_http_url(line: &str) -> Option<String> {
+    for token in line.split_whitespace() {
+        let trimmed = token.trim_matches(|c: char| matches!(c, '"' | '\'' | '<' | '>' | '(' | ')'));
+        if (trimmed.starts_with("https://") || trimmed.starts_with("http://"))
+            && url::Url::parse(trimmed).is_ok()
+        {
+            return Some(trimmed.to_string());
+        }
+    }
+    None
+}
+
+pub async fn start_mcp_oauth(state: &AppState, name: &str) -> Result<Value, ApiError> {
+    use tokio::io::{AsyncBufReadExt, BufReader};
+    use std::process::Stdio;
+
+    let slug = name.trim().to_lowercase();
+    if slug == COMPOSIO || slug == AMIRO || !is_valid_slug(&slug) {
+        return Err(bad("invalid connector name"));
+    }
+    let entry = read_server(state, &slug)
+        .await?
+        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "connector not found".into()))?;
+    if transport_of(&entry) == "stdio" {
+        return Err(bad("OAuth login is only supported for remote HTTP/SSE MCP servers"));
+    }
+
+    let mut cmd = tokio::process::Command::new(&state.runtime_bin);
+    cmd.args(["mcp", "login", &slug, "--no-browser"]);
+    cmd.env("AMIRO_HOME", &state.runtime_home);
+    cmd.env("AMIRO_RUNTIME_HOME", &state.runtime_home);
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    cmd.kill_on_drop(true);
+
+    let mut child = cmd.spawn().map_err(|e| {
+        ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to launch MCP OAuth login: {e}"),
+        )
+    })?;
+
+    let stderr = child.stderr.take().ok_or_else(|| {
+        ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to capture MCP OAuth stderr".into(),
+        )
+    })?;
+
+    let (url_tx, url_rx) = tokio::sync::oneshot::channel::<Result<String, String>>();
+    let store = mcp_flow_store();
+    let store_for_task = store.clone();
+    let state_for_task = state.clone();
+    let slug_for_task = slug.clone();
+
+    let task = tokio::spawn(async move {
+        let mut reader = BufReader::new(stderr).lines();
+        let mut url_tx = Some(url_tx);
+        let mut collected_err = Vec::new();
+
+        while let Ok(Some(line)) = reader.next_line().await {
+            if let Some(found_url) = extract_http_url(&line) {
+                if let Some(tx) = url_tx.take() {
+                    let _ = tx.send(Ok(found_url.clone()));
+                }
+                let mut lock = store_for_task.lock().await;
+                if let Some(flow) = lock.get_mut(&slug_for_task) {
+                    flow.authorization_url = found_url;
+                }
+            } else if !line.trim().is_empty() {
+                collected_err.push(line);
+            }
+        }
+
+        let wait_res = child.wait().await;
+        if let Some(tx) = url_tx.take() {
+            let msg = if collected_err.is_empty() {
+                "MCP OAuth discovery failed before producing an authorization URL".to_string()
+            } else {
+                collected_err.join(" ")
+            };
+            let _ = tx.send(Err(msg));
+        }
+
+        let mut lock = store_for_task.lock().await;
+        if let Some(flow) = lock.get_mut(&slug_for_task) {
+            match wait_res {
+                Ok(status) if status.success() => {
+                    flow.status = "authorized".into();
+                    flow.error = None;
+                    drop(lock);
+                    reload(&state_for_task).await;
+                }
+                _ => {
+                    flow.status = "error".into();
+                    flow.error = Some(if collected_err.is_empty() {
+                        "MCP OAuth login did not complete".into()
+                    } else {
+                        collected_err.join(" ")
+                    });
+                }
+            }
+        }
+    });
+
+    {
+        let mut lock = store.lock().await;
+        if let Some(prev) = lock.insert(
+            slug.clone(),
+            McpOAuthFlow {
+                server: slug.clone(),
+                authorization_url: String::new(),
+                status: "pending".into(),
+                error: None,
+                started_at: Instant::now(),
+                task: Some(task.abort_handle()),
+            },
+        ) {
+            if let Some(t) = prev.task {
+                t.abort();
+            }
+        }
+    }
+
+    match tokio::time::timeout(Duration::from_secs(20), url_rx).await {
+        Ok(Ok(Ok(auth_url))) => Ok(json!({
+            "server": slug,
+            "flow": "authorization_code",
+            "authorizationUrl": auth_url,
+            "status": "pending",
+            "expiresIn": 300,
+        })),
+        Ok(Ok(Err(err))) => Err(ApiError(StatusCode::BAD_REQUEST, err)),
+        _ => Err(ApiError(
+            StatusCode::GATEWAY_TIMEOUT,
+            "Timed out discovering MCP OAuth configuration".into(),
+        )),
+    }
+}
+
+pub async fn get_mcp_oauth_status(name: &str) -> Result<Value, ApiError> {
+    let slug = name.trim().to_lowercase();
+    let store = mcp_flow_store();
+    let mut lock = store.lock().await;
+    let Some(flow) = lock.get_mut(&slug) else {
+        return Err(ApiError(
+            StatusCode::NOT_FOUND,
+            "no active MCP OAuth login flow".into(),
+        ));
+    };
+    if flow.status == "pending" && flow.started_at.elapsed() > Duration::from_secs(300) {
+        flow.status = "expired".into();
+        if let Some(t) = flow.task.take() {
+            t.abort();
+        }
+    }
+    Ok(json!({
+        "server": flow.server,
+        "status": flow.status,
+        "authorizationUrl": flow.authorization_url,
+        "error": flow.error,
+    }))
+}
+
+async fn post_mcp_oauth_start_route(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(name): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    require_admin(&user)?;
+    Ok(Json(start_mcp_oauth(&state, &name).await?))
+}
+
+async fn get_mcp_oauth_status_route(
+    user: AuthUser,
+    Path(name): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    require_admin(&user)?;
+    Ok(Json(get_mcp_oauth_status(&name).await?))
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/connectors", get(list))
@@ -1145,6 +1372,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/connectors/custom/{name}/secrets", put(put_secrets))
         .route("/api/connectors/custom/{name}", delete(delete_custom))
         .route("/api/connectors/{name}/enabled", post(set_enabled))
+        .route("/api/connectors/{name}/oauth/start", post(post_mcp_oauth_start_route))
+        .route("/api/connectors/{name}/oauth/status", get(get_mcp_oauth_status_route))
         .route("/api/connectors/reload", post(reload_route))
 }
 

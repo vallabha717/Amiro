@@ -107,12 +107,9 @@ fn mechanism_of(auth_kind: &str, id: &str) -> &'static str {
     }
 }
 
-async fn get_provider_catalog(
-    State(state): State<AppState>,
-    _user: AuthUser,
-) -> Result<Json<Value>, ApiError> {
-    let list_json = run_cli_json(&state, &["provider", "list", "--json"]).await;
-    let auth_json = run_cli_json(&state, &["auth", "status", "--json"]).await;
+pub async fn catalog_payload(state: &AppState) -> Value {
+    let list_json = run_cli_json(state, &["provider", "list", "--json"]).await;
+    let auth_json = run_cli_json(state, &["auth", "status", "--json"]).await;
 
     let empty_vec = Vec::new();
     let providers_list = list_json
@@ -224,10 +221,17 @@ async fn get_provider_catalog(
             { "id": "groq", "name": "Groq", "mechanism": "api-key", "status": "not_configured" },
             { "id": "openai-compatible", "name": "OpenAI Compatible", "mechanism": "api-key", "status": "not_configured" }
         ]);
-        return Ok(Json(json!({ "providers": default_providers })));
+        return json!({ "providers": default_providers });
     }
 
-    Ok(Json(json!({ "providers": result_providers })))
+    json!({ "providers": result_providers })
+}
+
+async fn get_provider_catalog(
+    State(state): State<AppState>,
+    _user: AuthUser,
+) -> Result<Json<Value>, ApiError> {
+    Ok(Json(catalog_payload(&state).await))
 }
 
 /// Store one API key in the runtime's credential home (`runtime login`).
@@ -359,19 +363,13 @@ async fn post_provider_api_key(
     })))
 }
 
-async fn delete_provider_credentials(
-    State(state): State<AppState>,
-    user: AuthUser,
-    Path(id): Path<String>,
-) -> Result<Json<Value>, ApiError> {
-    require_admin(&user)?;
-
-    let provider_id = id.trim().to_lowercase();
+pub async fn remove_api_key(state: &AppState, provider_id: &str) -> Result<Value, ApiError> {
+    let provider_id = provider_id.trim().to_lowercase();
     if provider_id.is_empty() {
         return Err(ApiError(StatusCode::BAD_REQUEST, "provider id required".to_string()));
     }
 
-    let file = env_file_path(&state, &provider_id);
+    let file = env_file_path(state, &provider_id);
     let _ = tokio::fs::remove_file(&file).await;
     let _ = tokio::fs::remove_file(format!("{}.bak", file.to_string_lossy())).await;
 
@@ -379,10 +377,19 @@ async fn delete_provider_credentials(
     // its static catalog), so the cached copy must not outlive the change.
     crate::models::invalidate_catalog();
 
-    Ok(Json(json!({
+    Ok(json!({
         "ok": true,
         "provider": provider_id,
-    })))
+    }))
+}
+
+async fn delete_provider_credentials(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    require_admin(&user)?;
+    Ok(Json(remove_api_key(&state, &id).await?))
 }
 
 pub fn routes() -> Router<AppState> {

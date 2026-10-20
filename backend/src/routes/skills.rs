@@ -43,6 +43,7 @@ fn bundled_skill(name: &str) -> Option<&'static str> {
 /// Write every bundled skill into `<runtime_home>/skills/<name>/SKILL.md`,
 /// replacing an older copy, so the runtime offers the current version.
 pub fn install_bundled_skills(state: &AppState) {
+    // 1. Install hardcoded essentials
     for (name, markdown) in BUNDLED_AGENT_SKILLS {
         let dir = state.runtime_home.join("skills").join(name);
         let path = dir.join("SKILL.md");
@@ -53,6 +54,33 @@ pub fn install_bundled_skills(state: &AppState) {
             std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&path, markdown))
         {
             eprintln!("skills: could not install bundled skill {name}: {error}");
+        }
+    }
+
+    // 2. Install all skills from agent-skills folder if present
+    let candidate_dirs = [
+        state.home.parent().unwrap_or(&state.home).join("agent-skills"),
+        PathBuf::from("agent-skills"),
+    ];
+    for source_dir in candidate_dirs {
+        if let Ok(entries) = std::fs::read_dir(&source_dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with('.') || name.starts_with('_') {
+                    continue;
+                }
+                let skill_file = entry.path().join("SKILL.md");
+                if skill_file.is_file() {
+                    if let Ok(markdown) = std::fs::read_to_string(&skill_file) {
+                        let dir = state.runtime_home.join("skills").join(&name);
+                        let path = dir.join("SKILL.md");
+                        if std::fs::read_to_string(&path).ok().as_deref() != Some(&markdown) {
+                            let _ = std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&path, &markdown));
+                        }
+                    }
+                }
+            }
+            break;
         }
     }
 }
@@ -343,7 +371,11 @@ fn discover_skills(
     // Developer skills (this repo's .agents/skills, ~/.codex/skills) are not
     // the agent's and are never listed.
     let _ = &codex_home;
-    let mut roots = vec![(state.runtime_home.join("skills"), "user", ".amiro")];
+    let mut roots = vec![
+        (state.runtime_home.join("skills"), "user", ".amiro"),
+        (state.home.parent().unwrap_or(&state.home).join("agent-skills"), "user", "bundled"),
+        (PathBuf::from("agent-skills"), "user", "bundled"),
+    ];
     if project_dir.is_some() {
         roots.push((repo_root.join(".amiro").join("skills"), "project", ".amiro"));
         roots.push((repo_root.join(".jcode").join("skills"), "project", ".amiro"));

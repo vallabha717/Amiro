@@ -526,7 +526,7 @@ fn build_settings_view(
     (tts, stt)
 }
 
-async fn settings_payload(state: &AppState) -> Result<Value, ApiError> {
+pub async fn settings_payload(state: &AppState) -> Result<Value, ApiError> {
     let settings = load_settings(state).await?;
     let hints = credential_hints(state).await;
     let (tts, stt) = build_settings_view(&settings, &hints);
@@ -597,16 +597,15 @@ fn validate_provider(catalog: &[Value], provider: &str) -> Result<Value, ApiErro
         .ok_or_else(|| bad_request(&format!("unknown voice provider: {provider}")))
 }
 
-async fn put_settings(
-    State(state): State<AppState>,
-    _user: AuthUser,
-    Json(body): Json<Value>,
-) -> Result<Json<Value>, ApiError> {
+pub async fn apply_settings_update(
+    state: &AppState,
+    body: &Value,
+) -> Result<Value, ApiError> {
     let mut ops: Vec<CredOp> = Vec::new();
 
     {
         let _guard = state.store.lock().await;
-        let mut settings = load_settings(&state).await?;
+        let mut settings = load_settings(state).await?;
 
         if let Some(enabled) = body.get("readAloudEnabled").and_then(Value::as_bool) {
             settings["readAloudEnabled"] = json!(enabled);
@@ -614,11 +613,11 @@ async fn put_settings(
         if let Some(enabled) = body.get("autoReadAloud").and_then(Value::as_bool) {
             settings["autoReadAloud"] = json!(enabled);
         }
-        if let Some(provider) = non_empty(&body, "ttsProvider") {
+        if let Some(provider) = non_empty(body, "ttsProvider") {
             validate_provider(&tts_catalog(), provider)?;
             settings["ttsProvider"] = json!(provider);
         }
-        if let Some(provider) = non_empty(&body, "sttProvider") {
+        if let Some(provider) = non_empty(body, "sttProvider") {
             validate_provider(&stt_catalog(), provider)?;
             settings["sttProvider"] = json!(provider);
         }
@@ -677,7 +676,7 @@ async fn put_settings(
             collect_cred_ops(&mut ops, "stt", &provider, &spec, update);
         }
 
-        write_json(&settings_path(&state), &settings).await?;
+        write_json(&settings_path(state), &settings).await?;
     }
 
     for op in ops {
@@ -687,15 +686,23 @@ async fn put_settings(
                 value,
                 label,
             } => {
-                credentials::set(&state, &service, "api_key", &value, Some(&label)).await?;
+                credentials::set(state, &service, "api_key", &value, Some(&label)).await?;
             }
             CredOp::Delete { service } => {
-                credentials::delete(&state, &service, "api_key").await?;
+                credentials::delete(state, &service, "api_key").await?;
             }
         }
     }
 
-    Ok(Json(settings_payload(&state).await?))
+    settings_payload(state).await
+}
+
+async fn put_settings(
+    State(state): State<AppState>,
+    _user: AuthUser,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    Ok(Json(apply_settings_update(&state, &body).await?))
 }
 
 fn non_empty_map(map: &Map<String, Value>, key: &str) -> Option<String> {
@@ -1341,19 +1348,15 @@ async fn transcribe(
     })))
 }
 
-async fn list_voices(
-    State(state): State<AppState>,
-    _user: AuthUser,
-    Json(body): Json<Value>,
-) -> Result<Json<Value>, ApiError> {
-    let settings = load_settings(&state).await?;
-    let provider = non_empty(&body, "provider")
+pub async fn list_voices_payload(state: &AppState, body: &Value) -> Result<Value, ApiError> {
+    let settings = load_settings(state).await?;
+    let provider = non_empty(body, "provider")
         .map(str::to_string)
         .unwrap_or_else(|| text(&settings, "ttsProvider").to_string());
     let spec = spec_for(&tts_catalog(), &provider)
         .ok_or_else(|| bad_request(&format!("unknown tts provider: {provider}")))?;
 
-    let base = non_empty(&body, "baseUrl")
+    let base = non_empty(body, "baseUrl")
         .map(|value| value.trim_end_matches('/').to_string())
         .unwrap_or_else(|| {
             resolve_saved_string(
@@ -1364,7 +1367,7 @@ async fn list_voices(
                 text(&spec, "defaultBaseUrl"),
             )
         });
-    let api_key = resolve_key(&state, "tts", &provider, non_empty(&body, "apiKey")).await?;
+    let api_key = resolve_key(state, "tts", &provider, non_empty(body, "apiKey")).await?;
 
     let default_voices: Vec<Value> = spec
         .get("voices")
@@ -1416,7 +1419,7 @@ async fn list_voices(
                                 })
                                 .collect();
                             if !voices.is_empty() {
-                                return Ok(Json(json!({ "provider": provider, "voices": voices })));
+                                return Ok(json!({ "provider": provider, "voices": voices }));
                             }
                         }
                     }
@@ -1448,7 +1451,7 @@ async fn list_voices(
                                 })
                                 .collect();
                             if !voices.is_empty() {
-                                return Ok(Json(json!({ "provider": provider, "voices": voices })));
+                                return Ok(json!({ "provider": provider, "voices": voices }));
                             }
                         }
                     }
@@ -1495,7 +1498,7 @@ async fn list_voices(
                                 })
                                 .collect();
                             if !voices.is_empty() {
-                                return Ok(Json(json!({ "provider": provider, "voices": voices })));
+                                return Ok(json!({ "provider": provider, "voices": voices }));
                             }
                         }
                     }
@@ -1504,10 +1507,18 @@ async fn list_voices(
         }
     }
 
-    Ok(Json(json!({
+    Ok(json!({
         "provider": provider,
         "voices": default_voices,
-    })))
+    }))
+}
+
+async fn list_voices(
+    State(state): State<AppState>,
+    _user: AuthUser,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    Ok(Json(list_voices_payload(&state, &body).await?))
 }
 
 pub fn routes() -> Router<AppState> {

@@ -21,6 +21,21 @@ import { Skeleton } from "ui/skeleton";
 
 type SuperpowerFilter = "all" | "builtin" | "custom" | "project";
 
+const CATEGORIES = [
+  "all",
+  "integrations",
+  "voice",
+  "email",
+  "calendar",
+  "messaging",
+  "productivity",
+  "development",
+  "content",
+  "system",
+  "commerce",
+] as const;
+type CategoryFilter = (typeof CATEGORIES)[number];
+
 /** Where a skill comes from, as the user thinks of it. */
 function kindOf(skill: SkillSummary): "builtin" | "project" | "custom" {
   if (skill.bundled) return "builtin";
@@ -47,6 +62,7 @@ export function SkillsList() {
 
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<SuperpowerFilter>("all");
+  const [category, setCategory] = useState<CategoryFilter>("all");
   const [duplicatingName, setDuplicatingName] = useState<string | null>(null);
 
   const items = data?.items ?? [];
@@ -56,6 +72,7 @@ export function SkillsList() {
     const q = query.trim().toLowerCase();
     return items.filter((s) => {
       if (filter !== "all" && kindOf(s) !== filter) return false;
+      if (category !== "all" && (s.category || "").toLowerCase() !== category) return false;
       if (!q) return true;
       return (
         s.name.toLowerCase().includes(q) ||
@@ -64,7 +81,7 @@ export function SkillsList() {
         (s.category || "").toLowerCase().includes(q)
       );
     });
-  }, [items, query, filter]);
+  }, [items, query, filter, category]);
 
   const handleUseInChat = useCallback(
     (skill: SkillSummary, e: React.MouseEvent) => {
@@ -223,6 +240,25 @@ export function SkillsList() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Category Pills */}
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-border/50 pb-3" role="group" aria-label="Filter by category">
+        {CATEGORIES.map((cat) => (
+          <button
+            key={cat}
+            type="button"
+            onClick={() => setCategory(cat)}
+            className={cn(
+              "cursor-pointer rounded-lg px-2.5 py-1 text-[11px] font-medium capitalize transition-colors",
+              category === cat
+                ? "bg-primary/10 text-primary font-semibold"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            )}
+          >
+            {cat === "all" ? "All Categories" : cat}
+          </button>
+        ))}
       </div>
 
       {/* Content */}

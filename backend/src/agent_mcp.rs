@@ -322,6 +322,120 @@ pub fn tool_definitions() -> Vec<Value> {
         json!({"name":"schedule_delete","description":"Delete a schedule (run history is kept).","inputSchema":{"type":"object","properties":{"id":id},"required":["id"],"additionalProperties":false}}),
         json!({"name":"schedule_run_now","description":"Run a schedule immediately and return the run result.","inputSchema":{"type":"object","properties":{"id":id},"required":["id"],"additionalProperties":false}}),
         json!({"name":"schedule_runs","description":"Recent runs of a schedule (status, times, output or error, result thread). Use this to read logs.","inputSchema":{"type":"object","properties":{"id":id,"limit":{"type":"integer","minimum":1,"maximum":50,"default":5}},"required":["id"],"additionalProperties":false}}),
+        // --- Models & Providers configuration ---
+        json!({"name":"provider_catalog","description":"List all supported LLM providers, their auth mechanism (oauth, device-code, api-key, local-endpoint), connection status, and available models.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}}),
+        json!({"name":"provider_models","description":"List available models for a specific LLM provider or all connected providers.","inputSchema":{"type":"object","properties":{
+            "provider":{"type":"string","description":"Optional provider id (e.g. openai, claude, gemini, openrouter, groq, openai-compatible)"}
+        },"additionalProperties":false}}),
+        json!({"name":"provider_configure_from_vault","description":"Configure and connect an API-key LLM provider using its secret stored in the encrypted vault (never pass raw keys in chat). If the key is not in the vault yet, returns a SECRET_PROMPT card so the user can enter it securely in the UI.","inputSchema":{"type":"object","properties":{
+            "provider":{"type":"string","description":"Provider ID (e.g. openai-api, anthropic-api, gemini-api, openrouter, groq, xai, deepseek, openai-compatible)"},
+            "credential_service":{"type":"string","description":"Optional vault service name (defaults to provider ID)"},
+            "credential_field":{"type":"string","description":"Optional vault field name (defaults to api_key)"},
+            "api_base":{"type":"string","description":"Base URL for openai-compatible endpoints (e.g. https://host/v1)"}
+        },"required":["provider"],"additionalProperties":false}}),
+        json!({"name":"provider_oauth_start","description":"Start an interactive OAuth or device-code login flow for an LLM provider (claude, openai, gemini, antigravity, copilot, google) and emit an OAUTH_CONNECT interactive card in chat with the login link.","inputSchema":{"type":"object","properties":{
+            "provider":{"type":"string","description":"OAuth provider ID (claude, openai, gemini, antigravity, copilot, google)"}
+        },"required":["provider"],"additionalProperties":false}}),
+        json!({"name":"provider_oauth_status","description":"Check the status of an active LLM provider OAuth/device-code login flow.","inputSchema":{"type":"object","properties":{
+            "provider":{"type":"string","description":"OAuth provider ID"}
+        },"required":["provider"],"additionalProperties":false}}),
+        json!({"name":"provider_set_default_model","description":"Set Amiro's default chat model (the one new chats start on and Admin shows as \"Default model\"). For \"provider:model\" pass the part before the first colon as provider and the rest, verbatim, as model.","inputSchema":{"type":"object","properties":{
+            "provider":{"type":"string","description":"Connected provider ID, e.g. opencode-go"},
+            "model":{"type":"string","description":"Model ID exactly as the provider lists it, e.g. deepseek-v4.1-flash"}
+        },"required":["provider","model"],"additionalProperties":false}}),
+        json!({"name":"provider_disconnect","description":"Remove stored credentials for an API-key LLM provider.","inputSchema":{"type":"object","properties":{
+            "provider":{"type":"string","description":"Provider ID"}
+        },"required":["provider"],"additionalProperties":false}}),
+        // --- Voice (TTS / STT / Live Voice) configuration ---
+        json!({"name":"voice_settings_get","description":"Get current Voice & Speech settings, including active TTS/STT providers, models, voices, language, read-aloud preferences, and provider catalogs.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}}),
+        json!({"name":"voice_config_update","description":"Update Voice & Speech configuration (TTS provider, TTS voice ID, TTS model, TTS speed, STT provider, STT model, STT language, read-aloud toggles).","inputSchema":{"type":"object","properties":{
+            "setting":{"type":"string","enum":["tts_provider","tts_voice_id","tts_model","tts_speed","tts_base_url","stt_provider","stt_model","stt_language","stt_base_url","read_aloud_enabled","auto_read_aloud"],"description":"The voice setting to update (optional if passing direct fields below)."},
+            "value":{"description":"New value for `setting` when using Vellum-style `{setting, value}`."},
+            "tts_provider":{"type":"string","description":"Active TTS provider (elevenlabs, openai, deepgram, fish-audio, xai, custom-openai, browser-native)"},
+            "tts_model":{"type":"string","description":"TTS model ID"},
+            "tts_voice_id":{"type":"string","description":"TTS voice ID or Aura model ID"},
+            "tts_speed":{"type":"number","description":"TTS playback speed (0.25 to 4.0)"},
+            "tts_base_url":{"type":"string","description":"Custom base URL for TTS provider"},
+            "stt_provider":{"type":"string","description":"Active STT provider (deepgram, openai, groq, elevenlabs, xai, custom-openai, browser-native)"},
+            "stt_model":{"type":"string","description":"STT model ID (e.g. nova-3, whisper-1, scribe_v1)"},
+            "stt_language":{"type":"string","description":"STT language code (e.g. en, multi, es, fr, de, hi, ja)"},
+            "stt_base_url":{"type":"string","description":"Custom base URL for STT provider"},
+            "read_aloud_enabled":{"type":"boolean"},
+            "auto_read_aloud":{"type":"boolean"}
+        },"additionalProperties":false}}),
+        json!({"name":"voice_list_voices","description":"List available voices for a TTS provider (queries live voice library when an API key is configured in the vault).","inputSchema":{"type":"object","properties":{
+            "provider":{"type":"string","description":"TTS provider ID (elevenlabs, openai, deepgram, fish-audio, xai, custom-openai)"}
+        },"additionalProperties":false}}),
+        // --- Web Search Providers configuration ---
+        json!({"name":"search_providers_list","description":"List all supported web search provider types (catalog), all configured search providers, and the currently active default search provider.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}}),
+        json!({"name":"search_provider_configure","description":"Configure, add, or update a web search provider (duckduckgo, bing, brave, tavily, exa, serper, firecrawl, searxng, custom, inference-provider-native). Reads API keys automatically from the encrypted vault (`<provider>/api_key` or `search.<provider>/api_key`). If a required key is missing, emits a SECRET_PROMPT card.","inputSchema":{"type":"object","properties":{
+            "provider":{"type":"string","description":"Search provider kind (duckduckgo, bing, brave, tavily, exa, serper, firecrawl, searxng, custom, inference-provider-native)"},
+            "name":{"type":"string","description":"Display name for the search provider"},
+            "base_url":{"type":"string","description":"Base URL for searxng, firecrawl, or custom HTTP JSON search"},
+            "set_active":{"type":"boolean","description":"Whether to immediately set this provider as the active default search provider (default true)"},
+            "custom":{"type":"object","description":"Optional custom HTTP JSON search configuration (endpoint, method, query_param, count_param, results_pointer, title_pointer, url_pointer, snippet_pointer)"}
+        },"required":["provider"],"additionalProperties":false}}),
+        json!({"name":"search_provider_activate","description":"Set a configured web search provider as the active default.","inputSchema":{"type":"object","properties":{
+            "id":{"type":"string","description":"Search provider ID, kind (e.g. tavily, duckduckgo, brave), or name"}
+        },"required":["id"],"additionalProperties":false}}),
+        json!({"name":"search_provider_test","description":"Run a live search test against a configured search provider and report latency and result count.","inputSchema":{"type":"object","properties":{
+            "id":{"type":"string","description":"Search provider ID, kind, or name"}
+        },"required":["id"],"additionalProperties":false}}),
+        json!({"name":"search_provider_delete","description":"Delete a configured search provider.","inputSchema":{"type":"object","properties":{
+            "id":{"type":"string","description":"Search provider ID"}
+        },"required":["id"],"additionalProperties":false}}),
+        // --- MCP Connectors & Composio OAuth ---
+        json!({"name":"mcp_connectors_list","description":"List all MCP connectors and Composio status from the unified Connectors registry.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}}),
+        json!({"name":"mcp_oauth_start","description":"Start an interactive browser OAuth flow for a remote MCP server (e.g. linear, notion, figma, sentry) and emit an OAUTH_CONNECT card with the authorization URL.","inputSchema":{"type":"object","properties":{
+            "server":{"type":"string","description":"Configured remote MCP server slug"}
+        },"required":["server"],"additionalProperties":false}}),
+        json!({"name":"mcp_oauth_status","description":"Check the status of an active MCP server OAuth login flow.","inputSchema":{"type":"object","properties":{
+            "server":{"type":"string","description":"Configured remote MCP server slug"}
+        },"required":["server"],"additionalProperties":false}}),
+        json!({"name":"composio_toolkits_list","description":"List available 1-click OAuth app toolkits from Composio (Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Outlook, etc.) and their connection status.","inputSchema":{"type":"object","properties":{
+            "search":{"type":"string","description":"Optional search query (e.g. gmail, slack, github, linear, notion)"},
+            "limit":{"type":"integer","description":"Max items to return (default 20)"}
+        },"additionalProperties":false}}),
+        json!({"name":"composio_connect_start","description":"Start a 1-click OAuth connection for a Composio app toolkit (e.g. gmail, googlecalendar, slack, github, notion, linear) and emit an OAUTH_CONNECT card in chat with the OAuth redirect link.","inputSchema":{"type":"object","properties":{
+            "toolkit":{"type":"string","description":"Composio toolkit slug (e.g. gmail, googlecalendar, slack, github, notion, linear)"},
+            "callback_url":{"type":"string","description":"Optional callback URL"}
+        },"required":["toolkit"],"additionalProperties":false}}),
+        json!({"name":"composio_connection_status","description":"Check the status of a Composio connected account and sync its tools into the runtime MCP config when active.","inputSchema":{"type":"object","properties":{
+            "connection_id":{"type":"string","description":"Composio connection ID returned by composio_connect_start"}
+        },"required":["connection_id"],"additionalProperties":false}}),
+        // --- File Artifacts (Vellum-style workspace documents) ---
+        json!({"name":"artifact_create","description":"Create a file artifact the user can view in the artifact panel (markdown, html, code, csv, pdf, docx). Use when the user asks for a document, report, or export, or when you produce one from chat. Saved under workspace/artifacts and shown in the UI.","inputSchema":{"type":"object","properties":{
+            "title":{"type":"string","description":"Display title"},
+            "kind":{"type":"string","description":"markdown, html, code, text, csv, json, pdf or docx (inferred from filename when omitted)"},
+            "language":{"type":"string","description":"Code language for kind=code (e.g. python, typescript)"},
+            "filename":{"type":"string","description":"Filename with extension, e.g. report.md, index.html, data.csv"},
+            "mime":{"type":"string","description":"Optional MIME override"},
+            "contentText":{"type":"string","description":"UTF-8 text content (for markdown, html, code, csv, text)"},
+            "contentBase64":{"type":"string","description":"Base64 bytes (for pdf, docx, or any binary); use instead of contentText"}
+        },"additionalProperties":false}}),
+        json!({"name":"artifact_list","description":"List the owner's file artifacts (the same ones shown in the artifact panel).","inputSchema":{"type":"object","properties":{},"additionalProperties":false}}),
+        json!({"name":"artifact_read","description":"Read one file artifact (metadata plus inline text when it is a small text artifact).","inputSchema":{"type":"object","properties":{"id":{"type":"string","description":"Artifact id from artifact_list"}},"required":["id"],"additionalProperties":false}}),
+        json!({"name":"artifact_update","description":"Update a file artifact's title and/or content (revises the saved workspace file).","inputSchema":{"type":"object","properties":{
+            "id":{"type":"string"},
+            "title":{"type":"string"},
+            "contentText":{"type":"string"},
+            "contentBase64":{"type":"string"}
+        },"required":["id"],"additionalProperties":false}}),
+        json!({"name":"artifact_delete","description":"Delete a file artifact and its workspace file.","inputSchema":{"type":"object","properties":{"id":{"type":"string"}},"required":["id"],"additionalProperties":false}}),
+        // --- Encrypted Vault & Interactive UI Surfaces ---
+        json!({"name":"credentials_list","description":"List all credentials stored in Amiro's encrypted vault (metadata and env var names only, never secret values).","inputSchema":{"type":"object","properties":{},"additionalProperties":false}}),
+        json!({"name":"ui_prompt_secret","description":"Render an encrypted secret input card in the chat UI so the user can securely enter an API key, token, or secret into the vault without ever typing it in plain chat.","inputSchema":{"type":"object","properties":{
+            "service":{"type":"string","description":"Vault service slug (e.g. openai, anthropic, elevenlabs, deepgram, tavily, composio, github)"},
+            "field":{"type":"string","description":"Vault field slug (default: api_key)"},
+            "label":{"type":"string","description":"Human-readable label shown on the card (e.g. 'ElevenLabs API Key')"},
+            "description":{"type":"string","description":"Short instructions on where to get the key and what it unlocks"},
+            "placeholder":{"type":"string","description":"Input placeholder (e.g. 'sk-...')"},
+            "purpose":{"type":"string","description":"Purpose badge shown on the card"},
+            "allowed_domains":{"type":"array","items":{"type":"string"},"description":"Optional allowed domains for brokered requests"}
+        },"required":["service","label"],"additionalProperties":false}}),
+        json!({"name":"ui_navigate","description":"Emit an interactive navigation card or open a specific Amiro settings/admin/superpowers page for the user.","inputSchema":{"type":"object","properties":{
+            "page":{"type":"string","enum":["providers","voice","search","connectors","credentials","integrations","general","notifications","usage","schedules","superpowers","personality","memory","workspace"],"description":"Target Amiro page to open or link to"}
+        },"required":["page"],"additionalProperties":false}}),
     ]
 }
 
@@ -341,6 +455,17 @@ fn require_str<'a>(args: &'a Value, key: &str) -> Result<&'a str, String> {
     arg_str(args, key)?
         .filter(|s| !s.trim().is_empty())
         .ok_or_else(|| format!("{key} is required"))
+}
+
+async fn active_provider(state: &AppState, key: &str, fallback: &str) -> Result<String, String> {
+    Ok(crate::routes::voice::settings_payload(state)
+        .await
+        .map_err(err_text)?
+        .get("settings")
+        .and_then(|settings| settings.get(key))
+        .and_then(Value::as_str)
+        .unwrap_or(fallback)
+        .to_string())
 }
 
 fn parse_time(raw: &Value, label: &str) -> Result<(u32, u32), String> {
@@ -653,6 +778,753 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<(String
             };
             Ok((text, json!({"runs": views})))
         }
+
+        // ===================================================================
+        // LLM Models & Providers
+        // ===================================================================
+        "provider_catalog" => {
+            let catalog = crate::routes::providers_catalog::catalog_payload(state).await;
+            let providers = catalog.get("providers").and_then(Value::as_array).cloned().unwrap_or_default();
+            let mut summary_lines = Vec::new();
+            for p in &providers {
+                let id = p.get("id").and_then(Value::as_str).unwrap_or("");
+                let name = p.get("display_name").or_else(|| p.get("name")).and_then(Value::as_str).unwrap_or(id);
+                let mechanism = p.get("mechanism").and_then(Value::as_str).unwrap_or("unknown");
+                let connected = p.get("connected").and_then(Value::as_bool).unwrap_or(false);
+                summary_lines.push(format!(
+                    "- **{}** (`{}`): {} · {}",
+                    name,
+                    id,
+                    mechanism,
+                    if connected { "Connected" } else { "Not configured" }
+                ));
+            }
+            let text = format!(
+                "Amiro supports {} provider(s):\n{}",
+                providers.len(),
+                summary_lines.join("\n")
+            );
+            Ok((text, catalog))
+        }
+
+        "provider_models" => {
+            let provider_filter = arg_str(args, "provider")?.map(str::to_lowercase);
+            let catalog = crate::models::build_catalog(state).await;
+            let providers = catalog.get("providers").and_then(Value::as_array).cloned().unwrap_or_default();
+            let filtered: Vec<Value> = providers
+                .into_iter()
+                .filter(|p| {
+                    if let Some(ref wanted) = provider_filter {
+                        p.get("id").and_then(Value::as_str).map(|s| s.eq_ignore_ascii_case(wanted)).unwrap_or(false)
+                    } else {
+                        true
+                    }
+                })
+                .collect();
+            let mut lines = Vec::new();
+            for p in &filtered {
+                let id = p.get("id").and_then(Value::as_str).unwrap_or("");
+                let name = p.get("name").and_then(Value::as_str).unwrap_or(id);
+                let models: Vec<&str> = p.get("models").and_then(Value::as_array)
+                    .map(|arr| arr.iter().filter_map(Value::as_str).collect())
+                    .unwrap_or_default();
+                let selected = p.get("selectedModel").and_then(Value::as_str).unwrap_or("");
+                lines.push(format!(
+                    "### {} (`{}`)\nSelected: `{selected}`\nModels ({}): {}",
+                    name,
+                    id,
+                    models.len(),
+                    if models.is_empty() { "none available (connect provider first)".to_string() } else { models.join(", ") }
+                ));
+            }
+            let text = if lines.is_empty() {
+                format!("No models found for provider filter \"{}\".", provider_filter.unwrap_or_default())
+            } else {
+                lines.join("\n\n")
+            };
+            Ok((text, json!({"providers": filtered})))
+        }
+
+        "provider_configure_from_vault" => {
+            let provider = require_str(args, "provider")?.to_lowercase();
+            let cred_service = arg_str(args, "credential_service")?
+                .map(str::to_string)
+                .unwrap_or_else(|| provider.clone());
+            let cred_field = arg_str(args, "credential_field")?
+                .map(str::to_string)
+                .unwrap_or_else(|| "api_key".to_string());
+            let api_base = arg_str(args, "api_base")?.unwrap_or("");
+
+            // Check if credential exists in vault
+            let secret_opt = crate::credentials::get_plaintext(state, &cred_service, &cred_field).await.map_err(err_text)?;
+            match secret_opt {
+                Some(secret) => {
+                    let key = secret.expose();
+                    crate::routes::providers_catalog::store_api_key(state, &provider, key, api_base).await.map_err(err_text)?;
+                    let text = format!("Successfully connected provider \"{provider}\" using the encrypted credential in vault ({cred_service}/{cred_field}).");
+                    Ok((text, json!({"provider": provider, "connected": true})))
+                }
+                None => {
+                    // Prompt the user securely via SECRET_PROMPT card
+                    let label = format!("{provider} API Key");
+                    let prompt_json = json!({
+                        "service": cred_service,
+                        "field": cred_field,
+                        "label": label,
+                        "description": format!("Enter your {provider} API key. It is saved directly to Amiro's encrypted vault and never shown in chat."),
+                        "purpose": "Model provider authentication",
+                        "placeholder": "sk-..."
+                    });
+                    let text = format!(
+                        "A secret for provider \"{provider}\" ({cred_service}/{cred_field}) is not in the vault yet. \
+                        Please enter it in the secure card below.\n\n\
+                        SECRET_PROMPT {}",
+                        prompt_json
+                    );
+                    Ok((text, json!({"status": "needs_secret", "prompt": prompt_json})))
+                }
+            }
+        }
+
+        "provider_oauth_start" => {
+            let provider = require_str(args, "provider")?.to_lowercase();
+            let flow_res = crate::routes::provider_login::start_oauth_for_user(state, &uid, &provider).await.map_err(err_text)?;
+            let auth_url = flow_res.get("authorizationUrl").and_then(Value::as_str).unwrap_or("");
+            let user_code = flow_res.get("userCode").and_then(Value::as_str);
+            let flow_type = flow_res.get("flow").and_then(Value::as_str).unwrap_or("authorization_code");
+            
+            let connect_card = json!({
+                "type": "provider",
+                "provider": provider,
+                "flow": flow_type,
+                "authorizationUrl": auth_url,
+                "userCode": user_code,
+            });
+
+            let text = if let Some(code) = user_code {
+                format!(
+                    "Device code authorization started for **{provider}**!\n\
+                    1. Open the login URL: [{auth_url}]({auth_url})\n\
+                    2. Enter your code: `{code}`\n\n\
+                    OAUTH_CONNECT {}",
+                    connect_card
+                )
+            } else {
+                format!(
+                    "Click the link below to authorize **{provider}**:\n\
+                    👉 [Authorize {provider}]({auth_url})\n\n\
+                    After approving in your browser, return here to complete setup.\n\n\
+                    OAUTH_CONNECT {}",
+                    connect_card
+                )
+            };
+            Ok((text, flow_res))
+        }
+
+        "provider_oauth_status" => {
+            let provider = require_str(args, "provider")?.to_lowercase();
+            let status = crate::routes::provider_login::oauth_status_for_user(&uid, &provider).await.map_err(err_text)?;
+            let st = status.get("status").and_then(Value::as_str).unwrap_or("unknown");
+            let text = format!("OAuth status for \"{provider}\": **{st}**");
+            Ok((text, status))
+        }
+
+        "provider_set_default_model" => {
+            let provider = require_str(args, "provider")?;
+            let model = require_str(args, "model")?;
+            let route = crate::models::set_runtime_default_model(state, provider, model)
+                .await
+                .map_err(err_text)?;
+            let text = format!("Default model updated to `{route}`.");
+            Ok((text, json!({"provider": provider, "model": route})))
+        }
+
+        "provider_disconnect" => {
+            let provider = require_str(args, "provider")?.to_lowercase();
+            let res = crate::routes::providers_catalog::remove_api_key(state, &provider).await.map_err(err_text)?;
+            let text = format!("Disconnected provider \"{provider}\" and removed its API key.");
+            Ok((text, res))
+        }
+
+        // ===================================================================
+        // Voice (TTS / STT / Live Voice)
+        // ===================================================================
+        "voice_settings_get" => {
+            let payload = crate::routes::voice::settings_payload(state).await.map_err(err_text)?;
+            let settings = payload.get("settings").unwrap_or(&payload);
+            let tts_p = settings.get("ttsProvider").and_then(Value::as_str).unwrap_or("browser-native");
+            let stt_p = settings.get("sttProvider").and_then(Value::as_str).unwrap_or("browser-native");
+            let lang = settings.get("sttLanguage").and_then(Value::as_str).unwrap_or("en");
+            let text = format!(
+                "**Voice & Speech Configuration**:\n\
+                - **TTS Provider**: `{tts_p}`\n\
+                - **STT Provider**: `{stt_p}` (Language: `{lang}`)\n\
+                - **Read Aloud**: enabled={}, auto={}",
+                settings.get("readAloudEnabled").and_then(Value::as_bool).unwrap_or(true),
+                settings.get("autoReadAloud").and_then(Value::as_bool).unwrap_or(false)
+            );
+            Ok((text, payload))
+        }
+
+        "voice_config_update" => {
+            // Support both Vellum's setting/value pattern and direct parameter updates
+            let mut update_body = json!({});
+            if let Some(setting) = arg_str(args, "setting")? {
+                let val = args.get("value").cloned().unwrap_or(Value::Null);
+                match setting {
+                    "tts_provider" => {
+                        update_body["ttsProvider"] = val;
+                    }
+                    "stt_provider" => {
+                        update_body["sttProvider"] = val;
+                    }
+                    "stt_language" => {
+                        update_body["sttLanguage"] = val.clone();
+                        let provider =
+                            active_provider(state, "sttProvider", "deepgram").await?;
+                        update_body["sttProviderUpdate"] =
+                            json!({ "provider": provider, "language": val });
+                    }
+                    "tts_speed" => {
+                        let provider =
+                            active_provider(state, "ttsProvider", "elevenlabs").await?;
+                        update_body["ttsProviderUpdate"] =
+                            json!({ "provider": provider, "speed": val });
+                    }
+                    "tts_base_url" => {
+                        let provider =
+                            active_provider(state, "ttsProvider", "elevenlabs").await?;
+                        update_body["ttsProviderUpdate"] =
+                            json!({ "provider": provider, "baseUrl": val });
+                    }
+                    "stt_base_url" => {
+                        let provider =
+                            active_provider(state, "sttProvider", "deepgram").await?;
+                        update_body["sttProviderUpdate"] =
+                            json!({ "provider": provider, "baseUrl": val });
+                    }
+                    "tts_voice_id" => {
+                        let provider = crate::routes::voice::settings_payload(state).await.map_err(err_text)?
+                            .get("settings")
+                            .and_then(|s| s.get("ttsProvider"))
+                            .and_then(Value::as_str)
+                            .unwrap_or("elevenlabs")
+                            .to_string();
+                        update_body["ttsProviderUpdate"] = json!({
+                            "provider": provider,
+                            "voiceId": val,
+                        });
+                    }
+                    "tts_model" => {
+                        let provider = crate::routes::voice::settings_payload(state).await.map_err(err_text)?
+                            .get("settings")
+                            .and_then(|s| s.get("ttsProvider"))
+                            .and_then(Value::as_str)
+                            .unwrap_or("elevenlabs")
+                            .to_string();
+                        update_body["ttsProviderUpdate"] = json!({
+                            "provider": provider,
+                            "model": val,
+                        });
+                    }
+                    "stt_model" => {
+                        let provider = crate::routes::voice::settings_payload(state).await.map_err(err_text)?
+                            .get("settings")
+                            .and_then(|s| s.get("sttProvider"))
+                            .and_then(Value::as_str)
+                            .unwrap_or("deepgram")
+                            .to_string();
+                        update_body["sttProviderUpdate"] = json!({
+                            "provider": provider,
+                            "model": val,
+                        });
+                    }
+                    "read_aloud_enabled" => {
+                        update_body["readAloudEnabled"] = val;
+                    }
+                    "auto_read_aloud" => {
+                        update_body["autoReadAloud"] = val;
+                    }
+                    _ => {}
+                }
+            } else {
+                if let Some(tts_p) = arg_str(args, "tts_provider")? {
+                    update_body["ttsProvider"] = json!(tts_p);
+                }
+                if let Some(stt_p) = arg_str(args, "stt_provider")? {
+                    update_body["sttProvider"] = json!(stt_p);
+                }
+                if let Some(lang) = arg_str(args, "stt_language")? {
+                    update_body["sttLanguage"] = json!(lang);
+                }
+                if let Some(enabled) = args.get("read_aloud_enabled").and_then(Value::as_bool) {
+                    update_body["readAloudEnabled"] = json!(enabled);
+                }
+                if let Some(auto) = args.get("auto_read_aloud").and_then(Value::as_bool) {
+                    update_body["autoReadAloud"] = json!(auto);
+                }
+                let tts_voice = arg_str(args, "tts_voice_id")?;
+                let tts_model = arg_str(args, "tts_model")?;
+                let tts_base = arg_str(args, "tts_base_url")?;
+                let tts_speed = args.get("tts_speed").and_then(Value::as_f64);
+                if tts_voice.is_some()
+                    || tts_model.is_some()
+                    || tts_base.is_some()
+                    || tts_speed.is_some()
+                {
+                    let provider = match arg_str(args, "tts_provider")? {
+                        Some(provider) => provider.to_string(),
+                        None => active_provider(state, "ttsProvider", "elevenlabs").await?,
+                    };
+                    let mut p_up = json!({ "provider": provider });
+                    if let Some(voice) = tts_voice { p_up["voiceId"] = json!(voice); }
+                    if let Some(model) = tts_model { p_up["model"] = json!(model); }
+                    if let Some(base) = tts_base { p_up["baseUrl"] = json!(base); }
+                    if let Some(speed) = tts_speed { p_up["speed"] = json!(speed); }
+                    update_body["ttsProviderUpdate"] = p_up;
+                }
+                let stt_model = arg_str(args, "stt_model")?;
+                let stt_base = arg_str(args, "stt_base_url")?;
+                let stt_language = arg_str(args, "stt_language")?;
+                if stt_model.is_some() || stt_base.is_some() || stt_language.is_some() {
+                    let provider = match arg_str(args, "stt_provider")? {
+                        Some(provider) => provider.to_string(),
+                        None => active_provider(state, "sttProvider", "deepgram").await?,
+                    };
+                    let mut p_up = json!({ "provider": provider });
+                    if let Some(model) = stt_model { p_up["model"] = json!(model); }
+                    if let Some(base) = stt_base { p_up["baseUrl"] = json!(base); }
+                    if let Some(language) = stt_language { p_up["language"] = json!(language); }
+                    update_body["sttProviderUpdate"] = p_up;
+                }
+            }
+
+            let res = crate::routes::voice::apply_settings_update(state, &update_body).await.map_err(err_text)?;
+            let text = "Voice configuration updated successfully.".to_string();
+            Ok((text, res))
+        }
+
+        "voice_list_voices" => {
+            let provider = arg_str(args, "provider")?.unwrap_or("");
+            let body = if provider.is_empty() { json!({}) } else { json!({"provider": provider}) };
+            let res = crate::routes::voice::list_voices_payload(state, &body).await.map_err(err_text)?;
+            let voices = res.get("voices").and_then(Value::as_array).cloned().unwrap_or_default();
+            let mut lines = Vec::new();
+            for v in &voices {
+                let id = v.get("id").and_then(Value::as_str).unwrap_or("");
+                let name = v.get("name").and_then(Value::as_str).unwrap_or(id);
+                lines.push(format!("- **{}** (`{}`)", name, id));
+            }
+            let text = format!("Available voices ({}):\n{}", voices.len(), lines.join("\n"));
+            Ok((text, res))
+        }
+
+        // ===================================================================
+        // Web Search Providers
+        // ===================================================================
+        "search_providers_list" => {
+            let active = crate::routes::search_providers::active_search_payload(state).await.map_err(err_text)?;
+            let providers = crate::routes::search_providers::list_search_providers_payload(state).await.map_err(err_text)?;
+            let catalog = crate::routes::search_providers::search_catalog();
+            let active_label = active.get("label").and_then(Value::as_str).unwrap_or("None");
+
+            let mut lines = Vec::new();
+            lines.push(format!("**Active default search provider**: {}", active_label));
+            lines.push("\n**Configured Search Providers**:".to_string());
+            for p in &providers {
+                let name = p.get("name").and_then(Value::as_str).unwrap_or("");
+                let kind = p.get("provider").and_then(Value::as_str).unwrap_or("");
+                let is_act = p.get("isActive").and_then(Value::as_bool).unwrap_or(false);
+                let id = p.get("id").and_then(Value::as_str).unwrap_or("");
+                lines.push(format!("- **{}** (`{}`): ID `{}` {}", name, kind, id, if is_act { "★ (active)" } else { "" }));
+            }
+            let text = lines.join("\n");
+            Ok((text, json!({"active": active, "providers": providers, "catalog": catalog})))
+        }
+
+        "search_provider_configure" => {
+            let provider_kind = require_str(args, "provider")?.to_lowercase();
+            let name = arg_str(args, "name")?.unwrap_or(&provider_kind);
+            let base_url = arg_str(args, "base_url")?;
+            let custom = args.get("custom").cloned();
+            let set_active = args.get("set_active").and_then(Value::as_bool).unwrap_or(true);
+
+            // Check if key is needed and if it's already in vault
+            let needs_key = matches!(provider_kind.as_str(), "brave" | "tavily" | "exa" | "serper" | "firecrawl");
+            let mut api_key = String::new();
+            if needs_key {
+                // Try `<provider_kind>/api_key` or `search.<provider_kind>/api_key`
+                if let Some(secret) = crate::credentials::get_plaintext(state, &provider_kind, "api_key").await.map_err(err_text)? {
+                    api_key = secret.expose().to_string();
+                } else if let Some(secret) = crate::credentials::get_plaintext(state, &format!("search.{provider_kind}"), "api_key").await.map_err(err_text)? {
+                    api_key = secret.expose().to_string();
+                } else {
+                    let prompt = json!({
+                        "service": format!("search.{provider_kind}"),
+                        "field": "api_key",
+                        "label": format!("{name} Search API Key"),
+                        "description": format!("API key for {name} web search. Entered secrets are encrypted in Amiro's vault."),
+                        "purpose": "Web search provider",
+                        "placeholder": "API key..."
+                    });
+                    let text = format!(
+                        "An API key for search provider \"{name}\" is needed. Please enter it securely in the card below:\n\n\
+                        SECRET_PROMPT {}",
+                        prompt
+                    );
+                    return Ok((text, json!({"status": "needs_secret", "prompt": prompt})));
+                }
+            }
+
+            let mut config_body = json!({
+                "name": name,
+                "provider": provider_kind,
+                "apiKey": api_key,
+            });
+            if let Some(base) = base_url { config_body["baseUrl"] = json!(base); }
+            if let Some(c) = custom { config_body["custom"] = c; }
+
+            let res = crate::routes::search_providers::upsert_search_provider(state, &config_body).await.map_err(err_text)?;
+            let id = res.get("id").and_then(Value::as_str).unwrap_or("");
+            if set_active && !id.is_empty() {
+                let _ = crate::routes::search_providers::set_active_search_provider(state, id).await;
+            }
+            let text = format!("Search provider \"{name}\" ({provider_kind}) configured successfully{}.", if set_active { " and activated as default" } else { "" });
+            Ok((text, res))
+        }
+
+        "search_provider_activate" => {
+            let id = require_str(args, "id")?;
+            let res = crate::routes::search_providers::set_active_search_provider(state, id).await.map_err(err_text)?;
+            let text = format!("Search provider `{id}` activated as default.");
+            Ok((text, res))
+        }
+
+        "search_provider_test" => {
+            let id = require_str(args, "id")?;
+            let res = crate::routes::search_providers::run_search_provider_test(state, id).await.map_err(err_text)?;
+            let ok = res.get("ok").and_then(Value::as_bool).unwrap_or(false);
+            let count = res.get("count").and_then(Value::as_u64).unwrap_or(0);
+            let ms = res.get("latencyMs").and_then(Value::as_u64).unwrap_or(0);
+            let err = res.get("error").and_then(Value::as_str).unwrap_or("");
+            let text = if ok {
+                format!("Search test successful ({count} results returned in {ms}ms).")
+            } else {
+                format!("Search test failed: {err}")
+            };
+            Ok((text, res))
+        }
+
+        "search_provider_delete" => {
+            let id = require_str(args, "id")?;
+            let res = crate::routes::search_providers::remove_search_provider(state, id).await.map_err(err_text)?;
+            let text = format!("Deleted search provider `{id}`.");
+            Ok((text, res))
+        }
+
+        // ===================================================================
+        // MCP Connectors & Composio OAuth
+        // ===================================================================
+        "mcp_connectors_list" => {
+            let payload = crate::routes::connectors::servers_payload(state).await.map_err(err_text)?;
+            let servers = payload.get("servers").and_then(Value::as_array).cloned().unwrap_or_default();
+            let composio_cfg = payload.get("composio").and_then(|c| c.get("configured")).and_then(Value::as_bool).unwrap_or(false);
+            let mut lines = Vec::new();
+            lines.push(format!("**Composio 1-Click Apps**: {}", if composio_cfg { "Connected" } else { "Not configured" }));
+            lines.push("\n**Connectors / MCP Servers**:".to_string());
+            for s in &servers {
+                let name = s.get("name").and_then(Value::as_str).unwrap_or("");
+                let status = s.get("status").and_then(Value::as_str).unwrap_or("unknown");
+                let transport = s.get("transport").and_then(Value::as_str).unwrap_or("");
+                let tools_cnt = s.get("tools").and_then(Value::as_array).map(|a| a.len()).unwrap_or(0);
+                lines.push(format!("- **{}** (`{}`): status `{}` ({} tools)", name, transport, status, tools_cnt));
+            }
+            let text = lines.join("\n");
+            Ok((text, payload))
+        }
+
+        "mcp_oauth_start" => {
+            let server = require_str(args, "server")?;
+            let flow_res = crate::routes::connectors::start_mcp_oauth(state, server).await.map_err(err_text)?;
+            let auth_url = flow_res.get("authorizationUrl").and_then(Value::as_str).unwrap_or("");
+            let card = json!({
+                "type": "mcp",
+                "server": server,
+                "flow": "authorization_code",
+                "authorizationUrl": auth_url,
+            });
+            let text = format!(
+                "OAuth login started for MCP server **{server}**!\n\
+                👉 [Authorize {server}]({auth_url})\n\n\
+                Click the link to sign in, then return here once approved.\n\n\
+                OAUTH_CONNECT {}",
+                card
+            );
+            Ok((text, flow_res))
+        }
+
+        "mcp_oauth_status" => {
+            let server = require_str(args, "server")?;
+            let status = crate::routes::connectors::get_mcp_oauth_status(server).await.map_err(err_text)?;
+            let st = status.get("status").and_then(Value::as_str).unwrap_or("unknown");
+            let text = format!("OAuth status for MCP server \"{server}\": **{st}**");
+            Ok((text, status))
+        }
+
+        "composio_toolkits_list" => {
+            let search = arg_str(args, "search")?;
+            let limit_str = args.get("limit").and_then(Value::as_u64).map(|n| n.to_string());
+            let res = crate::routes::composio::list_toolkits_for_user(state, &uid, search, limit_str.as_deref()).await.map_err(err_text)?;
+            let items = res.get("items").and_then(Value::as_array).cloned().unwrap_or_default();
+            let mut lines = Vec::new();
+            for item in &items {
+                let slug = item.get("slug").and_then(Value::as_str).unwrap_or("");
+                let name = item.get("name").and_then(Value::as_str).unwrap_or(slug);
+                let connected = item.get("connected").and_then(Value::as_bool).unwrap_or(false);
+                let desc = item.get("description").and_then(Value::as_str).unwrap_or("");
+                lines.push(format!("- **{}** (`{}`): {} · {}", name, slug, if connected { "Connected" } else { "Available" }, desc));
+            }
+            let text = format!("Composio toolkits ({}):\n{}", items.len(), lines.join("\n"));
+            Ok((text, res))
+        }
+
+        "composio_connect_start" => {
+            let toolkit = require_str(args, "toolkit")?;
+            let callback_url = arg_str(args, "callback_url")?;
+            let res = crate::routes::composio::start_connect_for_user(state, &uid, toolkit, callback_url).await.map_err(err_text)?;
+            let redirect_url = res.get("redirectUrl").and_then(Value::as_str).unwrap_or("");
+            let connection_id = res.get("connectionId").and_then(Value::as_str).unwrap_or("");
+            let card = json!({
+                "type": "composio",
+                "toolkit": toolkit,
+                "connectionId": connection_id,
+                "redirectUrl": redirect_url,
+                "authorizationUrl": redirect_url,
+            });
+            let text = format!(
+                "Connect **{toolkit}** in 1 click:\n\
+                👉 [Log in to {toolkit}]({redirect_url})\n\n\
+                After signing in, return here and I'll confirm your connection.\n\n\
+                OAUTH_CONNECT {}",
+                card
+            );
+            Ok((text, res))
+        }
+
+        "composio_connection_status" => {
+            let connection_id = require_str(args, "connection_id")?;
+            let res = crate::routes::composio::connection_status_for_user(state, &uid, connection_id).await.map_err(err_text)?;
+            let status = res.get("status").and_then(Value::as_str).unwrap_or("UNKNOWN");
+            let text = format!("Connection status for `{connection_id}`: **{status}**");
+            Ok((text, res))
+        }
+
+        // ===================================================================
+        // Encrypted Vault & Interactive UI Cards
+        // ===================================================================
+        "credentials_list" => {
+            let items = crate::credentials::list_metadata(state).await.map_err(err_text)?;
+            let mut lines = Vec::new();
+            for item in &items {
+                lines.push(format!(
+                    "- **{}/{}** (`${}`): {} (updated: {})",
+                    item.service,
+                    item.field,
+                    item.env_var,
+                    item.label.as_deref().unwrap_or(item.hint.as_str()),
+                    item.updated_at
+                ));
+            }
+            let text = format!("Credentials in encrypted vault ({}):\n{}", items.len(), lines.join("\n"));
+            Ok((text, json!({"items": items})))
+        }
+
+        "ui_prompt_secret" => {
+            let service = require_str(args, "service")?;
+            let field = arg_str(args, "field")?.unwrap_or("api_key");
+            let label = require_str(args, "label")?;
+            let desc = arg_str(args, "description")?;
+            let placeholder = arg_str(args, "placeholder")?.unwrap_or("••••");
+            let purpose = arg_str(args, "purpose")?;
+            let domains = args.get("allowed_domains").cloned().unwrap_or(json!([]));
+
+            let prompt_card = json!({
+                "service": service,
+                "field": field,
+                "label": label,
+                "description": desc,
+                "placeholder": placeholder,
+                "purpose": purpose,
+                "allowedDomains": domains,
+            });
+
+            let text = format!(
+                "Please enter the required secret in the encrypted card below:\n\n\
+                SECRET_PROMPT {}",
+                prompt_card
+            );
+            Ok((text, prompt_card))
+        }
+
+        "artifact_list" => {
+            let doc = crate::state::read_json(
+                &state.home.join("store").join("artifacts.json"),
+                serde_json::json!({}),
+            )
+            .await
+            .map_err(err_text)?;
+            let mut items: Vec<Value> = doc
+                .as_object()
+                .map(|m| {
+                    m.values()
+                        .filter(|e| e.get("ownerId").and_then(|v| v.as_str()) == Some(&uid))
+                        .cloned()
+                        .collect()
+                })
+                .unwrap_or_default();
+            items.sort_by(|a, b| {
+                b.get("createdAt")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .cmp(a.get("createdAt").and_then(|v| v.as_str()).unwrap_or(""))
+            });
+            let text = if items.is_empty() {
+                "No artifacts yet.".to_string()
+            } else {
+                format!(
+                    "{} artifact(s):\n{}",
+                    items.len(),
+                    items
+                        .iter()
+                        .map(|a| format!(
+                            "- {} (`{}`): {} [{}]",
+                            a["title"].as_str().unwrap_or(""),
+                            a["id"].as_str().unwrap_or(""),
+                            a["filename"].as_str().unwrap_or(""),
+                            a["kind"].as_str().unwrap_or("")
+                        ))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                )
+            };
+            Ok((text, json!({"artifacts": items})))
+        }
+        "artifact_create" => {
+            let bytes = match (args.get("contentText"), args.get("contentBase64")) {
+                (Some(Value::String(t)), None) | (Some(Value::String(t)), Some(Value::Null)) => {
+                    t.as_bytes().to_vec()
+                }
+                (None, Some(Value::String(b))) | (Some(Value::Null), Some(Value::String(b))) => {
+                    use base64::Engine;
+                    base64::engine::general_purpose::STANDARD
+                        .decode(b.trim())
+                        .map_err(|_| "contentBase64 is not valid base64".to_string())?
+                }
+                _ => return Err("contentText or contentBase64 is required (exactly one)".into()),
+            };
+            let opt = |k: &str| args.get(k).and_then(Value::as_str).map(str::to_string);
+            let entry = crate::routes::artifacts::create_artifact_record(
+                state,
+                &uid,
+                opt("title"),
+                opt("kind"),
+                opt("language"),
+                opt("filename"),
+                opt("mime"),
+                None,
+                bytes,
+            )
+            .await
+            .map_err(err_text)?;
+            Ok((
+                format!(
+                    "Created artifact \"{}\" ({}). It is saved under {} and can be opened from the Files tab in the artifact panel.",
+                    entry["title"].as_str().unwrap_or(""),
+                    entry["filename"].as_str().unwrap_or(""),
+                    entry["workspacePath"].as_str().unwrap_or("")
+                ),
+                json!({"artifact": entry}),
+            ))
+        }
+        "artifact_read" => {
+            let id = require_str(args, "id")?;
+            let doc = crate::state::read_json(
+                &state.home.join("store").join("artifacts.json"),
+                serde_json::json!({}),
+            )
+            .await
+            .map_err(err_text)?;
+            let entry = doc.get(id).ok_or_else(|| format!("Artifact \"{id}\" not found"))?;
+            if entry.get("ownerId").and_then(|v| v.as_str()) != Some(&uid) {
+                return Err(format!("Artifact \"{id}\" not found"));
+            }
+            Ok((
+                format!(
+                    "Artifact \"{}\" ({}).",
+                    entry["title"].as_str().unwrap_or(""),
+                    entry["filename"].as_str().unwrap_or("")
+                ),
+                json!({"artifact": entry}),
+            ))
+        }
+        "artifact_update" => {
+            let id = require_str(args, "id")?;
+            let bytes = match (args.get("contentText"), args.get("contentBase64")) {
+                (None, None) | (Some(Value::Null), Some(Value::Null)) => None,
+                (Some(Value::String(t)), None) | (Some(Value::String(t)), Some(Value::Null)) => {
+                    Some(t.as_bytes().to_vec())
+                }
+                (None, Some(Value::String(b))) | (Some(Value::Null), Some(Value::String(b))) => {
+                    use base64::Engine;
+                    Some(
+                        base64::engine::general_purpose::STANDARD
+                            .decode(b.trim())
+                            .map_err(|_| "contentBase64 is not valid base64".to_string())?,
+                    )
+                }
+                _ => return Err("Provide contentText or contentBase64, not both".into()),
+            };
+            let title = args.get("title").and_then(Value::as_str).map(str::to_string);
+            if title.is_none() && bytes.is_none() {
+                return Err("nothing to update: provide title and/or content".into());
+            }
+            let entry = crate::routes::artifacts::update_artifact_record(state, &uid, id, title, bytes)
+                .await
+                .map_err(err_text)?;
+            Ok((
+                format!("Updated artifact \"{}\".", entry["title"].as_str().unwrap_or("")),
+                json!({"artifact": entry}),
+            ))
+        }
+        "artifact_delete" => {
+            let id = require_str(args, "id")?;
+            crate::routes::artifacts::delete_artifact_record(state, &uid, id)
+                .await
+                .map_err(err_text)?;
+            Ok((format!("Deleted artifact {id}."), json!({"deleted": id})))
+        }
+        "ui_navigate" => {
+            let page = require_str(args, "page")?;
+            let (title, path) = match page {
+                "providers" => ("Models & Providers", "/admin/providers"),
+                "voice" => ("Voice & Speech", "/admin/voice"),
+                "search" => ("Search Providers", "/admin/search"),
+                "connectors" => ("App Connectors & MCP", "/connectors"),
+                "credentials" => ("Encrypted Credentials Vault", "/admin/credentials"),
+                "integrations" => ("Integrations & MCP", "/admin/integrations"),
+                "general" => ("General Settings", "/admin/general"),
+                "notifications" => ("Notifications", "/admin/notifications"),
+                "usage" => ("Usage & Limits", "/admin/usage"),
+                "schedules" => ("Schedules", "/schedules"),
+                "superpowers" => ("Superpowers (Skills)", "/skills"),
+                "personality" => ("Agent Personality", "/agent/personality"),
+                "memory" => ("Agent Memory", "/agent/memory"),
+                "workspace" => ("Agent Workspace", "/agent/workspace"),
+                _ => ("Settings", "/admin/general"),
+            };
+            let text = format!("Opened [**{}**]({}) in Amiro.", title, path);
+            Ok((text, json!({"page": page, "title": title, "path": path})))
+        }
         other => Err(format!("unknown tool \"{other}\"")),
     }
 }
@@ -943,17 +1815,20 @@ mod tests {
             .iter()
             .map(|t| t["name"].as_str().unwrap())
             .collect();
-        assert_eq!(
-            names,
-            [
-                "schedule_list",
-                "schedule_create",
-                "schedule_update",
-                "schedule_delete",
-                "schedule_run_now",
-                "schedule_runs"
-            ]
-        );
+        assert!(names.contains(&"schedule_list"));
+        assert!(names.contains(&"provider_catalog"));
+        assert!(names.contains(&"provider_configure_from_vault"));
+        assert!(names.contains(&"provider_oauth_start"));
+        assert!(names.contains(&"voice_settings_get"));
+        assert!(names.contains(&"voice_config_update"));
+        assert!(names.contains(&"search_providers_list"));
+        assert!(names.contains(&"search_provider_configure"));
+        assert!(names.contains(&"mcp_connectors_list"));
+        assert!(names.contains(&"mcp_oauth_start"));
+        assert!(names.contains(&"composio_toolkits_list"));
+        assert!(names.contains(&"composio_connect_start"));
+        assert!(names.contains(&"ui_prompt_secret"));
+        assert!(names.contains(&"ui_navigate"));
         for tool in body["result"]["tools"].as_array().unwrap() {
             assert_eq!(tool["inputSchema"]["type"], "object");
             assert!(tool["description"].is_string());

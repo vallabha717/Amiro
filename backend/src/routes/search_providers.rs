@@ -36,7 +36,7 @@ fn store_path(state: &AppState, key: &str) -> PathBuf {
 
 // Only providers whose protocol we actually implement are advertised. Old records
 // for removed offerings (including Vellum) remain in storage, but are not eligible.
-fn search_catalog() -> Vec<Value> {
+pub fn search_catalog() -> Vec<Value> {
     vec![
         json!({"kind":"duckduckgo","label":"DuckDuckGo","extracts":false,"freeTier":"Free HTML search, no API key required","docs":"https://duckduckgo.com","keyless":true}),
         json!({"kind":"bing","label":"Bing Search","extracts":false,"freeTier":"Free HTML search, optional API key","docs":"https://www.bing.com","keyless":true}),
@@ -475,11 +475,8 @@ fn mask_key(key: &str) -> String {
     )
 }
 
-async fn get_search_active(
-    State(state): State<AppState>,
-    _user: AuthUser,
-) -> Result<Json<Value>, ApiError> {
-    let doc = read_json(&store_path(&state, STORE), json!({})).await?;
+pub async fn active_search_payload(state: &AppState) -> Result<Value, ApiError> {
+    let doc = read_json(&store_path(state, STORE), json!({})).await?;
     let registry = build_registry(&doc)?;
     if let Some(id) = registry.get("default_provider").and_then(Value::as_str) {
         let active = &doc[id];
@@ -488,11 +485,18 @@ async fn get_search_active(
             .into_iter()
             .find(|spec| text(spec, "kind") == kind)
             .unwrap();
-        return Ok(Json(
-            json!({"configured":true,"provider":kind,"label":spec["label"],"extracts":spec["extracts"]}),
-        ));
+        return Ok(
+            json!({"configured":true,"id":id,"name":active["name"],"provider":kind,"label":spec["label"],"extracts":spec["extracts"]}),
+        );
     }
-    Ok(Json(json!({"configured":false})))
+    Ok(json!({"configured":false}))
+}
+
+async fn get_search_active(
+    State(state): State<AppState>,
+    _user: AuthUser,
+) -> Result<Json<Value>, ApiError> {
+    Ok(Json(active_search_payload(&state).await?))
 }
 
 async fn get_search_catalog(user: AuthUser) -> Result<Json<Value>, ApiError> {
@@ -500,12 +504,8 @@ async fn get_search_catalog(user: AuthUser) -> Result<Json<Value>, ApiError> {
     Ok(Json(Value::Array(search_catalog())))
 }
 
-async fn get_search_providers(
-    State(state): State<AppState>,
-    user: AuthUser,
-) -> Result<Json<Value>, ApiError> {
-    require_admin(&user)?;
-    let doc = read_json(&store_path(&state, STORE), json!({})).await?;
+pub async fn list_search_providers_payload(state: &AppState) -> Result<Vec<Value>, ApiError> {
+    let doc = read_json(&store_path(state, STORE), json!({})).await?;
     let mut result = Vec::new();
     for (id, record) in doc.as_object().ok_or_else(|| {
         ApiError(
@@ -525,7 +525,15 @@ async fn get_search_providers(
             "extracts":spec.map(|s|s["extracts"].clone()).unwrap_or(json!(false)),"baseUrl":record["baseUrl"],"custom":custom_value(record).cloned().unwrap_or(Value::Null),
         }));
     }
-    Ok(Json(Value::Array(result)))
+    Ok(result)
+}
+
+async fn get_search_providers(
+    State(state): State<AppState>,
+    user: AuthUser,
+) -> Result<Json<Value>, ApiError> {
+    require_admin(&user)?;
+    Ok(Json(Value::Array(list_search_providers_payload(&state).await?)))
 }
 
 async fn save_and_sync(state: &AppState, mut doc: Value) -> Result<(), ApiError> {
@@ -546,14 +554,12 @@ async fn save_and_sync(state: &AppState, mut doc: Value) -> Result<(), ApiError>
     sync_search_to_runtime_config(state, &doc).await
 }
 
-async fn post_search_provider(
-    State(state): State<AppState>,
-    user: AuthUser,
-    Json(body): Json<Value>,
-) -> Result<Json<Value>, ApiError> {
-    require_admin(&user)?;
-    let name = text(&body, "name").trim();
-    let kind = text(&body, "provider").trim();
+pub async fn upsert_search_provider(
+    state: &AppState,
+    body: &Value,
+) -> Result<Value, ApiError> {
+    let name = text(body, "name").trim();
+    let kind = text(body, "provider").trim();
     if name.is_empty() {
         return Err(bad_request("name is required"));
     }
@@ -563,18 +569,18 @@ async fn post_search_provider(
     {
         return Err(bad_request("unknown or unsupported search provider"));
     }
-    let id = if text(&body, "id").trim().is_empty() {
+    let id = if text(body, "id").trim().is_empty() {
         Uuid::new_v4().to_string()
     } else {
-        text(&body, "id").into()
+        text(body, "id").into()
     };
     let _lock = state.store.lock().await;
-    let mut doc = read_json(&store_path(&state, STORE), json!({})).await?;
+    let mut doc = read_json(&store_path(state, STORE), json!({})).await?;
     let existing = doc.get(&id);
-    let key = if text(&body, "apiKey").trim().is_empty() {
+    let key = if text(body, "apiKey").trim().is_empty() {
         existing.map(|record| text(record, "apiKey")).unwrap_or("")
     } else {
-        text(&body, "apiKey").trim()
+        text(body, "apiKey").trim()
     };
     let record = json!({
         "id":id,"name":name,"provider":kind,"apiKey":key,
@@ -595,8 +601,33 @@ async fn post_search_provider(
             )
         })?
         .insert(id.clone(), record);
-    save_and_sync(&state, doc).await?;
-    Ok(Json(json!({"id":id})))
+    save_and_sync(state, doc).await?;
+    Ok(json!({"id":id}))
+}
+
+async fn post_search_provider(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    require_admin(&user)?;
+    Ok(Json(upsert_search_provider(&state, &body).await?))
+}
+
+pub async fn remove_search_provider(state: &AppState, id: &str) -> Result<Value, ApiError> {
+    let _lock = state.store.lock().await;
+    let mut doc = read_json(&store_path(state, STORE), json!({})).await?;
+    let map = doc.as_object_mut().ok_or_else(|| {
+        ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "search provider store must be a JSON object".into(),
+        )
+    })?;
+    if map.remove(id).is_none() {
+        return Err(ApiError(StatusCode::NOT_FOUND, "provider not found".into()));
+    }
+    save_and_sync(state, doc).await?;
+    Ok(json!({"success":true}))
 }
 
 async fn delete_search_provider(
@@ -605,19 +636,38 @@ async fn delete_search_provider(
     Path(id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
     require_admin(&user)?;
+    Ok(Json(remove_search_provider(&state, &id).await?))
+}
+
+pub async fn set_active_search_provider(state: &AppState, id: &str) -> Result<Value, ApiError> {
     let _lock = state.store.lock().await;
-    let mut doc = read_json(&store_path(&state, STORE), json!({})).await?;
-    let map = doc.as_object_mut().ok_or_else(|| {
-        ApiError(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "search provider store must be a JSON object".into(),
-        )
-    })?;
-    if map.remove(&id).is_none() {
-        return Err(ApiError(StatusCode::NOT_FOUND, "provider not found".into()));
+    let mut doc = read_json(&store_path(state, STORE), json!({})).await?;
+    // Allow matching either by record ID or by provider kind / name if unique
+    let resolved_id = if doc.get(id).is_some() {
+        id.to_string()
+    } else {
+        doc.as_object()
+            .and_then(|map| {
+                map.iter()
+                    .find(|(_, r)| {
+                        text(r, "provider").eq_ignore_ascii_case(id)
+                            || text(r, "name").eq_ignore_ascii_case(id)
+                    })
+                    .map(|(k, _)| k.clone())
+            })
+            .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "provider not found".into()))?
+    };
+    let record = doc
+        .get(&resolved_id)
+        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "provider not found".into()))?;
+    if runtime_record(record)?.is_none() {
+        return Err(bad_request("provider is unsupported or not configured"));
     }
-    save_and_sync(&state, doc).await?;
-    Ok(Json(json!({"success":true})))
+    for (key, record) in doc.as_object_mut().unwrap() {
+        record["isActive"] = json!(key == &resolved_id);
+    }
+    save_and_sync(state, doc).await?;
+    Ok(json!({"success":true, "id": resolved_id}))
 }
 
 async fn activate_search_provider(
@@ -626,19 +676,7 @@ async fn activate_search_provider(
     Path(id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
     require_admin(&user)?;
-    let _lock = state.store.lock().await;
-    let mut doc = read_json(&store_path(&state, STORE), json!({})).await?;
-    let record = doc
-        .get(&id)
-        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "provider not found".into()))?;
-    if runtime_record(record)?.is_none() {
-        return Err(bad_request("provider is unsupported or not configured"));
-    }
-    for (key, record) in doc.as_object_mut().unwrap() {
-        record["isActive"] = json!(key == &id);
-    }
-    save_and_sync(&state, doc).await?;
-    Ok(Json(json!({"success":true})))
+    Ok(Json(set_active_search_provider(&state, &id).await?))
 }
 
 fn custom_request(
@@ -757,21 +795,37 @@ async fn execute_provider_test(record: &Value) -> Result<(bool, usize, Option<St
     }
 }
 
+pub async fn run_search_provider_test(state: &AppState, id: &str) -> Result<Value, ApiError> {
+    let doc = read_json(&store_path(state, STORE), json!({})).await?;
+    let resolved_id = if doc.get(id).is_some() {
+        id.to_string()
+    } else {
+        doc.as_object()
+            .and_then(|map| {
+                map.iter()
+                    .find(|(_, r)| {
+                        text(r, "provider").eq_ignore_ascii_case(id)
+                            || text(r, "name").eq_ignore_ascii_case(id)
+                    })
+                    .map(|(k, _)| k.clone())
+            })
+            .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "provider not found".into()))?
+    };
+    let record = doc
+        .get(&resolved_id)
+        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "provider not found".into()))?;
+    let start = std::time::Instant::now();
+    let (ok, count, error) = execute_provider_test(record).await?;
+    Ok(json!({"ok":ok,"provider":record["provider"],"latencyMs":start.elapsed().as_millis() as u64,"count":count,"error":error}))
+}
+
 async fn test_search_provider(
     State(state): State<AppState>,
     user: AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
     require_admin(&user)?;
-    let doc = read_json(&store_path(&state, STORE), json!({})).await?;
-    let record = doc
-        .get(&id)
-        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "provider not found".into()))?;
-    let start = std::time::Instant::now();
-    let (ok, count, error) = execute_provider_test(record).await?;
-    Ok(Json(
-        json!({"ok":ok,"provider":record["provider"],"latencyMs":start.elapsed().as_millis() as u64,"count":count,"error":error}),
-    ))
+    Ok(Json(run_search_provider_test(&state, &id).await?))
 }
 
 pub fn routes() -> Router<AppState> {

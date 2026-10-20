@@ -407,13 +407,14 @@ export const AssistMessagePart = memo(function AssistMessagePart({
 
   const inlineVisualSegments = useMemo(
     () =>
-      // Strip inline SECRET_PROMPT / <secret_prompt> blocks from prose so only
-      // the rendered SecretPromptCard box appears below the message.
+      // Strip inline SECRET_PROMPT / <secret_prompt> and OAUTH_CONNECT blocks from prose
+      // so only the interactive cards appear below the message.
       parseInlineVisuals(
         displayText
           .replace(/<secret_prompt\b[^>]*>[\s\S]*?<\/secret_prompt>/gi, "")
           .replace(/<secret_prompt\b[^>]*\/>/gi, "")
-          .replace(/^\s*SECRET_PROMPT\s*:?\s*\{[^\n]*\}\s*$/gim, ""),
+          .replace(/^\s*SECRET_PROMPT\s*:?\s*\{[^\n]*\}\s*$/gim, "")
+          .replace(/^\s*OAUTH_CONNECT\s*:?\s*\{[^\n]*\}\s*$/gim, ""),
       ),
     [displayText],
   );
@@ -422,7 +423,8 @@ export const AssistMessagePart = memo(function AssistMessagePart({
       displayText
         .replace(/<secret_prompt\b[^>]*>[\s\S]*?<\/secret_prompt>/gi, "")
         .replace(/<secret_prompt\b[^>]*\/>/gi, "")
-        .replace(/^\s*SECRET_PROMPT\s*:?\s*\{[^\n]*\}\s*$/gim, ""),
+        .replace(/^\s*SECRET_PROMPT\s*:?\s*\{[^\n]*\}\s*$/gim, "")
+        .replace(/^\s*OAUTH_CONNECT\s*:?\s*\{[^\n]*\}\s*$/gim, ""),
     [displayText],
   );
 
@@ -1407,23 +1409,24 @@ export const FileMessagePart = memo(
   ({ part, isUserMessage }: FileMessagePartProps) => {
     const isImage = part.mediaType?.startsWith("image/");
 
-    const fileExtension =
+    const ext =
       part.filename?.split(".").pop()?.toUpperCase() ||
       part.mediaType?.split("/").pop()?.toUpperCase() ||
-      "FILE";
+      "";
+    const fileExtension =
+      ext.length > 0 && ext.length <= 4 ? ext : "FILE";
     const fileUrl = rewriteStorageUrl(part.url);
     const filename =
       part.filename || part.url?.split("/").pop() || "Attachment";
-    const secondaryLabel =
-      part.mediaType && part.mediaType !== "application/octet-stream"
-        ? part.mediaType
-        : undefined;
 
+    // Sent attachments sit directly on top of the message bubble, Gemini
+    // style: a compact card with the thumbnail (or type tile) on the left
+    // and a truncated name, matching the composer's attachment tiles.
     if (isImage && fileUrl) {
       return (
         <div
           className={cn(
-            "max-w-md rounded-lg overflow-hidden border border-border",
+            "max-w-xs overflow-hidden rounded-2xl border border-border bg-card shadow-xs",
             isUserMessage ? "ml-auto" : "mr-auto",
           )}
         >
@@ -1431,10 +1434,10 @@ export const FileMessagePart = memo(
           <img
             src={fileUrl}
             alt={part.filename || "Uploaded image"}
-            className="w-full h-auto"
+            className="max-h-56 w-full object-cover"
           />
           {part.filename && (
-            <div className="px-3 py-2 bg-muted text-sm text-muted-foreground">
+            <div className="truncate px-2.5 py-1.5 text-xs font-medium text-muted-foreground">
               {part.filename}
             </div>
           )}
@@ -1446,95 +1449,55 @@ export const FileMessagePart = memo(
     return (
       <div
         className={cn(
-          "max-w-md rounded-2xl border border-border/80 p-4 shadow-sm backdrop-blur-sm",
-          isUserMessage
-            ? "ml-auto bg-accent text-accent-foreground border-accent/40"
-            : "mr-auto bg-muted/60 text-foreground",
+          "flex max-w-xs items-center gap-2.5 rounded-2xl border border-border bg-card py-1.5 pl-1.5 pr-1 shadow-xs",
+          isUserMessage ? "ml-auto" : "mr-auto",
         )}
       >
-        <div className="flex items-start gap-4">
-          <div
-            className={cn(
-              "flex-shrink-0 rounded-xl p-3",
-              isUserMessage ? "bg-accent-foreground/10" : "bg-muted",
-            )}
-          >
-            <FileIcon
-              className={cn(
-                "size-6",
-                isUserMessage
-                  ? "text-accent-foreground/80"
-                  : "text-muted-foreground",
-              )}
-            />
-          </div>
-          <div className="flex-1 min-w-0 space-y-1 pr-3">
-            <p
-              className={cn(
-                "text-sm font-medium line-clamp-1",
-                isUserMessage ? "text-accent-foreground" : "text-foreground",
-              )}
-              title={filename}
-            >
-              {filename}
-            </p>
-            <div
-              className={cn(
-                "flex flex-wrap items-center gap-2 text-xs",
-                isUserMessage
-                  ? "text-accent-foreground/70"
-                  : "text-muted-foreground",
-              )}
-            >
-              <Badge
-                variant="outline"
-                className={cn(
-                  "uppercase tracking-wide px-2 py-0.5",
-                  isUserMessage &&
-                    "border-accent-foreground/30 text-accent-foreground/90",
-                )}
-              >
-                {fileExtension}
-              </Badge>
-              {secondaryLabel && (
-                <span
-                  className={cn(
-                    "truncate max-w-[10rem]",
-                    isUserMessage
-                      ? "text-accent-foreground/70"
-                      : "text-muted-foreground",
-                  )}
-                  title={secondaryLabel}
-                >
-                  {secondaryLabel}
-                </span>
-              )}
-            </div>
-          </div>
-          {fileUrl && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  asChild
-                  size="icon"
-                  variant="ghost"
-                  className={cn(
-                    "size-9 flex-shrink-0 hover:text-foreground",
-                    isUserMessage
-                      ? "text-accent-foreground/70 hover:text-accent-foreground"
-                      : "text-muted-foreground",
-                  )}
-                >
-                  <a href={fileUrl} download={part.filename ?? filename}>
-                    <Download className="size-4" />
-                    <span className="sr-only">Download {filename}</span>
-                  </a>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Download</TooltipContent>
-            </Tooltip>
+        <div
+          aria-hidden
+          className="grid size-11 shrink-0 place-items-center rounded-xl bg-muted font-mono text-[10px] font-bold uppercase tracking-wide text-muted-foreground"
+        >
+          {fileExtension.length > 4 ? (
+            <FileIcon className="size-4" />
+          ) : (
+            fileExtension
           )}
         </div>
+        <div className="min-w-0 flex-1 leading-tight">
+          <p
+            className="truncate text-sm font-medium text-foreground"
+            title={filename}
+          >
+            {filename}
+          </p>
+          {part.mediaType &&
+            part.mediaType !== "application/octet-stream" && (
+              <p
+                className="mt-0.5 truncate text-[11px] text-muted-foreground"
+                title={part.mediaType}
+              >
+                {part.mediaType}
+              </p>
+            )}
+        </div>
+        {fileUrl && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                asChild
+                size="icon"
+                variant="ghost"
+                className="size-7 shrink-0 rounded-full text-muted-foreground hover:text-foreground"
+              >
+                <a href={fileUrl} download={part.filename ?? filename}>
+                  <Download className="size-3.5" />
+                  <span className="sr-only">Download {filename}</span>
+                </a>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Download</TooltipContent>
+          </Tooltip>
+        )}
       </div>
     );
   },

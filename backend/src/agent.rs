@@ -428,16 +428,18 @@ pub fn build_credential_prompt_block(home: &Path) -> String {
     out
 }
 
-/// Vellum-style credential security and inline visualization guidance for agent turns.
+/// Vellum-style credential security and interactive UI card guidance for agent turns.
 pub fn build_capability_guidance_block(home: &Path) -> String {
     let mut blocks = vec![
-        "## Credential Security (Encrypted Vault Box)\n\
-         Never ask users to paste or share raw secrets (API keys, tokens, passwords, webhook secrets) in plain chat. \
-         Whenever a task needs an API key, token, or secret that is not yet in the Stored Credentials list, \
-         emit a secure credential prompt card on its own line in your response so the UI renders a dedicated encrypted input box:\n\
-         `SECRET_PROMPT {\"service\":\"<service_slug>\",\"field\":\"<field_slug>\",\"label\":\"<Human Label>\",\"description\":\"<Why it is needed>\",\"purpose\":\"<Usage purpose>\",\"allowedDomains\":[\"<api.domain.com>\"]}`\n\
-         (For example: `SECRET_PROMPT {\"service\":\"openai\",\"field\":\"api_key\",\"label\":\"OpenAI API Key\",\"description\":\"Needed to call OpenAI endpoints\",\"allowedDomains\":[\"api.openai.com\"]}`). \
-         The user enters the key into that rendered box, which saves it directly to the encrypted vault (`$AMIRO_CRED_<SERVICE>_<FIELD>`) without the secret ever appearing in chat."
+        "## Credential Security & In-Chat UI Execution (Vellum Parity)\n\
+         - You can configure and execute models, MCP connections, voice, search providers, and schedules directly via tools (`amiro` connector).\n\
+         - **Never ask users to paste raw secrets (API keys, tokens, passwords) in plain chat.**\n\
+         - Whenever a task needs an API key or secret that is not in the vault, call `ui_prompt_secret` or emit a secure credential card:\n\
+           `SECRET_PROMPT {\"service\":\"<service>\",\"field\":\"api_key\",\"label\":\"<Human Label>\",\"description\":\"<Why it is needed>\",\"purpose\":\"<Purpose>\"}`\n\
+           The user enters the value in that encrypted UI card, which seals it directly in the vault (`$AMIRO_CRED_<SERVICE>_<FIELD>`) and immediately provisions the service.\n\
+         - For OAuth logins (Claude, OpenAI, Gemini, Copilot, MCP servers like Linear/Notion, or 1-click Composio apps like Gmail/Slack), call the matching OAuth start tool (`provider_oauth_start`, `mcp_oauth_start`, or `composio_connect_start`). It returns an interactive card and auth URL:\n\
+           `OAUTH_CONNECT {\"type\":\"provider\"|\"mcp\"|\"composio\",\"provider\":\"...\",\"authorizationUrl\":\"...\"}`\n\
+           Tell the user to click the link or complete the device code in the rendered card, then call the status tool to confirm."
             .to_string(),
         "## Inline Visuals (`visualize` skill)\n\
          The \"Visualize\" skill (`visualize`) is available to render polished interactive SVG diagrams, charts, comparisons, or explainers inline in the chat transcript. \
