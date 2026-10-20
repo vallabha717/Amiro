@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import { appStore, UploadedFile } from "@/app/store";
 import { useFileUpload } from "@/hooks/use-presigned-upload";
+import { renderPdfThumbnail } from "@/lib/pdf-thumbnail";
 import { generateUUID } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -64,6 +65,21 @@ export function useThreadFileUploader(threadId?: string) {
                 ),
               },
             }));
+            // PDFs get a first-page thumbnail in the tray; failure keeps
+            // the extension tile.
+            if (file.type === "application/pdf") {
+              void renderPdfThumbnail(file).then((thumb) => {
+                if (!thumb) return;
+                appStoreMutate((prev) => ({
+                  threadFiles: {
+                    ...prev.threadFiles,
+                    [threadId]: (prev.threadFiles[threadId] ?? []).map((f) =>
+                      f.id === fileId ? { ...f, previewUrl: thumb } : f,
+                    ),
+                  },
+                }));
+              });
+            }
           } else {
             appStoreMutate((prev) => ({
               threadFiles: {

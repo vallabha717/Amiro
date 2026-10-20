@@ -14,8 +14,6 @@ import {
   ChevronDown,
   Clock,
   CornerRightUp,
-  FileIcon,
-  FileTextIcon,
   ImagesIcon,
   Loader2,
   Mic,
@@ -53,6 +51,7 @@ import { SelectModel } from "./select-model";
 
 import { useChatModels } from "@/hooks/queries/use-chat-models";
 import { unlockAudio } from "@/lib/ai/speech/read-aloud-store";
+import { AttachmentTile, pastedFiles } from "./attachment-tile";
 import {
   getCachedVoiceSettings,
   transcribeSpeech,
@@ -135,6 +134,7 @@ export default function PromptInput({
 
   const [isUploadDropdownOpen, setIsUploadDropdownOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const composerBoxRef = useRef<HTMLDivElement>(null);
   const { uploadFiles } = useThreadFileUploader(threadId);
   const { data: providers } = useChatModels();
 
@@ -436,6 +436,35 @@ export default function PromptInput({
     [uploadedFiles, threadId, appStoreMutate],
   );
 
+  const summarizeFile = useCallback(
+    async (fileId: string) => {
+      const file = uploadedFiles.find((f) => f.id === fileId);
+      const url = file?.url || file?.dataUrl;
+      if (!url) {
+        toast.error("No file URL available");
+        return;
+      }
+      try {
+        const res = await apiFetch("/api/storage/ingest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url }),
+        });
+        if (!res.ok) {
+          const e = await res.json().catch(() => ({}));
+          toast.error(e.error || "Failed to ingest file");
+          return;
+        }
+        const data = await res.json();
+        // Append preview text to input for the user to send
+        setInput(`${input ? input + "\n\n" : ""}${data.text}`);
+      } catch (_err) {
+        toast.error("Failed to ingest file");
+      }
+    },
+    [uploadedFiles, input],
+  );
+
   // uploadFiles handled by hook
 
   const handleFileSelect = useCallback(
@@ -449,6 +478,24 @@ export default function PromptInput({
     },
     [uploadFiles],
   );
+
+  // Pasted files go to the attachment tray on top of the input, never
+  // inline into the editor. A native capture listener runs before the
+  // editor's own paste handling, so preventing here reliably blocks the
+  // inline insert. Plain text pastes are left alone.
+  useEffect(() => {
+    const box = composerBoxRef.current;
+    if (!box) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const files = pastedFiles(e.clipboardData);
+      if (files.length === 0 || !threadId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      void uploadFiles(files);
+    };
+    box.addEventListener("paste", onPaste, { capture: true });
+    return () => box.removeEventListener("paste", onPaste, { capture: true });
+  }, [uploadFiles, threadId]);
 
   const handleGenerateImage = useCallback(
     (provider?: "google" | "openai") => {
@@ -693,7 +740,10 @@ export default function PromptInput({
             setInput={setInput}
           />
 
-          <div className="shadow-lg overflow-hidden rounded-4xl backdrop-blur-sm transition-all duration-200 bg-muted/60 relative flex w-full flex-col cursor-text z-10 items-stretch focus-within:bg-muted hover:bg-muted focus-within:ring-muted hover:ring-muted">
+          <div
+            ref={composerBoxRef}
+            className="shadow-lg overflow-hidden rounded-4xl backdrop-blur-sm transition-all duration-200 bg-muted/60 relative flex w-full flex-col cursor-text z-10 items-stretch focus-within:bg-muted hover:bg-muted focus-within:ring-muted hover:ring-muted"
+          >
             {pendingFollowUp ? (
               <div
                 data-testid="queued-followup-chip"
@@ -808,6 +858,25 @@ export default function PromptInput({
               </div>
             )}
             <div className="flex flex-col gap-3.5 px-5 pt-2 pb-3">
+              {/* Attachment tray - on top of the input */}
+              {uploadedFiles.length > 0 && (
+                <div
+                  role="list"
+                  aria-label="Attached files"
+                  className="flex flex-wrap items-end gap-2 pt-1"
+                >
+                  {uploadedFiles.map((file) => (
+                    <div key={file.id} role="listitem">
+                      <AttachmentTile
+                        file={file}
+                        onRemove={deleteFile}
+                        onSummarize={summarizeFile}
+                        canSummarize={isIngestable(file.mimeType)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="relative min-h-[2rem]">
                 <ChatMentionInput
                   input={input}
@@ -1020,146 +1089,6 @@ export default function PromptInput({
                 )}
               </div>
 
-              {/* Uploaded Files Preview - Below Input */}
-              {uploadedFiles.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {uploadedFiles.map((file) => {
-                    const isImage = file.mimeType.startsWith("image/");
-                    const imageSrc =
-                      file.previewUrl || file.url || file.dataUrl || "";
-                    const displayName = file.name;
-                    const displayExt =
-                      file.name.split(".").pop()?.toUpperCase() || "FILE";
-                    const isSummarizable = isIngestable(file.mimeType);
-                    return (
-                      <div
-                        key={file.id}
-                        className="relative group rounded-lg overflow-hidden border-2 border-border hover:border-primary transition-all"
-                      >
-                        {isImage ? (
-                          /* eslint-disable-next-line @next/next/no-img-element */
-                          <img
-                            src={imageSrc}
-                            alt={file.name}
-                            className="w-24 h-24 object-cover"
-                          />
-                        ) : (
-                          <div className="w-32 h-28 flex flex-col items-center justify-center bg-muted px-2 py-3 text-center">
-                            <FileIcon className="size-8 text-muted-foreground mb-1" />
-                            <span className="text-xs font-medium text-muted-foreground line-clamp-2 w-full">
-                              {displayName}
-                            </span>
-                            <span className="text-[11px] text-muted-foreground/80">
-                              {displayExt}
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Upload Progress Overlay */}
-                        {file.isUploading && (
-                          <div className="absolute inset-0 bg-background/90 flex rounded-lg flex-col items-center justify-center backdrop-blur-sm">
-                            <Loader2 className="size-6 animate-spin text-foreground mb-2" />
-                            <div className="w-16 h-1 bg-muted rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-primary transition-all duration-300"
-                                style={{ width: `${file.progress || 0}%` }}
-                              />
-                            </div>
-                            <span className="text-foreground text-xs mt-1">
-                              {file.progress || 0}%
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Hover Actions */}
-                        <div
-                          className={cn(
-                            "absolute inset-0 bg-background/80 backdrop-blur-sm transition-opacity flex items-center justify-center rounded-lg",
-                            file.isUploading
-                              ? "opacity-0"
-                              : "opacity-0 group-hover:opacity-100",
-                          )}
-                        >
-                          <div className="flex gap-2 items-center">
-                            {isSummarizable && (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="secondary"
-                                    size="icon"
-                                    className="rounded-full"
-                                    onClick={async () => {
-                                      try {
-                                        const url = file.url || file.dataUrl;
-                                        if (!url) {
-                                          toast.error("No file URL available");
-                                          return;
-                                        }
-                                        const res = await apiFetch(
-                                          "/api/storage/ingest",
-                                          {
-                                            method: "POST",
-                                            headers: {
-                                              "Content-Type":
-                                                "application/json",
-                                            },
-                                            body: JSON.stringify({ url }),
-                                          },
-                                        );
-                                        if (!res.ok) {
-                                          const e = await res
-                                            .json()
-                                            .catch(() => ({}));
-                                          toast.error(
-                                            e.error || "Failed to ingest file",
-                                          );
-                                          return;
-                                        }
-                                        const data = await res.json();
-                                        // Append preview text to input for the user to send
-                                        setInput(
-                                          `${input ? input + "\n\n" : ""}${data.text}`,
-                                        );
-                                      } catch (_err) {
-                                        toast.error("Failed to ingest file");
-                                      }
-                                    }}
-                                  >
-                                    <FileTextIcon className="size-4" />
-                                    <span className="sr-only">Summarize</span>
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Summarize</TooltipContent>
-                              </Tooltip>
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="rounded-full bg-background/80 hover:bg-background"
-                              onClick={() => deleteFile(file.id)}
-                              disabled={file.isUploading}
-                            >
-                              <XIcon className="size-4" />
-                            </Button>
-                          </div>
-                        </div>
-
-                        {/* Cancel Upload Button (Top Right) */}
-                        {file.isUploading && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="absolute top-1 right-1 size-6 rounded-full bg-background/60 hover:bg-background/80 backdrop-blur-sm"
-                            onClick={() => deleteFile(file.id)}
-                          >
-                            <XIcon className="size-3" />
-                          </Button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
             </div>
 
             {/* Sub-bar below composer with Project */}
