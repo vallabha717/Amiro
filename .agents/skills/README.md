@@ -20,18 +20,23 @@ step, import, or manifest to also update.
   the frontmatter `name:` must match (e.g. `.agents/skills/backend/`,
   `name: backend`).
 
-## The five skills that live here
+## The skills that live here
 
 | Skill | Covers |
 | --- | --- |
-| [`ui`](ui/SKILL.md) | Standards for anything a user sees: `src/**` (the Next.js dashboard, served by the Node adapter via `pnpm start` and by the Tauri desktop shell). Folder structure, static-export constraints, backend access, styling tokens, i18n, state. **The Go terminal UI it used to cover has been removed**; that part is historical. |
-| [`backend`](backend/SKILL.md) | **Retargeted to the Node adapter** (`adapter/src/server.mjs` + `@1jehuang/jcode-sdk`): the HTTP surface, auth, thread↔session mapping, and how the adapter mirrors the old Go API. The `backend-go/**` Go sections are historical and no longer apply. |
-| [`test`](test/SKILL.md) | **The `tests/` Go harness is retired.** Current tests: `node --test adapter/test/usage.test.mjs` (unit), `node adapter/test/live-smoke.mjs` (optional live), and the frontend's `pnpm test` / `pnpm check-types`. The all-five-surfaces harness described in the skill is historical. |
+| [`develop-feature`](develop-feature/SKILL.md) | **Use when coding anything.** The step-by-step workflow (orient → backend → UI → test → finish) that tells you when to load each skill below. |
+| [`amiro-standards`](amiro-standards/SKILL.md) | **Start here.** Where every kind of change goes, folder structure and naming, frontend/backend/runtime rules, English+Hindi i18n, secrets, definition of done, commit conventions, and which skill to load next. Installed globally for every agent (see "Global install" below). |
+| [`backend`](backend/SKILL.md) | Rust backend (`backend/`, axum): folder structure, where a route goes, auth, errors, JSON store, credential vault, agent tools, backend tests. |
+| [`ui`](ui/SKILL.md) | Next.js frontend (`src/`, static export): folder structure, pages vs components, API clients, SWR/zustand, styling tokens, English+Hindi i18n, a11y, test ids. |
+| [`test`](test/SKILL.md) | Which test layer proves which change (Vitest, type-check/lint, backend integration, runtime crates, E2E journeys) and the end-of-feature test run. |
+| [`e2e-journeys`](e2e-journeys/SKILL.md) | Recorded Playwright journeys in `tests/e2e/`: how to run them, how every user-facing change adds a journey step, config for user-supplied keys, and the video/`REVIEW.md` output. |
 | [`plan`](plan/SKILL.md) | How work gets planned — the phased plan-folder method behind `docs/testing/`. Produces `docs/<initiative>/` with design docs, `phases/`, and a seeded `progress/`. Writes documents, never code. |
 | [`implement`](implement/SKILL.md) | How a planned phase gets executed and recorded: entry conditions, building to the `ui`/`backend` standards, verifying every exit criterion by running it, then writing the progress record and verification log. Its Go/`tests/` commands are historical. |
 
-`plan` → `implement` is the intended loop. Both of them load `test`, and
-`implement` also loads `ui` and `backend` for the standards it builds to —
+`develop-feature` is the everyday loop for a single feature or fix.
+`plan` → `implement` is the loop for a multi-phase initiative. Both load
+`amiro-standards`, `backend`, `ui` and `test` (plus `e2e-journeys`) for the
+standards they build to —
 so a phase is planned with its test coverage and shipped with it, on every
 surface it reaches. Each of `plan` and `implement` keeps its templates in
 sibling `*-TEMPLATE.md` files — the progressive-disclosure pattern
@@ -89,3 +94,19 @@ disable-model-invocation: true   # optional — see below
    `reference/*.md` or `scripts/*` and link to them from `SKILL.md`.
 6. Nothing else to wire up — the skill is live as soon as the folder exists
    with a correctly-shaped `SKILL.md`.
+
+## Global install (every agent on this machine)
+
+`develop-feature` and the skills it references (`amiro-standards`, `backend`,
+`ui`, `test`, `e2e-journeys`) are symlinked into the global skill folders so any agent
+(Claude Code, jcode/Amiro runtime, Codex-style `.agents` readers) picks it up
+in any directory, always from this repo's current copy:
+
+```bash
+bash scripts/install-global-skills.sh          # links develop-feature and the skills it uses
+bash scripts/install-global-skills.sh --check  # show where each link points
+```
+
+Links: `~/.agents/skills/<name>`, `~/.claude/skills/<name>`,
+`~/.jcode/skills/<name>`. Re-running is safe; it never overwrites a real
+directory of the same name.

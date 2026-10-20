@@ -23,9 +23,11 @@ Upstream: <https://github.com/vallabha717/Amiro>
 | `backend/` | Native HTTP backend, binary `amiro-backend`, library crate `backend` | Rust (axum) |
 | `runtime/` | Vendored Amiro-owned runtime, binary `amiro-runtime` | Rust |
 | `tests/rust/` | Std-only contract test harness, `amiro-testkit` | Rust |
-| `tests/ui/` | Playwright browser specs | TypeScript |
+| `tests/e2e/` | Recorded Playwright journeys (video + review report) | TypeScript |
 | `adapter/` | Retired compatibility harness, see below | Node / ESM |
 | `scripts/` | Build and verification entrypoints | Bash / Node |
+| `messages/` | UI translations: `en.json` and `hi.json` only | JSON |
+| `.agents/skills/` | Agent skills; start with `amiro-standards` | Markdown |
 
 ### `adapter/` is a retired compatibility harness, not the backend
 
@@ -218,16 +220,34 @@ close to rustfmt defaults and consistent with the file you are editing.
 | Vendored runtime suite | `cd runtime && cargo test` | Large. The vendored tree has its own `runtime/CONTRIBUTING.md` |
 | Rust testkit | `cd tests/rust && cargo test --offline` | Std-only, no network |
 | Tauri shell check | `cd src-tauri && cargo check --offline` | Shell only |
-| UI end to end | `pnpm --dir tests install-browsers` then `pnpm --dir tests test` | Playwright. Config is `tests/playwright.config.ts`, specs are `tests/ui/specs` |
+| E2E journeys (recorded) | `pnpm --dir tests install-browsers` then `pnpm test:e2e` | Playwright. Boots an isolated Amiro, records video. See `tests/e2e/README.md` |
 | Native UI verification | `pnpm verify:native-ui` | `scripts/start-native-ui-check.sh` |
 | Schedules UI verification | `pnpm verify:schedules-ui` | `scripts/verify-schedules-ui.mjs` |
 | Adapter contract tests | `pnpm --dir adapter install` then `node --test adapter/test/*.test.mjs` | Retired harness. Not part of the required pre-PR checks |
 
-The UI end-to-end suite drives a running preview server, so start the backend
-and the built UI first. It is not part of the required pre-PR checks, and CI
-does not currently run it. Run `pnpm --dir tests test` rather than the root
-`pnpm test:e2e` script: Playwright's config lives in `tests/`, not at the
-repository root.
+### E2E journeys: every user-facing change adds a step
+
+`tests/e2e/` holds recorded Playwright journeys covering the whole product:
+onboarding, providers, voice, chat (tables, web search, visualize, swarm,
+skills), connectors/MCP with every auth style including OAuth, the secret
+vault, the agent hub, the agent configuring Amiro from chat, live voice,
+schedules and a UX audit. Each run boots a fresh isolated Amiro (it never
+touches `~/.amiro`) and writes `tests/recordings/<stamp>/full-run.mp4`,
+per-journey videos and a `REVIEW.md` (all gitignored).
+
+```sh
+cp tests/e2e.config.example.json tests/e2e.config.json   # add your keys; gitignored
+pnpm test:e2e                                             # all journeys
+pnpm --dir tests e2e --project connectors                 # one journey
+```
+
+**If your pull request adds or changes anything a user can see or trigger,
+add or update the matching journey step in the same pull request** and attach
+the journey's video (or say why you could not run it). Values a user must
+supply (API keys, models, URLs) go in `tests/e2e.config.example.json`, never
+in a spec. The how-to, including which journey owns which surface, is
+`.agents/skills/e2e-journeys/SKILL.md`. The suite needs real provider keys, so
+CI does not run it; it is not part of the required pre-PR checks.
 
 Some native tests exercise a real runtime over its bridge and are skipped or
 degenerate without one. If a native test fails only on your machine, say so in
