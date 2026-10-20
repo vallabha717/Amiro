@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import { parseToolTiming } from "lib/ai/tools/timing";
 import type { PresenterProps, ToolPresenter } from "./types";
+// Used only at render time, so the index <-> presenter cycle is harmless.
+import { getToolPresenter } from "./index";
 
 /* ------------------------------------------------------------------ */
 /* todo_write / todo_read                                              */
@@ -372,9 +374,14 @@ const swarm: ToolPresenter = {
 const batch: ToolPresenter = {
   glance: ({ input, status }) => {
     const calls = Array.isArray(input?.tool_calls) ? input.tool_calls : [];
-    if (status === "pending") return `running batch (${calls.length} calls)…`;
-    if (status === "error") return `⚠ batch failed (${calls.length} calls)`;
-    return `batch · ${calls.length} ${calls.length === 1 ? "call" : "calls"}`;
+    const names = Array.from(
+      new Set(calls.map((c: any) => c?.tool).filter(Boolean)),
+    ).slice(0, 3);
+    const what = names.length ? ` · ${names.join(", ")}` : "";
+    const n = `${calls.length} ${calls.length === 1 ? "call" : "calls"}`;
+    if (status === "pending") return `running ${n} in parallel${what}…`;
+    if (status === "error") return `⚠ batch failed (${n})`;
+    return `batch · ${n}${what}`;
   },
   Compact: ({ input, output, status }: PresenterProps) => {
     const calls: { tool?: string; intent?: string }[] =
@@ -445,17 +452,35 @@ const batch: ToolPresenter = {
           {input?.intent ? (
             <div className="text-muted-foreground text-[11px]">{input.intent}</div>
           ) : null}
-          <div className="space-y-1.5">
-            {calls.map((c, i) => (
-              <div
-                key={i}
-                className="rounded border bg-muted/20 p-2 font-mono text-[11px]"
-              >
-                <div className="font-semibold text-primary">{c.tool || "call"}</div>
-                {c.intent ? <div className="text-muted-foreground">{c.intent}</div> : null}
-              </div>
-            ))}
-          </div>
+          <ol className="space-y-1" data-testid="batch-calls">
+            {calls.map((c, i) => {
+              const { tool, intent, ...params } = c ?? {};
+              const sub = tool ? getToolPresenter(tool) : undefined;
+              let line = "";
+              try {
+                line = sub?.glance({ input: { intent, ...params }, output: undefined, status }) ?? "";
+              } catch {
+                line = "";
+              }
+              return (
+                <li
+                  key={i}
+                  data-testid="batch-call"
+                  className="flex items-center gap-2 rounded-md border bg-muted/20 px-2 py-1.5"
+                >
+                  <span className="w-4 shrink-0 text-center font-mono text-[10px] text-muted-foreground">
+                    {i + 1}
+                  </span>
+                  <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] text-primary">
+                    {tool || "call"}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
+                    {intent || line}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
           {status === "error" ? (
             <pre className="text-destructive font-mono whitespace-pre-wrap">
               {errorText || "failed"}

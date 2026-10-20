@@ -4,6 +4,7 @@ import { cn } from "lib/utils";
 import {
   CalendarIcon,
   ChevronDownIcon,
+  ChevronRightIcon,
   ClockIcon,
   ExternalLinkIcon,
   FileTextIcon,
@@ -689,7 +690,24 @@ export function WebSearchSourcesBar({
         onClick={() => setOpen((value) => !value)}
         className="flex w-full flex-wrap items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/40"
       >
+        <ChevronRightIcon
+          className={cn(
+            "size-3.5 shrink-0 text-muted-foreground transition-transform duration-200",
+            open && "rotate-90",
+          )}
+        />
         <span className="flex shrink-0 items-center">
+          {pending && hits.length === 0
+            ? [0, 1, 2].map((i) => (
+                <span
+                  key={i}
+                  className="flex size-5 animate-pulse items-center justify-center rounded-full border bg-muted"
+                  style={{ marginLeft: i === 0 ? 0 : -6, animationDelay: `${i * 150}ms` }}
+                >
+                  <GlobeIcon className="size-3 text-muted-foreground" />
+                </span>
+              ))
+            : null}
           {hits.slice(0, 3).map((hit, index) => (
             <span
               key={hit.url}
@@ -713,12 +731,6 @@ export function WebSearchSourcesBar({
             </span>
           ))}
         </span>
-        <ChevronDownIcon
-          className={cn(
-            "ml-auto size-3.5 shrink-0 text-muted-foreground transition-transform",
-            open && "rotate-180",
-          )}
-        />
       </button>
       {open ? (
         <div className="space-y-2 border-t p-2">

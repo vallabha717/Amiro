@@ -668,3 +668,35 @@ describe("inline bash and file edit expanded presenters", () => {
     expect(html).toContain("newVal = 2");
   });
 });
+
+describe("batch tool calls", () => {
+  it("lists each parallel call with its own tool name and description", () => {
+    const Expanded = toolPresenters.batch.Expanded!;
+    const html = renderToStaticMarkup(
+      createElement(Expanded, {
+        input: {
+          tool_calls: [
+            { tool: "read", file_path: "a.ts", intent: "Read a" },
+            { tool: "bash", command: "ls" },
+          ],
+        },
+        output: undefined,
+        status: "pending",
+      }),
+    );
+    expect(html).toContain('data-testid="batch-calls"');
+    expect(html.split('data-testid="batch-call"').length - 1).toBe(2);
+    expect(html).toContain("Read a");
+    expect(html).toContain("bash");
+  });
+
+  it("names the tools in the one-line glance", () => {
+    expect(
+      toolGlance("batch", {
+        input: { tool_calls: [{ tool: "read" }, { tool: "grep" }] },
+        output: undefined,
+        status: "pending",
+      }),
+    ).toContain("2 calls in parallel · read, grep");
+  });
+});

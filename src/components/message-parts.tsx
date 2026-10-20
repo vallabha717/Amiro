@@ -721,16 +721,32 @@ export const ReasoningPart = memo(function ReasoningPart({
   const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
   const isExpanded = userExpanded ?? Boolean(isThinking);
 
-  // Follow the stream inside the bounded height window, but stop following if
-  // the user scrolled up to read.
+  // Follow the stream to the end while it is thinking, until the user
+  // scrolls up to read (then leave them alone; scrolling back to the bottom
+  // re-attaches). Driven by a ResizeObserver on the content, because the
+  // markdown grows after render and a one-shot scroll lands short.
   const scrollRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const pinnedRef = useRef(true);
+  const toBottom = () => {
     const el = scrollRef.current;
-    if (!isThinking || !el) return;
-    if (el.scrollHeight - el.scrollTop - el.clientHeight < 48) {
-      el.scrollTop = el.scrollHeight;
-    }
-  }, [reasoningText, isThinking, isExpanded]);
+    if (el) el.scrollTop = el.scrollHeight;
+  };
+  useEffect(() => {
+    if (!isThinking || !isExpanded) return;
+    pinnedRef.current = true;
+    toBottom();
+    const content = contentRef.current;
+    if (!content || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      if (pinnedRef.current) toBottom();
+    });
+    ro.observe(content);
+    return () => ro.disconnect();
+  }, [isThinking, isExpanded]);
+  useEffect(() => {
+    if (isThinking && pinnedRef.current) toBottom();
+  }, [reasoningText, isThinking]);
 
   const toggle = () => setUserExpanded(!isExpanded);
 
@@ -747,6 +763,13 @@ export const ReasoningPart = memo(function ReasoningPart({
         onClick={toggle}
         className="group/thinking flex items-center gap-1.5 text-xs cursor-pointer py-0.5 text-muted-foreground/75 hover:text-muted-foreground transition-colors w-fit max-w-full bg-transparent border-0 p-0 text-left"
       >
+        <ChevronRight
+          size={13}
+          className={cn(
+            "shrink-0 text-muted-foreground/60 transition-transform duration-200",
+            isExpanded && "rotate-90",
+          )}
+        />
         {isThinking ? (
           <TextShimmer
             as="span"
@@ -759,13 +782,6 @@ export const ReasoningPart = memo(function ReasoningPart({
             Thinking
           </span>
         )}
-        <ChevronDownIcon
-          size={13}
-          className={cn(
-            "shrink-0 text-muted-foreground/60 transition-transform duration-200",
-            isExpanded && "rotate-180",
-          )}
-        />
       </button>
 
       <AnimatePresence initial={false}>
@@ -781,6 +797,11 @@ export const ReasoningPart = memo(function ReasoningPart({
           >
             <div
               ref={scrollRef}
+              onScroll={(e) => {
+                const el = e.currentTarget;
+                pinnedRef.current =
+                  el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+              }}
               data-testid="message-reasoning-scroll"
               className={cn(
                 "max-h-36 overflow-y-auto pt-1.5 text-xs leading-relaxed font-normal",
@@ -791,9 +812,11 @@ export const ReasoningPart = memo(function ReasoningPart({
                 "[&_code]:bg-transparent [&_code]:text-zinc-400 dark:[&_code]:text-zinc-400 [&_code]:px-0",
               )}
             >
-              <Markdown isStreaming={Boolean(isThinking)}>
-                {reasoningText || "Thinking…"}
-              </Markdown>
+              <div ref={contentRef}>
+                <Markdown isStreaming={Boolean(isThinking)}>
+                  {reasoningText || "Thinking…"}
+                </Markdown>
+              </div>
             </div>
           </motion.div>
         )}
@@ -906,7 +929,10 @@ export const ToolMessagePart = memo(
       return state.startsWith("output");
     }, [state]);
 
-    const [expanded, setExpanded] = useState(false);
+    // null = follow the call: web searches and fetches open while they run
+    // (so the live card is visible) and fold away when done. A click wins
+    // from then on.
+    const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
     const { copied: copiedInput, copy: copyInput } = useCopy();
     const { copied: copiedOutput, copy: copyOutput } = useCopy();
     const [isDeleting, setIsDeleting] = useState(false);
@@ -1009,6 +1035,15 @@ export const ToolMessagePart = memo(
       () => presenterPropsFromToolPart(part),
       [part],
     );
+    const isWebCall =
+      toolName === "websearch" ||
+      toolName === "webfetch" ||
+      toolName === "webSearch" ||
+      toolName === "webContent";
+    const expanded =
+      userExpanded ?? (isWebCall && presenterProps.status === "pending");
+    const setExpanded = (next: boolean | ((v: boolean) => boolean)) =>
+      setUserExpanded(typeof next === "function" ? next(expanded) : next);
 
     const presenter = useMemo(
       () => getToolPresenter(toolName),
