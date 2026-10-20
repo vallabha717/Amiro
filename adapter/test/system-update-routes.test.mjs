@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { register } from '../src/routes/system.mjs';
 
-function harness({ user } = {}) {
+function harness() {
   const routes = { GET: {}, POST: {} };
   const app = {
     get(path, handler) { routes.GET[path] = handler; },

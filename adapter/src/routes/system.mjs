@@ -192,7 +192,7 @@ export function register(app, ctx) {
     try {
       const result = await checkForUpdate(PKG_VERSION);
       ctx.json(res, 200, result);
-    } catch (err) {
+    } catch {
       ctx.json(res, 200, {
         current: PKG_VERSION,
         latest: null,
