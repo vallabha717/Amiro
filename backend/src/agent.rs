@@ -64,7 +64,25 @@ fn accent_palette(color: &str) -> Option<&'static str> {
     }
 }
 
-const VALID_BODY_SHAPES: [&str; 6] = ["blob", "cloud", "sprout", "star", "ghost", "urchin"];
+/// The first six are the plush shapes; the rest are the persona portraits a
+/// branded front end may offer instead. A front end that doesn't know a
+/// persona id falls back to its default character.
+const VALID_BODY_SHAPES: [&str; 14] = [
+    "blob",
+    "cloud",
+    "sprout",
+    "star",
+    "ghost",
+    "urchin",
+    "manager-m",
+    "manager-f",
+    "lead-m",
+    "lead-f",
+    "developer-m",
+    "developer-f",
+    "designer-m",
+    "designer-f",
+];
 const VALID_EYE_STYLES: [&str; 9] = [
     "grumpy", "angry", "curious", "goofy", "surprised", "bashful", "gentle", "quirky", "dazed",
 ];
