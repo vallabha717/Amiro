@@ -1061,16 +1061,14 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
                     </div>
                   )}
                 </AnimatePresence>
-                <AnimatePresence>
-                  {!emptyMessage && (
-                    <div key="work-dock" className="max-w-3xl mx-auto px-6">
-                      <WorkStatusDock
-                        message={messages.at(-1)}
-                        running={isLoading}
-                      />
-                    </div>
-                  )}
-                </AnimatePresence>
+                {!emptyMessage && (
+                  <div className="max-w-3xl mx-auto px-6">
+                    <WorkStatusDock
+                      message={messages.at(-1)}
+                      running={isLoading}
+                    />
+                  </div>
+                )}
                 <div className="max-w-3xl mx-auto px-6 mb-1.5">
                   <SwarmStrip
                     threadId={threadId}

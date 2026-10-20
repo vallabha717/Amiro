@@ -372,6 +372,8 @@ test.describe("chat", () => {
         expect.soft(dockBox.y, "dock sits above the composer, not at the top of the chat").toBeLessThan(composerBox.y);
         expect.soft(composerBox.y - dockBox.y, "dock is right next to the composer").toBeLessThan(200);
       }
+      await page.getByTestId("work-status-dock-close").click();
+      await expect.soft(dock, "Close dismisses the dock at once").toBeHidden({ timeout: 5000 });
       const toggles = page.getByTestId("tool-call-toggle");
       const count = await toggles.count();
       expect.soft(count, "at least one inline tool call description toggle is visible").toBeGreaterThan(0);
@@ -391,6 +393,17 @@ test.describe("chat", () => {
       const combinedText = (await allDetails.allInnerTexts()).join("\n");
       expect.soft(combinedText).toMatch(/INLINE_STREAM_OK|echo/i);
       expect.soft(combinedText).toMatch(/e2e-inline-edit\.txt|line 2/i);
+    });
+
+    await step("Reload the page → the thinking is still a collapsed light block, not dark answer text", async () => {
+      await page.reload();
+      await expect(page.getByTestId("chat-messages-container")).toBeVisible({ timeout: 30000 });
+      const reasoning = page.getByTestId("reasoning-part").first();
+      await expect.soft(reasoning, "reloaded chat still shows the Thinking block").toBeVisible({ timeout: 30000 });
+      await expect.soft(reasoning.getByTestId("message-reasoning-toggle")).toHaveAttribute("aria-expanded", "false");
+      const main = await page.locator("main").innerText();
+      expect.soft(main, "no raw reasoning sentinel leaks into the page").not.toContain("\u2063");
+      await expect.soft(page.getByTestId("work-status-dock"), "a reopened chat does not flash the Worked bar").toHaveCount(0);
     });
   });
 });

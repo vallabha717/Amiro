@@ -7,8 +7,9 @@ import {
   CheckCircle2Icon,
   Loader2Icon,
   TriangleAlertIcon,
+  XIcon,
 } from "lucide-react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TextShimmer } from "ui/text-shimmer";
 import {
@@ -77,10 +78,12 @@ export function summarizeWorkStatus(
  * and look as the minimized live-voice dock, instead of a pill at the top of
  * the transcript.
  */
-export function WorkStatusDock({
+function WorkStatusDockBody({
+  onClose,
   message,
   running,
 }: {
+  onClose?: () => void;
   message: UIMessage | undefined;
   running: boolean;
 }) {
@@ -158,6 +161,75 @@ export function WorkStatusDock({
           Failed
         </span>
       ) : null}
+      {!running && onClose ? (
+        <button
+          type="button"
+          data-testid="work-status-dock-close"
+          aria-label="Dismiss"
+          onClick={onClose}
+          className="-mr-1 shrink-0 rounded-full p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <XIcon className="size-3.5" />
+        </button>
+      ) : null}
     </motion.div>
+  );
+}
+
+/** How long a finished summary lingers before it fades away on its own. */
+export const DOCK_LINGER_MS = 6000;
+const FADE_S = 1.6;
+
+/**
+ * Wraps the dock with its lifecycle: it appears when work starts, stays while
+ * running, and once the answer is in it lingers briefly and then fades away
+ * slowly. The close button dismisses it at once. A new turn brings it back.
+ */
+export function WorkStatusDock({
+  message,
+  running,
+}: {
+  message: UIMessage | undefined;
+  running: boolean;
+}) {
+  const has = useMemo(
+    () => summarizeWorkStatus(message, running) !== null,
+    [message, running],
+  );
+  // Which turn the user dismissed / that already faded; a different message
+  // id (the next turn) shows the dock again.
+  const [hiddenFor, setHiddenFor] = useState<string | null>(null);
+  const id = message?.id ?? null;
+  // Only a turn that ran while this page was open gets a dock. A reopened or
+  // reloaded chat starts quiet instead of flashing a stale "Worked" bar.
+  const [ranFor, setRanFor] = useState<string | null>(null);
+  useEffect(() => {
+    if (running && id) setRanFor(id);
+  }, [running, id]);
+
+  useEffect(() => {
+    if (running || !has || !id) return;
+    const t = setTimeout(() => setHiddenFor(id), DOCK_LINGER_MS);
+    return () => clearTimeout(t);
+  }, [running, has, id]);
+
+  const visible = has && (running || (ranFor === id && hiddenFor !== id));
+  return (
+    <AnimatePresence>
+      {visible ? (
+        <motion.div
+          key="work-dock-shell"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0, transition: { duration: FADE_S, ease: "easeOut" } }}
+        >
+          <WorkStatusDockBody
+            message={message}
+            running={running}
+            onClose={() => setHiddenFor(id)}
+          />
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
   );
 }
