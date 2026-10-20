@@ -235,6 +235,14 @@ pub fn history_to_messages(thread_id: &str, session_id: &str, history: &[Value])
                 if row_role == "user" {
                     break;
                 }
+                // Runtime bookkeeping rows (the "[auto] ..." continuation and
+                // guidance reminders, compaction notices) are not part of the
+                // conversation. Rendering them as assistant text is what made
+                // the credential-card template show up after a reload.
+                if row_role == "system" || row_role == "background_task" {
+                    i += 1;
+                    continue;
+                }
                 if let Some(stats) = row.get("response_stats") {
                     turn_stats = Some(stats);
                 }
@@ -270,18 +278,24 @@ pub fn history_to_messages(thread_id: &str, session_id: &str, history: &[Value])
                     }));
                 } else {
                     let (thinkings, remaining) = extract_thinking_and_text(content);
+                    let thinkings_is_empty = thinkings.is_empty();
                     for t in thinkings {
                         parts.push(json!({
                             "type": "reasoning",
                             "text": t,
                         }));
                     }
+                    // `remaining` is the row with its reasoning taken out. Only a
+                    // row with no reasoning at all keeps its exact original text
+                    // (whitespace and all); anything else must use the cleaned
+                    // text, or the dim/italic wrapper leaks into the answer.
+                    let had_reasoning = !thinkings_is_empty;
                     if !remaining.trim().is_empty() {
                         parts.push(json!({
                             "type": "text",
-                            "text": if !content.contains("<thinking>") { content.to_string() } else { remaining.trim().to_string() },
+                            "text": if had_reasoning { remaining.trim().to_string() } else { content.to_string() },
                         }));
-                    } else if !has_tools && parts.is_empty() {
+                    } else if !had_reasoning && !has_tools && parts.is_empty() {
                         parts.push(json!({
                             "type": "text",
                             "text": content.to_string(),
@@ -613,6 +627,22 @@ mod reminder_tests {
         assert_eq!(thoughts, vec!["Let me think *hard*\nSecond line".to_string()]);
         assert_eq!(rest.trim(), "The answer is 4.");
         assert!(!rest.contains(s));
+    }
+
+    #[test]
+    fn system_rows_are_not_shown_as_assistant_text() {
+        let s = '\u{2063}';
+        let history = vec![
+            json!({"role": "user", "content": "Hello"}),
+            json!({"role": "assistant", "content": "Hi there."}),
+            json!({"role": "system", "content": "[auto] ## Credential Security & In-Chat UI Execution\n<Human Label>"}),
+            json!({"role": "assistant", "content": format!("*{s}Nothing new to answer.{s}*  \n\n")}),
+        ];
+        let messages = history_to_messages("t", "s", &history);
+        let text = serde_json::to_string(&messages).unwrap();
+        assert!(!text.contains("Credential Security"), "{text}");
+        assert!(!text.contains("Human Label"), "{text}");
+        assert!(!text.contains(s), "sentinel leaked: {text}");
     }
 
     #[test]
