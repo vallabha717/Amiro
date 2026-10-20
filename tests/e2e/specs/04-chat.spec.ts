@@ -311,4 +311,81 @@ test.describe("chat", () => {
       await expect(page.getByRole("list", { name: "Attached files" })).toHaveCount(0);
     });
   });
+
+  test("streaming thinking window and inline tool call descriptions", async ({
+    page,
+    step,
+  }) => {
+    await step("Prompt the agent with thinking and tool calls → immediate streaming & unboxed Thinking", async () => {
+      await send(
+        page,
+        "First write a <thinking> block with 4 lines explaining your plan, then run bash `echo 'INLINE_STREAM_OK'`, write '/tmp/e2e-inline-edit.txt' with 'line 1', edit '/tmp/e2e-inline-edit.txt' to replace 'line 1' with 'line 2', and finally reply 'Done'.",
+      );
+      const streamingUi = page
+        .getByTestId("streaming-thinking-indicator")
+        .or(page.getByTestId("reasoning-part"))
+        .or(page.getByText(/^Working…/));
+      await expect
+        .soft(streamingUi.first(), "streaming thinking or working indicator appears immediately")
+        .toBeVisible({ timeout: 30000 });
+    });
+
+    await step("Once complete, Thinking auto-minimizes to plain unboxed text with no left border line", async () => {
+      await waitForReply(page, { timeoutMs: 240000 });
+      const reasoning = page.getByTestId("reasoning-part").first();
+      await expect.soft(reasoning, "reasoning block is rendered on top").toBeVisible();
+      if (await reasoning.isVisible().catch(() => false)) {
+        const toggle = reasoning.getByTestId("message-reasoning-toggle");
+        await expect.soft(toggle).toHaveText("Thinking");
+        await expect.soft(toggle).toHaveAttribute("aria-expanded", "false");
+        // Verify unboxed: no border or background box on the Thinking toggle
+        const borderWidth = await toggle.evaluate(
+          (el) => window.getComputedStyle(el).borderTopWidth,
+        );
+        expect.soft(borderWidth, "Thinking label should not have a border box").toBe("0px");
+        // Click Thinking to expand -> light text inside bounded window height, no left border line
+        await toggle.click();
+        const scrollBox = reasoning.getByTestId("message-reasoning-scroll");
+        await expect.soft(scrollBox).toBeVisible();
+        await page.waitForTimeout(600);
+        const styles = await scrollBox.evaluate((el) => {
+          const cs = window.getComputedStyle(el);
+          return {
+            borderLeftWidth: cs.borderLeftWidth,
+            maxHeight: cs.maxHeight,
+          };
+        });
+        expect.soft(styles.borderLeftWidth, "Thinking body must not have a left border line").toBe("0px");
+        expect.soft(styles.maxHeight, "Thinking body must have bounded max-height").not.toBe("none");
+        // Collapse it again
+        await toggle.click();
+      }
+    });
+
+    await step("Tool calls show description only until clicked, then expand bash and file edit inline", async () => {
+      const workLogBtn = page.getByRole("button", { name: /^Worked/ }).first();
+      if (await workLogBtn.isVisible().catch(() => false)) {
+        await workLogBtn.click();
+      }
+      const toggles = page.getByTestId("tool-call-toggle");
+      const count = await toggles.count();
+      expect.soft(count, "at least one inline tool call description toggle is visible").toBeGreaterThan(0);
+      await expect.soft(page.getByTestId("tool-call-details")).toHaveCount(0);
+
+      for (let i = 0; i < count; i++) {
+        const t = toggles.nth(i);
+        await expect.soft(t, "tool call is collapsed to description by default").toHaveAttribute("aria-expanded", "false");
+        await t.click();
+        await expect.soft(t).toHaveAttribute("aria-expanded", "true");
+        await page.waitForTimeout(400);
+      }
+      const allDetails = page.getByTestId("tool-call-details");
+      await expect.soft(allDetails.first(), "clicking tool call description expands details inline").toBeVisible();
+      await allDetails.last().scrollIntoViewIfNeeded();
+      await page.waitForTimeout(800);
+      const combinedText = (await allDetails.allInnerTexts()).join("\n");
+      expect.soft(combinedText).toMatch(/INLINE_STREAM_OK|echo/i);
+      expect.soft(combinedText).toMatch(/e2e-inline-edit\.txt|line 2/i);
+    });
+  });
 });

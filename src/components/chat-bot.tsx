@@ -86,6 +86,7 @@ import {
   DialogTitle,
 } from "ui/dialog";
 import { Think } from "ui/think";
+import { TextShimmer } from "ui/text-shimmer";
 
 type Props = {
   threadId: string;
@@ -1004,8 +1005,23 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
                     {space && (
                       <>
                         <div className="w-full mx-auto max-w-3xl px-6 relative">
-                          <div className={space == "space" ? "opacity-0" : ""}>
-                            <Think />
+                          <div
+                            className={cn(
+                              "flex items-center gap-1.5 py-1",
+                              space == "space" ? "opacity-0" : "",
+                            )}
+                          >
+                            {space === "think" ? (
+                              <TextShimmer
+                                as="span"
+                                data-testid="streaming-thinking-indicator"
+                                className="font-normal text-xs [--base-color:#a1a1aa] [--base-gradient-color:#52525b] dark:[--base-color:#a1a1aa] dark:[--base-gradient-color:#f4f4f5]"
+                              >
+                                Thinking
+                              </TextShimmer>
+                            ) : (
+                              <Think />
+                            )}
                           </div>
                         </div>
                         <div className="min-h-[calc(5dvh-56px)]" />

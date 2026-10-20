@@ -97,15 +97,15 @@ function GroupRow({
     <InlineImageStrip images={row.images} size="md" />
   ) : null;
 
-  // A named file row's card (a colored +N/-M stat that opens the full
-  // side-by-side diff on click, or a create/overwrite badge) already says
-  // everything the chevron+glance header would, in a form that's directly
-  // interactive -- so it renders straight away instead of waiting for a
-  // second click to reveal what the first click already named.
-  if (row.file) {
+  // A single-tool group (or a named file edit row) already renders its own
+  // inline collapsible ToolMessagePart description row directly, so we avoid
+  // wrapping it in a redundant outer "Ran 1 command" toggle.
+  if (row.file || row.glances.length === 1) {
+    const singleNode = row.glances[0]?.node;
     return (
-      <div className="flex flex-col py-0.5">
+      <div data-testid="worklog-row" className="flex flex-col py-0.5">
         {row.children}
+        {singleNode ? <div className="pl-5 pt-0.5">{singleNode}</div> : null}
         {images}
       </div>
     );
@@ -117,6 +117,7 @@ function GroupRow({
         type="button"
         onClick={() => setOpen((v) => !v)}
         data-testid="worklog-row"
+        aria-expanded={open}
         className={cn(
           "group/row flex items-center gap-1.5 text-left text-xs py-1 rounded-sm",
           "text-muted-foreground hover:text-foreground transition-colors",
@@ -138,9 +139,13 @@ function GroupRow({
       </button>
 
       {/* Collapsed: one glance line per call, so the row still says what
-          happened without being expanded into full tool cards. */}
+          happened without being expanded into full tool cards. Clicking any
+          glance description expands the inline tool details. */}
       {!open ? (
-        <div className="pl-[18px] flex flex-col">
+        <div
+          className="pl-[18px] flex flex-col cursor-pointer"
+          onClick={() => setOpen(true)}
+        >
           {row.glances.map((g, i) =>
             g.node ? (
               <div key={i} className="min-w-0 leading-5">
@@ -158,7 +163,7 @@ function GroupRow({
               <span
                 key={i}
                 className={cn(
-                  "text-[11px] truncate leading-5",
+                  "text-[11px] truncate leading-5 hover:text-foreground transition-colors",
                   g.failed ? "text-destructive" : "text-muted-foreground/70",
                 )}
               >
@@ -168,7 +173,7 @@ function GroupRow({
           )}
         </div>
       ) : (
-        <div className="pl-[18px] flex flex-col gap-2 py-1">{row.children}</div>
+        <div className="pl-[18px] flex flex-col gap-1.5 py-1">{row.children}</div>
       )}
       {images ? <div className="pl-[18px]">{images}</div> : null}
     </div>
@@ -383,7 +388,7 @@ export const WorkLog = memo(function WorkLog({
             className="overflow-hidden"
           >
             <PresenterSurface value="chat">
-              <div className="flex flex-col gap-1 border-l ml-2 pl-3 mt-1.5 mb-1">
+              <div className="flex flex-col gap-1 pl-2 mt-1.5 mb-1">
                 {rows.map((row, i) =>
                   row.type === "group" ? (
                     <GroupRow

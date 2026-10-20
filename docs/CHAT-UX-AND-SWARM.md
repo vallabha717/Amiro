@@ -102,10 +102,11 @@ to stop on a word boundary within 6 characters. Surrogate pairs are never split.
 Finished messages do no work, and reduced-motion users see the full text
 immediately. Used for text parts in `src/components/message-parts.tsx`.
 
-**Reasoning.** The reasoning block shows "Thinking..." with an elapsed counter
-while the model thinks, and then "Thought for Ns" once it finishes. The duration
-is only known for thinking the page watched happen. A reopened thread shows a
-plain "Thought".
+**Reasoning.** While the model thinks, the reasoning block shows a plain unboxed
+"Thinking" label with a passing shine effect and streams light-colored reasoning
+text inside a bounded-height scroll window (`max-h-36`) with no left border line.
+Once thinking completes, the block automatically minimizes under the plain
+"Thinking" label; clicking it toggles the reasoning window open or closed.
 
 ## Todo deltas
 

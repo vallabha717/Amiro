@@ -222,10 +222,15 @@ test.describe("agent-driven", () => {
     });
     await step("Open the work log → the row names the saved artifact", async () => {
       await page.getByRole("button", { name: /^Worked for/ }).first().click();
-      await expect(page.getByText("artifact · E2E agent demo").first()).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText(/artifact · E2E agent demo/).first()).toBeVisible({ timeout: 15000 });
     });
     await step("Expand the row and click Open on the card → Files tab previews it", async () => {
-      await page.getByTestId("worklog-row").first().click();
+      const toggle = page.getByTestId("tool-call-toggle").first();
+      if (await toggle.isVisible().catch(() => false)) {
+        await toggle.click();
+      } else {
+        await page.getByTestId("worklog-row").first().click();
+      }
       await page.locator('[data-testid^="artifact-open-"]').first().click();
       await expect(page.getByTestId("artifacts-panel")).toBeVisible();
       await expect(page.getByTestId("artifact-text")).toContainText("E2E agent demo", { timeout: 15000 });
