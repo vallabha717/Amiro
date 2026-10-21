@@ -240,13 +240,12 @@ async fn emit_inner(
                     .await?;
                 }
                 Err(error) => {
-                    let status = if error.0 == StatusCode::BAD_REQUEST
-                        && error.1.contains("no bot token")
-                    {
-                        "skipped"
-                    } else {
-                        "failed"
-                    };
+                    let status =
+                        if error.0 == StatusCode::BAD_REQUEST && error.1.contains("no bot token") {
+                            "skipped"
+                        } else {
+                            "failed"
+                        };
                     store::record_delivery(
                         state,
                         user_id,
