@@ -337,6 +337,12 @@ test.describe("chat", () => {
       await expect
         .soft(async () => expect(await gap()).toBeLessThan(40), "list follows new content")
         .toPass({ timeout: 20000 });
+      const lastMsg = page.locator("[data-message-id]").last();
+      const lastBox = await lastMsg.boundingBox();
+      const composerTop = (await composer(page).boundingBox())?.y;
+      if (lastBox && composerTop) {
+        expect.soft(lastBox.y + lastBox.height, "newest text is not hidden behind the composer").toBeLessThanOrEqual(composerTop + 2);
+      }
       await box.hover();
       await page.mouse.wheel(0, -600);
       await page.waitForTimeout(1500);

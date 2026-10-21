@@ -111,6 +111,10 @@ firstTimeStorage.set(false);
 
 export default function ChatBot({ threadId, initialMessages }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
+  // The composer, dock and strips float over the message list; the list's
+  // bottom padding follows their real height so nothing scrolls under them.
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const [overlayHeight, setOverlayHeight] = useState(176);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const { uploadFiles } = useThreadFileUploader(threadId);
   const handleFileDrop = useCallback(
@@ -792,6 +796,15 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
     handleFocus();
   }, [handleFocus]);
 
+  useEffect(() => {
+    const el = overlayRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setOverlayHeight(el.offsetHeight));
+    ro.observe(el);
+    setOverlayHeight(el.offsetHeight);
+    return () => ro.disconnect();
+  }, [messages.length > 0]);
+
   // Follow the answer while it grows, until the reader scrolls away.
   const stickToBottomRef = useRef(true);
 
@@ -1027,8 +1040,9 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
                       isLoading || isPendingToolCall ? "streaming" : "ready"
                     }
                     className={
-                      "flex flex-col gap-2 overflow-y-auto pt-12 pb-32 z-10 [scrollbar-gutter:stable_both-edges]"
+                      "flex flex-col gap-1 overflow-y-auto pt-12 z-10 [scrollbar-gutter:stable_both-edges]"
                     }
+                    style={{ paddingBottom: overlayHeight + 56 + 12 }}
                     ref={containerRef}
                     onScroll={handleScroll}
                   >
@@ -1051,7 +1065,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
                             message.role != "user" &&
                             !space &&
                             (message.parts?.length ?? 0) > 1
-                              ? "min-h-[calc(5dvh-40px)]"
+                              ? ""
                               : ""
                           }
                         />
@@ -1079,7 +1093,6 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
                             )}
                           </div>
                         </div>
-                        <div className="min-h-[calc(5dvh-56px)]" />
                       </>
                     )}
 
@@ -1090,6 +1103,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
               )}
 
               <div
+                ref={overlayRef}
                 className={clsx(
                   messages.length && "absolute bottom-14",
                   "w-full z-10",
