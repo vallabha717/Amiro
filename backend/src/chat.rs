@@ -270,15 +270,41 @@ async fn chat_handler(
         }
     }
 
-    let requested_dir = body
-        .get("workingDir")
-        .or_else(|| body.get("projectDirectory"))
-        .or_else(|| body.get("workspaceRoot"))
+    // A thread that already belongs to an agent keeps it; the body only picks
+    // the agent for a brand-new thread. A team agent always works in its own
+    // folder, so a client folder can never point it at another agent's files.
+    let agent_id = entry
+        .as_ref()
+        .and_then(|entry| entry.get("agentId"))
+        .or_else(|| body.get("agentId"))
         .and_then(|value| value.as_str())
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .map(validate_working_dir)
-        .transpose()?;
+        .map(str::to_string);
+    let agent_dir = match agent_id.as_deref() {
+        Some(id) => crate::routes::agents::working_dir_for(&state, id)
+            .await?
+            .map(|dir| dir.to_string_lossy().to_string()),
+        None => None,
+    };
+    let is_channel = entry
+        .as_ref()
+        .and_then(|entry| entry.get("channel"))
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
+
+    let requested_dir = if agent_dir.is_some() {
+        None
+    } else {
+        body.get("workingDir")
+            .or_else(|| body.get("projectDirectory"))
+            .or_else(|| body.get("workspaceRoot"))
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(validate_working_dir)
+            .transpose()?
+    };
 
     let message = body.get("message").cloned().unwrap_or(json!({}));
     let user_text = extract_text(&message);
@@ -357,12 +383,15 @@ async fn chat_handler(
             .filter(|value| !value.is_empty())
             .map(str::to_string);
         let stored_dir = state_for_stream.workspace.to_string_lossy().to_string();
-        let stored_dir = entry
-            .as_ref()
-            .and_then(|entry| entry.get("workingDir"))
-            .and_then(|value| value.as_str())
-            .unwrap_or(&stored_dir)
-            .to_string();
+        let stored_dir = match agent_dir.clone() {
+            Some(dir) => dir,
+            None => entry
+                .as_ref()
+                .and_then(|entry| entry.get("workingDir"))
+                .and_then(|value| value.as_str())
+                .unwrap_or(&stored_dir)
+                .to_string(),
+        };
         let rotation = requested_dir
             .as_deref()
             .map(|dir| dir != stored_dir)
@@ -539,8 +568,13 @@ async fn chat_handler(
         } else {
             patch["workingDir"] = json!(working_dir);
         }
+        if let Some(id) = agent_id.as_deref() {
+            patch["agentId"] = json!(id);
+        }
         if entry.as_ref().and_then(|e| e.get("heartbeat")).and_then(|v| v.as_bool()) == Some(true) {
             patch["unread"] = json!(false);
+        } else if is_channel {
+            // A channel keeps the agent's name as its title.
         } else if previous_session.is_none() {
             patch["title"] = json!(derive_title(&user_text));
             patch["titleSource"] = json!("runtime");

@@ -49,7 +49,7 @@ const BLACK_HEX: &str = "#17171C";
 /// Accent palette keyed by color id. Kept byte-identical to `AVATAR_COLORS`
 /// in the UI catalog. Sidebar themes are CSS-token driven and are NOT part
 /// of this palette. `black` is the plush near-black the customizer offers.
-fn accent_palette(color: &str) -> Option<&'static str> {
+pub(crate) fn accent_palette(color: &str) -> Option<&'static str> {
     match color {
         "green" => Some(GREEN_HEX),
         "orange" => Some(ORANGE_HEX),
@@ -290,7 +290,7 @@ fn clamp_slider(v: &Value, fallback: f64) -> i64 {
     num.max(0.0).min(100.0).round() as i64
 }
 
-fn normalize_sliders(raw: &Value) -> Value {
+pub(crate) fn normalize_sliders(raw: &Value) -> Value {
     let get = |k: &str, dflt: f64| -> i64 {
         match raw.get(k) {
             Some(v) => clamp_slider(v, dflt),
@@ -306,7 +306,7 @@ fn normalize_sliders(raw: &Value) -> Value {
     })
 }
 
-fn normalize_traits(raw: &Value) -> Value {
+pub(crate) fn normalize_traits(raw: &Value) -> Value {
     let mut body_shape = js_string_or(raw.get("bodyShape"), DEFAULT_BODY_SHAPE)
         .trim()
         .to_lowercase();
@@ -637,7 +637,7 @@ pub async fn get_agent_identity(state: &AppState, user_id: Option<&str>) -> Resu
 }
 
 /// `name.toLowerCase().replace(/[^a-z0-9]+/g, '')`
-fn alpha_lower(name: &str) -> String {
+pub(crate) fn alpha_lower(name: &str) -> String {
     name.to_lowercase()
         .chars()
         .filter(|c| c.is_ascii_alphanumeric())

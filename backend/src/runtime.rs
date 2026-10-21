@@ -78,6 +78,14 @@ fn runtime_env(state: &AppState) -> HashMap<OsString, OsString> {
         "AMIRO_AGENT_HOME".into(),
         OsString::from(agent_home.to_string_lossy().to_string()),
     );
+    // Team agents: a session working inside this folder loads that agent's
+    // persona files instead of the owner's (runtime `agent_home.rs`).
+    let agents_root = crate::routes::agents::agents_root(state);
+    let _ = std::fs::create_dir_all(&agents_root);
+    env.insert(
+        "AMIRO_AGENTS_ROOT".into(),
+        OsString::from(agents_root.to_string_lossy().to_string()),
+    );
     env.insert(
         "AMIRO_RUNTIME_DIR".into(),
         OsString::from(runtime_dir(state).to_string_lossy().to_string()),

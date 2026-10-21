@@ -1,4 +1,5 @@
 pub mod admin;
+pub mod agents;
 pub mod agent_workspace;
 pub mod artifacts;
 pub mod archive;
@@ -30,6 +31,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .merge(user::routes())
         .merge(admin::routes())
+        .merge(agents::routes())
         .merge(artifacts::routes())
         .merge(agent_workspace::routes())
         .merge(archive::routes())

@@ -93,6 +93,11 @@ fn owns(entry: &Value, uid: &str) -> bool {
     entry.get("userId").and_then(|v| v.as_str()).map(|id| id == uid && !id.is_empty()).unwrap_or(false)
 }
 
+/// An agent's permanent channel thread (see `routes/agents.rs`).
+pub fn is_channel(entry: &Value) -> bool {
+    entry.get("channel").and_then(Value::as_bool).unwrap_or(false)
+}
+
 fn history_msg_id(session_id: &str, index: usize) -> String {
     format!("msg_{}_{}", index, session_id)
 }
@@ -291,8 +296,11 @@ async fn list_threads(State(state): State<AppState>, user: AuthUser) -> Result<J
     }
     let doc = read_threads(&state).await?;
     let obj = doc.as_object().cloned().unwrap_or_default();
+    // Team agents' threads live on their own page; this list is the main agent's.
+    let team = crate::routes::agents::team_agent_ids(&state).await;
     let mut list: Vec<Value> = obj.iter().filter_map(|(id, e)| {
         if !owns(e, &uid) { return None; }
+        if e.get("agentId").and_then(Value::as_str).is_some_and(|a| team.iter().any(|t| t == a)) { return None; }
         Some(json!({
             "id": id,
             "title": e.get("title").and_then(|v| v.as_str()).unwrap_or("New Chat"),
@@ -303,6 +311,8 @@ async fn list_threads(State(state): State<AppState>, user: AuthUser) -> Result<J
             "workingDir": e.get("workingDir").and_then(|v| v.as_str()).unwrap_or_else(|| state.workspace.to_str().unwrap_or("")),
             "heartbeat": e.get("heartbeat").and_then(|v| v.as_bool()).unwrap_or(false),
             "unread": e.get("unread").and_then(|v| v.as_bool()).unwrap_or(false),
+            "agentId": e.get("agentId").and_then(Value::as_str).unwrap_or(crate::routes::agents::MAIN_AGENT_ID),
+            "channel": is_channel(e),
         }))
     }).collect();
     list.sort_by(|a,b| a["id"].as_str().cmp(&b["id"].as_str()));
@@ -392,6 +402,9 @@ async fn delete_thread(State(state): State<AppState>, user: AuthUser, Path(id): 
     let mut doc = read_json(&path, json!({})).await?;
     if let Some(entry) = doc.get(&id).cloned() {
         if !owns(&entry, &uid) { return Err(ApiError(StatusCode::NOT_FOUND, "thread not found".into())); }
+        if is_channel(&entry) {
+            return Err(ApiError(StatusCode::CONFLICT, "An agent's channel can't be deleted.".into()));
+        }
         if let Some(sid) = entry.get("sessionId").and_then(|v| v.as_str()) {
             let _ = crate::runtime::archive_session(&state, sid).await;
         }
@@ -413,6 +426,7 @@ async fn delete_threads(State(state): State<AppState>, user: AuthUser, Query(q):
     let unarchived_only = q.scope.as_deref() == Some("unarchived");
     let ids: Vec<String> = obj.iter().filter_map(|(id, e)| {
         if !owns(e, &uid) { return None; }
+        if is_channel(e) { return None; }
         if unarchived_only && e.get("archived").and_then(|v| v.as_bool()).unwrap_or(false) { return None; }
         Some(id.clone())
     }).collect();
