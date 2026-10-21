@@ -98,6 +98,8 @@ export const chatApiSchemaRequestBodySchema = z.object({
   allowedMcpServers: z.record(z.string(), AllowedMCPServerZodSchema).optional(),
   allowedAppDefaultToolkit: z.array(z.string()).optional(),
   attachments: z.array(ChatAttachmentSchema).optional(),
+  /** Team agent for a new thread; the backend then fixes its working folder. */
+  agentId: z.string().optional(),
 });
 
 export type ChatApiSchemaRequestBody = z.infer<

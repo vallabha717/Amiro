@@ -6,6 +6,7 @@ import clsx from "clsx";
 import { cn, createDebounce, generateUUID } from "lib/utils";
 import {
   Fragment,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -91,6 +92,14 @@ type Props = {
   threadId: string;
   initialMessages: Array<UIMessage>;
   selectedChatModel?: string;
+  /** Team agent this chat belongs to (sent as `agentId`); unset = main chat. */
+  agentId?: string;
+  /** URL to show once the first message is sent; defaults to `/?thread=<id>`. */
+  threadPath?: string;
+  /** Replaces the greeting shown while the chat is empty. */
+  emptyState?: ReactNode;
+  /** Replaces the composer's folder picker when the folder is fixed. */
+  workspaceLabel?: string;
 };
 
 const LightRays = dynamic(() => import("ui/light-rays"), {
@@ -107,7 +116,14 @@ const firstTimeStorage = getStorageManager("IS_FIRST");
 const isFirstTime = firstTimeStorage.get() ?? true;
 firstTimeStorage.set(false);
 
-export default function ChatBot({ threadId, initialMessages }: Props) {
+export default function ChatBot({
+  threadId,
+  initialMessages,
+  agentId,
+  threadPath,
+  emptyState,
+  workspaceLabel,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const { uploadFiles } = useThreadFileUploader(threadId);
@@ -243,7 +259,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
       api: backendUrl("/api/chat"),
       fetch: backendFetch,
       prepareSendMessagesRequest: ({ messages, body, id }) => {
-        const threadUrl = `/?thread=${threadId}`;
+        const threadUrl = threadPath ?? `/?thread=${threadId}`;
         if (window.location.pathname + window.location.search !== threadUrl) {
           console.log("replace-state");
           window.history.replaceState({}, "", threadUrl);
@@ -307,6 +323,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
             model: latestRef.current.threadImageToolModel[threadId],
           },
           attachments,
+          agentId,
         };
         return { body: requestBody };
       },
@@ -962,7 +979,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
                 </div>
               )}
               {emptyMessage ? (
-                <ChatGreeting />
+                (emptyState ?? <ChatGreeting />)
               ) : (
                 <>
                   <div
@@ -1063,6 +1080,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
                   onQueueFollowUp={queuePendingFollowUp}
                   onCancelFollowUp={cancelPendingFollowUp}
                   onInterruptAndSend={interruptAndSend}
+                  workspaceLabel={workspaceLabel}
                 />
               </div>
               <DeleteThreadPopup

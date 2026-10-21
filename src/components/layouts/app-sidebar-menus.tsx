@@ -23,6 +23,7 @@ import {
   FolderSearchIcon,
   PlugZapIcon,
   PlusIcon,
+  UsersRoundIcon,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
@@ -100,6 +101,23 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
               </Link>
             </SidebarMenuItem>
           </Tooltip>
+        </SidebarMenu>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <Link
+              href="/team"
+              data-testid="sidebar-team-link"
+              onClick={() => setOpenMobile(false)}
+            >
+              <SidebarMenuButton
+                className="font-semibold"
+                isActive={pathname.startsWith("/team")}
+              >
+                <UsersRoundIcon className="size-4" />
+                {t("Layout.team")}
+              </SidebarMenuButton>
+            </Link>
+          </SidebarMenuItem>
         </SidebarMenu>
         <SidebarMenu>
           <Tooltip>
