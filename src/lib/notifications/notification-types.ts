@@ -430,11 +430,32 @@ export async function fetchNotificationSettings(): Promise<NotificationSettings>
   return getCachedNotificationSettings();
 }
 
+/**
+ * Apply a settings change over the current settings. The current settings
+ * carry legacy alias fields (`notificationSoundChime` mirrors `soundEnabled`,
+ * and so on), and `normalizeSettings` lets a `false` alias win. Merging over
+ * them as-is would let the old alias veto the change, so a switch turned off
+ * could never be turned back on. The aliases are dropped first, so the change
+ * decides, and `normalizeSettings` writes them again from it.
+ */
+export function mergeSettings(
+  current: NotificationSettings,
+  payload: UpdateNotificationsSettingsPayload,
+): NotificationSettings {
+  const {
+    notificationsEnabled: _enabledAlias,
+    allAlertsBannerMode: _allAlertsAlias,
+    scheduleRunAndReminderAlerts: _scheduleAlias,
+    notificationSoundChime: _soundAlias,
+    ...canonical
+  } = current;
+  return normalizeSettings({ ...canonical, ...payload });
+}
+
 export async function updateNotificationSettings(
   payload: UpdateNotificationsSettingsPayload,
 ): Promise<NotificationSettings> {
-  const current = getCachedNotificationSettings();
-  const next = normalizeSettings({ ...current, ...payload });
+  const next = mergeSettings(getCachedNotificationSettings(), payload);
   setCachedNotificationSettings(next);
 
   try {
