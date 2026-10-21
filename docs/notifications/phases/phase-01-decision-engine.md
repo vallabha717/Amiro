@@ -1,5 +1,8 @@
 # Phase 01 — LLM decision engine
 
+> **Shipped 2026-10-21 (scoped 4/4 MET).** See [progress/phase-01-decision-engine.md](../progress/phase-01-decision-engine.md)
+> for what was built, what diverged, and the verification log.
+
 **Depends on:** 00 · **Blocks:** 03 · **Size:** L
 
 **Surfaces touched:** backend (config + runtime bridge call)
