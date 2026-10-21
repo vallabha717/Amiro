@@ -154,6 +154,7 @@ test.describe("agent-hub", () => {
       await page.goto("/channels");
       await expect(page.locator("[data-testid=channels-page]")).toBeVisible();
       await expect(page.getByRole("heading", { name: "Channels" })).toBeVisible();
+      await expect(page.locator("[data-testid=channels-back-link]")).toBeVisible();
     });
 
     await step("Change Telegram admission policy to 'Verified contacts'", async () => {
@@ -163,10 +164,16 @@ test.describe("agent-hub", () => {
       await expect(page.locator("[data-testid=channel-policy-select]")).toContainText(/Verified contacts/i);
     });
 
+    await step("Click Back to Agent Hub from Channels", async () => {
+      await page.locator("[data-testid=channels-back-link]").click();
+      await expect(page).toHaveURL(/\/agent(\?|$)/);
+    });
+
     await step("Navigate to Contacts page (/contacts)", async () => {
       await page.goto("/contacts");
       await expect(page.locator("[data-testid=contacts-page]")).toBeVisible();
       await expect(page.getByRole("heading", { name: "Contacts" })).toBeVisible();
+      await expect(page.locator("[data-testid=contacts-back-link]")).toBeVisible();
     });
 
     await step("Create a new contact 'Bob Smith' with Telegram address", async () => {

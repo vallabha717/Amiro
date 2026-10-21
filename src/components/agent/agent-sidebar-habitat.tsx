@@ -166,7 +166,7 @@ export function AgentSidebarHabitat({
   return (
     <div className="relative">
       <Link
-        href="/agent?customize=1"
+        href="/agent"
         aria-label={`Customize ${name}`}
         data-testid="sidebar-agent-habitat"
         onPointerEnter={() => setGreeting(true)}

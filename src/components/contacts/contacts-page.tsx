@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
 import {
+  ArrowLeft,
   CheckCircle,
   GitMerge,
   Loader2,
@@ -79,12 +81,22 @@ export function ContactsPage() {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col gap-6 overflow-y-auto p-4 sm:p-6 lg:p-8" data-testid="contacts-page">
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">{t("title")}</h1>
-          <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-wrap items-start gap-3">
+          <Link
+            href="/agent"
+            data-testid="contacts-back-link"
+            className="mt-1 inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-card px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <ArrowLeft className="size-3.5" aria-hidden="true" />
+            Agent Hub
+          </Link>
+          <div className="flex min-w-0 flex-col gap-1">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">{t("title")}</h1>
+            <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
+          </div>
         </div>
-        <Button onClick={() => setAddDialogOpen(true)} data-testid="add-contact-button">
+        <Button onClick={() => setAddDialogOpen(true)} data-testid="add-contact-button" className="shrink-0 self-start sm:self-auto">
           <UserPlus className="mr-2 size-4" />
           {t("addContact")}
         </Button>

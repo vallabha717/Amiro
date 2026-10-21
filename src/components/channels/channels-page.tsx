@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
 import {
+  ArrowLeft,
   CheckCircle,
   ExternalLink,
   Loader2,
@@ -65,9 +67,19 @@ export function ChannelsPage() {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col gap-6 overflow-y-auto p-4 sm:p-6 lg:p-8" data-testid="channels-page">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">{t("title")}</h1>
-        <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
+      <div className="flex flex-wrap items-start gap-3">
+        <Link
+          href="/agent"
+          data-testid="channels-back-link"
+          className="mt-1 inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-card px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <ArrowLeft className="size-3.5" aria-hidden="true" />
+          Agent Hub
+        </Link>
+        <div className="flex min-w-0 flex-col gap-1">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">{t("title")}</h1>
+          <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
