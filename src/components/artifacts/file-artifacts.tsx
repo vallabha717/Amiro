@@ -4,6 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { mutate as globalMutate } from "swr";
 import { appStore } from "@/app/store";
+import type { ChatFile } from "lib/file-preview/chat-files";
+import { useOpenWorkspaceFile } from "@/components/file-preview/use-open-workspace-file";
+import { WorkspaceFileViewer } from "@/components/workspace-browser/workspace-file-viewer";
 import { toast } from "sonner";
 import { Button } from "ui/button";
 import { cn } from "lib/utils";
@@ -20,11 +23,7 @@ import {
   deleteFileArtifact,
   downloadArtifactBlob,
   formatSize,
-  isFramedPreviewable,
-  isTextPreviewable,
-  kindLabel,
-  previewArtifactUrl,
-  useFileArtifact,
+  artifactKindLabel,
   useFileArtifacts,
   type FileArtifact,
 } from "@/lib/backend/artifacts-api";
@@ -34,7 +33,13 @@ import {
  * code, csv, pdf, word — saved as real files under
  * `workspace/artifacts/<user>/<id>/<file>` and previewed here.
  */
-export function FileArtifactsPanel({ threadId }: { threadId?: string }) {
+export function FileArtifactsPanel({
+  threadId,
+  chatFiles = [],
+}: {
+  threadId?: string;
+  chatFiles?: ChatFile[];
+}) {
   const t = useTranslations("Chat.Artifact");
   const { data, error, isLoading, mutate } = useFileArtifacts(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -47,6 +52,13 @@ export function FileArtifactsPanel({ threadId }: { threadId?: string }) {
   }, [requestedFileId]);
 
   const items = useMemo(() => data ?? [], [data]);
+  const openWorkspaceFile = useOpenWorkspaceFile();
+  // A chat file that is also a saved artifact is listed once, as the artifact.
+  const registered = useMemo(() => new Set(items.map((a) => a.workspacePath)), [items]);
+  const chatOnly = useMemo(
+    () => chatFiles.filter((f) => !registered.has(f.path)),
+    [chatFiles, registered],
+  );
   const selected = items.find((a) => a.id === selectedId) ?? null;
 
   // Note: no effect clears a selection the list does not (yet) contain.
@@ -68,7 +80,7 @@ export function FileArtifactsPanel({ threadId }: { threadId?: string }) {
       <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
         <h2 className="text-xs font-semibold">{t("filesTitle")}</h2>
         <span className="text-[11px] text-muted-foreground">
-          {t("filesCount", { count: items.length })}
+          {t("filesCount", { count: items.length + chatOnly.length })}
         </span>
         <div className="ml-auto flex items-center gap-1">
           <Button
@@ -125,11 +137,42 @@ export function FileArtifactsPanel({ threadId }: { threadId?: string }) {
               {t("filesError")}
             </li>
           )}
-          {!isLoading && !error && items.length === 0 && !creating && (
+          {!isLoading && !error && items.length === 0 && chatOnly.length === 0 && !creating && (
             <li className="px-3 py-4 text-xs text-muted-foreground">
               {t("noFilesYet")}
             </li>
           )}
+          {chatOnly.length > 0 && (
+            <li
+              className="bg-muted/40 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+              data-testid="chat-files-heading"
+            >
+              {t("chatFilesTitle")}
+            </li>
+          )}
+          {chatOnly.map((f) => (
+            <li key={`chat:${f.path}`}>
+              <button
+                type="button"
+                data-testid="chat-file-item"
+                data-path={f.path}
+                onClick={() => {
+                  setCreating(false);
+                  setSelectedId(null);
+                  openWorkspaceFile(f.path);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-muted/60"
+              >
+                <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium">{f.name}</span>
+                  <span className="block truncate text-[11px] text-muted-foreground">
+                    {f.path}
+                  </span>
+                </span>
+              </button>
+            </li>
+          ))}
           {items.map((a) => (
             <li key={a.id}>
               <button
@@ -150,7 +193,7 @@ export function FileArtifactsPanel({ threadId }: { threadId?: string }) {
                     {a.title}
                   </span>
                   <span className="block truncate text-[11px] text-muted-foreground">
-                    {kindLabel(a.kind)} · {a.filename} ·{" "}
+                    {artifactKindLabel(a)} · {a.filename} ·{" "}
                     {formatSize(a.size)}
                   </span>
                 </span>
@@ -192,37 +235,8 @@ function ArtifactPreview({
   onDeleted: () => void;
 }) {
   const t = useTranslations("Chat.Artifact");
-  const { data: detail } = useFileArtifact(
-    isTextPreviewable(artifact) ? artifact.id : null,
-  );
-  const [frameUrl, setFrameUrl] = useState<string | null>(null);
-  const [frameError, setFrameError] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [busy, setBusy] = useState(false);
-
-  const framed = isFramedPreviewable(artifact);
-  useEffect(() => {
-    let alive = true;
-    let url: string | null = null;
-    if (framed) {
-      previewArtifactUrl(artifact.id)
-        .then((u) => {
-          if (!alive) {
-            URL.revokeObjectURL(u);
-            return;
-          }
-          url = u;
-          setFrameUrl(u);
-        })
-        .catch(() => {
-          if (alive) setFrameError(true);
-        });
-    }
-    return () => {
-      alive = false;
-      if (url) URL.revokeObjectURL(url);
-    };
-  }, [framed, artifact.id]);
 
   async function download() {
     setBusy(true);
@@ -263,7 +277,7 @@ function ArtifactPreview({
           {artifact.title}
         </span>
         <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-          {kindLabel(artifact.kind)}
+          {artifactKindLabel(artifact)}
         </span>
         <Button
           type="button"
@@ -306,59 +320,26 @@ function ArtifactPreview({
           </Button>
         )}
       </div>
-      <div className="min-h-0 flex-1 overflow-auto p-3">
-        {framed && !frameError && frameUrl && (
-          <iframe
-            title={artifact.title}
-            src={frameUrl}
-            sandbox="allow-downloads"
-            data-testid="artifact-frame"
-            className="h-full min-h-64 w-full rounded border"
-          />
-        )}
-        {framed && (frameError || !frameUrl) && (
-          <PreviewFallback artifact={artifact} onDownload={() => void download()} />
-        )}
-        {!framed && isTextPreviewable(artifact) && (
-          <pre
-            data-testid="artifact-text"
-            className="whitespace-pre-wrap break-words text-xs leading-relaxed"
-          >
-            {detail?.contentText ?? t("loading")}
-          </pre>
-        )}
-        {!framed && !isTextPreviewable(artifact) && (
-          <PreviewFallback artifact={artifact} onDownload={() => void download()} />
-        )}
+      {/* The same viewer the chat's file paths and the Workspace page use, so a
+          file looks identical wherever it is opened from. */}
+      <div
+        className="flex min-h-0 flex-1 flex-col p-2 [&>section]:min-h-0 [&>section]:flex-1"
+        data-testid="artifact-viewer"
+      >
+        <WorkspaceFileViewer
+          key={artifact.workspacePath}
+          source={{ kind: "workspace", path: artifact.workspacePath }}
+          canWrite={false}
+          showHidden={false}
+          onSaved={noop}
+          onDirtyChange={noop}
+        />
       </div>
     </div>
   );
 }
 
-function PreviewFallback({
-  artifact,
-  onDownload,
-}: {
-  artifact: FileArtifact;
-  onDownload: () => void;
-}) {
-  const t = useTranslations("Chat.Artifact");
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
-      <FileTextIcon className="size-8 text-muted-foreground" />
-      <p className="text-xs text-muted-foreground">
-        {t("noPreview", {
-          filename: artifact.filename,
-          size: formatSize(artifact.size),
-        })}
-      </p>
-      <Button type="button" size="sm" onClick={onDownload} data-testid="artifact-download-fallback">
-        <DownloadIcon className="size-3.5" />
-        {t("download")}
-      </Button>
-    </div>
-  );
-}
+const noop = () => {};
 
 function CreateForm({
   threadId,

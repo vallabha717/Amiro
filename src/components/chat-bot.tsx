@@ -14,6 +14,7 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
+import { chatFilesFrom } from "lib/file-preview/chat-files";
 import { ArtifactPane } from "./artifacts/artifact-pane";
 import { buildPlanDecision, useArtifacts } from "./artifacts/use-artifacts";
 import { ChatGreeting } from "./chat-greeting";
@@ -88,6 +89,8 @@ import {
   DialogTitle,
 } from "ui/dialog";
 import { Think } from "ui/think";
+import { WorkStatusDock } from "./work-status-dock";
+import { TextShimmer } from "ui/text-shimmer";
 
 type Props = {
   threadId: string;
@@ -126,6 +129,10 @@ export default function ChatBot({
   workspaceLabel,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
+  // The composer, dock and strips float over the message list; the list's
+  // bottom padding follows their real height so nothing scrolls under them.
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const [overlayHeight, setOverlayHeight] = useState(176);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const { uploadFiles } = useThreadFileUploader(threadId);
   const handleFileDrop = useCallback(
@@ -395,6 +402,7 @@ export default function ChatBot({
 
   // The plan, task list and walkthrough, read back out of the transcript.
   const artifacts = useArtifacts(messages, isLoading);
+  const chatFiles = useMemo(() => chatFilesFrom(messages), [messages]);
   const { data: fileArtifacts } = useFileArtifacts(true);
 
   // Agents, tasks, context, connectors and outputs for the session panel,
@@ -812,15 +820,78 @@ export default function ChatBot({
     const isScrollAtBottom = scrollHeight - scrollTop - clientHeight < 50;
 
     setIsAtBottom(isScrollAtBottom);
+    if (isScrollAtBottom) stickToBottomRef.current = true;
     handleFocus();
   }, [handleFocus]);
 
+  useEffect(() => {
+    const el = overlayRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setOverlayHeight(el.offsetHeight));
+    ro.observe(el);
+    setOverlayHeight(el.offsetHeight);
+    return () => ro.disconnect();
+  }, [messages.length > 0]);
+
+  // Follow the answer while it grows, until the reader scrolls away.
+  const stickToBottomRef = useRef(true);
+
   const scrollToBottom = useCallback(() => {
+    stickToBottomRef.current = true;
     containerRef.current?.scrollTo({
       top: containerRef.current.scrollHeight,
       behavior: "smooth",
     });
   }, []);
+
+  const isStreamingNow = isLoading || isPendingToolCall;
+  useEffect(() => {
+    if (!isStreamingNow) return;
+    // A new turn always starts pinned to the bottom.
+    stickToBottomRef.current = true;
+    const container = containerRef.current;
+    if (!container) return;
+    const release = () => {
+      stickToBottomRef.current = false;
+    };
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY < 0) release();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (["ArrowUp", "PageUp", "Home"].includes(e.key)) release();
+    };
+    let lastTouchY: number | null = null;
+    const onTouchStart = (e: TouchEvent) => {
+      lastTouchY = e.touches[0]?.clientY ?? null;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      const y = e.touches[0]?.clientY;
+      // Finger moving down drags content down, i.e. scrolls up.
+      if (y != null && lastTouchY != null && y > lastTouchY) release();
+      lastTouchY = y ?? null;
+    };
+    container.addEventListener("wheel", onWheel, { passive: true });
+    container.addEventListener("touchstart", onTouchStart, { passive: true });
+    container.addEventListener("touchmove", onTouchMove, { passive: true });
+    window.addEventListener("keydown", onKey);
+    let raf = 0;
+    const tick = () => {
+      if (stickToBottomRef.current) {
+        const gap =
+          container.scrollHeight - container.scrollTop - container.clientHeight;
+        if (gap > 1) container.scrollTop = container.scrollHeight;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      container.removeEventListener("wheel", onWheel);
+      container.removeEventListener("touchstart", onTouchStart);
+      container.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [isStreamingNow]);
 
   useEffect(() => {
     appStoreMutate({ currentThreadId: threadId });
@@ -930,6 +1001,7 @@ export default function ChatBot({
           >
             <ArtifactPane
               artifacts={artifacts}
+              chatFiles={chatFiles}
               threadId={threadId}
               addToolResult={addToolResult}
               // isLoading alone, not isPendingToolCall: isPendingToolCall is
@@ -997,8 +1069,9 @@ export default function ChatBot({
                       isLoading || isPendingToolCall ? "streaming" : "ready"
                     }
                     className={
-                      "flex flex-col gap-2 overflow-y-auto pt-12 pb-48 z-10 [scrollbar-gutter:stable_both-edges]"
+                      "flex flex-col gap-1 overflow-y-auto pt-12 z-10 [scrollbar-gutter:stable_both-edges]"
                     }
+                    style={{ paddingBottom: overlayHeight + 56 + 12 }}
                     ref={containerRef}
                     onScroll={handleScroll}
                   >
@@ -1021,7 +1094,7 @@ export default function ChatBot({
                             message.role != "user" &&
                             !space &&
                             (message.parts?.length ?? 0) > 1
-                              ? "min-h-[calc(5dvh-40px)]"
+                              ? ""
                               : ""
                           }
                         />
@@ -1030,21 +1103,36 @@ export default function ChatBot({
                     {space && (
                       <>
                         <div className="w-full mx-auto max-w-3xl px-6 relative">
-                          <div className={space == "space" ? "opacity-0" : ""}>
-                            <Think />
+                          <div
+                            className={cn(
+                              "flex items-center gap-1.5 py-1",
+                              space == "space" ? "opacity-0" : "",
+                            )}
+                          >
+                            {space === "think" ? (
+                              <TextShimmer
+                                as="span"
+                                data-testid="streaming-thinking-indicator"
+                                className="font-normal text-xs [--base-color:#a1a1aa] [--base-gradient-color:#52525b] dark:[--base-color:#a1a1aa] dark:[--base-gradient-color:#f4f4f5]"
+                              >
+                                Thinking
+                              </TextShimmer>
+                            ) : (
+                              <Think />
+                            )}
                           </div>
                         </div>
-                        <div className="min-h-[calc(5dvh-56px)]" />
                       </>
                     )}
 
                     {error && <ErrorMessage error={error} />}
-                    <div className="min-w-0 min-h-16" />
+                    <div className="min-w-0 min-h-2" />
                   </div>
                 </>
               )}
 
               <div
+                ref={overlayRef}
                 className={clsx(
                   messages.length && "absolute bottom-14",
                   "w-full z-10",
@@ -1070,6 +1158,14 @@ export default function ChatBot({
                     </div>
                   )}
                 </AnimatePresence>
+                {!emptyMessage && (
+                  <div className="max-w-3xl mx-auto px-6">
+                    <WorkStatusDock
+                      message={messages.at(-1)}
+                      running={isLoading}
+                    />
+                  </div>
+                )}
                 <div className="max-w-3xl mx-auto px-6 mb-1.5">
                   <SwarmStrip
                     threadId={threadId}

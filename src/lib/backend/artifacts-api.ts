@@ -159,3 +159,29 @@ export function kindLabel(kind: string) {
       return "Text";
   }
 }
+
+/**
+ * Kind badge for a file artifact. The server only knows a handful of kinds, so
+ * a PowerPoint or a video arrives as "text"; the file name says more.
+ */
+export function artifactKindLabel(a: Pick<FileArtifact, "kind" | "filename">) {
+  const ext = a.filename.slice(a.filename.lastIndexOf(".") + 1).toLowerCase();
+  const byExt: Record<string, string> = {
+    pptx: "PowerPoint",
+    xlsx: "Excel",
+    xlsm: "Excel",
+    tsv: "CSV",
+    png: "Image",
+    jpg: "Image",
+    jpeg: "Image",
+    gif: "Image",
+    webp: "Image",
+    mp4: "Video",
+    webm: "Video",
+    mov: "Video",
+    mp3: "Audio",
+    wav: "Audio",
+    m4a: "Audio",
+  };
+  return byExt[ext] ?? kindLabel(a.kind);
+}

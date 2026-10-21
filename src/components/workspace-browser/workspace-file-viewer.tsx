@@ -8,6 +8,13 @@ import { Markdown } from "@/components/markdown";
 import { cn } from "lib/utils";
 import { Button } from "ui/button";
 import { Skeleton } from "ui/skeleton";
+import { BLOB_KINDS, previewByteCap, previewKindOf } from "lib/file-preview/kinds";
+import {
+  BinaryPreview,
+  CsvView,
+  PreviewLoading,
+  UnsupportedView,
+} from "@/components/file-preview/file-preview";
 import { KIND_STYLE, KindIcon } from "./workspace-tree";
 import {
   type AgentFile,
@@ -227,23 +234,24 @@ function ViewerBody({
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState("");
   const [saving, setSaving] = React.useState(false);
-  const [imageUrl, setImageUrl] = React.useState<string | null>(null);
+  const [blob, setBlob] = React.useState<Blob | null>(null);
   const path = source.kind === "workspace" ? source.path : null;
 
   React.useEffect(() => {
     if (!path) return;
     let cancelled = false;
-    let objectUrl: string | null = null;
     (async () => {
       try {
         const f = await fetchFile(path, showHidden);
         if (cancelled) return;
         setFile(f);
-        if (f.isBinary && f.mimeType.startsWith("image/")) {
-          const blob = await fetchRawBlob(path, { showHidden });
+        // Everything shown from raw bytes (media, pdf, office) is fetched once
+        // here, unless it is past what its reader will open.
+        const previewKind = previewKindOf(f.name);
+        if (BLOB_KINDS.has(previewKind) && f.size <= previewByteCap(previewKind)) {
+          const b = await fetchRawBlob(path, { showHidden });
           if (cancelled) return;
-          objectUrl = URL.createObjectURL(blob);
-          setImageUrl(objectUrl);
+          setBlob(b);
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Could not open file");
@@ -251,7 +259,6 @@ function ViewerBody({
     })();
     return () => {
       cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [path]);
 
@@ -290,6 +297,7 @@ function ViewerBody({
   }
 
   const kind: FileKind = fileKind(file.name);
+  const previewKind = previewKindOf(file.name);
   const isText = !file.isBinary && file.content != null;
   const canEdit = canWrite && !isManaged && isText && !hasHiddenSegment(file.path);
   const toggleable = isText && !editing && (kind === "markdown" || kind === "json");
@@ -347,30 +355,33 @@ function ViewerBody({
         className="block size-full min-h-[320px] resize-none bg-transparent p-4 font-mono text-[12.5px] leading-6 text-foreground outline-none"
       />
     );
-  } else if (file.isBinary && imageUrl) {
+  } else if (BLOB_KINDS.has(previewKind) && file.size > previewByteCap(previewKind)) {
     body = (
-      <div className="flex min-h-full items-center justify-center bg-muted/30 p-6">
-        <img
-          src={imageUrl}
-          alt={file.name}
-          data-testid="workspace-image"
-          className="max-h-[60vh] max-w-full rounded-md border border-border bg-background object-contain shadow-sm"
-        />
-      </div>
+      <UnsupportedView
+        name={file.name}
+        mimeType={file.mimeType}
+        size={file.size}
+        title="Too large to preview"
+        onDownload={download}
+      />
     );
+  } else if (BLOB_KINDS.has(previewKind)) {
+    body = blob ? (
+      <BinaryPreview kind={previewKind} blob={blob} name={file.name} />
+    ) : (
+      <PreviewLoading />
+    );
+  } else if (previewKind === "csv" && isText && file.content) {
+    body = <CsvView text={file.content} tab={file.name.toLowerCase().endsWith(".tsv")} />;
   } else if (file.isBinary || file.tooLarge) {
     body = (
-      <Notice
-        icon={FileQuestion}
+      <UnsupportedView
+        name={file.name}
+        mimeType={file.mimeType}
+        size={file.size}
         title={file.tooLarge ? "Too large to preview" : "No preview available"}
-      >
-        {file.mimeType} · {formatBytes(file.size)}
-        <div className="mt-3">
-          <Button type="button" size="sm" variant="outline" onClick={download} className="gap-1.5">
-            <Download className="size-3.5" /> Download
-          </Button>
-        </div>
-      </Notice>
+        onDownload={download}
+      />
     );
   } else if (isText && file.content === "") {
     body = (

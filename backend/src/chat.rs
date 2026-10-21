@@ -376,6 +376,15 @@ async fn chat_handler(
 
     let stream = async_stream::stream! {
         yield frame(json!({"type": "start", "messageId": response_id}));
+        // Nothing to answer: no text, no attachments and no tool-card answers.
+        // The browser's auto-resume can fire one of these after a turn; letting
+        // it through made the runtime fabricate an "[auto]" turn that carried
+        // the capability guidance and later showed up in reloaded transcripts.
+        if prompt.trim().is_empty() && images.is_empty() && tool_results.is_empty() {
+            yield frame(json!({"type": "finish"}));
+            yield done_frame();
+            return;
+        }
         if !mode_ok {
             yield frame(json!({"type": "start-step"}));
             yield frame(json!({"type": "text-start", "id": response_id}));
