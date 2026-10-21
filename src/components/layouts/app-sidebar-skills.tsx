@@ -5,6 +5,8 @@ import { useAgentTheme } from "@/hooks/use-agent-theme";
 import { appStore } from "@/app/store";
 import { AgentSidebarHabitat } from "@/components/agent/agent-sidebar-habitat";
 import { AgentCharacterAvatar } from "@/components/agent/avatar-primitives";
+import { agentScopedPath, matchSubPath, stripAgentPrefix } from "@/components/team/team-paths";
+import { useAgentScope } from "@/lib/backend/agent-scope";
 import { useAgentIdentity } from "@/hooks/queries/use-agent-identity";
 import { useSkills } from "@/hooks/queries/use-skills";
 import { DEFAULT_CHARACTER_TRAITS } from "@/lib/agent/character-catalog";
@@ -24,6 +26,7 @@ import {
 
 export function AppSidebarSkills() {
   const pathname = usePathname();
+  const agentScope = useAgentScope();
 
   const projectDirectory = appStore((state) => state.projectDirectory);
   const { data } = useSkills({ projectDirectory });
@@ -50,11 +53,11 @@ export function AppSidebarSkills() {
           <SidebarMenuItem>
             <SidebarMenuButton
               asChild
-              isActive={pathname === "/agent"}
+              isActive={stripAgentPrefix(pathname) === "/agent"}
               className="h-auto py-2 font-semibold"
             >
               <Link
-                href="/agent"
+                href={agentScopedPath(agentScope, "/agent")}
                 data-testid="sidebar-agent-link"
                 className="flex items-center gap-2.5"
               >
@@ -90,16 +93,16 @@ export function AppSidebarSkills() {
           {/* Compact Quick-Jump Pills: Personality · Superpowers · Memory · Workspace */}
           <div className="mt-1 grid grid-cols-2 gap-1 px-2">
             <Link
-              href="/agent/personality"
+              href={agentScopedPath(agentScope, "/agent/personality")}
               data-testid="sidebar-agent-personality-link"
               className={cn(
                 "flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-[11px] font-medium transition-colors",
-                pathname.startsWith("/agent/personality")
+                pathname.startsWith("/agent/personality") || matchSubPath(pathname, "/agent/personality")
                   ? "text-foreground"
                   : "border-border/50 bg-input/25 text-muted-foreground hover:bg-input/60 hover:text-foreground",
               )}
               style={
-                pathname.startsWith("/agent/personality")
+                pathname.startsWith("/agent/personality") || matchSubPath(pathname, "/agent/personality")
                   ? activePillStyle
                   : undefined
               }
@@ -113,18 +116,22 @@ export function AppSidebarSkills() {
             </Link>
 
             <Link
-              href="/agent/superpowers"
+              href={agentScopedPath(agentScope, "/agent/superpowers")}
               data-testid="skills-link"
               className={cn(
                 "flex items-center justify-between gap-1 rounded-lg border px-2 py-1.5 text-[11px] font-medium transition-colors",
                 pathname.startsWith("/agent/superpowers") ||
-                  pathname.startsWith("/skills")
+                  pathname.startsWith("/skills") ||
+                  matchSubPath(pathname, "/agent/superpowers") ||
+                  matchSubPath(pathname, "/skills")
                   ? "text-foreground"
                   : "border-border/50 bg-input/25 text-muted-foreground hover:bg-input/60 hover:text-foreground",
               )}
               style={
                 pathname.startsWith("/agent/superpowers") ||
-                pathname.startsWith("/skills")
+                pathname.startsWith("/skills") ||
+                matchSubPath(pathname, "/agent/superpowers") ||
+                matchSubPath(pathname, "/skills")
                   ? activePillStyle
                   : undefined
               }
@@ -143,16 +150,16 @@ export function AppSidebarSkills() {
             </Link>
 
             <Link
-              href="/agent/memory"
+              href={agentScopedPath(agentScope, "/agent/memory")}
               data-testid="sidebar-agent-memory-link"
               className={cn(
                 "flex items-center justify-between gap-1 rounded-lg border px-2 py-1.5 text-[11px] font-medium transition-colors",
-                pathname.startsWith("/agent/memory")
+                pathname.startsWith("/agent/memory") || matchSubPath(pathname, "/agent/memory")
                   ? "text-foreground"
                   : "border-border/50 bg-input/25 text-muted-foreground hover:bg-input/60 hover:text-foreground",
               )}
               style={
-                pathname.startsWith("/agent/memory")
+                pathname.startsWith("/agent/memory") || matchSubPath(pathname, "/agent/memory")
                   ? activePillStyle
                   : undefined
               }
@@ -171,16 +178,16 @@ export function AppSidebarSkills() {
             </Link>
 
             <Link
-              href="/agent/workspace"
+              href={agentScopedPath(agentScope, "/agent/workspace")}
               data-testid="sidebar-agent-workspace-link"
               className={cn(
                 "flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-[11px] font-medium transition-colors",
-                pathname.startsWith("/agent/workspace")
+                pathname.startsWith("/agent/workspace") || matchSubPath(pathname, "/agent/workspace")
                   ? "text-foreground"
                   : "border-border/50 bg-input/25 text-muted-foreground hover:bg-input/60 hover:text-foreground",
               )}
               style={
-                pathname.startsWith("/agent/workspace")
+                pathname.startsWith("/agent/workspace") || matchSubPath(pathname, "/agent/workspace")
                   ? activePillStyle
                   : undefined
               }

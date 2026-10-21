@@ -4,6 +4,7 @@ import { SidebarProvider } from "ui/sidebar";
 import { AppSidebar } from "@/components/layouts/app-sidebar";
 import { AppHeader } from "@/components/layouts/app-header";
 import { AgentScopeBanner } from "@/components/team/agent-scope-banner";
+import { agentScopedPath } from "@/components/team/team-paths";
 import { useAgentScope } from "@/lib/backend/agent-scope";
 
 import { COOKIE_KEY_SIDEBAR_STATE } from "lib/const";
@@ -12,7 +13,8 @@ import { SWRConfigProvider } from "./swr-config";
 import { UserDetailContent } from "@/components/user/user-detail/user-detail-content";
 import { UserDetailContentSkeleton } from "@/components/user/user-detail/user-detail-content-skeleton";
 
-import { Suspense, useMemo } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo } from "react";
 import { RequireAuth } from "@/lib/backend/auth-gate";
 import { useSession } from "@/lib/backend/session-context";
 
@@ -33,6 +35,50 @@ function readSidebarCollapsedCookie(): boolean {
   return match.split("=")[1] === "false";
 }
 
+function EnsureAgentRoute() {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const agentScope = useAgentScope();
+
+  useEffect(() => {
+    if (pathname === "/") {
+      const q = searchParams.toString();
+      const target = agentScopedPath(agentScope, "/");
+      router.replace(q ? `${target}?${q}` : target);
+      return;
+    }
+
+    const segments = pathname.split("/").filter(Boolean);
+    if (segments.length > 0) {
+      const first = segments[0];
+      const legacyChatRoots = [
+        "connectors",
+        "agent",
+        "schedules",
+        "skills",
+        "skill",
+        "channels",
+        "contacts",
+        "archive",
+        "admin",
+        "mcp",
+      ];
+      if (legacyChatRoots.includes(first)) {
+        const queryAgent = searchParams.get("agent");
+        const effectiveScope = queryAgent || agentScope;
+        const target = agentScopedPath(effectiveScope, pathname);
+        const params = new URLSearchParams(searchParams.toString());
+        params.delete("agent");
+        const q = params.toString();
+        router.replace(q ? `${target}?${q}` : target);
+      }
+    }
+  }, [pathname, searchParams, agentScope, router]);
+
+  return null;
+}
+
 function ChatLayoutInner({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession();
   const isCollapsed = useMemo(() => readSidebarCollapsedCookie(), []);
@@ -47,6 +93,9 @@ function ChatLayoutInner({ children }: { children: React.ReactNode }) {
       defaultOpen={!isCollapsed}
       className="h-svh overflow-hidden bg-canvas workspace-canvas motion-reduce:[&_*]:transition-none"
     >
+      <Suspense fallback={null}>
+        <EnsureAgentRoute />
+      </Suspense>
       <SWRConfigProvider>
         <AppPopupProvider
           userSettingsComponent={

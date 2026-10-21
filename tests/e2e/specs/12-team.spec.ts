@@ -30,6 +30,7 @@ test.describe.serial("team", () => {
       await expect(page.getByTestId("team-heading")).toHaveText("Team");
       await expect(page.getByTestId("team-window")).toBeVisible();
       await expect(page.getByTestId("sidebar-team-link")).toHaveCount(0);
+      await expect(page.getByTestId("sidebar-user-button")).toBeVisible();
       await expect(page.getByTestId("team-agent-main")).toContainText(agent.name);
       await expect(page.getByTestId("team-pick-agent")).toBeVisible();
     });
@@ -197,7 +198,7 @@ test.describe.serial("team", () => {
     await step("Scout's Team thread → Open Scout → Amiro, in Scout's space", async () => {
       await page.goto(`/team?agent=${scout.id}`);
       await page.getByTestId("team-open-in-amiro").click();
-      await expect(page).toHaveURL(new RegExp(`/\\?agent=${scout.id}`));
+      await expect(page).toHaveURL(new RegExp(`/${scout.id}(/|\\?|$)`));
       await expect(page.getByTestId("agent-scope-banner")).toContainText(`${SCOUT}'s space`);
     });
 
@@ -248,7 +249,7 @@ test.describe.serial("team", () => {
     const { body } = await amiro.api<{ agents: TeamAgent[] }>("/api/agents");
     const scout = body.agents.find((a) => a.name === SCOUT)!;
     const asScout = { "X-Amiro-Agent": scout.id };
-    const inScoutsUrl = new RegExp(`[?&]agent=${scout.id}(&|$)`);
+    const inScoutsUrl = new RegExp(`/${scout.id}(/|\\?|$)`);
     await fetch(`${amiro.mcpBase}/__reset`);
 
     await step("Open Scout's space from Team → the URL names Scout", async () => {
@@ -260,8 +261,7 @@ test.describe.serial("team", () => {
 
     await step("Sidebar → Connectors → still Scout's space, and the URL still names Scout", async () => {
       await page.getByTestId("sidebar-connectors-link").click();
-      await expect(page).toHaveURL(/\/connectors/);
-      await expect(page).toHaveURL(inScoutsUrl);
+      await expect(page).toHaveURL(new RegExp(`/${scout.id}/connectors`));
       await expect(page.getByTestId("agent-scope-banner")).toBeVisible();
       await expect(page.getByText("Nothing connected yet")).toBeVisible();
     });
@@ -312,10 +312,9 @@ test.describe.serial("team", () => {
     });
 
     await step("Scout's space → Schedules → New schedule → it is listed for Scout", async () => {
-      await page.goto(`/?agent=${scout.id}`);
+      await page.goto(`/${scout.id}`);
       await page.getByTestId("sidebar-schedules-link").click();
-      await expect(page).toHaveURL(/\/schedules/);
-      await expect(page).toHaveURL(inScoutsUrl);
+      await expect(page).toHaveURL(new RegExp(`/${scout.id}/schedules`));
       await page.getByRole("button", { name: "New schedule" }).first().click();
       const d = page.getByRole("dialog");
       await expect(d).toBeVisible();
@@ -329,10 +328,10 @@ test.describe.serial("team", () => {
     await step("Switch to Amiro → Amiro's Connectors and Schedules show none of Scout's", async () => {
       await page.getByTestId("agent-scope-clear").click();
       await expect(page.getByTestId("agent-scope-banner")).toHaveCount(0);
-      await expect(page).not.toHaveURL(/agent=/);
-      await page.goto("/connectors");
+      await expect(page).toHaveURL(/\/amiro(\?|$)/);
+      await page.goto("/amiro/connectors");
       await expect(page.locator("main").getByText("scout-tools", { exact: true })).toHaveCount(0);
-      await page.goto("/schedules");
+      await page.goto("/amiro/schedules");
       await expect(page.getByRole("heading", { name: "Schedules", level: 1 })).toBeVisible();
       await expect(page.getByText("Scout weekly digest")).toHaveCount(0);
     });

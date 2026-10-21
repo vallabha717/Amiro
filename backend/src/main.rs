@@ -333,10 +333,42 @@ async fn resolve_static_route(
             let trimmed = path.trim_start_matches('/').trim_end_matches('/');
             if !trimmed.is_empty() && !trimmed.contains("..") {
                 let candidates = [format!("/{trimmed}.html"), format!("/{trimmed}/index.html")];
-                if let Some(target) = candidates
+                let mut matched_target = candidates
                     .into_iter()
-                    .find(|candidate| out_dir.join(candidate.trim_start_matches('/')).is_file())
-                {
+                    .find(|candidate| out_dir.join(candidate.trim_start_matches('/')).is_file());
+
+                if matched_target.is_none() {
+                    let segments: Vec<&str> = trimmed.split('/').collect();
+                    const RESERVED: &[&str] = &[
+                        "api", "team", "setup", "sign-in", "onboarding", "export", "_next",
+                        "storage", "health", "favicon.ico",
+                    ];
+                    if !segments.is_empty() && !RESERVED.contains(&segments[0]) {
+                        let sub_path = segments[1..].join("/");
+                        if sub_path.is_empty() {
+                            if out_dir.join("index.html").is_file() {
+                                matched_target = Some("/index.html".to_string());
+                            }
+                        } else {
+                            let sub_candidates = [
+                                format!("/{sub_path}.html"),
+                                format!("/{sub_path}/index.html"),
+                            ];
+                            matched_target = sub_candidates
+                                .into_iter()
+                                .find(|c| out_dir.join(c.trim_start_matches('/')).is_file())
+                                .or_else(|| {
+                                    if out_dir.join("index.html").is_file() {
+                                        Some("/index.html".to_string())
+                                    } else {
+                                        None
+                                    }
+                                });
+                        }
+                    }
+                }
+
+                if let Some(target) = matched_target {
                     let (mut parts, body) = req.into_parts();
                     let rewritten = match parts.uri.query() {
                         Some(query) => format!("{target}?{query}"),

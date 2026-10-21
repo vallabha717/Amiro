@@ -21,17 +21,30 @@ export default () => {
     ...(isDev
       ? {
           async rewrites() {
-            return [
-              {
-                source: "/api/:path*",
-                destination: `${devBackend}/api/:path*`,
-              },
-              {
-                source: "/storage/:path*",
-                destination: `${devBackend}/storage/:path*`,
-              },
-              { source: "/health", destination: `${devBackend}/health` },
-            ];
+            return {
+              beforeFiles: [
+                {
+                  source: "/api/:path*",
+                  destination: `${devBackend}/api/:path*`,
+                },
+                {
+                  source: "/storage/:path*",
+                  destination: `${devBackend}/storage/:path*`,
+                },
+                { source: "/health", destination: `${devBackend}/health` },
+              ],
+              afterFiles: [
+                {
+                  source: "/:agent/:path*",
+                  destination: "/:path*",
+                },
+                {
+                  source: "/:agent",
+                  destination: "/",
+                },
+              ],
+              fallback: [],
+            };
           },
         }
       : {}),

@@ -37,7 +37,7 @@ export function TeamShell({ children }: { children: React.ReactNode }) {
           className="bg-background/70"
           data-testid="team-open-amiro"
         >
-          <Link href="/" onClick={() => setAgentScope(null)}>
+          <Link href="/amiro" onClick={() => setAgentScope(null)}>
             {t("openAmiro")}
             <ArrowUpRightIcon className="size-4" />
           </Link>

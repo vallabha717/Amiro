@@ -1,6 +1,8 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
+import { agentScopedPath, matchSubPath } from "@/components/team/team-paths";
+import { useAgentScope } from "@/lib/backend/agent-scope";
 import {
   SidebarMenu,
   SidebarMenuItem,
@@ -15,8 +17,10 @@ import { useTranslations } from "next-intl";
 const AppSidebarAdmin = () => {
   const router = useRouter();
   const pathname = usePathname();
+  const agentScope = useAgentScope();
   const t = useTranslations("Admin");
   const { setOpenMobile } = useSidebar();
+  const adminPath = agentScopedPath(agentScope, "/admin/providers");
 
   return (
     <SidebarMenu>
@@ -24,16 +28,16 @@ const AppSidebarAdmin = () => {
         <SidebarMenuItem>
           <SidebarMenuButton
             asChild
-            isActive={pathname.startsWith("/admin")}
+            isActive={matchSubPath(pathname, "/admin")}
             className="font-semibold"
           >
             <Link
-              href="/admin/providers"
+              href={adminPath}
               data-testid="admin-sidebar-link"
               onClick={(e) => {
                 e.preventDefault();
                 setOpenMobile(false);
-                router.push("/admin/providers");
+                router.push(adminPath);
               }}
             >
               <Shield className="size-4 text-foreground" />

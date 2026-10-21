@@ -267,13 +267,10 @@ export default function ChatBot({
       api: backendUrl("/api/chat"),
       fetch: backendFetch,
       prepareSendMessagesRequest: ({ messages, body, id }) => {
-        // In a team agent's space the URL keeps naming the agent.
+        // In a team agent's space or Amiro the URL names the agent/amiro.
         const scope = getAgentScope();
-        const threadUrl =
-          threadPath ??
-          (scope
-            ? `/?thread=${threadId}&agent=${encodeURIComponent(scope)}`
-            : `/?thread=${threadId}`);
+        const prefix = scope ? `/${encodeURIComponent(scope)}` : "/amiro";
+        const threadUrl = threadPath ?? `${prefix}?thread=${threadId}`;
         if (window.location.pathname + window.location.search !== threadUrl) {
           console.log("replace-state");
           window.history.replaceState({}, "", threadUrl);

@@ -5,52 +5,67 @@ import {
   setAgentScope,
   useAgentScope,
 } from "@/lib/backend/agent-scope";
-import { useAgent } from "@/lib/backend/agents-api";
+import { useAgent, useAgents } from "@/lib/backend/agents-api";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect } from "react";
 import { Button } from "ui/button";
 import { AgentAvatar } from "./agent-avatar";
-import { teamThreadPath } from "./team-paths";
-
-/** The `?agent=` value already applied, so leaving a space is not undone. */
-let appliedQuery: string | null = null;
+import { resolveAgentFromPathname, teamThreadPath } from "./team-paths";
 
 /**
- * `?agent=<id>` opens that agent's space: the whole Amiro app acting as that
- * agent. Set during render so the page's very first requests already carry
- * the agent. A value is applied once, so "Switch to Amiro" on the same URL
- * is not undone.
+ * Resolves the active agent scope from the URL pathname (e.g. /amiro or /<agentId>)
+ * or falling back to ?agent=<id>.
  */
-function ScopeFromQuery() {
-  const agent = useSearchParams().get("agent");
-  if (agent !== appliedQuery) {
-    appliedQuery = agent;
-    if (agent) setAgentScope(agent);
-  }
+function ScopeFromRoute() {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const { data: agentsData } = useAgents();
+  const agents = agentsData?.agents;
+
+  useEffect(() => {
+    // 1. Pathname-based resolution
+    const pathSlug = resolveAgentFromPathname(pathname);
+    if (pathSlug) {
+      const matched = agents?.find(
+        (a) =>
+          a.id === pathSlug ||
+          a.name.toLowerCase() === pathSlug.toLowerCase(),
+      );
+      const targetId = matched ? matched.id : pathSlug;
+      if (getAgentScope() !== targetId) {
+        setAgentScope(targetId);
+      }
+      return;
+    }
+
+    // 2. Query param ?agent= fallback
+    const queryAgent = searchParams.get("agent");
+    if (queryAgent) {
+      if (getAgentScope() !== queryAgent) {
+        setAgentScope(queryAgent);
+      }
+      return;
+    }
+
+    // 3. /amiro or main agent space -> clear scope to null (Amiro)
+    const segments = pathname.split("/").filter(Boolean);
+    if (segments.length > 0 && (segments[0] === "amiro" || segments[0] === "main")) {
+      if (getAgentScope() !== null) {
+        setAgentScope(null);
+      }
+    }
+  }, [pathname, searchParams, agents]);
+
   return null;
 }
 
 function SpaceBar({ agentId }: { agentId: string }) {
   const t = useTranslations("Team");
   const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   const { data: agent, error } = useAgent(agentId);
 
-  // Every page of an agent's space names the agent in its URL, so the address
-  // always says whose space it is (and can be shared or reloaded as such).
-  const shownAgent = searchParams.get("agent");
-  useEffect(() => {
-    // "Switch to Amiro" clears the scope before this bar unmounts; never put
-    // the agent back into the URL on the way out.
-    if (shownAgent === agentId || getAgentScope() !== agentId) return;
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("agent", agentId);
-    appliedQuery = agentId;
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-  }, [shownAgent, agentId, pathname, searchParams, router]);
   if (error) {
     // The agent is gone (deleted elsewhere): stop acting as it.
     setAgentScope(null);
@@ -73,7 +88,7 @@ function SpaceBar({ agentId }: { agentId: string }) {
         variant="ghost"
         onClick={() => {
           setAgentScope(null);
-          router.push("/");
+          router.push("/amiro");
         }}
         data-testid="agent-scope-clear"
       >
@@ -89,7 +104,7 @@ export function AgentScopeBanner() {
   return (
     <>
       <Suspense fallback={null}>
-        <ScopeFromQuery />
+        <ScopeFromRoute />
       </Suspense>
       {scope && (
         <Suspense fallback={null}>

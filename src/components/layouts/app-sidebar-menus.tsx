@@ -35,6 +35,8 @@ import { WriteIcon } from "ui/write-icon";
 import { ArchiveDialog } from "../archive-dialog";
 import { useOpenArtifact } from "../artifacts/plan-card";
 import { AppSidebarAdmin } from "./app-sidebar-menu-admin";
+import { agentScopedPath, matchSubPath } from "@/components/team/team-paths";
+import { useAgentScope } from "@/lib/backend/agent-scope";
 
 export function AppSidebarMenus({ user }: { user?: BasicUser }) {
   const router = useRouter();
@@ -43,13 +45,14 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
   const currentArchiveId = searchParams?.get("id");
   const t = useTranslations("");
   const { setOpenMobile } = useSidebar();
+  const agentScope = useAgentScope();
   const [expandedArchive, setExpandedArchive] = useState(() =>
-    pathname.startsWith("/archive"),
+    matchSubPath(pathname, "/archive"),
   );
   const [addArchiveDialogOpen, setAddArchiveDialogOpen] = useState(false);
 
   useEffect(() => {
-    if (pathname.startsWith("/archive")) {
+    if (matchSubPath(pathname, "/archive")) {
       setExpandedArchive(true);
     }
   }, [pathname]);
@@ -57,11 +60,10 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
   const openArtifact = useOpenArtifact();
   const openArtifacts = useCallback(() => {
     setOpenMobile(false);
-    // The pane is per-thread chat UI: outside a chat route, go home first,
-    // then open it — the store carries the tab across the navigation.
-    if (pathname !== "/") router.push("/");
+    const homePath = agentScopedPath(agentScope, "/");
+    if (!matchSubPath(pathname, "/")) router.push(homePath);
     openArtifact("files");
-  }, [openArtifact, pathname, router, setOpenMobile]);
+  }, [openArtifact, pathname, router, setOpenMobile, agentScope]);
 
   const { data: archives, isLoading: isLoadingArchives } = useArchives();
   const toggleArchive = useCallback(() => {
@@ -75,12 +77,12 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
           <Tooltip>
             <SidebarMenuItem className="mb-1">
               <Link
-                href="/"
+                href={agentScopedPath(agentScope, "/")}
                 data-testid="sidebar-new-chat-button"
                 onClick={(e) => {
                   e.preventDefault();
                   setOpenMobile(false);
-                  router.push(`/`);
+                  router.push(agentScopedPath(agentScope, "/"));
                   router.refresh();
                 }}
               >
@@ -123,13 +125,13 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
           <Tooltip>
             <SidebarMenuItem>
               <Link
-                href="/connectors"
+                href={agentScopedPath(agentScope, "/connectors")}
                 data-testid="sidebar-connectors-link"
                 onClick={() => setOpenMobile(false)}
               >
                 <SidebarMenuButton
                   className="font-semibold"
-                  isActive={pathname.startsWith("/connectors") || pathname.startsWith("/mcp")}
+                  isActive={matchSubPath(pathname, "/connectors") || matchSubPath(pathname, "/mcp")}
                 >
                   <PlugZapIcon className="size-4" />
                   {t("Layout.connectors")}
@@ -141,13 +143,13 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
         <SidebarMenu>
           <SidebarMenuItem>
             <Link
-              href="/schedules"
+              href={agentScopedPath(agentScope, "/schedules")}
               data-testid="sidebar-schedules-link"
               onClick={() => setOpenMobile(false)}
             >
               <SidebarMenuButton
                 className="font-semibold"
-                isActive={pathname.startsWith("/schedules")}
+                isActive={matchSubPath(pathname, "/schedules")}
               >
                 <CalendarClockIcon className="size-4" />
                 Schedules
@@ -176,7 +178,7 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
                 data-testid="sidebar-archive-link"
                 onClick={toggleArchive}
                 className="font-semibold cursor-pointer pr-14"
-                isActive={pathname.startsWith("/archive")}
+                isActive={matchSubPath(pathname, "/archive")}
               >
                 {expandedArchive ? (
                   <FolderOpenIcon className="size-4" />
@@ -241,14 +243,14 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
                   archives!.map((archive) => (
                     <SidebarMenuSubItem
                       onClick={() => {
-                        router.push(`/archive?id=${archive.id}`);
+                        router.push(agentScopedPath(agentScope, `/archive?id=${archive.id}`));
                       }}
                       key={archive.id}
                       className="cursor-pointer"
                     >
                       <SidebarMenuSubButton
                         isActive={
-                          pathname === "/archive" &&
+                          matchSubPath(pathname, "/archive") &&
                           currentArchiveId === archive.id
                         }
                       >
