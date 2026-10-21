@@ -133,7 +133,15 @@ async fn emit_inner(
 
     let settings_doc = feed::load_settings_doc(state).await?;
     let settings = feed::settings_for(&settings_doc, user_id);
-    let decided = decision::decide_with_caller(&parsed, &settings, model, caller, timeout).await;
+    // Source-active suppression (Vellum's `checkSourceActiveSuppression`): the
+    // user is already looking at what this signal is about, so it is recorded
+    // and goes nowhere. Decided before the model so a watched reply costs no
+    // model call.
+    let decided = if parsed.visible_in_source_now {
+        decision::suppressed_source_active(&parsed)
+    } else {
+        decision::decide_with_caller(&parsed, &settings, model, caller, timeout).await
+    };
     let category = signal::category_for_event(&parsed.source_event_name);
 
     store::record_event(state, user_id, &parsed).await?;
@@ -214,7 +222,17 @@ async fn emit_inner(
     // independent and lands in its own delivery row as sent/failed/skipped.
     // The decision row still records ["local"] (the deterministic routing);
     // externals are delivery-time bindings, recorded per channel below.
-    if let Ok(bindings) = pairing::list_bindings(state, user_id).await {
+    // Nothing goes out when the decision said not to notify, and chat replies
+    // stay in the app: the user started that conversation here, and pinging
+    // Telegram for every answer is noise (Vellum keeps completions to its own
+    // app and mobile push).
+    let external_allowed = decided.should_notify && category != "chat_reply";
+    let bindings = if external_allowed {
+        pairing::list_bindings(state, user_id).await
+    } else {
+        Ok(Vec::new())
+    };
+    if let Ok(bindings) = bindings {
         for binding in bindings {
             let channel = binding.channel.clone();
             // Prefer the model's per-channel copy; fall back to the

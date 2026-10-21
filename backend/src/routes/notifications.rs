@@ -481,27 +481,28 @@ async fn test_notification(
     user: AuthUser,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
     let uid = user_id_of(&user);
-    let settings_doc = load_settings_doc(&state).await?;
-    let settings = settings_for(&settings_doc, &uid);
-    let input = json!({
-        "title": "Amiro Test Notification",
-        "body": "Notifications are working across Web UI and Desktop.",
-        "category": "system",
-        "urgency": "high",
-        "sourceEventName": "system.test",
-        "actions": [{"id": "dismiss", "label": "Dismiss"}],
-    });
-    let item = build_item(&uid, &input, &settings, None)?;
-    let delivery_id = item
-        .get("deliveryId")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    let unread = persist_item(&state, &uid, item.clone()).await?;
-    publish(intent_event(&uid, &delivery_id, &item, unread));
+    // Through the real pipeline, so a test proves what a real notification
+    // does: a decision, a delivery row per channel, and every bound external
+    // channel tried.
+    let out = crate::notify::emit_signal(
+        &state,
+        &uid,
+        &json!({
+            "sourceChannel": "vellum",
+            "sourceContextId": "notifications.test",
+            "sourceEventName": "system.test",
+            "title": "Amiro Test Notification",
+            "body": "Notifications are working across Web UI and Desktop.",
+            "urgency": "high",
+        }),
+    )
+    .await?;
     Ok((
         StatusCode::CREATED,
-        Json(json!({ "item": item, "unreadCount": unread })),
+        Json(json!({
+            "item": out.get("item").cloned().unwrap_or(Value::Null),
+            "unreadCount": out.get("unreadCount").cloned().unwrap_or(json!(0)),
+        })),
     ))
 }
 
@@ -574,6 +575,82 @@ async fn patch_notification(
         "notification": result.get("item").cloned().unwrap_or(Value::Null),
     }));
     Ok(Json(result))
+}
+
+/// Mark the unread chat-reply notifications of one thread as seen: the user
+/// has the chat open, so the reply is read. Returns how many changed.
+pub(crate) async fn mark_thread_read(
+    state: &AppState,
+    uid: &str,
+    thread_id: &str,
+) -> Result<u64, ApiError> {
+    let _lock = state.store.lock().await;
+    let path = notifications_path(state);
+    let mut doc = read_json(&path, json!({ "version": 2, "items": {} })).await?;
+    let mut items = items_for(&doc, uid);
+    let mut updated = 0u64;
+    for item in items.iter_mut() {
+        let matches = item.get("status").and_then(|s| s.as_str()) == Some("new")
+            && item.get("category").and_then(|s| s.as_str()) == Some("chat_reply")
+            && item.get("threadId").and_then(|s| s.as_str()) == Some(thread_id);
+        if !matches {
+            continue;
+        }
+        if let Some(map) = item.as_object_mut() {
+            map.insert("status".into(), json!("seen"));
+            map.insert("seenAt".into(), json!(now_iso()));
+            map.insert("updatedAt".into(), json!(now_iso()));
+            updated += 1;
+        }
+    }
+    if updated == 0 {
+        return Ok(0);
+    }
+    let unread = count_unread(items.clone());
+    set_items(&mut doc, uid, items);
+    write_json(&path, &doc).await?;
+    drop(_lock);
+    publish(json!({
+        "type": "notifications_updated",
+        "userId": uid,
+        "unreadCount": unread,
+    }));
+    Ok(updated)
+}
+
+/// POST /api/notifications/presence -- which chat this browser tab has on
+/// screen. A reply to a chat the user is watching is not notified, and
+/// opening a chat clears its reply notifications and its unseen mark.
+async fn report_presence(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    let uid = user_id_of(&user);
+    let client_id = body
+        .get("clientId")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|id| !id.is_empty() && id.len() <= 128)
+        .ok_or_else(|| {
+            ApiError(
+                StatusCode::BAD_REQUEST,
+                "clientId is required (up to 128 characters)".to_string(),
+            )
+        })?;
+    let visible = body.get("visible").and_then(|v| v.as_bool()).unwrap_or(false);
+    let thread_id = body
+        .get("threadId")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|id| !id.is_empty());
+    crate::notify::presence::report(&uid, client_id, visible, thread_id);
+    let mut marked_read = 0;
+    if let (true, Some(thread_id)) = (visible, thread_id) {
+        crate::thread_activity::mark_seen(&state, &uid, thread_id).await?;
+        marked_read = mark_thread_read(&state, &uid, thread_id).await?;
+    }
+    Ok(Json(json!({ "ok": true, "markedRead": marked_read })))
 }
 
 /// POST /api/notifications/mark-all-read
@@ -871,6 +948,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/notifications/test", post(test_notification))
         .route("/api/notifications/mark-all-read", post(mark_all_read))
         .route("/api/notifications/clear-all", post(clear_all))
+        .route("/api/notifications/presence", post(report_presence))
         .route(
             "/api/notifications/settings",
             get(get_settings).put(put_settings),

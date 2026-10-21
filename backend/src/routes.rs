@@ -60,6 +60,7 @@ pub fn router() -> Router<AppState> {
         .merge(github::routes())
         .merge(schedules::routes())
         .merge(skills::routes())
+        .merge(crate::thread_activity::routes())
         .merge(voice::routes())
         .merge(live_voice::routes())
         .merge(notifications::routes())

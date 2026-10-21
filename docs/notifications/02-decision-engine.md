@@ -29,6 +29,18 @@ the existing per-category default action. The decision row records
 - Dedupe runs before the model call: repeated `dedupeKey` short-circuits to
   the stored decision.
 
+## Suppression and pass-through (as built)
+
+- **Source active:** a signal with `visibleInSourceNow` is recorded with a
+  `shouldNotify: false` decision and goes nowhere, before any model call.
+  `chat.rs` sets it from the presence tracker (`notify/presence.rs`): the
+  user had that chat on screen when the reply finished.
+- **Pass-through:** `chat.assistant_reply` and `system.test` skip the model.
+  A reply notifies with its own text; a test arrives exactly as written.
+- **Chat replies stay in the app:** they are never sent to Telegram, Slack
+  or Discord, the way Vellum keeps completions to its own app and push.
+- Nothing is delivered externally when the decision says not to notify.
+
 ## Test seams
 
 Pure rules live in `decision.rs` unit tests (no runtime needed). The LLM

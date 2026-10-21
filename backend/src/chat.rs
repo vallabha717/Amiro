@@ -632,6 +632,8 @@ async fn chat_handler(
         let turn_started = std::time::Instant::now();
         let mut tool_count: u64 = 0;
         let mut guard = CancelGuard::new(state_for_stream.clone(), session.session_id.clone());
+        // The chat list shows this thread as working until the turn ends.
+        let activity = crate::thread_activity::RunningGuard::start(&uid, &thread_id);
         let mut updates = turn.updates;
         let mut text_id = uuid::Uuid::new_v4().to_string();
         let mut reasoning_id = uuid::Uuid::new_v4().to_string();
@@ -818,9 +820,12 @@ async fn chat_handler(
                 yield frame(json!({"type":"data-thread-title","data":{"threadId":thread_id,"title":title},"transient":true}));
             }
         }
+        // Whether the user is watching this chat right now, read once so the
+        // notification and the chat list agree.
+        let watching = crate::notify::presence::is_thread_focused(&uid, &thread_id);
         if !failed && !assistant_preview.trim().is_empty() {
-            // Phase 02: chat replies go through the signal pipeline; the
-            // thread the user is already looking at stays attached as context.
+            // Chat replies go through the signal pipeline. A reply the user
+            // is watching is suppressed there; one they left is notified.
             let _ = crate::notify::emit_signal(
                 &state_for_stream,
                 &uid,
@@ -835,14 +840,14 @@ async fn chat_handler(
                     "attentionHints": {
                         "requiresAction": false,
                         "isAsyncBackground": false,
-                        "visibleInSourceNow": true,
+                        "visibleInSourceNow": watching,
                     },
                     "routingIntent": "single_channel",
                 }),
             )
             .await;
         }
-        let _ = failed;
+        activity.finish(&state_for_stream, failed).await;
         let mut metadata = json!({
             "chatModel": chat_model,
             "model": requested_model,

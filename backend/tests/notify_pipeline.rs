@@ -116,8 +116,14 @@ async fn wait_for_intent(
     }
 }
 
-/// The exact signal shape `chat.rs` builds for an assistant reply.
+/// The exact signal shape `chat.rs` builds for an assistant reply the user
+/// is not watching (they left the chat before it finished).
 fn chat_signal(thread_id: &str) -> Value {
+    chat_signal_seen(thread_id, false)
+}
+
+/// `chat.rs`'s reply signal, with `watching` from the presence tracker.
+fn chat_signal_seen(thread_id: &str, watching: bool) -> Value {
     json!({
         "sourceChannel": "assistant_tool",
         "sourceContextId": thread_id,
@@ -129,10 +135,56 @@ fn chat_signal(thread_id: &str) -> Value {
         "attentionHints": {
             "requiresAction": false,
             "isAsyncBackground": false,
-            "visibleInSourceNow": true,
+            "visibleInSourceNow": watching,
         },
         "routingIntent": "single_channel",
     })
+}
+
+#[tokio::test]
+async fn a_reply_the_user_is_watching_is_recorded_but_not_notified() {
+    let (state, root) = state();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let stub = stub_caller(Ok(llm_response()), &calls);
+    let out = emit_signal_with_caller(&state, "u1", &chat_signal_seen("thread-9", true), &stub)
+        .await
+        .unwrap();
+
+    // Suppressed before the decision: no model call, no feed item, nothing
+    // delivered, but the audit says why.
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert_eq!(out["decision"]["shouldNotify"], json!(false));
+    assert_eq!(out["item"], Value::Null);
+    assert_eq!(out["unreadCount"], json!(0));
+    assert!(rows(&state.home, "notification-deliveries.json").is_empty());
+    let decisions = rows(&state.home, "notification-decisions.json");
+    assert_eq!(decisions.len(), 1);
+    assert!(decisions[0]["reasoning"]
+        .as_str()
+        .unwrap_or("")
+        .contains("viewing the source"));
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn a_missed_reply_passes_through_without_a_model_call() {
+    let (state, root) = state();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let stub = stub_caller(Ok(llm_response()), &calls);
+    let out = emit_signal_with_caller(&state, "u1", &chat_signal("thread-10"), &stub)
+        .await
+        .unwrap();
+
+    // The reply's own text is the notification: no model call, no rewrite.
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert_eq!(out["decision"]["shouldNotify"], json!(true));
+    assert_eq!(out["decision"]["fallbackUsed"], json!(false));
+    assert_eq!(out["item"]["title"], json!("Thread title"));
+    assert_eq!(out["item"]["body"], json!("Here is the reply preview."));
+    assert_eq!(out["item"]["threadId"], json!("thread-10"));
+
+    let _ = std::fs::remove_dir_all(root);
 }
 
 /// The exact signal shape `schedules.rs` builds in `finalize`.

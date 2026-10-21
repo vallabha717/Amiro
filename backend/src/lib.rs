@@ -15,6 +15,7 @@ pub mod sandbox;
 pub mod schedules;
 pub mod state;
 pub mod swarm;
+pub mod thread_activity;
 pub mod threads;
 
 pub mod routes;

@@ -3,6 +3,7 @@ import useSWR, { mutate as globalMutate } from "swr";
 import { toast } from "sonner";
 import { getSessionToken, getBackendSharedSecret, backendUrl } from "@/lib/backend/config";
 import { appStore } from "@/app/store";
+import { THREAD_ACTIVITY_KEY } from "@/lib/backend/notifications-api";
 import {
   NOTIFICATIONS_LIST_KEY,
   NOTIFICATIONS_STREAM_PATH,
@@ -1031,6 +1032,10 @@ export function useNotificationStream(): void {
           }
         } else if (obj.type === "notifications_updated") {
           void globalMutate(NOTIFICATIONS_LIST_KEY);
+        } else if (obj.type === "thread_activity") {
+          // A chat started, finished or was opened: refresh the chat list's
+          // status marks.
+          void globalMutate(THREAD_ACTIVITY_KEY);
         } else if (obj.type === "snapshot") {
           void globalMutate(NOTIFICATIONS_LIST_KEY);
         }

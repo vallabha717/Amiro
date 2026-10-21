@@ -124,6 +124,23 @@ pub fn decide_deterministic(signal: &NotificationSignal, settings: &Value) -> De
     }
 }
 
+/// The user is already looking at the signal's source (the chat the reply
+/// landed in), so nothing is delivered. Recorded like any other decision, so
+/// the audit shows why a reply never reached the Bell.
+pub fn suppressed_source_active(signal: &NotificationSignal) -> Decision {
+    let copy = fallback_copy(signal);
+    Decision {
+        should_notify: false,
+        channels: Vec::new(),
+        silent: true,
+        title: copy.title,
+        body: copy.body,
+        fallback_used: false,
+        reasoning: "suppressed: the user is viewing the source right now".to_string(),
+        copies: HashMap::new(),
+    }
+}
+
 /// Which model the decision turn runs on: `AMIRO_NOTIFY_DECISION_MODEL` when
 /// set, else the deployment's chat default (`AMIRO_DEFAULT_MODEL`), else
 /// `None` for the runtime's own default. An explicit non-empty override wins
@@ -382,6 +399,23 @@ pub async fn decide_with_caller(
     let pre = decide_deterministic(signal, settings);
     if pre.silent && signal.routing_intent == "single_channel" {
         return pre;
+    }
+    // Vellum's pass-through: a chat reply's copy is the reply itself and its
+    // routing is fixed, so there is nothing for a model to decide.
+    if signal.source_event_name == "chat.assistant_reply" {
+        return Decision {
+            fallback_used: false,
+            reasoning: "pass-through: a chat reply notifies with its own text".to_string(),
+            ..pre
+        };
+    }
+    // A test notification must arrive exactly as written, and fast.
+    if signal.source_event_name == "system.test" {
+        return Decision {
+            fallback_used: false,
+            reasoning: "pass-through: a test notification is sent as written".to_string(),
+            ..pre
+        };
     }
     let prompt = decision_prompt(signal);
     let text = match tokio::time::timeout(timeout, caller.call(ModelCall { model, prompt })).await {

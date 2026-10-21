@@ -74,3 +74,48 @@ export async function resendNotificationDelivery(input: {
     body: JSON.stringify({ deliveryId: input.deliveryId, channel: input.channel }),
   });
 }
+
+/** What this tab shows, for `POST /api/notifications/presence`. */
+export interface PresenceReport {
+  clientId: string;
+  /** On screen, focused, and touched recently. */
+  visible: boolean;
+  /** The chat open in this tab, or null. */
+  threadId: string | null;
+}
+
+/**
+ * Tell the backend which chat this tab has on screen. A reply to that chat is
+ * then not notified, and its reply notifications and unseen mark clear.
+ */
+export async function reportPresence(
+  report: PresenceReport,
+): Promise<{ ok: boolean; markedRead: number }> {
+  return await apiJson("/api/notifications/presence", {
+    method: "POST",
+    body: JSON.stringify(report),
+  });
+}
+
+export const THREAD_ACTIVITY_KEY = "/api/thread-activity";
+
+/** Chats with a status mark: working, an unseen reply, or an unseen failure. */
+export interface ThreadActivity {
+  running: string[];
+  unseen: string[];
+  failed: string[];
+}
+
+const ids = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? value.filter((v): v is string => typeof v === "string")
+    : [];
+
+export async function fetchThreadActivity(): Promise<ThreadActivity> {
+  const data = await apiJson<Record<string, unknown>>(THREAD_ACTIVITY_KEY);
+  return {
+    running: ids(data?.running),
+    unseen: ids(data?.unseen),
+    failed: ids(data?.failed),
+  };
+}

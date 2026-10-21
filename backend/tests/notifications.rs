@@ -394,6 +394,22 @@ async fn test_endpoint_emits_real_notification() {
 
     let (_, feed) = request(&app, "GET", "/api/notifications", None, true).await;
     assert_eq!(feed["unreadCount"], json!(1));
+
+    // It went through the pipeline, so the detail can show where it went.
+    let id = item["id"].as_str().unwrap();
+    let (status, deliveries) = request(
+        &app,
+        "GET",
+        &format!("/api/notifications/{id}/deliveries"),
+        None,
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = deliveries["deliveries"].as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["channel"], json!("local"));
+    assert_eq!(rows[0]["status"], json!("sent"));
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -600,5 +616,114 @@ async fn deliveries_endpoint_returns_per_channel_rows() {
     assert_eq!(deliveries.len(), 3, "unexpected rows: {deliveries:?}");
     assert!(deliveries.iter().all(|d| d["signalId"] == json!("sig-1")));
 
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn presence_requires_auth_and_a_client_id() {
+    let (app, root) = app();
+    let (status, _) = request(
+        &app,
+        "POST",
+        "/api/notifications/presence",
+        Some(json!({ "clientId": "tab", "visible": true })),
+        false,
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, body) = request(
+        &app,
+        "POST",
+        "/api/notifications/presence",
+        Some(json!({ "visible": true })),
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap_or("").contains("clientId"));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn opening_a_chat_reads_its_reply_notifications_and_clears_its_mark() {
+    let (app, root) = app();
+    let store = root.join("home").join("store");
+    std::fs::create_dir_all(&store).unwrap();
+    std::fs::write(
+        store.join("thread-attention.json"),
+        json!({ "version": 1, "users": { "u1": {
+            "presence-open": { "endedAt": "2026-10-21T00:00:00Z", "failed": false },
+            "presence-other": { "endedAt": "2026-10-21T00:00:00Z", "failed": false },
+            "presence-broken": { "endedAt": "2026-10-21T00:00:00Z", "failed": true },
+        }}})
+        .to_string(),
+    )
+    .unwrap();
+    for (id, thread) in [("reply-open", "presence-open"), ("reply-other", "presence-other")] {
+        let (status, _) = request(
+            &app,
+            "POST",
+            "/api/notifications",
+            Some(json!({
+                "id": id,
+                "title": "Reply ready",
+                "body": "Answered.",
+                "category": "chat_reply",
+                "threadId": thread,
+                "sourceEventName": "chat.assistant_reply",
+            })),
+            true,
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+    }
+
+    let (_, before) = request(&app, "GET", "/api/thread-activity", None, true).await;
+    assert_eq!(before["unseen"], json!(["presence-open", "presence-other"]));
+    assert_eq!(before["failed"], json!(["presence-broken"]));
+
+    // A hidden tab on the chat changes nothing.
+    let (status, hidden) = request(
+        &app,
+        "POST",
+        "/api/notifications/presence",
+        Some(json!({ "clientId": "tab-1", "visible": false, "threadId": "presence-open" })),
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(hidden["markedRead"], json!(0));
+
+    let (status, shown) = request(
+        &app,
+        "POST",
+        "/api/notifications/presence",
+        Some(json!({ "clientId": "tab-1", "visible": true, "threadId": "presence-open" })),
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(shown["markedRead"], json!(1));
+
+    let (_, list) = request(&app, "GET", "/api/notifications", None, true).await;
+    let status_of = |id: &str| {
+        list["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["id"] == json!(id))
+            .map(|item| item["status"].clone())
+            .unwrap()
+    };
+    assert_eq!(status_of("reply-open"), json!("seen"));
+    assert_eq!(status_of("reply-other"), json!("new"));
+
+    let (_, after) = request(&app, "GET", "/api/thread-activity", None, true).await;
+    assert_eq!(after["unseen"], json!(["presence-other"]));
+    assert_eq!(after["failed"], json!(["presence-broken"]));
+    assert_eq!(after["running"], json!([]));
+
+    let (status, _) = request(&app, "GET", "/api/thread-activity", None, false).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
     let _ = std::fs::remove_dir_all(root);
 }
