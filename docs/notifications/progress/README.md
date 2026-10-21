@@ -13,7 +13,7 @@ with real numbers, and honest about what diverged.
 | 00 | Pipeline core | ✅ Done — 2026-10-21 | [record](phase-00-pipeline-core.md) |
 | 01 | LLM decision engine | ✅ Done 2026-10-21 (scoped 4/4 MET) | [record](phase-01-decision-engine.md) |
 | 02 | Local delivery | ⚠️ Done with gaps 2026-10-21 (3/4 MET) | [record](phase-02-local-delivery.md) |
-| 03 | External adapters | ⬜ Not started — blocked on 00 (done) → **unblocked** | — |
+| 03 | External adapters | ⚠️ Done with gaps 2026-10-21 (3/4 MET) | [record](phase-03-external-adapters.md) |
 | 04 | Bell inbox UI | ⬜ Not started — blocked on 02, 03 | — |
 | 05 | Rollout | ⬜ Not started — blocked on 04 | — |
 
@@ -30,8 +30,11 @@ with real numbers, and honest about what diverged.
 
 External adapters (03), inbox UI (04), rollout cleanup (05).
 Merged: Phase 02 (emitters on signals, intent with `deliveryId` +
-`deepLinkTarget`) and Phase 01 (LLM routing with deterministic fallback;
-merged-tree gates green: lib notify 21, pipeline 12, notifications 9).
+`deepLinkTarget`), Phase 01 (LLM routing with deterministic fallback),
+and Phase 03 (Telegram/Slack/Discord adapters, vault tokens, pairing,
+channel connect UI, `13-notifications` journey). Merged-tree gates green:
+lib notify 26, pipeline 12, notifications 9, channels 7, agent_mcp 38,
+tsc clean for notifications, vitest 49, i18n parity.
 
 ## Next up
 

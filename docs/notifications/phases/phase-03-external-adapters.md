@@ -1,5 +1,8 @@
 # Phase 03 — External adapters
 
+> **Shipped 2026-10-21 with gaps (3/4 MET).** See [progress/phase-03-external-adapters.md](../progress/phase-03-external-adapters.md)
+> for what was built, what diverged, and the verification log.
+
 **Depends on:** 00 (01 for rendered copy; works on fallback copy without it)
 · **Blocks:** 04 · **Size:** L
 
