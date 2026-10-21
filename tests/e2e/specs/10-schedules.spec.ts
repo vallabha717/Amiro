@@ -91,13 +91,13 @@ test.describe("schedules", () => {
       await expect.soft(page.locator("[data-sonner-toast]").first()).toBeVisible({ timeout: 15000 });
     });
     await step("Open the Bell → the schedule result is listed", async () => {
-      await page.getByTestId("notifications-bell-button").click();
+      await page.getByTestId("notifications-bell").click();
       await expect(page.getByTestId("notifications-bell-popover")).toBeVisible();
-      await expect(page.getByTestId("notification-row").first()).toBeVisible({ timeout: 15000 });
+      await expect(page.getByTestId("notifications-feed")).toBeVisible({ timeout: 15000 });
     });
     await step("Click the row → Go to Conversation routes to the thread", async () => {
-      await page.getByTestId("notification-row").first().click();
-      await expect(page.getByTestId("notifications-bell-detail")).toBeVisible();
+      await page.locator('[data-testid^="notification-row-"]').first().click();
+      await expect(page.getByTestId("notification-detail")).toBeVisible();
       const go = page.getByRole("button", { name: /go to conversation/i });
       if (await go.isVisible().catch(() => false)) {
         await go.click();

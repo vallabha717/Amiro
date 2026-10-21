@@ -2,7 +2,6 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-// Minimal browser environment polyfill for Node-based Vitest runs.
 const mockStorage: Record<string, string> = {};
 (globalThis as any).window = {
   localStorage: {
@@ -31,33 +30,16 @@ const mockStorage: Record<string, string> = {};
   removeEventListener: vi.fn(),
 };
 
-import { NotificationsBell } from "./notifications-bell";
-
-const notifications = [
-  {
-    id: "n1",
-    deliveryId: "d1",
-    category: "chat_reply" as const,
-    title: "Chat reply",
-    body: "The agent has replied.",
-    preview: "The agent...",
-    threadId: "thread-1",
-    read: false,
-    dismissed: false,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "n2",
-    deliveryId: "d2",
-    category: "schedule_result" as const,
-    title: "Schedule finished",
-    body: "A scheduled run completed.",
-    scheduleId: "schedule-1",
-    read: true,
-    dismissed: false,
-    createdAt: new Date().toISOString(),
-  },
-];
+vi.mock("next-intl", () => ({
+  useTranslations:
+    () => (key: string, vars?: Record<string, string | number>) => {
+      if (!vars) return key;
+      return Object.entries(vars).reduce(
+        (s, [k, v]) => s.replace(`{${k}}`, String(v)),
+        key,
+      );
+    },
+}));
 
 let swrData: unknown[] | undefined = [];
 let swrLoading = false;
@@ -73,8 +55,7 @@ vi.mock("swr", () => ({
 }));
 
 vi.mock("sonner", () => ({
-  toast: vi.fn().mockReturnValue("toast-1"),
-  Toaster: () => null,
+  toast: { success: vi.fn(), error: vi.fn() },
 }));
 
 vi.mock("@/components/ui/popover", () => ({
@@ -107,6 +88,34 @@ vi.mock("@/lib/backend/config", async () => {
   };
 });
 
+import { NotificationsBell } from "./notifications-bell";
+
+const notifications = [
+  {
+    id: "n1",
+    deliveryId: "d1",
+    category: "chat_reply" as const,
+    title: "Chat reply",
+    body: "The agent has replied.",
+    preview: "The agent...",
+    threadId: "thread-1",
+    read: false,
+    dismissed: false,
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "n2",
+    deliveryId: "d2",
+    category: "schedule_result" as const,
+    title: "Schedule finished",
+    body: "A scheduled run completed.",
+    scheduleId: "schedule-1",
+    read: true,
+    dismissed: false,
+    createdAt: new Date().toISOString(),
+  },
+];
+
 beforeEach(() => {
   swrData = notifications;
   swrLoading = false;
@@ -118,38 +127,29 @@ beforeEach(() => {
 });
 
 describe("NotificationsBell", () => {
-  it("renders the bell button with unread badge", () => {
+  it("renders the bell button with unread badge and shell testids", () => {
     const html = renderToStaticMarkup(createElement(NotificationsBell));
-    expect(html).toContain('data-testid="notifications-bell-button"');
+    expect(html).toContain('data-testid="notifications-bell"');
     expect(html).toContain('data-testid="notifications-unread-badge"');
-    expect(html).toContain("1");
-  });
-
-  it("renders the popover panel with controls", () => {
-    const html = renderToStaticMarkup(createElement(NotificationsBell));
     expect(html).toContain('data-testid="notifications-bell-popover"');
     expect(html).toContain('data-testid="notifications-bell-count"');
-    expect(html).toContain('data-testid="notifications-unread-toggle"');
+    // Per-04-ui.md row testids carry the notification id.
+    expect(html).toContain('data-testid="notification-row-n1"');
+    expect(html).toContain('data-testid="notification-row-n2"');
+  });
+
+  it("renders feed filters, header actions, and the settings entry", () => {
+    const html = renderToStaticMarkup(createElement(NotificationsBell));
+    expect(html).toContain('data-testid="notifications-feed"');
+    expect(html).toContain('data-testid="notifications-filter-all"');
+    expect(html).toContain('data-testid="notifications-filter-unread"');
+    expect(html).toContain('data-testid="notifications-filter-chat_reply"');
     expect(html).toContain('data-testid="notifications-mark-all-read"');
     expect(html).toContain('data-testid="notifications-clear-all"');
-    expect(html).toContain('data-testid="notifications-settings-link"');
+    expect(html).toContain('data-testid="notifications-settings-button"');
   });
 
-  it("renders notification rows for each item", () => {
-    const html = renderToStaticMarkup(createElement(NotificationsBell));
-    expect(html).toContain('data-testid="notifications-bell-list"');
-    expect(html).toContain('data-testid="notification-row"');
-    expect(html).toContain('data-notification-id="n1"');
-    expect(html).toContain('data-notification-id="n2"');
-  });
-
-  it("shows category badges for chat and schedule", () => {
-    const html = renderToStaticMarkup(createElement(NotificationsBell));
-    expect(html).toContain('data-testid="notification-category-chat_reply"');
-    expect(html).toContain('data-testid="notification-category-schedule_result"');
-  });
-
-  it("renders empty state when there are no notifications", () => {
+  it("shows the unread filter empty state with a send-test action", () => {
     swrData = [];
     const html = renderToStaticMarkup(createElement(NotificationsBell));
     expect(html).toContain('data-testid="notifications-empty-state"');
@@ -165,7 +165,13 @@ describe("NotificationsBell", () => {
   it("shows Desktop Native Active pill when in Amiro Desktop", () => {
     (window as any).__AMIRO_DESKTOP__ = true;
     const html = renderToStaticMarkup(createElement(NotificationsBell));
-    expect(html).toContain("Desktop Native Active");
+    expect(html).toContain("desktopActive");
     delete (window as any).__AMIRO_DESKTOP__;
+  });
+
+  it("hides the badge when everything is read", () => {
+    swrData = notifications.map((n) => ({ ...n, read: true, status: "seen" }));
+    const html = renderToStaticMarkup(createElement(NotificationsBell));
+    expect(html).not.toContain('data-testid="notifications-unread-badge"');
   });
 });

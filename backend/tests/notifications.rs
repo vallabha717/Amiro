@@ -520,3 +520,82 @@ async fn stream_sends_snapshot_then_live_events() {
 
     let _ = std::fs::remove_dir_all(root);
 }
+
+#[tokio::test]
+async fn deliveries_endpoint_returns_per_channel_rows() {
+    let (app, root) = app();
+    // Unknown id is a clean 404, never an exception; auth runs first.
+    let (status, _) = request(
+        &app,
+        "GET",
+        "/api/notifications/nope/deliveries",
+        None,
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = request(
+        &app,
+        "GET",
+        "/api/notifications/nope/deliveries",
+        None,
+        false,
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    let (status, created) = request(
+        &app,
+        "POST",
+        "/api/notifications",
+        Some(json!({ "id": "n-del", "title": "T", "body": "B", "category": "system" })),
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let delivery_id = created["item"]["deliveryId"].as_str().unwrap().to_string();
+
+    // Seed rows the way the broadcaster + resend path write them: same
+    // delivery id per broadcast, a new delivery id under the same signal
+    // for resends, plus rows that must not leak in (other item, other user).
+    let row = |delivery_id: &str, signal_id: &str, user_id: &str, channel: &str, status: &str| {
+        json!({
+            "deliveryId": delivery_id,
+            "signalId": signal_id,
+            "userId": user_id,
+            "channel": channel,
+            "status": status,
+            "error": null,
+            "recordedAt": "2026-10-21T00:00:00Z",
+        })
+    };
+    std::fs::create_dir_all(root.join("home").join("store")).unwrap();
+    std::fs::write(
+        root.join("home").join("store").join("notification-deliveries.json"),
+        json!({ "version": 1, "rows": [
+            row(&delivery_id, "sig-1", "u1", "local", "sent"),
+            row(&delivery_id, "sig-1", "u1", "telegram", "failed"),
+            row("d-resend", "sig-1", "u1", "telegram", "sent"),
+            row("d-other", "sig-9", "u1", "local", "sent"),
+            row(&delivery_id, "sig-1", "u2", "local", "sent"),
+        ]})
+        .to_string(),
+    )
+    .unwrap();
+
+    let (status, body) = request(
+        &app,
+        "GET",
+        "/api/notifications/n-del/deliveries",
+        None,
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let deliveries = body["deliveries"].as_array().unwrap();
+    // local + failed telegram + the resend row (same signal). Nothing else.
+    assert_eq!(deliveries.len(), 3, "unexpected rows: {deliveries:?}");
+    assert!(deliveries.iter().all(|d| d["signalId"] == json!("sig-1")));
+
+    let _ = std::fs::remove_dir_all(root);
+}

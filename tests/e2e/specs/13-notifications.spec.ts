@@ -96,6 +96,87 @@ test.describe("notification channels", () => {
     });
   });
 
+  test("bell inbox: filter unread → detail → mark read → badge clears", async ({
+    page,
+    step,
+    amiro,
+  }) => {
+    await step("Seed two unread notifications via the test endpoint", async () => {
+      for (let i = 0; i < 2; i++) {
+        const { status } = await amiro.api("/api/notifications/test", {
+          method: "POST",
+        });
+        expect(status).toBeLessThan(300);
+      }
+    });
+
+    await step("Open the bell → filterable feed appears", async () => {
+      await page.getByTestId("notifications-bell").click();
+      await expect(page.getByTestId("notifications-bell-popover")).toBeVisible();
+      await expect(page.getByTestId("notifications-feed")).toBeVisible();
+      await expect(page.getByTestId("notifications-filter-unread")).toBeVisible();
+    });
+
+    await step("Filter unread → only unread rows remain", async () => {
+      await page.getByTestId("notifications-filter-unread").click();
+      await expect(
+        page.locator('[data-testid^="notification-row-"]').first(),
+      ).toBeVisible({ timeout: 15000 });
+    });
+
+    await step("Open the first row → detail with delivery state", async () => {
+      await page.locator('[data-testid^="notification-row-"]').first().click();
+      await expect(page.getByTestId("notification-detail")).toBeVisible();
+      await expect(page.getByTestId("notification-deliveries")).toBeVisible({
+        timeout: 15000,
+      });
+    });
+
+    await step("Mark read in detail → back to feed → mark-all clears the badge", async () => {
+      const badge = page.getByTestId("notifications-unread-badge");
+      await expect(badge).toBeVisible();
+      await page.getByTestId("notification-toggle-read").click();
+      await page.getByTestId("notifications-back").click();
+      await expect(page.getByTestId("notifications-feed")).toBeVisible();
+      await page.getByTestId("notifications-mark-all-read").click();
+      await expect(badge).toBeHidden({ timeout: 15000 });
+    });
+
+    await step("Settings → sound toggle persists through the API", async () => {
+      await page.getByTestId("notifications-settings-button").click();
+      await expect(page.getByTestId("notifications-settings")).toBeVisible();
+      const before = await amiro.api<{ settings: { soundEnabled: boolean } }>(
+        "/api/notifications/settings",
+      );
+      const initial = before.body.settings.soundEnabled;
+      await page.getByTestId("notifications-settings-soundEnabled").click();
+      await expect
+        .poll(
+          async () => {
+            const { body } = await amiro.api<{
+              settings: { soundEnabled: boolean };
+            }>("/api/notifications/settings");
+            return body.settings.soundEnabled;
+          },
+          { timeout: 15000 },
+        )
+        .toBe(!initial);
+      // Restore so later runs start from the same state.
+      await page.getByTestId("notifications-settings-soundEnabled").click();
+      await expect
+        .poll(
+          async () => {
+            const { body } = await amiro.api<{
+              settings: { soundEnabled: boolean };
+            }>("/api/notifications/settings");
+            return body.settings.soundEnabled;
+          },
+          { timeout: 15000 },
+        )
+        .toBe(initial);
+    });
+  });
+
   test("live send to a real Telegram chat (guarded)", async ({ page, step, amiro }) => {
     const { notify } = amiro.cfg;
     need(notify?.liveTelegramToken, "notify.liveTelegramToken");

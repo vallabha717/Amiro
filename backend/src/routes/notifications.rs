@@ -803,6 +803,63 @@ async fn put_settings(
     Ok(Json(merged_value))
 }
 
+/// GET /api/notifications/{id}/deliveries -- per-channel delivery rows for one
+/// feed item. Rows share the item's `deliveryId`; resends mint a new delivery
+/// id under the same `signalId`, so rows are collected by signal and merged.
+/// Only metadata is returned (channel, status, error, timestamps) — never a
+/// token.
+async fn notification_deliveries(
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+    user: AuthUser,
+) -> Result<Json<Value>, ApiError> {
+    let uid = user_id_of(&user);
+    let doc = read_json(
+        &notifications_path(&state),
+        json!({ "version": 2, "items": {} }),
+    )
+    .await?;
+    let item = items_for(&doc, &uid)
+        .into_iter()
+        .find(|item| item.get("id").and_then(|v| v.as_str()) == Some(id.as_str()))
+        .ok_or_else(|| {
+            ApiError(
+                StatusCode::NOT_FOUND,
+                "notification not found".to_string(),
+            )
+        })?;
+    let delivery_id = item
+        .get("deliveryId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let rows = crate::notify::store::all_deliveries(&state).await?;
+    let mut signal_ids = std::collections::HashSet::new();
+    for row in &rows {
+        if row.get("userId").and_then(|v| v.as_str()) != Some(uid.as_str()) {
+            continue;
+        }
+        if row.get("deliveryId").and_then(|v| v.as_str()) == Some(delivery_id.as_str()) {
+            if let Some(signal_id) = row.get("signalId").and_then(|v| v.as_str()) {
+                signal_ids.insert(signal_id.to_string());
+            }
+        }
+    }
+    let deliveries: Vec<Value> = rows
+        .into_iter()
+        .filter(|row| {
+            row.get("userId").and_then(|v| v.as_str()) == Some(uid.as_str())
+                && (row.get("deliveryId").and_then(|v| v.as_str()) == Some(delivery_id.as_str())
+                    || row
+                        .get("signalId")
+                        .and_then(|v| v.as_str())
+                        .is_some_and(|s| signal_ids.contains(s)))
+        })
+        .collect();
+    Ok(Json(json!({ "deliveries": deliveries })))
+}
+
 /// GET /api/notifications/stream -- SSE snapshot + live fan-out.
 async fn stream_notifications(
     State(state): State<AppState>,
@@ -871,6 +928,10 @@ pub fn routes() -> Router<AppState> {
                 .delete(delete_notification),
         )
         .route("/api/notifications/{id}/ack", post(ack_notification))
+        .route(
+            "/api/notifications/{id}/deliveries",
+            get(notification_deliveries),
+        )
 }
 
 /// DELETE /api/notifications/{id} -- dismiss a single notification.
