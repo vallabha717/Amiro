@@ -147,7 +147,7 @@ export function OnboardingWizard() {
         data-step="chat"
       >
         {/* Floats over the chat's own background: one seamless surface. */}
-        <header className="pointer-events-none absolute left-0 top-0 z-10 flex h-14 items-center gap-2 px-5 text-[15px] font-semibold sm:px-8">
+        <header className="pointer-events-none absolute left-0 top-0 z-10 hidden h-14 items-center gap-2 px-5 text-[15px] font-semibold sm:px-8 xl:flex">
           <VrndaLogo className="size-5" />
           <span className="font-brand">Amiro</span>
         </header>

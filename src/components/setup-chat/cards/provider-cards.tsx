@@ -89,7 +89,7 @@ export function ProviderPickCard({
         aria-label={t("providerSearch")}
         data-testid="setup-provider-search"
       />
-      <div className="mt-3 max-h-[26rem] space-y-4 overflow-y-auto pr-1">
+      <div className="mt-3 max-h-[min(26rem,55dvh)] space-y-4 overflow-y-auto pr-1">
         {isLoading ? (
           <Skeleton className="h-40 w-full" />
         ) : groups.length === 0 ? (

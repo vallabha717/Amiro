@@ -39,12 +39,7 @@ import { PromptCard } from "./cards/prompt-card";
 import { ProviderConnectCard, ProviderPickCard } from "./cards/provider-cards";
 import { SearchKeyCard, SearchPickCard } from "./cards/search-cards";
 import { VoiceKeyCard, VoicePickCard } from "./cards/voice-cards";
-import {
-  AgentPanel,
-  STORY_CSS,
-  StepPanel,
-  StoryStrip,
-} from "./story-panel";
+import { AgentPanel, STORY_CSS, StepPanel, StoryStrip } from "./story-panel";
 import { StreamingText } from "./streaming-text";
 
 export interface SetupResult {
@@ -334,97 +329,108 @@ export function SetupChat({
       data-mode={mode}
       data-step={open.step}
     >
-      <div className="hidden w-[300px] shrink-0 xl:block">
-        <AgentPanel
-          step={open.step}
-          turns={turns}
-          traits={traits}
-          accent={accent}
-          name={name || t("newAgent")}
-          subtitle={team ? t("subtitleTeam") : t("subtitle")}
-        />
-      </div>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-3 px-4 pt-3 sm:px-6 xl:hidden">
-          <AgentCharacterAvatar
+      {/* Wide screens keep the three columns together; the tint fills the screen. */}
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-[1560px]">
+        <div className="hidden w-[300px] shrink-0 xl:block">
+          <AgentPanel
+            step={open.step}
+            turns={turns}
             traits={traits}
-            accentColor={accent}
-            size={36}
-            animated
+            accent={accent}
+            name={name || t("newAgent")}
+            subtitle={team ? t("subtitleTeam") : t("subtitle")}
           />
-          <div className="min-w-0 flex-1">
-            <p className="truncate font-semibold">{name || t("newAgent")}</p>
-            <p className="text-xs text-muted-foreground">
-              {team ? t("subtitleTeam") : t("subtitle")}
-            </p>
-          </div>
-        </header>
-        <StoryStrip step={open.step} />
-        {progress.index > 0 && (
-          <p
-            className="mx-auto mt-3 rounded-full bg-background/70 px-3 py-1 text-xs tabular-nums text-muted-foreground shadow-sm"
-            data-testid="setup-progress"
-          >
-            {t("progress", progress)}
-          </p>
-        )}
-
-        <div className="min-h-0 flex-1 overflow-y-auto [mask-image:linear-gradient(to_bottom,transparent,black_28px,black_calc(100%-28px),transparent)]">
-          <ol
-            className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-6 sm:px-6"
-            aria-live="polite"
-          >
-            {turns.map((turn) => {
-              const done = turn.reply !== undefined;
-              const ready = done || streamed.has(turn.key);
-              return (
-                <li
-                  key={turn.key}
-                  className="flex flex-col gap-3"
-                  data-testid={`setup-turn-${turn.step}`}
-                >
-                  <div className="flex items-start gap-3">
-                    <AgentCharacterAvatar
-                      traits={traits}
-                      accentColor={accent}
-                      size={30}
-                      className="mt-0.5 shrink-0"
-                    />
-                    <div
-                      className="min-w-0 flex-1"
-                      data-testid="setup-agent-message"
-                    >
-                      <StreamingText
-                        text={sayFor(turn)}
-                        instant={done}
-                        onDone={() =>
-                          setStreamed((s) =>
-                            s.has(turn.key) ? s : new Set(s).add(turn.key),
-                          )
-                        }
-                      />
-                      {!done && ready && cardFor(turn)}
-                    </div>
-                  </div>
-                  {done && turn.step !== "done" && (
-                    <div className="flex justify-end">
-                      <p
-                        className="max-w-[80%] rounded-2xl rounded-br-md bg-primary px-4 py-2 text-sm text-primary-foreground"
-                        data-testid="setup-user-reply"
-                      >
-                        {turn.reply}
-                      </p>
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ol>
-          <div ref={bottom} />
         </div>
-      </div>
-      <div className="hidden w-[340px] shrink-0 lg:block">
-        <StepPanel step={open.step} />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="flex items-center gap-3 px-4 pt-3 sm:px-6 xl:hidden">
+            <AgentCharacterAvatar
+              traits={traits}
+              accentColor={accent}
+              size={36}
+              animated
+            />
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-semibold">{name || t("newAgent")}</p>
+              <p className="text-xs text-muted-foreground">
+                {team ? t("subtitleTeam") : t("subtitle")}
+              </p>
+            </div>
+            {progress.index > 0 && (
+              <p
+                className="shrink-0 rounded-full bg-background/70 px-3 py-1 text-xs tabular-nums text-muted-foreground shadow-sm"
+                data-testid="setup-progress-compact"
+              >
+                {t("progress", progress)}
+              </p>
+            )}
+          </header>
+          <StoryStrip step={open.step} />
+          {progress.index > 0 && (
+            <p
+              className="mx-auto mt-3 hidden rounded-full bg-background/70 px-3 py-1 text-xs tabular-nums text-muted-foreground shadow-sm xl:block"
+              data-testid="setup-progress"
+            >
+              {t("progress", progress)}
+            </p>
+          )}
+
+          <div className="min-h-0 flex-1 overflow-y-auto [mask-image:linear-gradient(to_bottom,transparent,black_28px,black_calc(100%-28px),transparent)]">
+            <ol
+              className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-6 sm:px-6"
+              aria-live="polite"
+            >
+              {turns.map((turn) => {
+                const done = turn.reply !== undefined;
+                const ready = done || streamed.has(turn.key);
+                return (
+                  <li
+                    key={turn.key}
+                    className="flex flex-col gap-3"
+                    data-testid={`setup-turn-${turn.step}`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <AgentCharacterAvatar
+                        traits={traits}
+                        accentColor={accent}
+                        size={30}
+                        className="mt-0.5 shrink-0"
+                      />
+                      <div
+                        className="min-w-0 flex-1"
+                        data-testid="setup-agent-message"
+                      >
+                        <StreamingText
+                          text={sayFor(turn)}
+                          instant={done}
+                          onDone={() =>
+                            setStreamed((s) =>
+                              s.has(turn.key) ? s : new Set(s).add(turn.key),
+                            )
+                          }
+                        />
+                        {!done && ready && cardFor(turn)}
+                      </div>
+                    </div>
+                    {done && turn.step !== "done" && (
+                      <div className="flex justify-end">
+                        <p
+                          className="max-w-[80%] rounded-2xl rounded-br-md bg-primary px-4 py-2 text-sm text-primary-foreground"
+                          data-testid="setup-user-reply"
+                        >
+                          {turn.reply}
+                        </p>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+            <div ref={bottom} />
+          </div>
+        </div>
+        <div className="hidden w-[340px] shrink-0 lg:block">
+          <StepPanel step={open.step} />
+        </div>
       </div>
       <style>{STORY_CSS}</style>
     </div>

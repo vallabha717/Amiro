@@ -60,7 +60,7 @@ export function PromptCard({ onContinue }: { onContinue: () => void }) {
             ))}
           </div>
           <pre
-            className="max-h-72 overflow-auto whitespace-pre-wrap rounded-xl bg-muted/60 p-3 font-mono text-xs leading-relaxed"
+            className="max-h-[min(18rem,45dvh)] overflow-auto whitespace-pre-wrap rounded-xl bg-muted/60 p-3 font-mono text-xs leading-relaxed"
             data-testid="setup-prompt-text"
             tabIndex={0}
             aria-label={file?.name}

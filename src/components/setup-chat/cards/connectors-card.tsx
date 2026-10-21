@@ -75,7 +75,7 @@ export function ConnectorsCard({
       {!team &&
         (composio?.configured ? (
           <div
-            className="max-h-[24rem] overflow-y-auto rounded-xl border p-3"
+            className="max-h-[min(24rem,55dvh)] overflow-y-auto rounded-xl border p-3"
             data-testid="setup-composio-apps"
           >
             <ComposioAppsSection />

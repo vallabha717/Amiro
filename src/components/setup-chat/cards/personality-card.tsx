@@ -89,9 +89,9 @@ export function PersonalityCard({
           return (
             <div
               key={axis.id}
-              className="grid grid-cols-[6.5rem_1fr_6.5rem] items-center gap-3 text-xs sm:text-sm"
+              className="grid grid-cols-2 items-center gap-x-3 gap-y-1 text-xs sm:grid-cols-[6.5rem_1fr_6.5rem] sm:text-sm"
             >
-              <span className={cn("text-right", value < 45 && "font-semibold")}>
+              <span className={cn("sm:text-right", value < 45 && "font-semibold")}>
                 {left}
               </span>
               <input
@@ -105,10 +105,12 @@ export function PersonalityCard({
                   setPreset(null);
                 }}
                 aria-label={t("axisLabel", { left, right })}
-                className="w-full accent-[var(--setup-accent)]"
+                className="order-3 col-span-2 w-full accent-[var(--setup-accent)] sm:order-none sm:col-span-1"
                 data-testid={`setup-slider-${axis.id}`}
               />
-              <span className={cn(value > 55 && "font-semibold")}>{right}</span>
+              <span className={cn("text-right sm:text-left", value > 55 && "font-semibold")}>
+                {right}
+              </span>
             </div>
           );
         })}

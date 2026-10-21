@@ -41,9 +41,14 @@ dividing lines (`story-panel.tsx`):
   of its own, Ears to hear you. A headline, a short explanation and three
   points. A follow-up turn (connect the provider) keeps its parent's chapter.
 
-Below 1280px the left column folds into a small header; below 1024px the
-right one becomes a one-line chapter strip. With reduced motion the orbit and
-transitions stand still.
+Below 1280px the left column folds into one header row (agent, name, step
+count); below 1024px the right one becomes a one-line chapter strip. Wide
+screens keep the columns within 1560px while the tint fills the screen; short
+screens (768px tall) shrink the agent so the whole journey stays visible; lists
+inside cards cap at about half the screen height so phones do not scroll inside
+a scroll. Journey 1 resizes through phone, tablet, short laptop and desktop and
+checks nothing scrolls sideways. With reduced motion the orbit and transitions
+stand still.
 
 ## Decisions
 

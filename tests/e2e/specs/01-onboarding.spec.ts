@@ -111,6 +111,32 @@ test.describe("onboarding", () => {
       await expect(replyOf(page, "prompt")).toHaveText("Looks good");
     });
 
+    await step("Fits every screen: phone, tablet, short laptop and desktop, with no sideways scrolling", async () => {
+      const overflow = () =>
+        page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      await openTurn(page, "personality");
+      // Phone: the agent and the chapter fold into two short rows above the chat.
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expect(page.getByTestId("setup-story-strip")).toBeVisible();
+      await expect(page.getByTestId("setup-progress-compact")).toHaveText("Step 3 of 8");
+      await expect(page.getByTestId("setup-agent-panel")).toBeHidden();
+      await expect(page.getByTestId("setup-story")).toBeHidden();
+      await expect(page.getByTestId("setup-personality-save")).toBeVisible();
+      expect(await overflow()).toBe(0);
+      // Tablet.
+      await page.setViewportSize({ width: 820, height: 1180 });
+      await expect(page.getByTestId("setup-story-strip")).toBeVisible();
+      expect(await overflow()).toBe(0);
+      // Short laptop: all three columns, the whole journey still on screen.
+      await page.setViewportSize({ width: 1366, height: 768 });
+      await expect(page.getByTestId("setup-agent-panel")).toBeVisible();
+      await expect(page.getByTestId("setup-story")).toBeVisible();
+      await expect(page.getByTestId("setup-journey-listen")).toBeInViewport();
+      expect(await overflow()).toBe(0);
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await expect(page.getByTestId("setup-story-strip")).toBeHidden();
+    });
+
     await step("Personality: pick Warm Companion → saved like the Personality page", async () => {
       const turn = await openTurn(page, "personality");
       await turn.getByTestId("setup-preset-companion").click();

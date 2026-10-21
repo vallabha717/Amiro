@@ -141,7 +141,7 @@ export function AgentPanel({
   const chapter = chapterOf(step);
   return (
     <aside
-      className="flex h-full min-h-0 flex-col items-center overflow-hidden px-6 pt-14"
+      className="flex h-full min-h-0 flex-col items-center overflow-y-auto px-6 pb-6 pt-14 [scrollbar-width:none]"
       data-testid="setup-agent-panel"
       aria-label={t("story.journey")}
     >
@@ -172,7 +172,7 @@ export function StepPanel({ step }: { step: SetupStepId }) {
   const Emblem = CHAPTER_ART[chapter].icon;
   return (
     <aside
-      className="flex h-full min-h-0 flex-col justify-center overflow-hidden px-8"
+      className="flex h-full min-h-0 flex-col overflow-y-auto px-8 [scrollbar-width:none]"
       data-testid="setup-story"
       data-step={chapter}
     >
@@ -186,6 +186,7 @@ export function StepPanel({ step }: { step: SetupStepId }) {
             duration: reduce ? 0.1 : 0.35,
             ease: [0.22, 1, 0.36, 1],
           }}
+          className="my-auto py-8"
         >
           <span
             className="grid size-12 place-items-center rounded-2xl text-white shadow-lg"
@@ -246,7 +247,10 @@ function Hero({
 }) {
   const radius = 92;
   return (
-    <div className="relative size-[224px] shrink-0" aria-hidden>
+    <div
+      className="relative size-[224px] shrink-0 origin-top [@media(max-height:820px)]:-mb-12 [@media(max-height:820px)]:scale-[0.78]"
+      aria-hidden
+    >
       <div
         className="absolute inset-6 rounded-full blur-2xl"
         style={{
@@ -290,7 +294,10 @@ function Hero({
 function Journey({ current, turns }: { current: Chapter; turns: SetupTurn[] }) {
   const t = useTranslations("SetupChat");
   return (
-    <nav className="mt-6 w-full" aria-label={t("story.journey")}>
+    <nav
+      className="mt-6 w-full [@media(max-height:820px)]:mt-3"
+      aria-label={t("story.journey")}
+    >
       <ol className="grid grid-cols-1 gap-0.5">
         {CHAPTERS.map((chapter) => {
           const state = chapterState(chapter, current, turns);
@@ -333,7 +340,7 @@ function Journey({ current, turns }: { current: Chapter; turns: SetupTurn[] }) {
                 </span>
                 {answer && (
                   <span
-                    className="block truncate text-xs text-muted-foreground"
+                    className="block truncate text-xs text-muted-foreground [@media(max-height:700px)]:hidden"
                     data-testid={`setup-journey-answer-${chapter}`}
                   >
                     {answer}
