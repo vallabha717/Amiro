@@ -17,7 +17,6 @@
 //! high/critical urgencies stay audible.
 
 use std::convert::Infallible;
-use std::sync::OnceLock;
 use std::time::Duration;
 
 use axum::extract::{Path, Query, State};
@@ -32,7 +31,6 @@ use tokio::sync::broadcast;
 use crate::state::{now_iso, read_json, write_json, ApiError, AppState, AuthUser};
 
 const KEEPALIVE: Duration = Duration::from_secs(15);
-const CHANNEL_CAPACITY: usize = 256;
 
 const CATEGORIES: [&str; 5] = [
     "chat_reply",
@@ -50,18 +48,11 @@ const RECEIPT_CLASSES: [&str; 4] = [
     "in_app_toast",
 ];
 
-/// Process-wide fan-out channel. Created on first use so any route or helper
-/// can publish without threading a sender through `AppState`.
-static NOTIFY_TX: OnceLock<broadcast::Sender<Value>> = OnceLock::new();
-
-fn sender() -> &'static broadcast::Sender<Value> {
-    NOTIFY_TX.get_or_init(|| broadcast::channel(CHANNEL_CAPACITY).0)
-}
-
-/// Push an already-built event onto the fan-out channel. A send with no
-/// subscribers is not an error here (a client simply was not connected).
-fn publish(event: Value) {
-    let _ = sender().send(event);
+/// Push an already-built event onto the pipeline fan-out channel (owned by
+/// `crate::notify::broadcaster`). A send with no subscribers is not an error
+/// here (a client simply was not connected).
+pub(crate) fn publish(event: Value) {
+    crate::notify::broadcaster::publish(event);
 }
 
 fn user_id_of(user: &AuthUser) -> String {
@@ -135,11 +126,11 @@ pub fn resolve_silent(settings: &Value, category: &str, urgency: &str) -> bool {
     !(audible_category || audible_urgency)
 }
 
-async fn load_settings_doc(state: &AppState) -> Result<Value, ApiError> {
+pub(crate) async fn load_settings_doc(state: &AppState) -> Result<Value, ApiError> {
     read_json(&settings_path(state), json!({})).await
 }
 
-fn settings_for(doc: &Value, uid: &str) -> Value {
+pub(crate) fn settings_for(doc: &Value, uid: &str) -> Value {
     let mut settings = default_settings();
     if let Some(stored) = doc.get(uid) {
         if let Some(map) = stored.as_object() {
@@ -224,7 +215,7 @@ fn default_actions(category: &str, thread_id: Option<&str>) -> Vec<Value> {
 
 /// Build a normalized notification item from caller input. Validation rejects
 /// unknown enums so a bad category can never be persisted.
-fn build_item(
+pub(crate) fn build_item(
     uid: &str,
     body: &Value,
     settings: &Value,
@@ -342,7 +333,11 @@ fn build_item(
 
 /// Persist an item for `uid`: replace in place when the id already exists,
 /// otherwise insert at the front so the feed stays newest-first.
-async fn persist_item(state: &AppState, uid: &str, item: Value) -> Result<u64, ApiError> {
+pub(crate) async fn persist_item(
+    state: &AppState,
+    uid: &str,
+    item: Value,
+) -> Result<u64, ApiError> {
     let _lock = state.store.lock().await;
     let path = notifications_path(state);
     let mut doc = read_json(&path, json!({ "version": 2, "items": {} })).await?;
@@ -774,7 +769,7 @@ async fn stream_notifications(
 ) -> Result<impl IntoResponse, ApiError> {
     let uid = user_id_of(&user);
     let unread = unread_count_of(&state, &uid).await?;
-    let mut receiver = sender().subscribe();
+    let mut receiver = crate::notify::subscribe();
 
     let stream = async_stream::stream! {
         yield Ok::<Event, Infallible>(
