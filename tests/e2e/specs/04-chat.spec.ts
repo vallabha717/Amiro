@@ -479,7 +479,10 @@ test.describe("chat", () => {
     const T = "/home/shrivallabha_somayaji_tyson_com/Projects/3368-haystack-paap";
     // Real files that already exist on this machine, one per kind.
     const samples: { name: string; from: string; testId: string; expect?: RegExp }[] = [
+      { name: "resume.pdf", from: `${P}/local/Shrivallabha Somayaji (3).pdf`, testId: "file-preview-pdf" },
       { name: "spec.pdf", from: "/usr/share/doc/shared-mime-info/shared-mime-info-spec.pdf", testId: "file-preview-pdf" },
+      { name: "guide.docx", from: `${T}/competitoriq/docs/Working-on-CompetitorIQ-with-Claude.docx`, testId: "file-preview-docx" },
+      { name: "model.xlsx", from: "/home/shrivallabha_somayaji_tyson_com/.codex/.tmp/plugins/plugins/public-equity-investing/skills/dcf-model-builder/assets/templates/banker_formula_workbook_template.xlsx", testId: "file-preview-xlsx" },
       { name: "checklist.docx", from: `${P}/app.vegaai.dev.v2/tests/fixtures/knowledge-bases/onboarding-checklist.docx`, testId: "file-preview-docx" },
       { name: "talk.pptx", from: `${T}/deployment-web-app/docs-service/public/haystack-tech-talk.pptx`, testId: "file-preview-pptx" },
       { name: "limits.xlsx", from: `${P}/app.vegaai.dev.v2/tests/fixtures/knowledge-bases/refund-limits.xlsx`, testId: "file-preview-xlsx" },
@@ -519,6 +522,12 @@ test.describe("chat", () => {
       await page.waitForTimeout(1200);
     };
 
+    await step("Your own PDF opens exactly as the original pages", async () => {
+      await open("resume.pdf");
+      const pages = page.getByTestId("file-preview-pdf-page");
+      await expect(pages.first()).toBeVisible({ timeout: 30000 });
+      await page.waitForTimeout(3500);
+    });
     await step("PDF renders in the page viewer", async () => {
       await open("spec.pdf");
       const pages = page.getByTestId("file-preview-pdf-page");
@@ -540,17 +549,40 @@ test.describe("chat", () => {
       await expect(doc).toBeVisible({ timeout: 20000 });
       await expect.poll(async () => (await doc.innerText()).trim().length, { timeout: 20000 }).toBeGreaterThan(20);
     });
+    await step("Word guide keeps its page, headings and colours", async () => {
+      await open("guide.docx");
+      const doc = page.getByTestId("file-preview-docx");
+      await expect(doc.locator("section.docx").first(), "a real page sheet is drawn").toBeVisible({ timeout: 20000 });
+      await expect(doc).toContainText(/Working on CompetitorIQ/i);
+      await page.waitForTimeout(1500);
+    });
+    await step("Excel model keeps its styling and sheet tabs", async () => {
+      await open("model.xlsx");
+      const sheet = page.getByTestId("file-preview-xlsx");
+      await expect(sheet, "sheet tabs are present").toContainText(/Executive Summary/i, { timeout: 20000 });
+      await expect(sheet.locator("canvas").first(), "the styled grid is drawn").toBeVisible();
+      const ink = await sheet.locator("canvas").first().evaluate((c: HTMLCanvasElement) => {
+        const d = c.getContext("2d")!.getImageData(0, 0, c.width, c.height).data;
+        let coloured = 0;
+        for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 0 && !(d[i] > 245 && d[i + 1] > 245 && d[i + 2] > 245)) coloured++;
+        return coloured;
+      });
+      expect(ink, "the grid has real cell styling, not a blank canvas").toBeGreaterThan(2000);
+      await page.waitForTimeout(1500);
+    });
     await step("PowerPoint renders slide by slide", async () => {
       await open("talk.pptx");
       const deck = page.getByTestId("file-preview-pptx");
       await expect(deck).toBeVisible({ timeout: 20000 });
-      expect(await deck.locator("li").count(), "several slides").toBeGreaterThan(2);
+      await expect(deck, "slide text is drawn").toContainText(/fastest way to/i, { timeout: 20000 });
+      const box = await deck.boundingBox();
+      expect(box?.height ?? 0, "slides take real page height").toBeGreaterThan(300);
     });
     await step("Excel renders as a grid with sheet tabs", async () => {
       await open("limits.xlsx");
       const sheet = page.getByTestId("file-preview-xlsx");
       await expect(sheet).toBeVisible({ timeout: 20000 });
-      expect(await sheet.locator("td").count(), "cells are shown").toBeGreaterThan(4);
+      await expect(sheet, "sheet tabs are drawn").toContainText(/Refund Limits/i, { timeout: 20000 });
     });
     await step("CSV renders as a grid", async () => {
       await open("oui.csv");

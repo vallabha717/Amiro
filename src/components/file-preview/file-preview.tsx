@@ -233,7 +233,7 @@ function PreviewLoadingInline() {
   return <Loading />;
 }
 
-async function readDocx(blob: Blob): Promise<string> {
+async function readDocxText(blob: Blob): Promise<string> {
   const [{ default: mammoth }, { default: DOMPurify }] = await Promise.all([
     import("mammoth/mammoth.browser"),
     import("dompurify"),
@@ -242,9 +242,9 @@ async function readDocx(blob: Blob): Promise<string> {
   return DOMPurify.sanitize(value);
 }
 
-function DocxView({ blob }: { blob: Blob }) {
+function DocxTextView({ blob }: { blob: Blob }) {
   return (
-    <Reader blob={blob} read={readDocx}>
+    <Reader blob={blob} read={readDocxText}>
       {(html) => (
         <article
           data-testid="file-preview-docx"
@@ -257,7 +257,7 @@ function DocxView({ blob }: { blob: Blob }) {
   );
 }
 
-function PptxView({ blob }: { blob: Blob }) {
+function PptxTextView({ blob }: { blob: Blob }) {
   return (
     <Reader blob={blob} read={readPptx}>
       {(slides: PptxSlide[]) =>
@@ -292,6 +292,123 @@ function PptxView({ blob }: { blob: Blob }) {
   );
 }
 
+/**
+ * Run a renderer that draws into a DOM node. If the renderer throws (an
+ * unusual or damaged file), fall back to the plain text view so the file is
+ * never a dead end.
+ */
+function Drawn({
+  blob,
+  draw,
+  fallback,
+  testId,
+  className,
+  stage,
+}: {
+  blob: Blob;
+  draw: (host: HTMLDivElement, bytes: ArrayBuffer, width: number) => Promise<void | (() => void)>;
+  fallback: React.ReactNode;
+  testId: string;
+  className?: string;
+  stage?: string;
+}) {
+  const host = React.useRef<HTMLDivElement>(null);
+  const [state, setState] = React.useState<"loading" | "ready" | "failed">("loading");
+  React.useEffect(() => {
+    const el = host.current;
+    if (!el) return;
+    let cancelled = false;
+    let cleanup: void | (() => void);
+    el.replaceChildren();
+    setState("loading");
+    (async () => {
+      try {
+        const bytes = await blob.arrayBuffer();
+        cleanup = await draw(el, bytes, el.clientWidth);
+        if (!cancelled) setState("ready");
+      } catch {
+        if (!cancelled) setState("failed");
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (typeof cleanup === "function") cleanup();
+      el.replaceChildren();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blob]);
+  if (state === "failed") return <>{fallback}</>;
+  return (
+    <div className={cn("relative size-full", stage)}>
+      {state === "loading" ? <Loading /> : null}
+      <div ref={host} data-testid={testId} className={className} />
+    </div>
+  );
+}
+
+function DocxView({ blob }: { blob: Blob }) {
+  return (
+    <Drawn
+      blob={blob}
+      testId="file-preview-docx"
+      stage="bg-muted/40 overflow-auto"
+      className="docx-host py-4"
+      fallback={<DocxTextView blob={blob} />}
+      draw={async (host, bytes) => {
+        const { renderAsync } = await import("docx-preview");
+        // Pages keep their real size, fonts, tables, images, headers and footers.
+        await renderAsync(bytes, host, undefined, {
+          className: "docx",
+          inWrapper: true,
+          ignoreWidth: false,
+          ignoreHeight: true,
+          breakPages: true,
+          useBase64URL: true,
+        });
+      }}
+    />
+  );
+}
+
+function PptxView({ blob }: { blob: Blob }) {
+  return (
+    <Drawn
+      blob={blob}
+      testId="file-preview-pptx"
+      stage="bg-muted/40 overflow-auto"
+      className="pptx-host mx-auto max-w-[960px] p-4"
+      fallback={<PptxTextView blob={blob} />}
+      draw={async (host, bytes) => {
+        const { PptxViewer, RECOMMENDED_ZIP_LIMITS } = await import("@aiden0z/pptx-renderer");
+        // Slides keep their real layout: shapes, images, tables, charts, themes.
+        const viewer = await PptxViewer.open(bytes, host, {
+          zipLimits: RECOMMENDED_ZIP_LIMITS,
+          listOptions: { windowed: true },
+        });
+        return () => viewer.destroy();
+      }}
+    />
+  );
+}
+
+function XlsxView({ blob }: { blob: Blob }) {
+  return (
+    <Drawn
+      blob={blob}
+      testId="file-preview-xlsx"
+      className="xlsx-host h-full min-h-[420px]"
+      fallback={<XlsxTextView blob={blob} />}
+      draw={async (host, bytes) => {
+        const { default: jsPreviewExcel } = await import("@js-preview/excel");
+        // Real cell styling, merged cells, column widths and sheet tabs.
+        const viewer = jsPreviewExcel.init(host, { showContextmenu: false });
+        await viewer.preview(bytes);
+        return () => viewer.destroy();
+      }}
+    />
+  );
+}
+
 function Grid({ rows, truncated }: { rows: string[][]; truncated?: boolean }) {
   const width = Math.max(1, ...rows.map((r) => r.length));
   return (
@@ -319,7 +436,7 @@ function Grid({ rows, truncated }: { rows: string[][]; truncated?: boolean }) {
   );
 }
 
-function XlsxView({ blob }: { blob: Blob }) {
+function XlsxTextView({ blob }: { blob: Blob }) {
   const [active, setActive] = React.useState(0);
   return (
     <Reader blob={blob} read={readXlsx}>

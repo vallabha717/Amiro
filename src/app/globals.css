@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "@js-preview/excel/lib/index.css";
 
 /* Amiro — VegaAI design system (shared with Pro); Amiro keeps its own fonts.
  * Sections 1-4 are ported from app.vegaai.dev.v2/ui/app/globals.css so Pro and
