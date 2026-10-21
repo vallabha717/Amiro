@@ -2,7 +2,12 @@
 //! ships the local adapter (feed + SSE intent). Telegram, Slack, and Discord
 //! adapters land in Phase 03 behind this same trait.
 
+pub mod discord;
+pub mod http;
 pub mod local;
+pub mod pairing;
+pub mod slack;
+pub mod telegram;
 
 use serde_json::Value;
 

@@ -17,6 +17,7 @@ pub mod github;
 pub mod live_voice;
 pub mod mcp;
 pub mod notifications;
+pub mod notify_channels;
 pub mod provider_login;
 pub mod providers_catalog;
 pub mod schedules;
@@ -62,6 +63,7 @@ pub fn router() -> Router<AppState> {
         .merge(voice::routes())
         .merge(live_voice::routes())
         .merge(notifications::routes())
+        .merge(notify_channels::routes())
         .merge(crate::agent_mcp::router())
 }
 

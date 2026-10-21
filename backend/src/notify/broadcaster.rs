@@ -9,6 +9,7 @@ use serde_json::{json, Value};
 use tokio::sync::broadcast;
 
 use crate::notify::adapters::local::LocalAdapter;
+use crate::notify::adapters::pairing;
 use crate::notify::adapters::{ChannelAdapter, ChannelCopy};
 use crate::notify::{decision, signal, store};
 use crate::routes::notifications as feed;
@@ -154,7 +155,9 @@ async fn emit_inner(
     });
 
     // A model `shouldNotify: false` verdict records the decision but fans out
-    // to nothing: no feed item, no deliveries.
+    // to nothing: no feed item, no deliveries. Local first, exactly as Phase
+    // 00 shipped it: the feed is the inbox and is attempted even when every
+    // external channel fails.
     let mut item = Value::Null;
     let mut unread = 0u64;
     let selected: Vec<String> = if decided.should_notify {
@@ -203,6 +206,59 @@ async fn emit_inner(
                 Some("no adapter for this channel in Phase 01".to_string()),
             )
             .await?;
+        }
+    }
+
+    // Phase 03: fan out to every bound external channel. One channel failing
+    // (bad token, provider outage) never blocks the others: each attempt is
+    // independent and lands in its own delivery row as sent/failed/skipped.
+    // The decision row still records ["local"] (the deterministic routing);
+    // externals are delivery-time bindings, recorded per channel below.
+    if let Ok(bindings) = pairing::list_bindings(state, user_id).await {
+        for binding in bindings {
+            let channel = binding.channel.clone();
+            match crate::routes::notify_channels::deliver(
+                state,
+                user_id,
+                &channel,
+                &copy.title,
+                &copy.body,
+                &parsed.source_context_id,
+            )
+            .await
+            {
+                Ok(()) => {
+                    store::record_delivery(
+                        state,
+                        user_id,
+                        &delivery_id,
+                        &parsed.signal_id,
+                        &channel,
+                        "sent",
+                        None,
+                    )
+                    .await?;
+                }
+                Err(error) => {
+                    let status = if error.0 == StatusCode::BAD_REQUEST
+                        && error.1.contains("no bot token")
+                    {
+                        "skipped"
+                    } else {
+                        "failed"
+                    };
+                    store::record_delivery(
+                        state,
+                        user_id,
+                        &delivery_id,
+                        &parsed.signal_id,
+                        &channel,
+                        status,
+                        Some(error.1.clone()),
+                    )
+                    .await?;
+                }
+            }
         }
     }
 

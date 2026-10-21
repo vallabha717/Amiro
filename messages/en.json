@@ -1536,5 +1536,24 @@
     "mergeButton": "Merge and Delete Donor",
     "mergeSuccess": "Contacts merged successfully",
     "mergeFailed": "Failed to merge contacts"
+  },
+  "Notifications": {
+    "Channels": {
+      "title": "External channels",
+      "description": "Deliver notifications to Telegram, Slack, or Discord through vault-backed bot tokens.",
+      "bound": "Bound",
+      "unbound": "Not bound",
+      "bindChannel": "Bind channel",
+      "updateBinding": "Update binding",
+      "unbind": "Unbind",
+      "bindSuccess": "{channel} is bound and verified.",
+      "unbindSuccess": "{channel} is unbound.",
+      "bindFailed": "Binding failed. Save the bot token first, then try again.",
+      "unbindFailed": "Unbinding failed. Please try again.",
+      "tokenLabel": "{channel} bot token",
+      "tokenDescription": "Enter the {channel} bot token. It is saved to the encrypted vault and never shown in chat.",
+      "tokenPurpose": "External notification delivery",
+      "tokenPlaceholder": "Paste the bot token"
+    }
   }
 }

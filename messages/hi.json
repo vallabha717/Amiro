@@ -1536,5 +1536,24 @@
     "mergeButton": "मर्ज करें और दाता को हटाएँ",
     "mergeSuccess": "संपर्क सफलतापूर्वक मर्ज किए गए",
     "mergeFailed": "संपर्क मर्ज करने में विफल"
+  },
+  "Notifications": {
+    "Channels": {
+      "title": "बाहरी चैनल",
+      "description": "वॉल्ट-समर्थित बॉट टोकन के माध्यम से Telegram, Slack या Discord पर सूचनाएं पाएं।",
+      "bound": "जुड़ा हुआ",
+      "unbound": "जुड़ा नहीं",
+      "bindChannel": "चैनल जोड़ें",
+      "updateBinding": "बाइंडिंग अपडेट करें",
+      "unbind": "अनबाइंड करें",
+      "bindSuccess": "{channel} जुड़ गया और सत्यापित हो गया।",
+      "unbindSuccess": "{channel} हटा दिया गया।",
+      "bindFailed": "जोड़ना विफल रहा। पहले बॉट टोकन सहेजें, फिर पुनः प्रयास करें।",
+      "unbindFailed": "हटाना विफल रहा। कृपया पुनः प्रयास करें।",
+      "tokenLabel": "{channel} बॉट टोकन",
+      "tokenDescription": "{channel} बॉट टोकन दर्ज करें। यह एन्क्रिप्टेड वॉल्ट में सहेजा जाता है और चैट में कभी नहीं दिखता।",
+      "tokenPurpose": "बाहरी सूचना वितरण",
+      "tokenPlaceholder": "बॉट टोकन पेस्ट करें"
+    }
   }
 }

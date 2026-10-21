@@ -45,6 +45,7 @@ import {
   notificationToDeliveryPayload,
   useNotificationStream,
 } from "@/lib/notifications/notification-runtime";
+import { ChannelConnectCards } from "@/components/notifications/channel-connect-cards";
 
 function StatusBadge({
   active,
@@ -488,6 +489,9 @@ export default function AdminNotificationsPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* External messaging channels (Phase 03) */}
+        <ChannelConnectCards />
       </div>
     </ScrollArea>
   );

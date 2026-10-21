@@ -24,6 +24,7 @@ const JOURNEYS = [
   "schedules",
   "ux-audit",
   "team",
+  "notifications",
 ] as const;
 
 const use = {

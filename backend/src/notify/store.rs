@@ -133,6 +133,22 @@ pub async fn find_decision_by_signal(
         .find(|row| row.get("signalId").and_then(|v| v.as_str()) == Some(signal_id)))
 }
 
+/// The stored event for a signal, if one was recorded.
+pub async fn find_event_by_signal(
+    state: &AppState,
+    signal_id: &str,
+) -> Result<Option<Value>, ApiError> {
+    let rows = all_rows(state, "notification-events.json").await?;
+    Ok(rows
+        .into_iter()
+        .find(|row| row.get("signalId").and_then(|v| v.as_str()) == Some(signal_id)))
+}
+
+/// Every delivery row (used by channel resend to locate the source signal).
+pub async fn all_deliveries(state: &AppState) -> Result<Vec<Value>, ApiError> {
+    all_rows(state, "notification-deliveries.json").await
+}
+
 /// All delivery rows for one signal (used to prove dedupe sent once).
 pub async fn deliveries_for_signal(
     state: &AppState,
