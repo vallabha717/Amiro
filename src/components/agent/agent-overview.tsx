@@ -52,6 +52,8 @@ const CARD_HOVER_LINES: Record<string, string> = {
   superpowers: "Everything I know how to do",
   memory: "Everything I remember",
   workspace: "All the files that power me",
+  channels: "Where I can be reached",
+  contacts: "People and relationships I know",
 };
 
 function useTypewriter(text: string, intervalMs: number) {
@@ -388,6 +390,26 @@ export function AgentOverview() {
       icon: FolderOpen,
       radiusClass: "rounded-[1.25rem_2.25rem_1.15rem_2.35rem]",
     },
+    {
+      key: "channels",
+      label: "Channels",
+      subtitle: "Slack, Telegram, Discord, Phone & Email",
+      statValue: "5 adapters",
+      statSub: "Connected channels",
+      href: "/agent/channels",
+      icon: Sparkles,
+      radiusClass: "rounded-[1.35rem_2.15rem_1.25rem_2.25rem]",
+    },
+    {
+      key: "contacts",
+      label: "Contacts",
+      subtitle: "Trusted contacts & relationships",
+      statValue: "Contacts",
+      statSub: "Access control",
+      href: "/agent/contacts",
+      icon: Brain,
+      radiusClass: "rounded-[2.25rem_1.35rem_2.15rem_1.25rem]",
+    },
   ];
 
   return (
@@ -666,10 +688,10 @@ export function AgentOverview() {
           </div>
         </div>
 
-        {/* BOTTOM STRIP: Superpowers (Skills) · Memory (Runtime Graph) · Workspace (Runtime Files) */}
+        {/* BOTTOM STRIP: Superpowers · Memory · Workspace · Channels · Contacts */}
         <div
           data-testid="agent-bottom-strip"
-          className="relative z-10 grid grid-cols-1 gap-4 md:grid-cols-3"
+          className="relative z-10 grid grid-cols-1 gap-4 md:grid-cols-3 lg:grid-cols-5"
         >
           {bottomSections.map((sec) => {
             const Icon = sec.icon;

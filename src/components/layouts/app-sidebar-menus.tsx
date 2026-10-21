@@ -139,6 +139,44 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
           </Tooltip>
         </SidebarMenu>
         <SidebarMenu>
+          <Tooltip>
+            <SidebarMenuItem>
+              <Link
+                href="/contacts"
+                data-testid="sidebar-contacts-link"
+                onClick={() => setOpenMobile(false)}
+              >
+                <SidebarMenuButton
+                  className="font-semibold"
+                  isActive={pathname.startsWith("/contacts")}
+                >
+                  <PlusIcon className="size-4" />
+                  Contacts
+                </SidebarMenuButton>
+              </Link>
+            </SidebarMenuItem>
+          </Tooltip>
+        </SidebarMenu>
+        <SidebarMenu>
+          <Tooltip>
+            <SidebarMenuItem>
+              <Link
+                href="/channels"
+                data-testid="sidebar-channels-link"
+                onClick={() => setOpenMobile(false)}
+              >
+                <SidebarMenuButton
+                  className="font-semibold"
+                  isActive={pathname.startsWith("/channels")}
+                >
+                  <PlugZapIcon className="size-4" />
+                  Channels
+                </SidebarMenuButton>
+              </Link>
+            </SidebarMenuItem>
+          </Tooltip>
+        </SidebarMenu>
+        <SidebarMenu>
           <SidebarMenuItem>
             <Link
               href="/schedules"
