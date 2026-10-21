@@ -3,6 +3,8 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { agentScopedPath, matchSubPath } from "@/components/team/team-paths";
+import { useAgentScope } from "@/lib/backend/agent-scope";
 import {
   ArrowLeft,
   BarChart3,
@@ -36,7 +38,7 @@ const ADMIN_SECTIONS: AdminSection[] = [
     href: "/admin/general",
     icon: SlidersHorizontal,
     testId: "admin-sidebar-link-general",
-    isActive: (p) => p === "/admin/general" || p.startsWith("/admin/general/"),
+    isActive: (p) => matchSubPath(p, "/admin/general"),
   },
   {
     id: "notifications",
@@ -46,7 +48,7 @@ const ADMIN_SECTIONS: AdminSection[] = [
     href: "/admin/notifications",
     icon: Bell,
     testId: "admin-sidebar-link-notifications",
-    isActive: (p) => p.startsWith("/admin/notifications"),
+    isActive: (p) => matchSubPath(p, "/admin/notifications"),
   },
   {
     id: "credentials",
@@ -55,7 +57,7 @@ const ADMIN_SECTIONS: AdminSection[] = [
     href: "/admin/credentials",
     icon: KeyRound,
     testId: "admin-sidebar-link-credentials",
-    isActive: (p) => p.startsWith("/admin/credentials"),
+    isActive: (p) => matchSubPath(p, "/admin/credentials"),
   },
   {
     id: "providers",
@@ -64,7 +66,7 @@ const ADMIN_SECTIONS: AdminSection[] = [
     href: "/admin/providers",
     icon: Cpu,
     testId: "admin-sidebar-link-providers",
-    isActive: (p) => p.startsWith("/admin/providers"),
+    isActive: (p) => matchSubPath(p, "/admin/providers"),
   },
   {
     id: "search",
@@ -73,7 +75,7 @@ const ADMIN_SECTIONS: AdminSection[] = [
     href: "/admin/search",
     icon: Search,
     testId: "admin-sidebar-link-search",
-    isActive: (p) => p.startsWith("/admin/search"),
+    isActive: (p) => matchSubPath(p, "/admin/search"),
   },
   {
     id: "voice",
@@ -82,7 +84,7 @@ const ADMIN_SECTIONS: AdminSection[] = [
     href: "/admin/voice",
     icon: Volume2,
     testId: "admin-sidebar-link-voice",
-    isActive: (p) => p.startsWith("/admin/voice"),
+    isActive: (p) => matchSubPath(p, "/admin/voice"),
   },
   {
     id: "integrations",
@@ -91,7 +93,7 @@ const ADMIN_SECTIONS: AdminSection[] = [
     href: "/admin/integrations",
     icon: Puzzle,
     testId: "admin-sidebar-link-integrations",
-    isActive: (p) => p.startsWith("/admin/integrations"),
+    isActive: (p) => matchSubPath(p, "/admin/integrations"),
   },
   {
     id: "usage",
@@ -101,12 +103,13 @@ const ADMIN_SECTIONS: AdminSection[] = [
     icon: BarChart3,
     testId: "admin-sidebar-link-usage",
     isActive: (p) =>
-      p.startsWith("/admin/usage") || p.startsWith("/admin/users"),
+      matchSubPath(p, "/admin/usage") || matchSubPath(p, "/admin/users"),
   },
 ];
 
 function AdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const agentScope = useAgentScope();
   const active =
     ADMIN_SECTIONS.find((section) => section.isActive(pathname)) ??
     ADMIN_SECTIONS[1];
@@ -120,7 +123,7 @@ function AdminShell({ children }: { children: ReactNode }) {
         <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border/60 px-5 py-3.5">
           <div className="flex min-w-0 items-center gap-3">
             <Link
-              href="/"
+              href={agentScopedPath(agentScope, "/")}
               aria-label="Back to app"
               data-testid="admin-shell-back-button"
               className="h-8 w-8 rounded-lg border border-border/70 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
@@ -145,7 +148,7 @@ function AdminShell({ children }: { children: ReactNode }) {
             return (
               <Link
                 key={section.id}
-                href={section.href}
+                href={agentScopedPath(agentScope, section.href)}
                 data-testid={`${section.testId}-mobile`}
                 className={cn(
                   "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-colors",
@@ -173,7 +176,7 @@ function AdminShell({ children }: { children: ReactNode }) {
                 return (
                   <Link
                     key={section.id}
-                    href={section.href}
+                    href={agentScopedPath(agentScope, section.href)}
                     data-testid={section.testId}
                     aria-current={isActive ? "page" : undefined}
                     className={cn(
