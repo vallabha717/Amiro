@@ -371,9 +371,14 @@ test.describe("chat", () => {
       await expect
         .soft(page.getByTestId("work-summary").filter({ hasText: /ran \d+ command/i }).first(), "tool calls fold into 'Ran N commands'")
         .toBeVisible();
-      const summaryToggle = summary.getByRole("button").first();
+      const summaryToggle = summary.locator("> button").first();
       await expect.soft(summaryToggle).toHaveAttribute("aria-expanded", "false");
       await expect.soft(page.getByTestId("reasoning-part"), "details stay hidden until the row is clicked").toHaveCount(0);
+      await summaryToggle.click();
+      await expect.soft(summaryToggle, "folded row opens on click").toHaveAttribute("aria-expanded", "true");
+      await summaryToggle.click();
+      await expect.soft(summaryToggle, "and folds again").toHaveAttribute("aria-expanded", "false");
+      await expect.soft(page.getByTestId("reasoning-part"), "folded body unmounts after the close animation").toHaveCount(0, { timeout: 3000 });
       await summaryToggle.click();
       const reasoning = page.getByTestId("reasoning-part").first();
       await expect.soft(reasoning, "reasoning block is rendered on top").toBeVisible();
@@ -435,7 +440,7 @@ test.describe("chat", () => {
       await expect(page.getByTestId("chat-messages-container")).toBeVisible({ timeout: 30000 });
       const reloadedSummary = page.getByTestId("work-summary").first();
       await expect.soft(reloadedSummary, "reloaded chat shows the same folded summary").toBeVisible({ timeout: 30000 });
-      await reloadedSummary.getByRole("button").first().click();
+      await reloadedSummary.locator("> button").first().click();
       const reasoning = page.getByTestId("reasoning-part").first();
       await expect.soft(reasoning, "reloaded chat still shows the Thinking block").toBeVisible({ timeout: 30000 });
       await expect.soft(reasoning.getByTestId("message-reasoning-toggle")).toHaveAttribute("aria-expanded", "false");

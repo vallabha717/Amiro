@@ -2,9 +2,21 @@
 
 import type { StepKind } from "lib/ai/tools/step-kind";
 import type { InlineImage } from "lib/chat-ux/inline-images";
-import { cn } from "lib/utils";
-import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
+import {
+  BookmarkIcon,
+  BrainIcon,
+  CompassIcon,
+  FileTextIcon,
+  GlobeIcon,
+  LayoutIcon,
+  ListChecksIcon,
+  PencilIcon,
+  TerminalIcon,
+  UsersIcon,
+  WrenchIcon,
+} from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
+import { FoldCard } from "./fold-card";
 import { WorkLog, type WorkLogRow } from "./work-log";
 
 const n = (count: number, one: string, many: string) =>
@@ -52,43 +64,58 @@ export function summarizeWork(rows: WorkLogRow[], thought: boolean): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
+const ICON: Record<string, ReactNode> = {
+  thought: <BrainIcon className="size-3" />,
+  explore: <FileTextIcon className="size-3" />,
+  edit: <PencilIcon className="size-3" />,
+  command: <TerminalIcon className="size-3" />,
+  search: <GlobeIcon className="size-3" />,
+  orient: <CompassIcon className="size-3" />,
+  remember: <BookmarkIcon className="size-3" />,
+  plan: <ListChecksIcon className="size-3" />,
+  summarize: <ListChecksIcon className="size-3" />,
+  delegate: <UsersIcon className="size-3" />,
+  visualize: <LayoutIcon className="size-3" />,
+  other: <WrenchIcon className="size-3" />,
+};
+
+function iconsFor(rows: WorkLogRow[], thought: boolean): ReactNode[] {
+  const kinds: string[] = thought ? ["thought"] : [];
+  for (const r of rows) {
+    if (r.type === "group" && !kinds.includes(r.kind)) kinds.push(r.kind);
+  }
+  return kinds.slice(0, 4).map((k) => ICON[k] ?? ICON.other);
+}
+
 /**
- * A run of thinking and tool calls folded into one quiet row that opens on
- * click. While the run is still going its details stay open; once it settles
- * they fold unless the reader already chose a state.
+ * A run of thinking and tool calls folded into one card that opens on click.
+ * While the run is still going its details stay open; once it settles they
+ * fold unless the reader already chose a state.
  */
 function Fold({
   settled,
   label,
+  icons,
   children,
 }: {
   settled: boolean;
   label: string;
+  icons: ReactNode[];
   children: ReactNode;
 }) {
   const [userOpen, setUserOpen] = useState<boolean | null>(null);
   const open = userOpen ?? !settled;
   if (!settled || !label) return <>{children}</>;
   return (
-    <div className="flex flex-col w-full" data-testid="work-summary">
-      <button
-        type="button"
-        onClick={() => setUserOpen(!open)}
-        aria-expanded={open}
-        className={cn(
-          "flex items-center gap-1.5 self-start text-left text-sm py-0.5 rounded-sm",
-          "text-muted-foreground hover:text-foreground transition-colors",
-        )}
-      >
-        <span className="truncate">{label}</span>
-        {open ? (
-          <ChevronDownIcon className="size-3.5 shrink-0" />
-        ) : (
-          <ChevronRightIcon className="size-3.5 shrink-0" />
-        )}
-      </button>
-      {open ? <div className="pl-1">{children}</div> : null}
-    </div>
+    <FoldCard
+      testId="work-summary"
+      open={open}
+      onToggle={() => setUserOpen(!open)}
+      icons={icons}
+      label={label}
+    >
+      {children}
+    </FoldCard>
   );
 }
 
@@ -168,6 +195,7 @@ export function FoldedWork({
             key={i}
             settled={settled}
             label={summarizeWork(seg.rows, withThought)}
+            icons={iconsFor(seg.rows, withThought)}
           >
             {withThought ? reasoning : null}
             <WorkLog

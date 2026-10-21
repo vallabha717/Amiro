@@ -27,6 +27,7 @@ import {
   parseWebFetchOutput,
   parseWebSearchOutput,
 } from "lib/web-search/parse-web-search";
+import { Collapse } from "../fold-card";
 import { VisualPlaceholder, VisualSurface } from "../visual/visual-surface";
 import type { PresenterProps, ToolPresenter, ToolRunStatus } from "./types";
 
@@ -692,7 +693,7 @@ export function WebSearchSourcesBar({
       >
         <ChevronRightIcon
           className={cn(
-            "size-3.5 shrink-0 text-muted-foreground transition-transform duration-200",
+            "size-3.5 shrink-0 text-muted-foreground transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
             open && "rotate-90",
           )}
         />
@@ -732,7 +733,7 @@ export function WebSearchSourcesBar({
           ))}
         </span>
       </button>
-      {open ? (
+      <Collapse open={open}>
         <div className="space-y-2 border-t p-2">
           {searches.map((search) => (
             <WebSearchResultCard
@@ -755,7 +756,7 @@ export function WebSearchSourcesBar({
             />
           ))}
         </div>
-      ) : null}
+      </Collapse>
     </div>
   );
 }
