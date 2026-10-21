@@ -14,7 +14,7 @@ with real numbers, and honest about what diverged.
 | 01 | LLM decision engine | ✅ Done 2026-10-21 (scoped 4/4 MET) | [record](phase-01-decision-engine.md) |
 | 02 | Local delivery | ⚠️ Done with gaps 2026-10-21 (3/4 MET) | [record](phase-02-local-delivery.md) |
 | 03 | External adapters | ⚠️ Done with gaps 2026-10-21 (3/4 MET) | [record](phase-03-external-adapters.md) |
-| 04 | Bell inbox UI | ⬜ Not started — blocked on 02, 03 | — |
+| 04 | Bell inbox UI | ⚠️ Done with gaps 2026-10-21 (3/4 MET) | [record](phase-04-bell-ui.md) |
 | 05 | Rollout | ⬜ Not started — blocked on 04 | — |
 
 ## What works today

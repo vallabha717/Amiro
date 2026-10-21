@@ -1,5 +1,8 @@
 # Phase 04 — Bell inbox UI
 
+> **Shipped 2026-10-21 with gaps (3/4 MET).** See [progress/phase-04-bell-ui.md](../progress/phase-04-bell-ui.md)
+> for what was built, what diverged, and the verification log.
+
 **Depends on:** 02, 03 · **Blocks:** 05 · **Size:** L
 
 **Surfaces touched:** web (desktop inherits the same build)
