@@ -259,6 +259,35 @@
       "checks": [
         "cargo test --manifest-path runtime/Cargo.toml -p amiro-base agent_home"
       ]
+    },
+    {
+      "id": "refused-tool-is-a-tool-error",
+      "requirement": "A tool call the session's tool policy refuses (SDK configure_tools enabled/disabled lists, allowed/disabled tools) is answered to the model as an error tool result and counts toward the malformed-round bound, on both turn loops, instead of aborting the whole turn. The refusal itself is unchanged. Amiro's team agents rely on this: their sessions allow no built-in tools, and a model that still reaches for one must be able to recover. See docs/multi-agent-team-isolation/progress/phase-00-agent-computer.md.",
+      "sentinels": [
+        {
+          "path": "runtime/crates/amiro-app-core/src/agent/turn_loops.rs",
+          "contains": [
+            "let refusal = tc.validation_error().or_else(|| {",
+            "Use only the tools you were given."
+          ]
+        },
+        {
+          "path": "runtime/crates/amiro-app-core/src/agent/turn_streaming_mpsc.rs",
+          "contains": [
+            "let refusal = tc.validation_error().or_else(|| {",
+            "Use only the tools you were given."
+          ]
+        },
+        {
+          "path": "runtime/crates/amiro-app-core/src/agent_tests.rs",
+          "contains": [
+            "fn refused_tool_call_is_answered_as_a_tool_error_not_a_turn_error"
+          ]
+        }
+      ],
+      "checks": [
+        "cargo test --manifest-path runtime/Cargo.toml -p amiro-app-core --lib refused_tool_call"
+      ]
     }
   ],
   "mandatoryFiles": [
