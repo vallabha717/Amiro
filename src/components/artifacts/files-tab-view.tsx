@@ -1,6 +1,7 @@
 "use client";
 
 import { appStore } from "@/app/store";
+import type { ChatFile } from "lib/file-preview/chat-files";
 import { FileArtifactsPanel } from "./file-artifacts";
 import { TodoPanel } from "./todo-panel";
 import type { TodoArtifact } from "./use-artifacts";
@@ -17,9 +18,11 @@ import { WorkspaceFileTab } from "./workspace-file-tab";
 export function FilesTabView({
   todos,
   threadId,
+  chatFiles,
 }: {
   todos?: TodoArtifact;
   threadId?: string;
+  chatFiles?: ChatFile[];
 }) {
   const showTasks = !!todos && todos.items.length > 0;
   const workspacePath = appStore((s) => s.artifactView.workspacePath);
@@ -35,7 +38,7 @@ export function FilesTabView({
         </div>
       )}
       <div className="min-h-0 flex-1">
-        <FileArtifactsPanel threadId={threadId} />
+        <FileArtifactsPanel threadId={threadId} chatFiles={chatFiles} />
       </div>
     </div>
   );

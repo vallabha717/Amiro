@@ -647,6 +647,15 @@ test.describe("chat", () => {
       await open("graph.jpg");
       await page.getByTestId("workspace-file-tab-back").click();
       await expect(page.getByTestId("artifacts-panel")).toBeVisible();
+      // Back lists every file the chat names, not only saved artifacts.
+      await expect(page.getByTestId("chat-files-heading")).toBeVisible();
+      await expect(page.getByTestId("chat-file-item"), "all 12 files from the chat are listed").toHaveCount(12);
+      await expect(page.locator('[data-testid="chat-file-item"][data-path="e2e-viewer/demo.mp4"]')).toBeVisible();
+      // And each one opens from that list.
+      await page.locator('[data-testid="chat-file-item"][data-path="e2e-viewer/sample.mp3"]').click();
+      await expect(page.getByTestId("file-preview-audio")).toBeVisible({ timeout: 20000 });
+      await page.getByTestId("workspace-file-tab-back").click();
+      await expect(page.getByTestId("chat-file-item")).toHaveCount(12);
     });
   });
 });

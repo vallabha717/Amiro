@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { mutate as globalMutate } from "swr";
 import { appStore } from "@/app/store";
+import type { ChatFile } from "lib/file-preview/chat-files";
+import { useOpenWorkspaceFile } from "@/components/file-preview/use-open-workspace-file";
 import { WorkspaceFileViewer } from "@/components/workspace-browser/workspace-file-viewer";
 import { toast } from "sonner";
 import { Button } from "ui/button";
@@ -31,7 +33,13 @@ import {
  * code, csv, pdf, word — saved as real files under
  * `workspace/artifacts/<user>/<id>/<file>` and previewed here.
  */
-export function FileArtifactsPanel({ threadId }: { threadId?: string }) {
+export function FileArtifactsPanel({
+  threadId,
+  chatFiles = [],
+}: {
+  threadId?: string;
+  chatFiles?: ChatFile[];
+}) {
   const t = useTranslations("Chat.Artifact");
   const { data, error, isLoading, mutate } = useFileArtifacts(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -44,6 +52,13 @@ export function FileArtifactsPanel({ threadId }: { threadId?: string }) {
   }, [requestedFileId]);
 
   const items = useMemo(() => data ?? [], [data]);
+  const openWorkspaceFile = useOpenWorkspaceFile();
+  // A chat file that is also a saved artifact is listed once, as the artifact.
+  const registered = useMemo(() => new Set(items.map((a) => a.workspacePath)), [items]);
+  const chatOnly = useMemo(
+    () => chatFiles.filter((f) => !registered.has(f.path)),
+    [chatFiles, registered],
+  );
   const selected = items.find((a) => a.id === selectedId) ?? null;
 
   // Note: no effect clears a selection the list does not (yet) contain.
@@ -65,7 +80,7 @@ export function FileArtifactsPanel({ threadId }: { threadId?: string }) {
       <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
         <h2 className="text-xs font-semibold">{t("filesTitle")}</h2>
         <span className="text-[11px] text-muted-foreground">
-          {t("filesCount", { count: items.length })}
+          {t("filesCount", { count: items.length + chatOnly.length })}
         </span>
         <div className="ml-auto flex items-center gap-1">
           <Button
@@ -122,11 +137,42 @@ export function FileArtifactsPanel({ threadId }: { threadId?: string }) {
               {t("filesError")}
             </li>
           )}
-          {!isLoading && !error && items.length === 0 && !creating && (
+          {!isLoading && !error && items.length === 0 && chatOnly.length === 0 && !creating && (
             <li className="px-3 py-4 text-xs text-muted-foreground">
               {t("noFilesYet")}
             </li>
           )}
+          {chatOnly.length > 0 && (
+            <li
+              className="bg-muted/40 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+              data-testid="chat-files-heading"
+            >
+              {t("chatFilesTitle")}
+            </li>
+          )}
+          {chatOnly.map((f) => (
+            <li key={`chat:${f.path}`}>
+              <button
+                type="button"
+                data-testid="chat-file-item"
+                data-path={f.path}
+                onClick={() => {
+                  setCreating(false);
+                  setSelectedId(null);
+                  openWorkspaceFile(f.path);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-muted/60"
+              >
+                <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium">{f.name}</span>
+                  <span className="block truncate text-[11px] text-muted-foreground">
+                    {f.path}
+                  </span>
+                </span>
+              </button>
+            </li>
+          ))}
           {items.map((a) => (
             <li key={a.id}>
               <button

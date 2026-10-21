@@ -14,6 +14,7 @@ import {
 import { useTranslations } from "next-intl";
 import { useEffect } from "react";
 import { useShallow } from "zustand/shallow";
+import type { ChatFile } from "lib/file-preview/chat-files";
 import { FilesTabView } from "./files-tab-view";
 import { PlanArtifactView } from "./plan-artifact";
 import { TodoPanel } from "./todo-panel";
@@ -23,6 +24,8 @@ import { WalkthroughView } from "./walkthrough-artifact";
 
 interface Props {
   artifacts: Artifacts;
+  /** Workspace files the conversation names, for the Files tab. */
+  chatFiles?: ChatFile[];
   threadId?: string;
   addToolResult?: UseChatHelpers<UIMessage>["addToolResult"];
   busy?: boolean;
@@ -46,6 +49,7 @@ const TABS: { id: ArtifactTab; icon: typeof FileTextIcon }[] = [
  */
 export function ArtifactPane({
   artifacts,
+  chatFiles,
   threadId,
   addToolResult,
   busy,
@@ -171,7 +175,7 @@ export function ArtifactPane({
           ))}
         {tab === "tasks" && <TodoPanel todos={todos} />}
         {tab === "walkthrough" && <WalkthroughView walkthrough={walkthrough} />}
-        {tab === "files" && <FilesTabView todos={todos} threadId={threadId} />}
+        {tab === "files" && <FilesTabView todos={todos} threadId={threadId} chatFiles={chatFiles} />}
       </div>
     </div>
   );

@@ -13,6 +13,7 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
+import { chatFilesFrom } from "lib/file-preview/chat-files";
 import { ArtifactPane } from "./artifacts/artifact-pane";
 import { buildPlanDecision, useArtifacts } from "./artifacts/use-artifacts";
 import { ChatGreeting } from "./chat-greeting";
@@ -375,6 +376,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
 
   // The plan, task list and walkthrough, read back out of the transcript.
   const artifacts = useArtifacts(messages, isLoading);
+  const chatFiles = useMemo(() => chatFilesFrom(messages), [messages]);
   const { data: fileArtifacts } = useFileArtifacts(true);
 
   // Agents, tasks, context, connectors and outputs for the session panel,
@@ -973,6 +975,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
           >
             <ArtifactPane
               artifacts={artifacts}
+              chatFiles={chatFiles}
               threadId={threadId}
               addToolResult={addToolResult}
               // isLoading alone, not isPendingToolCall: isPendingToolCall is
