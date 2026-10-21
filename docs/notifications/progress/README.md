@@ -12,7 +12,7 @@ with real numbers, and honest about what diverged.
 |---|---|---|---|
 | 00 | Pipeline core | ✅ Done — 2026-10-21 | [record](phase-00-pipeline-core.md) |
 | 01 | LLM decision engine | ⬜ Not started — **unblocked** | — |
-| 02 | Local delivery | ⬜ Not started — **unblocked** | — |
+| 02 | Local delivery | ⚠️ Done with gaps 2026-10-21 (3/4 MET) | [record](phase-02-local-delivery.md) |
 | 03 | External adapters | ⬜ Not started — blocked on 00 (done) → **unblocked** | — |
 | 04 | Bell inbox UI | ⬜ Not started — blocked on 02, 03 | — |
 | 05 | Rollout | ⬜ Not started — blocked on 04 | — |
@@ -28,8 +28,9 @@ with real numbers, and honest about what diverged.
 
 ## What does **not** exist yet
 
-LLM decision (01), emitter switch + signal HTTP route (02), external
-adapters (03), inbox UI (04), rollout cleanup (05).
+LLM decision (01), external adapters (03), inbox UI (04), rollout
+cleanup (05). Phase 02 merged: emitters on signals, intent carries
+`deliveryId` + `deepLinkTarget`, receipts accumulate.
 
 ## Next up
 

@@ -1,5 +1,8 @@
 # Phase 02 — Local delivery
 
+> **Shipped 2026-10-21 with gaps (3/4 MET).** See [progress/phase-02-local-delivery.md](../progress/phase-02-local-delivery.md)
+> for what was built, what diverged, and the verification log.
+
 **Depends on:** 00 · **Blocks:** 04 · **Size:** M
 
 **Surfaces touched:** backend, web, desktop (bridge payload only)
