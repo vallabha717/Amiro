@@ -1,14 +1,13 @@
 name: Release
 
-# One release = server archives for install.sh + desktop installers for
-# macOS / Windows / Linux, verified by installing it:
+# One release = server archives for install.sh (the web/VM build), verified by
+# installing it (desktop installers are paused; desktop.yml runs by hand only):
 #
 #   curl -fsSL https://github.com/vallabha717/Amiro/releases/latest/download/install.sh | bash
 #
 # Start one by pushing a tag (git tag v1.27.0 && git push origin v1.27.0), or
 # from the Actions tab with a version. Pieces (each its own workflow):
 #   build-server.yml  server archives (Linux/macOS, x86_64/arm64)
-#   desktop.yml       desktop installers
 #   install-smoke.yml installs the published release and drives `amiro`
 # The release stays a draft until the server archives and SHA256SUMS are in.
 on:
@@ -74,19 +73,9 @@ jobs:
       tag: ${{ needs.prepare.outputs.tag }}
       version: ${{ needs.prepare.outputs.tag }}
 
-  desktop:
-    name: Desktop
-    needs: prepare
-    uses: ./.github/workflows/desktop.yml
-    with:
-      tag: ${{ needs.prepare.outputs.tag }}
-    secrets: inherit
-
   publish:
     name: Publish
-    needs: [prepare, server, desktop]
-    # install.sh needs the server archives; publish even if one desktop
-    # platform failed (its installer is simply missing from the release).
+    needs: [prepare, server]
     if: ${{ !cancelled() && needs.server.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
@@ -135,7 +124,6 @@ jobs:
             echo "| Part | Result |"
             echo "| --- | --- |"
             echo "| Server archives | ${{ needs.server.result }} |"
-            echo "| Desktop installers | ${{ needs.desktop.result }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
   verify:

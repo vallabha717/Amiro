@@ -1,9 +1,9 @@
 name: Desktop app
 
 # Builds the Tauri desktop app natively on macOS (Apple silicon and Intel),
-# Windows and Linux. Runs on demand and on PRs that touch the desktop shell;
-# release.yml calls it with a tag to upload the installers. One installer
-# per platform, named amiro-desktop-<os>-<arch>.<ext>.
+# Windows and Linux. Paused: Amiro ships as the web/server (VM) build only, so
+# this runs only when started by hand from the Actions tab — not on PRs and not
+# from release.yml. One installer per platform, amiro-desktop-<os>-<arch>.<ext>.
 on:
   workflow_call:
     inputs:
@@ -19,11 +19,6 @@ on:
       only:
         description: Optional platform filter (macos, windows, linux)
         required: false
-  pull_request:
-    paths:
-      - "src-tauri/**"
-      - "scripts/build-sidecar.mjs"
-      - ".github/workflows/desktop.yml"
 
 permissions:
   contents: write
