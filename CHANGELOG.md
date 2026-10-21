@@ -44,6 +44,18 @@ and subsequent work will accumulate under a fresh `Unreleased` section.
 - Native build and acceptance entrypoints, including `scripts/build-native.sh`
   and the verification scripts driven by `pnpm verify:native-ui`,
   `pnpm verify:schedules-ui`, and `scripts/verify-agent-color-sync.mjs`.
+- Chat file viewer. A file path in a reply (inline code, a link, or a path the
+  agent's tools touched) is now a button that opens the file in the Files tab,
+  using the same viewer as the Workspace page. It renders PDF (pdf.js), Word
+  (`docx-preview`), PowerPoint (`@aiden0z/pptx-renderer`), Excel
+  (`@js-preview/excel`), CSV, images, video and audio, with a text fallback if a
+  renderer cannot draw a file and a download prompt for types with no reader.
+  The Artifacts list opens files with the same viewer, and its "In this chat"
+  section lists every file the conversation names so Back shows them all.
+- Folded work rows. A finished run of thinking and tool calls collapses into one
+  animated row such as "Thought, ran 4 commands, searched the web" that opens on
+  click. A "Worked for" dock above the composer shows live progress and fades
+  after the answer.
 
 ### Changed
 
@@ -64,6 +76,12 @@ and subsequent work will accumulate under a fresh `Unreleased` section.
 - `tests/README.md` and several documents under `docs/` predate the native
   backend and the adapter retirement. They describe the Go era, or the adapter
   era, and are retained as design history.
+- The chat follows streaming output to the bottom until the user scrolls up, and
+  keeps the last line clear of the composer and dock. Spacing between a prompt,
+  tool rows and the reply is tighter.
+- The Tools filter menu is non-modal and applies as soon as a box is ticked. It
+  now shows only the ticked categories (none ticked shows everything). The saved
+  setting `hiddenToolCategories` is replaced by `onlyToolCategories`.
 
 ### Fixed
 
@@ -86,6 +104,9 @@ and subsequent work will accumulate under a fresh `Unreleased` section.
   because the session was busy, kept follow-up turns working when the bridge
   withheld session tools, and stopped the injection defenses from discarding
   user-selected skill instructions.
+- Reloaded and old chats show thinking as a reasoning block, not raw markup in
+  the answer, and no longer show the runtime's internal "[auto]" bookkeeping
+  messages. An empty chat request no longer starts a runtime turn.
 
 ### Security
 
