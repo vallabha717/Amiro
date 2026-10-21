@@ -1,14 +1,25 @@
 /**
- * Journey 1 — first run. A brand-new Amiro: welcome → account → agent →
- * brain → ready → home. The provider is deliberately skipped here; journey 2
- * connects it through Admin, the way the user asked to test it.
+ * Journey 1 — first run. A brand-new Amiro: welcome → account → the setup
+ * chat, where Amiro streams one step at a time and each answer is a card:
+ * look (the name stays Amiro), default prompt, personality, AI provider, web
+ * search, connectors, voice → summary → Team. The provider is deliberately
+ * left for later here; journey 2 connects it through Admin.
  */
+import { DEFAULT_AGENT_NAME } from "../support/config";
 import { ensureSignedIn, expect, saveAuth, test } from "../support/fixtures";
+import { openTurn, replyOf } from "../support/setup-chat";
 
 test.describe("onboarding", () => {
-  test("first run: create the owner, name the agent, skip the brain, land in chat", async ({ page, step, note, amiro }) => {
-    const { owner, agent } = amiro.cfg;
-    const status = await fetch(`${amiro.baseUrl}/api/auth/status`).then((r) => r.json() as Promise<{ needsSetup: boolean }>);
+  test("first run: create the owner, then set Amiro up in the setup chat, step by step", async ({
+    page,
+    step,
+    note,
+    amiro,
+  }) => {
+    const { owner, agent, provider } = amiro.cfg;
+    const status = await fetch(`${amiro.baseUrl}/api/auth/status`).then(
+      (r) => r.json() as Promise<{ needsSetup: boolean }>,
+    );
     if (!status.needsSetup) {
       test.info().annotations.push({ type: "info", description: "instance already set up; signing in instead" });
       await ensureSignedIn(page);
@@ -25,7 +36,7 @@ test.describe("onboarding", () => {
 
     await step("Get started → account step", async () => {
       await page.getByRole("button", { name: "Get started" }).click();
-      await expect(page.getByText(/1 of 4/)).toBeVisible();
+      await expect(page.getByText("Your account")).toBeVisible();
     });
 
     const create = page.getByRole("button", { name: "Create account" });
@@ -51,50 +62,141 @@ test.describe("onboarding", () => {
       await page.getByRole("button", { name: /hide password/i }).click();
     });
 
-    await step("Valid password + confirmation → Create account", async () => {
+    await step("Create account → the setup chat opens and Amiro streams its greeting", async () => {
       await page.getByLabel("Confirm password").fill(owner.password);
       await expect(create).toBeEnabled();
       await create.click();
-      await expect(page.getByText(/2 of 4/)).toBeVisible({ timeout: 30000 });
+      await expect(page.getByTestId("setup-chat")).toBeVisible({ timeout: 30000 });
+      await expect(page.getByTestId("setup-chat")).toHaveAttribute("data-mode", "onboarding");
+      // The line types out first; the answer card appears once it is done.
+      const greeting = page.getByTestId("setup-turn-greet").locator("[data-streaming]");
+      await expect(greeting).toHaveAttribute("data-streaming", "typing");
+      await expect(page.getByTestId("setup-start")).toHaveCount(0);
+      await expect(greeting).toHaveAttribute("data-streaming", "done", { timeout: 20000 });
+      await expect(greeting).toHaveAttribute("aria-label", /Come, let's set up your agent and start working on it/);
+      await expect(page.getByTestId("setup-agent-title")).toHaveText(DEFAULT_AGENT_NAME);
     });
 
-    await step(`Agent step: name it "${agent.name}", pick ${agent.look} look and ${agent.colour} colour`, async () => {
-      await expect(page.getByRole("heading", { name: /meet your agent/i })).toBeVisible();
-      await page.getByLabel("Name", { exact: true }).fill(agent.name);
-      await page.getByRole("radio", { name: new RegExp(agent.look) }).click();
-      await page.getByRole("radio", { name: agent.colour, exact: true }).click();
-      await expect(page.getByRole("radio", { name: agent.colour, exact: true })).toBeChecked();
-      await page.getByRole("button", { name: "Continue" }).click();
+    await step("Let's go → Amiro asks for its look; there is no name field, the name stays Amiro", async () => {
+      await page.getByTestId("setup-start").click();
+      await expect(replyOf(page, "greet")).toHaveText("Let's go");
+      const turn = await openTurn(page, "look");
+      await expect(turn.getByTestId("setup-look-card")).toBeVisible();
+      await expect(turn.getByTestId("setup-agent-name")).toHaveCount(0);
+      await expect(page.getByTestId("setup-progress")).toHaveText("Step 1 of 7");
     });
 
-    await step("Brain step: the copy uses the new agent name", async () => {
-      await expect(page.getByText(/3 of 4/)).toBeVisible();
-      await expect(page.getByText(new RegExp(`${agent.name} thinks with a model`))).toBeVisible();
+    await step(`Pick the ${agent.look} shape and ${agent.colour} colour → "That's me"`, async () => {
+      await page.getByRole("radio", { name: agent.look }).click();
+      await page.getByRole("radio", { name: new RegExp(`^${agent.colour}$`, "i") }).click();
+      await page.getByTestId("setup-look-continue").click();
+      await expect(replyOf(page, "look")).toHaveText(new RegExp(`${agent.colour}.*${agent.look}`, "i"));
+      const identity = await amiro.api<{ name: string; traits: { color: string } }>("/api/agent/identity");
+      expect(identity.body.name).toBe(DEFAULT_AGENT_NAME);
+      expect(identity.body.traits.color).toBe(agent.colour.toLowerCase());
     });
 
-    await step("Brain step: 'more providers' panel lists the configured provider", async () => {
-      await page.getByRole("button", { name: /Subscriptions, local models and more providers/ }).click();
-      await page.getByRole("textbox", { name: "Search providers" }).fill(amiro.cfg.provider.label);
-      await expect(page.getByRole("combobox").first()).toBeVisible();
-      await expect(page.getByText(/providers · \d+ connected/)).toBeVisible();
+    await step("Default prompt: IDENTITY.md and SOUL.md, exactly what the agent reads", async () => {
+      const turn = await openTurn(page, "prompt");
+      await expect(page.getByTestId("setup-progress")).toHaveText("Step 2 of 7");
+      await expect(turn.getByTestId("setup-prompt-text")).toContainText(`**Name:** ${DEFAULT_AGENT_NAME}`);
+      await turn.getByTestId("setup-prompt-tab-SOUL.md").click();
+      await expect(turn.getByTestId("setup-prompt-text")).toContainText("# SOUL.md");
+      await expect(turn.getByTestId("setup-prompt-text")).not.toContainText("_ Lines starting");
+      await turn.getByTestId("setup-prompt-continue").click();
+      await expect(replyOf(page, "prompt")).toHaveText("Looks good");
     });
 
-    await step("Skip the brain for now (it is configured via Admin in journey 2)", async () => {
-      await page.getByRole("button", { name: "Skip for now" }).click();
-      await expect(page.getByRole("heading", { name: new RegExp(`Say hi to ${agent.name}`) })).toBeVisible();
-      await expect(page.getByText(/AI provider: skipped/)).toBeVisible();
-      await expect(page.getByText(`Signed in as ${owner.email}`)).toBeVisible();
+    await step("Personality: pick Warm Companion → saved like the Personality page", async () => {
+      const turn = await openTurn(page, "personality");
+      await turn.getByTestId("setup-preset-companion").click();
+      await expect(turn.getByTestId("setup-slider-companionCoworker")).toHaveValue("22");
+      await turn.getByTestId("setup-personality-save").click();
+      await expect(replyOf(page, "personality")).toHaveText("Warm Companion");
+      const identity = await amiro.api<{ sliders: Record<string, number> }>("/api/agent/identity");
+      expect(identity.body.sliders.companionCoworker).toBe(22);
     });
 
-    await step("Start chatting → the Team page with the new agent as its first card", async () => {
-      await page.getByRole("button", { name: "Start chatting" }).click();
+    await step("Provider: every supported provider is listed, grouped by how it connects", async () => {
+      const turn = await openTurn(page, "provider");
+      await expect(turn.getByRole("heading", { name: "API key", exact: true })).toBeVisible();
+      const count = await turn.locator('button[data-testid^="setup-provider-"]').count();
+      expect(count, "the whole catalog, not a featured few").toBeGreaterThan(10);
+      await turn.getByTestId("setup-provider-search").fill(provider.label);
+      await expect(turn.getByTestId(`setup-provider-${provider.id}`)).toBeVisible();
+    });
+
+    await step(`Pick ${provider.label} → Amiro guides the connect step with a secure key field`, async () => {
+      await page.getByTestId(`setup-provider-${provider.id}`).click();
+      await expect(replyOf(page, "provider")).toHaveText(provider.label);
+      const turn = await openTurn(page, "providerConnect");
+      await expect(turn.locator("[data-streaming]").first()).toHaveAttribute(
+        "aria-label",
+        new RegExp(`To connect ${provider.label}, paste its API key`),
+      );
+      await expect(turn.getByTestId("login-panel")).toBeVisible();
+      await expect(turn.locator('input[type="password"]').first()).toBeVisible();
+      await expect(turn.getByTestId("setup-provider-continue")).toBeDisabled();
+    });
+
+    await step("Leave the provider for later (journey 2 connects it in Admin)", async () => {
+      await page.getByTestId("setup-provider-connect-card").getByTestId("setup-skip").click();
+      await expect(replyOf(page, "providerConnect")).toHaveText("Skip for now");
+    });
+
+    await step("Web search: Brave asks for its key in a password field; pick another → DuckDuckGo needs none", async () => {
+      let turn = await openTurn(page, "search");
+      await turn.getByTestId("setup-search-brave").click();
+      turn = await openTurn(page, "searchConnect");
+      await expect(turn.getByTestId("setup-search-key")).toHaveAttribute("type", "password");
+      await turn.getByRole("button", { name: "Pick another" }).click();
+      turn = await openTurn(page, "search");
+      await turn.getByTestId("setup-search-duckduckgo").click();
+      await expect(replyOf(page, "search")).toHaveText("DuckDuckGo");
+      const saved = await amiro.api<Array<{ provider: string; isActive: boolean }>>("/api/search/providers");
+      expect(saved.body.filter((p) => p.isActive).map((p) => p.provider)).toEqual(["duckduckgo"]);
+      expect(saved.body.filter((p) => p.provider === "duckduckgo"), "updated in place, not duplicated").toHaveLength(1);
+    });
+
+    await step("Connectors: Composio's key field and the MCP button; the add-server dialog opens", async () => {
+      const turn = await openTurn(page, "connectors");
+      await expect(turn.getByTestId("setup-composio-key")).toHaveAttribute("type", "password");
+      await turn.getByTestId("setup-mcp-add").click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await turn.getByTestId("setup-skip").click();
+      await expect(replyOf(page, "connectors")).toHaveText("Skip for now");
+    });
+
+    await step("Voice: a keyed provider asks for its key securely; pick another, then skip", async () => {
+      let turn = await openTurn(page, "voice");
+      await turn.getByTestId("setup-voice-openai").click();
+      turn = await openTurn(page, "voiceConnect");
+      await expect(turn.getByTestId("setup-voice-key")).toHaveAttribute("type", "password");
+      await turn.getByRole("button", { name: "Pick another" }).click();
+      turn = await openTurn(page, "voice");
+      await turn.getByTestId("setup-skip").click();
+    });
+
+    await step("Summary: what was set up and what is left for later", async () => {
+      const turn = await openTurn(page, "done");
+      await expect(turn.getByTestId("setup-summary-look")).toHaveAttribute("data-state", "done");
+      await expect(turn.getByTestId("setup-summary-personality")).toHaveAttribute("data-state", "done");
+      await expect(turn.getByTestId("setup-summary-search")).toHaveAttribute("data-state", "done");
+      await expect(turn.getByTestId("setup-summary-provider")).toHaveAttribute("data-state", "later");
+      await expect(turn.getByTestId("setup-summary-voice")).toHaveAttribute("data-state", "later");
+    });
+
+    await step("Start working with Amiro → the Team page with Amiro as its first card", async () => {
+      await page.getByTestId("setup-finish").click();
       await expect(page).toHaveURL(/\/team$/);
-      await expect(page.getByTestId("team-agent-main")).toContainText(agent.name);
+      await expect(page.getByTestId("team-agent-main")).toContainText(DEFAULT_AGENT_NAME);
     });
 
     await step("Open Amiro → the main app, with the agent in the sidebar and a setup reminder", async () => {
       await page.getByTestId("team-open-amiro").click();
-      await expect(page.getByRole("link", { name: new RegExp(`${agent.name}.*Personality`) })).toBeVisible();
+      await expect(page.getByRole("link", { name: new RegExp(`${DEFAULT_AGENT_NAME}.*Personality`) })).toBeVisible();
       await expect(page.getByRole("link", { name: "Connect an AI provider" })).toBeVisible();
       const h1 = (await page.locator("main h1").first().innerText().catch(() => "")).trim();
       if (!h1) note("Home page renders an empty <h1> (no greeting) when no provider is connected.");

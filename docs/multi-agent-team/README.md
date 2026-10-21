@@ -22,8 +22,9 @@ agents are created in Team and configured in their own space.
    lands on the Team view with that agent's channel open.
 2. Each agent has **one channel thread** that always exists, cannot be
    deleted, and streams answers like any other Amiro chat.
-3. A **New agent** wizard creates further agents (name, look, role,
-   instructions, model). A new agent gets its own workspace and appears in
+3. **New agent** creates further agents through the same setup chat as
+   onboarding (name, look, role, instructions, brain, then its prompt,
+   personality, provider, search and connectors). A new agent gets its own workspace and appears in
    the Team list immediately.
 4. Each agent has a page where the owner personalises it further and sees
    its channel pinned above its other chats and its workspace files.

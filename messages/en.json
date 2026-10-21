@@ -967,6 +967,157 @@
     "expandSidebar": "Expand sidebar",
     "collapseSidebar": "Collapse sidebar"
   },
+  "SetupChat": {
+    "subtitle": "Setting up together",
+    "subtitleTeam": "New agent for your team",
+    "newAgent": "New agent",
+    "progress": "Step {index} of {total}",
+    "letsGo": "Let's go",
+    "skip": "Skip for now",
+    "keepDefault": "Keep the default",
+    "continue": "Continue",
+    "saving": "Saving…",
+    "saveError": "That didn't save. Try again.",
+    "connected": "Connected",
+    "recommended": "Recommended",
+    "noKey": "No key",
+    "noMatches": "Nothing matches that.",
+    "pickAnother": "Pick another",
+    "keepProvider": "Keep {provider}",
+    "thatsMe": "That's me",
+    "createAgent": "Create agent",
+    "agentName": "Name",
+    "agentNamePlaceholder": "e.g. Scout",
+    "agentRole": "Role",
+    "agentRolePlaceholder": "e.g. Research assistant",
+    "agentInstructions": "Instructions",
+    "agentInstructionsPlaceholder": "How should it work? What should it always or never do?",
+    "brain": "Brain",
+    "brainCopy": "Use Amiro's providers",
+    "brainCopyHint": "Starts with a copy of Amiro's provider keys. Change them any time in its space.",
+    "brainEmpty": "Start empty",
+    "brainEmptyHint": "No providers yet. Connect one in the next steps.",
+    "looksGood": "Looks good",
+    "promptHint": "Change IDENTITY.md with the name and personality. SOUL.md belongs to the agent; ask it in chat to change how it works.",
+    "promptEmpty": "No prompt files yet.",
+    "promptError": "Couldn't load the prompt.",
+    "savePersonality": "Save personality",
+    "personalityNote": "These dials change tone and style only. They never change tool permissions, approvals or safety policy.",
+    "axisLabel": "{left} to {right}",
+    "providerSearch": "Search providers",
+    "waitingToConnect": "Waiting for the connection…",
+    "apiKeyFor": "{provider} API key",
+    "getKey": "Get a {provider} key",
+    "saveKey": "Save key",
+    "vaultNote": "Stored encrypted on this machine. Never shown again, never in the chat.",
+    "baseUrl": "Base URL",
+    "composioTitle": "Apps via Composio.",
+    "composioBlurb": "Gmail, Slack, GitHub, Notion and 1,000+ more, one click each, once the Composio key is in.",
+    "composioReady": "Composio apps",
+    "mcpTitle": "MCP servers.",
+    "mcpBlurb": "Any MCP server, local or remote, with its keys kept in the vault.",
+    "mcpBlurbTeam": "Remote MCP servers (a URL), with their keys kept in this agent's own vault.",
+    "addServer": "Add server",
+    "later": "later",
+    "laterHint": "Anything left for later is in the setup checklist and on the agent's settings pages.",
+    "finish": "Start working with {name}",
+    "finishTeam": "Open {name}'s thread",
+    "steps": {
+      "look": "Look",
+      "prompt": "Default prompt",
+      "personality": "Personality",
+      "provider": "AI provider",
+      "search": "Web search",
+      "connectors": "Connectors",
+      "voice": "Voice"
+    },
+    "mechanism": {
+      "oauth": "Sign in with your account",
+      "device-code": "Sign in with a device code",
+      "api-key": "API key",
+      "cli": "Command-line login",
+      "local-endpoint": "Runs on your machine",
+      "unknown": "Other"
+    },
+    "presets": {
+      "operator": "Sharp Operator",
+      "companion": "Warm Companion",
+      "hacker": "Unfiltered Co-Founder",
+      "balanced": "Balanced Neutral",
+      "midnight-strategist": "Midnight Strategist",
+      "studio-dreamer": "Studio Dreamer",
+      "field-engineer": "Field Engineer"
+    },
+    "axes": {
+      "companionCoworker": {
+        "left": "Companion",
+        "right": "Coworker"
+      },
+      "genzBoomer": {
+        "left": "Gen Z",
+        "right": "Baby Boomer"
+      },
+      "executeCollaborate": {
+        "left": "Independent",
+        "right": "Collaborative"
+      },
+      "playfulSerious": {
+        "left": "Playful",
+        "right": "Serious"
+      },
+      "politeUnfiltered": {
+        "left": "Polite",
+        "right": "Unfiltered"
+      }
+    },
+    "reply": {
+      "go": "Let's go",
+      "skip": "Skip for now",
+      "looksGood": "Looks good",
+      "saved": "Saved",
+      "keepDefault": "Keep the default",
+      "connected": "{provider} connected",
+      "keySaved": "Key saved",
+      "pickAnother": "Let me pick another"
+    },
+    "say": {
+      "greet": {
+        "onboarding": "Hi{owner}! I'm {name}. Come, let's set up your agent and start working on it.\nI'll ask one thing at a time. You can skip anything and finish it later.",
+        "team": "Hi! I'm your new agent. Let's set me up together, one step at a time."
+      },
+      "look": {
+        "onboarding": "First, how should I look? My name stays {name}. Pick my colour and shape.",
+        "team": "Who am I? Give me a name, a role and a look. You can also tell me how to work."
+      },
+      "prompt": "This is my default prompt: what I read at the start of every conversation. IDENTITY.md comes from my name and personality. SOUL.md is how I work, and I keep it current as I learn what you like.",
+      "personality": "Now tune how I talk. Pick a preset or slide the dials.",
+      "provider": "Next, my brain. Choose an AI provider. Every provider I support is here, grouped by how it connects.",
+      "providerConnect": {
+        "api-key": "To connect {provider}, paste its API key below. It goes straight to the encrypted vault on this machine, never into our chat.",
+        "oauth": "{provider} signs in with your account. Start the sign-in, approve it in the tab that opens, and paste the code back if it asks. I'll notice when it's done.",
+        "device-code": "{provider} uses a device code. Start the sign-in, open the link, enter the code shown, and I'll pick it up.",
+        "cli": "{provider} signs in through its own command-line login. Follow the steps below, then come back.",
+        "local-endpoint": "{provider} runs on your own machine. Tell me where to reach it below.",
+        "unknown": "Follow the steps below to connect {provider}."
+      },
+      "search": "Should I be able to search the web? Pick a search engine.",
+      "searchConnect": "Paste your {provider} API key. Like every key, it goes to the vault, not the chat.",
+      "connectors": "Now connect the apps you use so I can work in them: 1,000+ apps through Composio, or any MCP server.",
+      "connectorsTeam": "Now connect the services I should use. I can use remote MCP servers. Apps through Composio stay with Amiro for now.",
+      "voice": "Last one: my voice. Choose a speech provider so I can talk and listen.",
+      "voiceTeam": "Last one: voice. Choose a speech provider so I can talk and listen. Voice is shared by everyone on your team.",
+      "voiceConnect": "Paste your {provider} API key. I'll use it to speak, and to listen if {provider} can.",
+      "done": {
+        "onboarding": "All set{owner}! Here's what we set up. Let's get to work.",
+        "team": "I'm ready. Here's how I'm set up. Say hi in my Team thread."
+      }
+    },
+    "goodToKnow": "Good to know",
+    "accessAt": "Open Amiro from anywhere on your network at <code>{url}</code>.",
+    "resetPassword": "Forgot your password? On the machine running Amiro, run <code>amiro reset-password</code>.",
+    "configFile": "Every choice here can also live in <code>~/.amiro/amiro.toml</code> (every option: <code>amiro.example.toml</code> next to the app).",
+    "runAgain": "Run this setup again any time from Admin → General."
+  },
   "Team": {
     "title": "Team",
     "subtitle": "Your agents. Each one has its own channel and folder.",

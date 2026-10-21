@@ -25,7 +25,7 @@ import {
   useAssistantStage,
 } from "./avatar-primitives";
 
-const PRESET_PERSONAS: Array<{
+export const PRESET_PERSONAS: Array<{
   id: string;
   label: string;
   values: Record<string, number>;

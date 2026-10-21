@@ -3,6 +3,7 @@
  * Superpowers (skills), and renaming/customising the agent.
  */
 import { ask, newChat, selectModel } from "../support/chat";
+import { DEFAULT_AGENT_NAME } from "../support/config";
 import { expect, test } from "../support/fixtures";
 
 test.describe("agent-hub", () => {
@@ -35,8 +36,8 @@ test.describe("agent-hub", () => {
     });
   });
 
-  test("rename the agent from the hub", async ({ page, step, amiro }) => {
-    const newName = `${amiro.cfg.agent.name}ette`;
+  test("rename the agent from the hub", async ({ page, step }) => {
+    const newName = `${DEFAULT_AGENT_NAME}ette`;
     await step("Rename agent → new name", async () => {
       await page.goto("/agent");
       await page.getByRole("button", { name: "Rename agent" }).click();
@@ -48,7 +49,7 @@ test.describe("agent-hub", () => {
     await step("Sidebar shows the new name; then rename back", async () => {
       await expect(page.getByRole("link", { name: new RegExp(`${newName}.*Personality`) })).toBeVisible();
       await page.getByRole("button", { name: "Rename agent" }).click();
-      await page.getByRole("textbox").first().fill(amiro.cfg.agent.name);
+      await page.getByRole("textbox").first().fill(DEFAULT_AGENT_NAME);
       await page.keyboard.press("Enter");
     });
   });

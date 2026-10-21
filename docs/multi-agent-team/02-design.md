@@ -104,7 +104,7 @@ chosen in the composer must never be able to replace the persona.
 | --- | --- | --- |
 | `/team` | `team-view.tsx` in the full-page `(team)` layout (`team-shell.tsx`) | Agent list; "Pick an agent" until one is clicked. |
 | `/team?agent=<id>` | same | The agent's fixed Team thread beside the list. Header: **Open <name>** (e.g. **Open Nova**), and for a team agent **Computer** (Stage 2 dialog) and **Delete**. |
-| `/team/new` | `new-agent-wizard.tsx` | Look & name → role, instructions, AI providers (copy Amiro's API-key providers or start empty) → create. Lands on its Team thread. |
+| `/team/new` | `new-agent-wizard.tsx` → `setup-chat/` (team mode) | The onboarding setup chat: name, role, instructions, look and brain (copy Amiro's API-key providers or start empty) create the agent; then its prompt, personality, provider, web search and connectors are set in its scope, and voice (shared). Lands on its Team thread. See [../setup-chat/README.md](../setup-chat/README.md). |
 | `/?agent=<id>` (and every main-app page after it) | the existing app + `agent-scope-banner.tsx` | The agent's **space**: the whole Amiro app acting as that agent. The main agent's space is plain `/`. |
 
 Static export rule: ids are query parameters, never route segments.

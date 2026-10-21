@@ -31,8 +31,16 @@ fn require_admin(user: &AuthUser) -> Result<(), ApiError> {
     Ok(())
 }
 
+/// Amiro keeps its search providers in `home/store`; a team agent keeps its
+/// own in its private folder (outside its workspace, so its tools cannot read
+/// the keys), so choosing one agent's engine never changes another's.
 fn store_path(state: &AppState, key: &str) -> PathBuf {
-    state.home.join("store").join(key)
+    match state.agent_scope() {
+        Some(agent) => crate::state::agent_private_root(&state.home, &agent)
+            .join("store")
+            .join(key),
+        None => state.home.join("store").join(key),
+    }
 }
 
 // Only providers whose protocol we actually implement are advertised. Old records

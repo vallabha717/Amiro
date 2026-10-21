@@ -12,6 +12,9 @@ import * as path from "node:path";
 export const TESTS_DIR = path.resolve(__dirname, "../..");
 export const REPO_ROOT = path.resolve(TESTS_DIR, "..");
 
+/** The onboarded agent's name: fixed, onboarding only picks its look. */
+export const DEFAULT_AGENT_NAME = "Amiro";
+
 export interface E2EConfig {
   target: {
     /** "isolated" boots a fresh backend per run; "external" uses baseUrl as-is. */
@@ -24,7 +27,8 @@ export interface E2EConfig {
     keepInstance: boolean;
   };
   owner: { name: string; email: string; password: string; timezone: string };
-  agent: { name: string; look: string; colour: string };
+  /** The default agent's look; its name is always DEFAULT_AGENT_NAME. */
+  agent: { look: string; colour: string };
   provider: {
     label: string;
     id: string;

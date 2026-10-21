@@ -19,7 +19,6 @@
   },
 
   "agent": {
-    "name": "Nova",
     "look": "Starfish",
     "colour": "teal"
   },

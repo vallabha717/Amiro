@@ -1862,6 +1862,41 @@ fn read_only_error() -> ApiError {
     )
 }
 
+/// The home files the runtime loads as the agent's prompt, in load order.
+const PROMPT_FILES: [&str; 2] = ["IDENTITY.md", "SOUL.md"];
+
+/// GET /api/agent/prompt -- the agent's default prompt as the runtime loads it:
+/// `IDENTITY.md` (generated from the Personality page) and `SOUL.md` (seeded
+/// once, then the agent's own), with the `_ ` note lines stripped just as
+/// `amiro-base::agent_home` does. Scoped like every agent route, so a team
+/// agent gets its own files. Shown by the setup chat after the look step.
+async fn get_prompt(
+    AgentState(state): AgentState,
+    user: AuthUser,
+) -> Result<Json<Value>, ApiError> {
+    require_admin(&user)?;
+    if state.agent_scope().is_none() {
+        // A fresh owner may not have saved an identity yet: write the files
+        // the runtime would otherwise be missing.
+        ensure_owner_identity_file(&state).await;
+        crate::agent_home::seed(&state).await;
+    }
+    let mut files = Vec::new();
+    for name in PROMPT_FILES {
+        let path = state.workspace.join(name);
+        let meta = tokio::fs::symlink_metadata(&path).await;
+        if !matches!(&meta, Ok(m) if m.is_file()) {
+            continue;
+        }
+        let raw = tokio::fs::read_to_string(&path).await.unwrap_or_default();
+        let content = crate::agent_home::strip_comment_lines(&raw);
+        if !content.is_empty() {
+            files.push(json!({ "name": name, "content": content }));
+        }
+    }
+    Ok(Json(json!({ "files": files })))
+}
+
 /// GET /api/agent/identity -- per-user agent identity, avatar, personality.
 async fn get_identity(
     AgentState(state): AgentState,
@@ -2412,6 +2447,7 @@ async fn put_workspace_file(
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/agent/identity", get(get_identity).put(put_identity))
+        .route("/api/agent/prompt", get(get_prompt))
         .route(
             "/api/agent/personality",
             get(get_personality).put(put_personality),
