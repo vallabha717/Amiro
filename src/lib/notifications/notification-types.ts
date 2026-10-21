@@ -27,9 +27,15 @@ export interface NotificationAction {
   label: string;
 }
 
+export interface NotificationDeepLinkTarget {
+  threadId?: string | null;
+  scheduleId?: string | null;
+}
+
 export interface AmiroNotification {
   id: string;
   deliveryId: string;
+  deepLinkTarget?: NotificationDeepLinkTarget | null;
   userId?: string;
   category: NotificationCategory;
   urgency?: NotificationUrgency;
@@ -64,6 +70,7 @@ export interface NotificationDeliveryPayload {
   silent?: boolean;
   threadId?: string | null;
   scheduleId?: string | null;
+  deepLinkTarget?: NotificationDeepLinkTarget | null;
   icon?: string;
   data?: Record<string, unknown>;
 }
@@ -190,6 +197,28 @@ export function buildScheduleUrl(scheduleId?: string | null): string {
   return scheduleId ? `/schedules?id=${encodeURIComponent(scheduleId)}` : "/schedules";
 }
 
+export function parseDeepLinkTarget(payload: unknown): NotificationDeepLinkTarget | null {
+  if (!payload || typeof payload !== "object") return null;
+  const t = payload as Record<string, unknown>;
+  const threadId = typeof t.threadId === "string" ? t.threadId : null;
+  const scheduleId = typeof t.scheduleId === "string" ? t.scheduleId : null;
+  if (!threadId && !scheduleId) return null;
+  return { threadId, scheduleId };
+}
+
+export function resolveDeepLinkTarget(input: {
+  deepLinkTarget?: NotificationDeepLinkTarget | null;
+  threadId?: string | null;
+  scheduleId?: string | null;
+}): NotificationDeepLinkTarget | null {
+  const fromIntent = parseDeepLinkTarget(input.deepLinkTarget);
+  if (fromIntent) return fromIntent;
+  if (input.threadId || input.scheduleId) {
+    return { threadId: input.threadId ?? null, scheduleId: input.scheduleId ?? null };
+  }
+  return null;
+}
+
 export function parseNotification(payload: unknown): AmiroNotification | null {
   if (!payload || typeof payload !== "object") return null;
   const n = payload as Record<string, unknown>;
@@ -222,9 +251,19 @@ export function parseNotification(payload: unknown): AmiroNotification | null {
   const read = status !== "new";
   const dismissed = status === "dismissed";
 
+  const rawThreadId = typeof n.threadId === "string" ? n.threadId : null;
+  const rawScheduleId =
+    typeof n.scheduleId === "string" ? n.scheduleId : null;
+  const deepLinkTarget = resolveDeepLinkTarget({
+    deepLinkTarget: parseDeepLinkTarget(n.deepLinkTarget),
+    threadId: rawThreadId,
+    scheduleId: rawScheduleId,
+  });
+
   return {
     id,
     deliveryId,
+    deepLinkTarget,
     userId: typeof n.userId === "string" ? n.userId : undefined,
     category: isNotificationCategory(n.category) ? n.category : "system",
     urgency: (typeof n.urgency === "string" ? n.urgency : "normal") as NotificationUrgency,

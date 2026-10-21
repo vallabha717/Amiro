@@ -310,8 +310,18 @@ pub(crate) fn build_item(
         .unwrap_or(&timestamp)
         .to_string();
 
+    // Compat (migration 05-migration): inbound payloads without a delivery id
+    // get one generated, so old emitters keep working.
+    let delivery_id = body
+        .get("deliveryId")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
     let mut item = Map::new();
     item.insert("id".into(), json!(id));
+    item.insert("deliveryId".into(), json!(delivery_id));
     item.insert("userId".into(), json!(uid));
     item.insert("title".into(), json!(title));
     item.insert("body".into(), json!(text));
@@ -357,9 +367,28 @@ pub(crate) async fn persist_item(
     Ok(unread)
 }
 
-/// Public helper for schedules, heartbeat, and chat turns to raise a real
-/// notification without going through HTTP. Persists, then broadcasts
-/// `notification_intent` so every connected client updates immediately.
+/// Build the `notification_intent` SSE event (Phase 02 shape): the current
+/// fields plus `deliveryId` and a `deepLinkTarget` so clients can route
+/// clicks without guessing URLs from the item.
+pub(crate) fn intent_event(user_id: &str, delivery_id: &str, item: &Value, unread: u64) -> Value {
+    json!({
+        "type": "notification_intent",
+        "userId": user_id,
+        "deliveryId": delivery_id,
+        "deepLinkTarget": {
+            "threadId": item.get("threadId").cloned().unwrap_or(Value::Null),
+            "scheduleId": item.get("scheduleId").cloned().unwrap_or(Value::Null),
+        },
+        "notification": item,
+        "unreadCount": unread,
+    })
+}
+
+/// Compat helper: persists directly without going through the signal
+/// pipeline. Deprecated since Phase 02 (all in-tree emitters use
+/// `notify::emit_signal`); removal is Phase 05. Kept so out-of-tree callers
+/// and old payloads keep working, and so its intent matches the pipeline
+/// shape (`deliveryId` + `deepLinkTarget`).
 pub async fn emit_notification(
     state: &AppState,
     user_id: &str,
@@ -389,14 +418,14 @@ pub async fn emit_notification(
     input.insert("scheduleId".into(), json!(schedule_id));
     input.insert("sourceEventName".into(), json!(source_event_name));
     let item = build_item(user_id, &Value::Object(input), &settings, None)?;
+    let delivery_id = item
+        .get("deliveryId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
 
     let unread = persist_item(state, user_id, item.clone()).await?;
-    publish(json!({
-        "type": "notification_intent",
-        "userId": user_id,
-        "notification": item,
-        "unreadCount": unread,
-    }));
+    publish(intent_event(user_id, &delivery_id, &item, unread));
     Ok(item)
 }
 
@@ -478,13 +507,13 @@ async fn create_notification(
     let settings_doc = load_settings_doc(&state).await?;
     let settings = settings_for(&settings_doc, &uid);
     let item = build_item(&uid, &body, &settings, None)?;
+    let delivery_id = item
+        .get("deliveryId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     let unread = persist_item(&state, &uid, item.clone()).await?;
-    publish(json!({
-        "type": "notification_intent",
-        "userId": uid,
-        "notification": item,
-        "unreadCount": unread,
-    }));
+    publish(intent_event(&uid, &delivery_id, &item, unread));
     Ok((
         StatusCode::CREATED,
         Json(json!({ "item": item, "unreadCount": unread })),
@@ -508,13 +537,13 @@ async fn test_notification(
         "actions": [{"id": "dismiss", "label": "Dismiss"}],
     });
     let item = build_item(&uid, &input, &settings, None)?;
+    let delivery_id = item
+        .get("deliveryId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     let unread = persist_item(&state, &uid, item.clone()).await?;
-    publish(json!({
-        "type": "notification_intent",
-        "userId": uid,
-        "notification": item,
-        "unreadCount": unread,
-    }));
+    publish(intent_event(&uid, &delivery_id, &item, unread));
     Ok((
         StatusCode::CREATED,
         Json(json!({ "item": item, "unreadCount": unread })),
@@ -693,10 +722,13 @@ async fn ack_notification(
                 "stored notification is not an object".to_string(),
             )
         })?;
+        // Phase 02: `ack` keeps the four receipt classes and appends to
+        // `receipts[]`, so every surface's delivery leaves a permanent row.
+        let acked_at = now_iso();
         item.insert(
             "ackedAt".into(),
             if delivered {
-                json!(now_iso())
+                json!(acked_at)
             } else {
                 Value::Null
             },
@@ -709,6 +741,15 @@ async fn ack_notification(
                 Value::Null
             },
         );
+        if delivered {
+            let receipts = item.entry("receipts").or_insert_with(|| json!([]));
+            if let Some(list) = receipts.as_array_mut() {
+                list.push(json!({
+                    "receiptClass": receipt_class,
+                    "deliveredAt": acked_at,
+                }));
+            }
+        }
         item.insert("updatedAt".into(), json!(now_iso()));
     }
     let updated = items[index].clone();

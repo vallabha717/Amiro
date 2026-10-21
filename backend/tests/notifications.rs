@@ -296,6 +296,27 @@ async fn ack_records_delivery_receipt() {
     assert_eq!(acked["receiptClass"], json!("desktop_native"));
     assert_eq!(acked["item"]["deliveryReceipt"], json!("desktop_native"));
     assert!(acked["item"]["ackedAt"].is_string());
+    // Phase 02: the ack appends to `receipts[]`, one row per surface.
+    assert_eq!(acked["item"]["receipts"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        acked["item"]["receipts"][0]["receiptClass"],
+        json!("desktop_native")
+    );
+    assert!(acked["item"]["receipts"][0]["deliveredAt"].is_string());
+
+    let (_, acked_again) = request(
+        &app,
+        "POST",
+        "/api/notifications/n1/ack",
+        Some(json!({ "delivered": true, "receiptClass": "in_app_toast" })),
+        true,
+    )
+    .await;
+    assert_eq!(acked_again["item"]["receipts"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        acked_again["item"]["receipts"][1]["receiptClass"],
+        json!("in_app_toast")
+    );
 
     let (status, _) = request(
         &app,

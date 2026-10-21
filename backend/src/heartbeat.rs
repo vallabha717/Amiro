@@ -502,16 +502,25 @@ pub async fn run_heartbeat(state: &AppState) -> Value {
         Ok(thread_id) => {
             record(state, "message", None).await;
             let preview: String = text.trim().chars().take(280).collect();
-            let _ = crate::routes::notifications::emit_notification(
+            // Phase 02: heartbeat messages go through the signal pipeline.
+            let _ = crate::notify::emit_signal(
                 state,
                 &owner_id,
-                HEARTBEAT_TITLE,
-                &preview,
-                "heartbeat",
-                "normal",
-                Some(thread_id.clone()),
-                None,
-                "heartbeat.message",
+                &serde_json::json!({
+                    "sourceChannel": "watcher",
+                    "sourceContextId": thread_id.clone(),
+                    "sourceEventName": "heartbeat.message",
+                    "title": HEARTBEAT_TITLE,
+                    "body": preview,
+                    "urgency": "normal",
+                    "threadId": thread_id,
+                    "attentionHints": {
+                        "requiresAction": false,
+                        "isAsyncBackground": true,
+                        "visibleInSourceNow": false,
+                    },
+                    "routingIntent": "single_channel",
+                }),
             )
             .await;
             json!({"result": "message", "threadId": thread_id, "text": text.trim()})

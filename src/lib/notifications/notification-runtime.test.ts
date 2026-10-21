@@ -91,6 +91,7 @@ vi.mock("@/lib/backend/config", async () => {
 });
 
 import { toast } from "sonner";
+import { apiJson } from "@/lib/backend/client";
 import {
   isTauriDesktop,
   isNotificationsSupported,
@@ -106,6 +107,7 @@ import {
   deliverNotification,
   notificationToDeliveryPayload,
   navigateToThreadOrSchedule,
+  navigateToDeepLinkTarget,
   emitCompletionNotification,
   browserNotificationDelivery,
   playNotificationChime,
@@ -113,6 +115,7 @@ import {
 import {
   DEFAULT_NOTIFICATION_SETTINGS,
   NOTIFICATIONS_STORAGE_KEY,
+  parseNotification,
   type NotificationDeliveryPayload,
 } from "./notification-types";
 
@@ -292,7 +295,12 @@ describe("browser notification", () => {
       body: "A chat reply...",
       tag: "del-1",
       icon: "/favicon.ico",
-      data: { threadId: "thread-1", scheduleId: undefined, notificationId: "notif-1" },
+      data: {
+        threadId: "thread-1",
+        scheduleId: undefined,
+        deepLinkTarget: { threadId: "thread-1", scheduleId: null },
+        notificationId: "notif-1",
+      },
     });
   });
 
@@ -416,6 +424,158 @@ describe("emitCompletionNotification", () => {
       message: "Chat completed",
     });
     expect(result).toBe("in_app_toast");
+  });
+});
+
+describe("quiet-hours gating (Phase 02 parity)", () => {
+  function quietNowSettings() {
+    const now = new Date();
+    const start = new Date(now.getTime() - 60000);
+    const end = new Date(now.getTime() + 60000);
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    return {
+      ...DEFAULT_NOTIFICATION_SETTINGS,
+      quietHoursEnabled: true,
+      quietStart: `${pad(start.getHours())}:${pad(start.getMinutes())}`,
+      quietEnd: `${pad(end.getHours())}:${pad(end.getMinutes())}`,
+    };
+  }
+
+  it("falls back to in-app toast during quiet hours", async () => {
+    const result = await deliverNotification(basePayload, {
+      settings: quietNowSettings(),
+    });
+    expect(result).toBe("in_app_toast");
+    expect(toast).toHaveBeenCalled();
+  });
+
+  it("acks quiet-hours deliveries as in_app_toast", async () => {
+    await deliverNotification(basePayload, {
+      settings: quietNowSettings(),
+    });
+    expect(apiJson).toHaveBeenCalledWith(
+      "/api/notifications/notif-1/ack",
+      expect.objectContaining({ method: "POST" }),
+    );
+    const init = (apiJson as unknown as { mock: { calls: unknown[][] } })
+      .mock.calls[0][1] as { body: string };
+    expect(JSON.parse(init.body)).toMatchObject({
+      delivered: true,
+      receiptClass: "in_app_toast",
+    });
+  });
+});
+
+describe("focused-thread suppression (Phase 02 parity)", () => {
+  it("suppresses banners when the thread is open and visible", async () => {
+    Object.defineProperty(document, "visibilityState", {
+      value: "visible",
+      configurable: true,
+    });
+    document.hasFocus = vi.fn().mockReturnValue(true);
+    const result = await deliverNotification(basePayload, {
+      settings: DEFAULT_NOTIFICATION_SETTINGS,
+      currentThreadId: "thread-1",
+    });
+    expect(result).toBe("in_app_toast");
+    expect(toast).toHaveBeenCalled();
+  });
+
+  it("does not suppress when a different thread is open", async () => {
+    (window.Notification as any).permission = "granted";
+    const notificationCtor = vi.fn().mockImplementation(() => ({
+      close: vi.fn(),
+      onclick: null,
+    }));
+    (notificationCtor as any).permission = "granted";
+    window.Notification = notificationCtor as unknown as typeof window.Notification;
+
+    const result = await deliverNotification(basePayload, {
+      settings: DEFAULT_NOTIFICATION_SETTINGS,
+      currentThreadId: "thread-2",
+    });
+    expect(result).toBe("web_notification");
+  });
+});
+
+describe("ack mapping (Phase 02 parity)", () => {
+  it("acks web deliveries with the web_notification receipt class", async () => {
+    (window.Notification as any).permission = "granted";
+    const notificationCtor = vi.fn().mockImplementation(() => ({
+      close: vi.fn(),
+      onclick: null,
+    }));
+    (notificationCtor as any).permission = "granted";
+    window.Notification = notificationCtor as unknown as typeof window.Notification;
+
+    const result = await deliverNotification(basePayload, {
+      settings: DEFAULT_NOTIFICATION_SETTINGS,
+    });
+    expect(result).toBe("web_notification");
+    const init = (apiJson as unknown as { mock: { calls: unknown[][] } })
+      .mock.calls[0][1] as { body: string };
+    expect(JSON.parse(init.body)).toMatchObject({
+      receiptClass: "web_notification",
+    });
+  });
+});
+
+describe("deep-link target (Phase 02 parity)", () => {
+  it("parses the intent deepLinkTarget onto the notification", () => {
+    const notification = parseNotification({
+      id: "n1",
+      deliveryId: "d1",
+      title: "T",
+      body: "B",
+      threadId: "thread-old",
+      deepLinkTarget: { threadId: "thread-9", scheduleId: null },
+    });
+    expect(notification?.deepLinkTarget).toEqual({
+      threadId: "thread-9",
+      scheduleId: null,
+    });
+  });
+
+  it("derives the target from flat ids when the intent has none", () => {
+    const notification = parseNotification({
+      id: "n1",
+      title: "T",
+      body: "B",
+      scheduleId: "sched-9",
+    });
+    expect(notification?.deepLinkTarget).toEqual({
+      threadId: null,
+      scheduleId: "sched-9",
+    });
+  });
+
+  it("carries the target into the delivery payload", () => {
+    const notification = parseNotification({
+      id: "n1",
+      deliveryId: "d1",
+      title: "T",
+      body: "B",
+      deepLinkTarget: { threadId: "t1", scheduleId: null },
+    });
+    const payload = notificationToDeliveryPayload(notification!);
+    expect(payload.deepLinkTarget).toEqual({
+      threadId: "t1",
+      scheduleId: null,
+    });
+  });
+
+  it("routes thread targets to the thread url", () => {
+    delete (window as any).location;
+    window.location = { href: "" } as any;
+    navigateToDeepLinkTarget({ threadId: "thread-9", scheduleId: null });
+    expect(window.location.href).toBe("/?thread=thread-9");
+  });
+
+  it("routes schedule targets to the schedules page", () => {
+    delete (window as any).location;
+    window.location = { href: "" } as any;
+    navigateToDeepLinkTarget({ threadId: null, scheduleId: "sched-9" });
+    expect(window.location.href).toBe("/schedules?id=sched-9");
   });
 });
 

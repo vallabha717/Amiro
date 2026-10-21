@@ -819,16 +819,26 @@ async fn chat_handler(
             }
         }
         if !failed && !assistant_preview.trim().is_empty() {
-            let _ = crate::routes::notifications::emit_notification(
+            // Phase 02: chat replies go through the signal pipeline; the
+            // thread the user is already looking at stays attached as context.
+            let _ = crate::notify::emit_signal(
                 &state_for_stream,
                 &uid,
-                &resolved_title,
-                assistant_preview.trim(),
-                "chat_reply",
-                "normal",
-                Some(thread_id.clone()),
-                None,
-                "chat.assistant_reply",
+                &serde_json::json!({
+                    "sourceChannel": "assistant_tool",
+                    "sourceContextId": thread_id.clone(),
+                    "sourceEventName": "chat.assistant_reply",
+                    "title": &resolved_title,
+                    "body": assistant_preview.trim(),
+                    "urgency": "normal",
+                    "threadId": thread_id,
+                    "attentionHints": {
+                        "requiresAction": false,
+                        "isAsyncBackground": false,
+                        "visibleInSourceNow": true,
+                    },
+                    "routingIntent": "single_channel",
+                }),
             )
             .await;
         }

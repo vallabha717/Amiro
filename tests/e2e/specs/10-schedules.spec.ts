@@ -67,4 +67,42 @@ test.describe("schedules", () => {
       await expect.soft(page.getByText(/ran (just now|a few seconds|\d+ seconds?)|running/i).first()).toBeVisible({ timeout: 120000 });
     });
   });
+
+  test("schedule run raises a Bell badge and toast, click routes to thread", async ({ page, step }) => {
+    await step("Add the 'Daily focus' suggestion if missing", async () => {
+      const add = page.getByRole("button", { name: /^Add Daily focus/ });
+      if (await add.isVisible().catch(() => false)) {
+        await add.click();
+        await expect(page.getByText("No schedules yet")).toBeHidden({ timeout: 15000 });
+      }
+    });
+    const row = () => page.locator("main li, main [data-slot=card], main article").filter({ hasText: "Daily focus" }).last();
+    await step("Run it now → a run result appears", async () => {
+      const run = row().getByRole("button", { name: /run now/i }).first();
+      if (await run.isVisible().catch(() => false)) {
+        await run.click();
+        await expect.soft(page.getByText(/running|ran|completed|success|queued/i).first()).toBeVisible({ timeout: 120000 });
+      }
+    });
+    await step("Bell badge shows the new delivery", async () => {
+      await expect(page.getByTestId("notifications-unread-badge")).toBeVisible({ timeout: 60000 });
+    });
+    await step("A toast announces the delivery", async () => {
+      await expect.soft(page.locator("[data-sonner-toast]").first()).toBeVisible({ timeout: 15000 });
+    });
+    await step("Open the Bell → the schedule result is listed", async () => {
+      await page.getByTestId("notifications-bell-button").click();
+      await expect(page.getByTestId("notifications-bell-popover")).toBeVisible();
+      await expect(page.getByTestId("notification-row").first()).toBeVisible({ timeout: 15000 });
+    });
+    await step("Click the row → Go to Conversation routes to the thread", async () => {
+      await page.getByTestId("notification-row").first().click();
+      await expect(page.getByTestId("notifications-bell-detail")).toBeVisible();
+      const go = page.getByRole("button", { name: /go to conversation/i });
+      if (await go.isVisible().catch(() => false)) {
+        await go.click();
+        await expect.soft(page).toHaveURL(/thread=/, { timeout: 15000 });
+      }
+    });
+  });
 });

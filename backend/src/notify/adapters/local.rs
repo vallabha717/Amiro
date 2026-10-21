@@ -43,19 +43,14 @@ impl ChannelAdapter for LocalAdapter {
             "category": category,
             "urgency": urgency,
             "silent": silent,
+            "deliveryId": delivery_id,
             "threadId": context.get("threadId"),
             "scheduleId": context.get("scheduleId"),
             "sourceEventName": context.get("sourceEventName"),
         });
         let item = feed::build_item(user_id, &input, &settings, None)?;
         let unread = feed::persist_item(state, user_id, item.clone()).await?;
-        broadcaster::publish(json!({
-            "type": "notification_intent",
-            "userId": user_id,
-            "deliveryId": delivery_id,
-            "notification": item,
-            "unreadCount": unread,
-        }));
+        broadcaster::publish(feed::intent_event(user_id, delivery_id, &item, unread));
         // Silence is presentation, not delivery: the item reached the feed.
         Ok(DeliveryResult {
             success: true,
