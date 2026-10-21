@@ -691,7 +691,7 @@ export function AgentOverview() {
         {/* BOTTOM STRIP: Superpowers · Memory · Workspace · Channels · Contacts */}
         <div
           data-testid="agent-bottom-strip"
-          className="relative z-10 grid grid-cols-1 gap-4 md:grid-cols-3 lg:grid-cols-5"
+          className="relative z-10 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5"
         >
           {bottomSections.map((sec) => {
             const Icon = sec.icon;
@@ -710,18 +710,17 @@ export function AgentOverview() {
                 onRegisterRef={registerCardRef}
                 onHoverChange={handleCardHover}
                 className={cn(
-                  "flex items-center justify-between gap-4 p-5 shadow-xs",
-                  sec.radiusClass,
+                  "flex items-center justify-between gap-3 rounded-2xl p-3.5 shadow-xs transition-shadow hover:shadow-md",
                 )}
               >
                 {({ flooded, fgClass, fgMutedClass, fgStyle }) => (
                   <div
-                    className="relative z-10 flex w-full items-center justify-between gap-4"
+                    className="relative z-10 flex w-full items-center justify-between gap-2.5"
                     style={fgStyle}
                   >
-                    <div className="flex min-w-0 items-center gap-3.5">
+                    <div className="flex min-w-0 items-center gap-2.5">
                       <span
-                        className="flex size-12 shrink-0 items-center justify-center rounded-2xl transition-colors"
+                        className="flex size-9 shrink-0 items-center justify-center rounded-xl transition-colors"
                         style={{
                           backgroundColor: flooded
                             ? "rgba(255,255,255,0.18)"
@@ -729,20 +728,18 @@ export function AgentOverview() {
                           color: flooded ? floodTone.fg : accentHex,
                         }}
                       >
-                        <Icon className="size-5" aria-hidden="true" />
+                        <Icon className="size-4" aria-hidden="true" />
                       </span>
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h3
-                            className={cn(
-                              "truncate text-base font-semibold tracking-tight",
-                              fgClass,
-                            )}
-                          >
-                            {sec.label}
-                          </h3>
-                        </div>
-                        <p className={cn("truncate text-xs", fgMutedClass)}>
+                        <h3
+                          className={cn(
+                            "truncate text-xs font-semibold tracking-tight",
+                            fgClass,
+                          )}
+                        >
+                          {sec.label}
+                        </h3>
+                        <p className={cn("truncate text-[10px]", fgMutedClass)}>
                           {sec.subtitle}
                         </p>
                       </div>
@@ -751,7 +748,7 @@ export function AgentOverview() {
                     <div className="flex shrink-0 flex-col items-end text-right">
                       <span
                         className={cn(
-                          "font-brand text-lg font-semibold tabular-nums leading-tight",
+                          "font-brand text-xs font-semibold tabular-nums leading-tight",
                           fgClass,
                         )}
                       >
@@ -759,7 +756,7 @@ export function AgentOverview() {
                       </span>
                       <span
                         className={cn(
-                          "text-[11px] font-medium tabular-nums",
+                          "text-[9px] font-medium tabular-nums",
                           fgMutedClass,
                         )}
                       >
