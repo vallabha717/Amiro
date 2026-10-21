@@ -628,3 +628,75 @@ describe("message sources bar", () => {
     expect(html).toContain("tokio.rs");
   });
 });
+
+describe("inline bash and file edit expanded presenters", () => {
+  it("renders bash output inline when expanded (not auto-collapsed)", () => {
+    const Expanded = toolPresenters.bash.Expanded!;
+    const html = renderToStaticMarkup(
+      createElement(Expanded, {
+        input: { command: "echo inline-bash-ok", intent: "Run echo check" },
+        output: {
+          command: "echo inline-bash-ok",
+          exit_code: 0,
+          output: "inline-bash-ok\n",
+        },
+        status: "success",
+      }),
+    );
+    expect(html).toContain("echo inline-bash-ok");
+    expect(html).toContain("inline-bash-ok");
+  });
+
+  it("renders file edit diff inline when expanded in chat surface", () => {
+    const Expanded = toolPresenters.edit.Expanded!;
+    const html = renderToStaticMarkup(
+      createElement(Expanded, {
+        input: {
+          file_path: "src/example.ts",
+          old_string: "const oldVal = 1;",
+          new_string: "const newVal = 2;",
+          intent: "Rename variable",
+        },
+        output: "Edited src/example.ts",
+        status: "success",
+      }),
+    );
+    expect(html).toContain("example.ts");
+    expect(html).toContain("Before");
+    expect(html).toContain("After");
+    expect(html).toContain("oldVal = 1");
+    expect(html).toContain("newVal = 2");
+  });
+});
+
+describe("batch tool calls", () => {
+  it("lists each parallel call with its own tool name and description", () => {
+    const Expanded = toolPresenters.batch.Expanded!;
+    const html = renderToStaticMarkup(
+      createElement(Expanded, {
+        input: {
+          tool_calls: [
+            { tool: "read", file_path: "a.ts", intent: "Read a" },
+            { tool: "bash", command: "ls" },
+          ],
+        },
+        output: undefined,
+        status: "pending",
+      }),
+    );
+    expect(html).toContain('data-testid="batch-calls"');
+    expect(html.split('data-testid="batch-call"').length - 1).toBe(2);
+    expect(html).toContain("Read a");
+    expect(html).toContain("bash");
+  });
+
+  it("names the tools in the one-line glance", () => {
+    expect(
+      toolGlance("batch", {
+        input: { tool_calls: [{ tool: "read" }, { tool: "grep" }] },
+        output: undefined,
+        status: "pending",
+      }),
+    ).toContain("2 calls in parallel · read, grep");
+  });
+});

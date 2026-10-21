@@ -67,7 +67,8 @@ import {
   parseWebFetchOutput,
   parseWebSearchOutput,
 } from "lib/web-search/parse-web-search";
-import { WorkLog, type WorkLogRow } from "./work-log";
+import type { WorkLogRow } from "./work-log";
+import { FoldedWork } from "./work-summary";
 
 interface Props {
   message: UIMessage;
@@ -81,6 +82,66 @@ interface Props {
   addToolResult?: UseChatHelpers<UIMessage>["addToolResult"];
   status?: UseChatHelpers<UIMessage>["status"];
   readonly?: boolean;
+}
+
+/**
+ * Split `<thinking>...</thinking>` (and `<think>...</think>`) blocks out of
+ * assistant text parts so models that emit inline XML reasoning tags render
+ * through `ReasoningPart` during live streaming just like native reasoning
+ * deltas do, then merge adjacent reasoning parts into a single Thinking block.
+ */
+function expandInlineThinkingParts(
+  parts: UIMessage["parts"],
+): UIMessage["parts"] {
+  const raw: UIMessage["parts"] = [];
+  const tagRegex = /<(?:thinking|think)>([\s\S]*?)(?:<\/(?:thinking|think)>|$)/gi;
+
+  for (const part of parts) {
+    if (part.type !== "text" || typeof part.text !== "string") {
+      raw.push(part);
+      continue;
+    }
+    const text = part.text;
+    if (!/<(?:thinking|think)>/i.test(text)) {
+      raw.push(part);
+      continue;
+    }
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    tagRegex.lastIndex = 0;
+    while ((match = tagRegex.exec(text)) !== null) {
+      const before = text.slice(lastIndex, match.index);
+      if (before.trim()) {
+        raw.push({ ...part, text: before });
+      }
+      const reasoningText = match[1]?.trim() ?? "";
+      raw.push({
+        type: "reasoning",
+        text: reasoningText,
+      } as any);
+      lastIndex = match.index + match[0].length;
+    }
+    const after = text.slice(lastIndex);
+    if (after.trim()) {
+      raw.push({ ...part, text: after });
+    }
+  }
+
+  // Merge consecutive reasoning parts so multi-step thinking renders inside
+  // one bounded Thinking window instead of multiple stacked "Thinking" headers.
+  const out: UIMessage["parts"] = [];
+  for (const part of raw) {
+    const prev = out[out.length - 1];
+    if (part.type === "reasoning" && prev?.type === "reasoning") {
+      const combined = [prev.text?.trim(), part.text?.trim()]
+        .filter(Boolean)
+        .join("\n\n");
+      out[out.length - 1] = { ...prev, text: combined } as any;
+    } else {
+      out.push(part);
+    }
+  }
+  return out;
 }
 
 const PurePreviewMessage = ({
@@ -97,13 +158,12 @@ const PurePreviewMessage = ({
   sendMessage,
 }: Props) => {
   const isUserMessage = useMemo(() => message.role === "user", [message.role]);
-  const partsForDisplay = useMemo(
-    () =>
-      (message.parts ?? []).filter(
-        (part) => !(part.type === "text" && (part as any).ingestionPreview),
-      ),
-    [message.parts],
-  );
+  const partsForDisplay = useMemo(() => {
+    const filtered = (message.parts ?? []).filter(
+      (part) => !(part.type === "text" && (part as any).ingestionPreview),
+    );
+    return isUserMessage ? filtered : expandInlineThinkingParts(filtered);
+  }, [message.parts, isUserMessage]);
 
   /**
    * Tool calls this turn stopped on, waiting for the user to say yes.
@@ -145,8 +205,8 @@ const PurePreviewMessage = ({
   const { grantedMode, decide } = usePlanDecision(addToolResult);
   // Subscribing here (not in the memo comparator) is fine: zustand re-renders
   // this component itself when the filter changes, memo or not.
-  const [hiddenToolCategories, hideAllTools] = chatUxStore(
-    useShallow((s) => [s.hiddenToolCategories, s.hideAllTools] as const),
+  const [onlyToolCategories, hideAllTools] = chatUxStore(
+    useShallow((s) => [s.onlyToolCategories, s.hideAllTools] as const),
   );
   const t = useTranslations("Chat.Tool");
   const grantedModeLabel =
@@ -173,7 +233,7 @@ const PurePreviewMessage = ({
           className,
         )}
       >
-        <div className="flex flex-col gap-4 w-full">
+        <div className="flex flex-col gap-1.5 w-full">
           {(() => {
             const renderPart = (
               part: (typeof partsForDisplay)[number],
@@ -407,6 +467,8 @@ const PurePreviewMessage = ({
             const workParts = partsForDisplay.slice(0, lastToolIndex + 1);
             const tailParts = partsForDisplay.slice(lastToolIndex + 1);
 
+            const reasoningTexts: string[] = [];
+            let isReasoningActive = false;
             const rows: WorkLogRow[] = [];
             // Every completed or in-flight `websearch` call this turn made.
             // Rendered as the sources bar above the answer, so the evidence
@@ -441,6 +503,15 @@ const PurePreviewMessage = ({
               if (part.type === "step-start") continue;
 
               if (!isToolUIPart(part)) {
+                if (part.type === "reasoning") {
+                  if (part.text?.trim()) {
+                    reasoningTexts.push(part.text.trim());
+                  }
+                  if (i === partsForDisplay.length - 1 && isLastMessage && isLoading) {
+                    isReasoningActive = true;
+                  }
+                  continue;
+                }
                 if (part.type === "text" && part.text) {
                   const sp = parseSecretPrompt(part.text);
                   if (sp && !secretPrompts.some((x) => x.service === sp.service && x.field === sp.field)) {
@@ -630,9 +701,10 @@ const PurePreviewMessage = ({
               const filtered =
                 !needsUser &&
                 (hideAllTools ||
-                  hiddenToolCategories.includes(
-                    toolCategoryOf(toolName, (part as any).input),
-                  ));
+                  (onlyToolCategories.length > 0 &&
+                    !onlyToolCategories.includes(
+                      toolCategoryOf(toolName, (part as any).input),
+                    )));
               if (filtered) {
                 hiddenCount++;
                 continue;
@@ -645,8 +717,18 @@ const PurePreviewMessage = ({
               const kind = stepKindOf(toolName, (part as any).input);
               const presenterProps = presenterPropsFromToolPart(part);
               const status = presenterProps.status;
-              const glance =
+              const rawGlance =
                 getToolPresenter(toolName)?.glance(presenterProps) ?? toolName;
+              const intentText =
+                typeof (partInput as any)?.intent === "string"
+                  ? (partInput as any).intent.trim()
+                  : typeof (partInput as any)?.description === "string"
+                    ? (partInput as any).description.trim()
+                    : "";
+              const glance =
+                intentText && rawGlance && intentText !== rawGlance
+                  ? `${intentText} · ${rawGlance}`
+                  : intentText || rawGlance;
               toolCount++;
 
               // A web call gets a rich glance node: the collapsed log should
@@ -714,10 +796,32 @@ const PurePreviewMessage = ({
                   )),
             );
 
+            const hasPendingTool = workParts.some(
+              (p) => isToolUIPart(p) && !p.state.startsWith("output"),
+            );
+            const turnSettled =
+              !isWorkLogRunning &&
+              !isReasoningActive &&
+              !hasPendingTool &&
+              mustShow.length === 0 &&
+              (!(isLastMessage && isLoading) ||
+                tailParts.some((p) => p.type === "text" && p.text?.trim()));
+
+            const reasoningNode =
+              reasoningTexts.length > 0 || isReasoningActive ? (
+                <ReasoningPart
+                  key={`${message.id}-turn-reasoning`}
+                  readonly={readonly}
+                  reasoningText={reasoningTexts.join("\n\n")}
+                  isThinking={isReasoningActive}
+                />
+              ) : null;
+
             return (
               <>
                 {hideAllTools ? (
                   <>
+                    {reasoningNode}
                     {/* With every tool hidden a long turn would otherwise
                         show nothing at all until its answer lands, which
                         reads as a hung chat. One quiet line says it is
@@ -734,11 +838,14 @@ const PurePreviewMessage = ({
                     ) : null}
                   </>
                 ) : (
-                  <WorkLog
+                  <FoldedWork
                     rows={rows}
+                    thought={reasoningTexts.length > 0 || isReasoningActive}
+                    reasoning={reasoningNode}
+                    turnSettled={turnSettled}
+                    isRunning={isWorkLogRunning}
                     images={turnImages}
                     hiddenCount={hiddenCount}
-                    isRunning={isWorkLogRunning}
                     stepCount={toolCount}
                     durationMs={
                       (message.metadata as ChatMetadata | undefined)?.durationMs

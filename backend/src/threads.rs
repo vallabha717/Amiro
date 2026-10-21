@@ -104,6 +104,37 @@ fn parse_msg_id(id: &str) -> Option<(usize, String)> {
     Some((idx, sid.to_string()))
 }
 
+/// Invisible separator the runtime puts just inside both ends of every
+/// persisted reasoning line (`amiro-render-core`'s `REASONING_SENTINEL`).
+const REASONING_SENTINEL: char = '\u{2063}';
+
+/// Undo the runtime's dim/italic wrapper for one reasoning line:
+/// `*<S>escaped body<S>*  ` becomes the original text. `None` when the line
+/// is not a reasoning line.
+fn reasoning_line_content(line: &str) -> Option<String> {
+    let body = line
+        .trim_end_matches([' ', '\r', '\n'])
+        .strip_prefix('*')?
+        .strip_prefix(REASONING_SENTINEL)?
+        .strip_suffix('*')?
+        .strip_suffix(REASONING_SENTINEL)?;
+    const ESCAPES: &str = "\\*_`[]<>&~|$";
+    let mut out = String::with_capacity(body.len());
+    let mut chars = body.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '\\' && chars.peek().is_some_and(|c| ESCAPES.contains(*c)) {
+            out.push(chars.next().unwrap());
+        } else {
+            out.push(ch);
+        }
+    }
+    Some(out)
+}
+
+/// Split reasoning out of an assistant row's text. Handles both shapes a
+/// runtime history row can carry it in: `<thinking>` tags, and the dim/italic
+/// sentinel lines the runtime writes when it replays saved reasoning. Without
+/// the second, a reloaded chat shows the model's thoughts as plain answer text.
 fn extract_thinking_and_text(content: &str) -> (Vec<String>, String) {
     let mut thinkings = Vec::new();
     let mut remaining = String::new();
@@ -125,6 +156,37 @@ fn extract_thinking_and_text(content: &str) -> (Vec<String>, String) {
         }
     }
     remaining.push_str(rest);
+
+    // Sentinel lines: a run of them (blank lines inside the run belong to it)
+    // is one reasoning block.
+    if remaining.contains(REASONING_SENTINEL) {
+        let mut text = String::new();
+        let mut block: Vec<String> = Vec::new();
+        let mut pending_blank = 0usize;
+        let flush = |block: &mut Vec<String>, thinkings: &mut Vec<String>| {
+            if !block.is_empty() {
+                thinkings.push(block.join("\n").trim().to_string());
+                block.clear();
+            }
+        };
+        for line in remaining.split_inclusive('\n') {
+            if let Some(body) = reasoning_line_content(line) {
+                for _ in 0..pending_blank {
+                    block.push(String::new());
+                }
+                pending_blank = 0;
+                block.push(body);
+            } else if line.trim().is_empty() && !block.is_empty() {
+                pending_blank += 1;
+            } else {
+                flush(&mut block, &mut thinkings);
+                pending_blank = 0;
+                text.push_str(line);
+            }
+        }
+        flush(&mut block, &mut thinkings);
+        remaining = text;
+    }
     (thinkings, remaining)
 }
 
@@ -173,6 +235,14 @@ pub fn history_to_messages(thread_id: &str, session_id: &str, history: &[Value])
                 if row_role == "user" {
                     break;
                 }
+                // Runtime bookkeeping rows (the "[auto] ..." continuation and
+                // guidance reminders, compaction notices) are not part of the
+                // conversation. Rendering them as assistant text is what made
+                // the credential-card template show up after a reload.
+                if row_role == "system" || row_role == "background_task" {
+                    i += 1;
+                    continue;
+                }
                 if let Some(stats) = row.get("response_stats") {
                     turn_stats = Some(stats);
                 }
@@ -208,18 +278,24 @@ pub fn history_to_messages(thread_id: &str, session_id: &str, history: &[Value])
                     }));
                 } else {
                     let (thinkings, remaining) = extract_thinking_and_text(content);
+                    let thinkings_is_empty = thinkings.is_empty();
                     for t in thinkings {
                         parts.push(json!({
                             "type": "reasoning",
                             "text": t,
                         }));
                     }
+                    // `remaining` is the row with its reasoning taken out. Only a
+                    // row with no reasoning at all keeps its exact original text
+                    // (whitespace and all); anything else must use the cleaned
+                    // text, or the dim/italic wrapper leaks into the answer.
+                    let had_reasoning = !thinkings_is_empty;
                     if !remaining.trim().is_empty() {
                         parts.push(json!({
                             "type": "text",
-                            "text": if !content.contains("<thinking>") { content.to_string() } else { remaining.trim().to_string() },
+                            "text": if had_reasoning { remaining.trim().to_string() } else { content.to_string() },
                         }));
-                    } else if !has_tools && parts.is_empty() {
+                    } else if !had_reasoning && !has_tools && parts.is_empty() {
                         parts.push(json!({
                             "type": "text",
                             "text": content.to_string(),
@@ -539,6 +615,41 @@ mod reminder_tests {
             thread_messages(&json!({}), "thread-1", "session-1", &history)[0]["id"],
             "msg_0_session-1"
         );
+    }
+
+    #[test]
+    fn replayed_reasoning_lines_become_reasoning_parts_not_answer_text() {
+        let s = '\u{2063}';
+        let content = format!(
+            "*{s}Let me think \\*hard\\*{s}*  \n*{s}Second line{s}*  \n\nThe answer is 4.\n"
+        );
+        let (thoughts, rest) = extract_thinking_and_text(&content);
+        assert_eq!(thoughts, vec!["Let me think *hard*\nSecond line".to_string()]);
+        assert_eq!(rest.trim(), "The answer is 4.");
+        assert!(!rest.contains(s));
+    }
+
+    #[test]
+    fn system_rows_are_not_shown_as_assistant_text() {
+        let s = '\u{2063}';
+        let history = vec![
+            json!({"role": "user", "content": "Hello"}),
+            json!({"role": "assistant", "content": "Hi there."}),
+            json!({"role": "system", "content": "[auto] ## Credential Security & In-Chat UI Execution\n<Human Label>"}),
+            json!({"role": "assistant", "content": format!("*{s}Nothing new to answer.{s}*  \n\n")}),
+        ];
+        let messages = history_to_messages("t", "s", &history);
+        let text = serde_json::to_string(&messages).unwrap();
+        assert!(!text.contains("Credential Security"), "{text}");
+        assert!(!text.contains("Human Label"), "{text}");
+        assert!(!text.contains(s), "sentinel leaked: {text}");
+    }
+
+    #[test]
+    fn plain_text_is_left_alone_by_the_reasoning_splitter() {
+        let (thoughts, rest) = extract_thinking_and_text("*emphasis* is fine\n");
+        assert!(thoughts.is_empty());
+        assert_eq!(rest, "*emphasis* is fine\n");
     }
 
     #[test]

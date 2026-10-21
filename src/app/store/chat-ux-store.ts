@@ -20,8 +20,11 @@ export type SessionPanelSection =
 export interface ChatUxState {
   panelOpen: boolean;
   collapsedSections: SessionPanelSection[];
-  /** Tool categories hidden from the transcript. */
-  hiddenToolCategories: ToolCategory[];
+  /**
+   * Tool categories the transcript shows, and nothing else. Empty means no
+   * filter: every category is shown.
+   */
+  onlyToolCategories: ToolCategory[];
   /** Hide every tool row and keep only prose, images and answers. */
   hideAllTools: boolean;
   /**
@@ -47,7 +50,7 @@ export const chatUxStore = create<ChatUxState>()(
     (set) => ({
       panelOpen: true,
       collapsedSections: [],
-      hiddenToolCategories: [],
+      onlyToolCategories: [],
       hideAllTools: false,
       targetAgentByThread: {},
       agentPanesByThread: {},
@@ -58,7 +61,7 @@ export const chatUxStore = create<ChatUxState>()(
       partialize: (s) => ({
         panelOpen: s.panelOpen,
         collapsedSections: s.collapsedSections,
-        hiddenToolCategories: s.hiddenToolCategories,
+        onlyToolCategories: s.onlyToolCategories,
         hideAllTools: s.hideAllTools,
         // Kept across reloads: a user watching three agents work should get
         // the same layout back after a refresh.

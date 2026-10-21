@@ -117,7 +117,7 @@ const runShell: ToolPresenter = {
     const cleanOutput =
       typeof output === "string" ? timing.cleanText : output?.output || errorText || "";
     return (
-      <div className="w-full my-2">
+      <div className="w-full my-1">
         <TerminalWindow
           command={input?.command}
           cwd={output?.cwd}
@@ -126,6 +126,7 @@ const runShell: ToolPresenter = {
           output={cleanOutput}
           sandboxed={output?.sandboxed}
           sandboxBackend={output?.sandbox_backend}
+          autoCollapseOnDone={false}
         />
       </div>
     );
@@ -156,12 +157,13 @@ const bg: ToolPresenter = {
     const timing = parseToolTiming(output);
     const text = typeof output === "string" ? timing.cleanText : JSON.stringify(output, null, 2);
     return (
-      <div className="w-full my-2">
+      <div className="w-full my-1">
         <TerminalWindow
           command={`bg ${input?.action ?? "status"} ${input?.task_id ?? ""}`}
           status={status === "pending" ? "pending" : status === "error" ? "error" : "success"}
           exitCode={status === "error" ? 1 : 0}
           output={text || errorText || ""}
+          autoCollapseOnDone={false}
         />
       </div>
     );
@@ -192,13 +194,14 @@ const compileRemote: ToolPresenter = {
     const timing = parseToolTiming(output);
     const text = typeof output === "string" ? timing.cleanText : JSON.stringify(output, null, 2);
     return (
-      <div className="w-full my-2">
+      <div className="w-full my-1">
         <TerminalWindow
           command={input?.command ?? "compile_remote"}
           cwd={input?.path}
           status={status === "pending" ? "pending" : status === "error" ? "error" : "success"}
           exitCode={status === "error" ? 1 : 0}
           output={text || errorText || ""}
+          autoCollapseOnDone={false}
         />
       </div>
     );

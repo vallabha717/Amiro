@@ -14,10 +14,9 @@ import { parseToolTiming } from "lib/ai/tools/timing";
 import { editRowSummary } from "lib/ai/tools/step-kind";
 import {
   DiffEditorView,
-  DiffEditorViewCompact,
   sectionsFromEditOutput,
 } from "ui/diff-editor-view";
-import { usePresenterSurface } from "./surface";
+import { PresenterSurface, usePresenterSurface } from "./surface";
 import type { PresenterProps, ToolPresenter } from "./types";
 
 /** Trailing path segment, for glance lines that must stay short. */
@@ -441,8 +440,54 @@ const writeFile: ToolPresenter = {
       </Shell>
     );
   },
+  Expanded: ({ input, output, status, errorText }: PresenterProps) => {
+    const path = output?.path ?? input?.file_path ?? input?.path ?? "";
+    const parsedTiming = parseToolTiming(output);
+    const row = editRowSummary("write", { input, output, status });
+    const isCreated = row ? row.verb === "Created" : output?.created ?? true;
+    const lines = row?.added ?? output?.lines ?? 0;
+    const content =
+      typeof input?.content === "string"
+        ? input.content
+        : typeof output?.content === "string"
+          ? output.content
+          : "";
+    return (
+      <Shell
+        icon={FilePlusIcon}
+        title={path}
+        tone={status === "error" ? "error" : "default"}
+        intent={input?.intent}
+        duration={parsedTiming.duration}
+      >
+        {status === "error" ? (
+          <ErrorBody errorText={errorText} />
+        ) : (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span
+                className={cn(
+                  "rounded px-1.5 py-0.5",
+                  isCreated
+                    ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                    : "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+                )}
+              >
+                {isCreated ? "created" : "overwrote"}
+              </span>
+              <span className="text-muted-foreground">{lines} lines</span>
+            </div>
+            {content ? (
+              <pre className="max-h-72 overflow-auto font-mono text-xs leading-relaxed whitespace-pre-wrap break-all bg-muted/20 p-2 rounded border">
+                {content}
+              </pre>
+            ) : null}
+          </div>
+        )}
+      </Shell>
+    );
+  },
 };
-writeFile.Expanded = writeFile.Compact;
 
 /* ------------------------------------------------------------------ */
 /* edit_file / multi_edit                                              */
@@ -531,10 +576,8 @@ function EditDetail({
 }
 
 /**
- * The chat surface's rendering of an edit: the same compact, colored +N/-M
- * card the detail surface uses, with its own click-to-expand side-by-side
- * diff dialog -- there is no reason a reader should have to leave the
- * conversation to see what changed.
+ * The chat surface's rendering of an edit: inline diff editor view so
+ * clicking a file edit tool call expands the diff directly inline in chat.
  */
 function EditExpanded(props: PresenterProps & { note?: string }) {
   const surface = usePresenterSurface();
@@ -553,16 +596,19 @@ function EditExpanded(props: PresenterProps & { note?: string }) {
     extractPathFromPatchText(input?.patch_text) ??
     "";
   return (
-    <DiffEditorViewCompact
-      path={path}
-      sections={sections}
-      windowed={windowed}
-      added={added}
-      removed={removed}
-      status={status}
-      errorText={errorText}
-      note={note}
-    />
+    <PresenterSurface value="chat">
+      <DiffEditorView
+        path={path}
+        sections={sections}
+        windowed={windowed}
+        added={added}
+        removed={removed}
+        status={status}
+        errorText={errorText}
+        note={note}
+        maxBodyHeight="max-h-72"
+      />
+    </PresenterSurface>
   );
 }
 

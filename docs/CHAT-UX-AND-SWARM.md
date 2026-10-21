@@ -57,8 +57,11 @@ Composio action slugs, and common app prefixes such as `gmail` and `slack`).
 | Planning | Todos, plans, memory |
 | Other | Everything else |
 
-The filter menu hides any category's rows from the work log. The header badge
-shows how many categories are hidden. "Answers only" hides every tool call and
+The filter menu is a set of checkboxes that work as "show only these". Tick
+a category and only the ticked categories appear in the work log, everything
+else is hidden. With nothing ticked there is no filter and every category is
+shown. The header badge shows how many categories are ticked, and "Show
+everything" clears them. "Answers only" hides every tool call and
 the work log. Prose and images remain. A tool call that needs the user's
 confirmation stays visible, so nothing the user must act on disappears.
 
@@ -102,10 +105,11 @@ to stop on a word boundary within 6 characters. Surrogate pairs are never split.
 Finished messages do no work, and reduced-motion users see the full text
 immediately. Used for text parts in `src/components/message-parts.tsx`.
 
-**Reasoning.** The reasoning block shows "Thinking..." with an elapsed counter
-while the model thinks, and then "Thought for Ns" once it finishes. The duration
-is only known for thinking the page watched happen. A reopened thread shows a
-plain "Thought".
+**Reasoning.** While the model thinks, the reasoning block shows a plain unboxed
+"Thinking" label with a passing shine effect and streams light-colored reasoning
+text inside a bounded-height scroll window (`max-h-36`) with no left border line.
+Once thinking completes, the block automatically minimizes under the plain
+"Thinking" label; clicking it toggles the reasoning window open or closed.
 
 ## Todo deltas
 
@@ -211,7 +215,7 @@ still has its session.
 `src/app/store/chat-ux-store.ts` keeps presentation preferences out of the main
 app store, so panel layout can change without a store migration. It persists to
 local storage under `amiro-chat-ux-v1` with: `panelOpen`, `collapsedSections`,
-`hiddenToolCategories`, `hideAllTools` and `agentPanesByThread`.
+`onlyToolCategories`, `hideAllTools` and `agentPanesByThread`.
 
 `targetAgentByThread` is defined in the store (the agent the composer would
 address), but no component reads or writes it yet. Sending from a pane is the

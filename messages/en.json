@@ -187,6 +187,7 @@
       "tab_walkthrough": "Walkthrough",
       "tab_files": "Files",
       "filesTitle": "File artifacts",
+      "chatFilesTitle": "In this chat",
       "filesCount": "{count} files",
       "filesError": "Could not load file artifacts.",
       "noFilesYet": "No file artifacts yet. Ask the agent for a document, report or export — or create one with the + button.",

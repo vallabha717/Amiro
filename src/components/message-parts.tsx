@@ -15,7 +15,6 @@ import { stepKindOf } from "lib/ai/tools/step-kind";
 import { parseToolTiming } from "lib/ai/tools/timing";
 import { cn, safeJSONParse, truncateString } from "lib/utils";
 import {
-  BrainIcon,
   Check,
   ChevronDownIcon,
   ChevronRight,
@@ -24,7 +23,6 @@ import {
   Download,
   EllipsisIcon,
   FileIcon,
-  HammerIcon,
   History,
   Loader,
   Pencil,
@@ -723,149 +721,102 @@ export const ReasoningPart = memo(function ReasoningPart({
   const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
   const isExpanded = userExpanded ?? Boolean(isThinking);
 
-  // Duration is only known for thinking we watched happen. Reopened threads
-  // mount with isThinking=false, so they show a plain "Thought".
-  const startedAtRef = useRef<number | null>(null);
-  const [elapsedSec, setElapsedSec] = useState(0);
-  const [durationSec, setDurationSec] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (isThinking) {
-      const startedAt = startedAtRef.current ?? Date.now();
-      startedAtRef.current = startedAt;
-      const update = () =>
-        setElapsedSec(Math.floor((Date.now() - startedAt) / 1000));
-      update();
-      const id = setInterval(update, 1000);
-      return () => clearInterval(id);
-    }
-    if (startedAtRef.current != null) {
-      setDurationSec(
-        Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000)),
-      );
-      startedAtRef.current = null;
-    }
-  }, [isThinking]);
-
-  // Follow the stream, but stop following if the user scrolled up to read.
+  // Follow the stream to the end while it is thinking, until the user
+  // scrolls up to read (then leave them alone; scrolling back to the bottom
+  // re-attaches). Driven by a ResizeObserver on the content, because the
+  // markdown grows after render and a one-shot scroll lands short.
   const scrollRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const pinnedRef = useRef(true);
+  const toBottom = () => {
     const el = scrollRef.current;
-    if (!isThinking || !el) return;
-    if (el.scrollHeight - el.scrollTop - el.clientHeight < 48) {
-      el.scrollTop = el.scrollHeight;
-    }
-  }, [reasoningText, isThinking, isExpanded]);
-
-  const wordCount = useMemo(() => {
-    return reasoningText.trim().split(/\s+/).filter(Boolean).length;
-  }, [reasoningText]);
-
-  const previewSnippet = useMemo(() => {
-    const clean = reasoningText.replace(/[#*`_]/g, "").trim();
-    if (!clean) return "";
-    const firstLine = clean.split("\n")[0].trim();
-    return firstLine.length > 70 ? `${firstLine.slice(0, 69)}…` : firstLine;
-  }, [reasoningText]);
+    if (el) el.scrollTop = el.scrollHeight;
+  };
+  useEffect(() => {
+    if (!isThinking || !isExpanded) return;
+    pinnedRef.current = true;
+    toBottom();
+    const content = contentRef.current;
+    if (!content || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      if (pinnedRef.current) toBottom();
+    });
+    ro.observe(content);
+    return () => ro.disconnect();
+  }, [isThinking, isExpanded]);
+  useEffect(() => {
+    if (isThinking && pinnedRef.current) toBottom();
+  }, [reasoningText, isThinking]);
 
   const toggle = () => setUserExpanded(!isExpanded);
 
-  if (isThinking) {
-    return (
-      <div className="flex flex-col select-none my-1.5 animate-in fade-in duration-200">
-        <div
-          className="flex items-center gap-2 text-xs cursor-pointer py-1 text-muted-foreground hover:text-foreground transition-colors"
-          onClick={toggle}
-        >
-          <TextShimmer className="font-medium tracking-wide">
-            Thinking…
-          </TextShimmer>
-          <span className="tabular-nums text-muted-foreground/70">
-            {elapsedSec}s
-          </span>
-          <button
-            data-testid="message-reasoning-toggle"
-            type="button"
-            className={cn(
-              "ml-auto p-1 text-muted-foreground transition-transform duration-200",
-              isExpanded && "rotate-180",
-            )}
-          >
-            <ChevronDownIcon size={14} />
-          </button>
-        </div>
-
-        <AnimatePresence initial={false}>
-          {isExpanded && (
-            <motion.div
-              data-testid="message-reasoning"
-              key="streaming-reasoning"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={reasoningTransition}
-              className="overflow-hidden"
-            >
-              <div
-                ref={scrollRef}
-                className="max-h-40 overflow-y-auto border-l pl-3 ml-1 text-xs text-muted-foreground/80 space-y-2"
-              >
-                <Markdown>{reasoningText || "Thinking…"}</Markdown>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    );
-  }
-
-  const label = durationSec != null ? `Thought for ${durationSec}s` : "Thought";
-
   return (
-    <div className="flex flex-col select-none my-1">
-      <div
-        className={cn(
-          "flex items-center gap-2 text-xs cursor-pointer py-1 px-2.5 rounded-lg border bg-muted/30 hover:bg-muted/60 transition-colors w-fit max-w-full",
-          isExpanded && "bg-muted/50 border-primary/20",
-        )}
+    <div
+      data-testid="reasoning-part"
+      data-thinking={isThinking ? "true" : "false"}
+      className="flex flex-col select-none my-1 animate-in fade-in duration-200"
+    >
+      <button
+        type="button"
+        data-testid="message-reasoning-toggle"
+        aria-expanded={isExpanded}
         onClick={toggle}
+        className="group/thinking flex items-center gap-1.5 text-xs cursor-pointer py-0.5 text-muted-foreground/75 hover:text-muted-foreground transition-colors w-fit max-w-full bg-transparent border-0 p-0 text-left"
       >
-        <BrainIcon className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="font-medium text-muted-foreground">{label}</span>
-        {previewSnippet ? (
-          <span className="text-[11px] text-muted-foreground/70 truncate max-w-xs md:max-w-md hidden sm:inline">
-            · {previewSnippet}
-          </span>
-        ) : wordCount > 0 ? (
-          <span className="text-[10px] text-muted-foreground/60">
-            ({wordCount} words)
-          </span>
-        ) : null}
-        <button
-          data-testid="message-reasoning-toggle"
-          type="button"
+        <ChevronRight
+          size={13}
           className={cn(
-            "shrink-0 p-0.5 text-muted-foreground transition-transform duration-200 ml-1",
-            isExpanded && "rotate-180",
+            "shrink-0 text-muted-foreground/60 transition-transform duration-200",
+            isExpanded && "rotate-90",
           )}
-        >
-          <ChevronDownIcon size={13} />
-        </button>
-      </div>
+        />
+        {isThinking ? (
+          <TextShimmer
+            as="span"
+            className="font-normal text-xs [--base-color:#a1a1aa] [--base-gradient-color:#52525b] dark:[--base-color:#a1a1aa] dark:[--base-gradient-color:#f4f4f5]"
+          >
+            Thinking
+          </TextShimmer>
+        ) : (
+          <span className="font-normal text-xs text-muted-foreground/75">
+            Thinking
+          </span>
+        )}
+      </button>
 
       <AnimatePresence initial={false}>
         {isExpanded && (
           <motion.div
             data-testid="message-reasoning"
-            key="minimized-reasoning"
+            key="reasoning-body"
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             transition={reasoningTransition}
             className="overflow-hidden"
           >
-            <div className="pl-5 text-muted-foreground border-l ml-3 mt-2 flex flex-col gap-2 text-xs">
-              <Markdown>{reasoningText || "Hmm, let's see...🤔"}</Markdown>
+            <div
+              ref={scrollRef}
+              onScroll={(e) => {
+                const el = e.currentTarget;
+                pinnedRef.current =
+                  el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+              }}
+              data-testid="message-reasoning-scroll"
+              className={cn(
+                "max-h-36 overflow-y-auto pt-1.5 text-xs leading-relaxed font-normal",
+                "text-zinc-400 dark:text-zinc-400",
+                "[&_p]:text-zinc-400 dark:[&_p]:text-zinc-400",
+                "[&_li]:text-zinc-400 dark:[&_li]:text-zinc-400",
+                "[&_strong]:text-zinc-400 dark:[&_strong]:text-zinc-400 [&_strong]:font-normal",
+                "[&_code]:bg-transparent [&_code]:text-zinc-400 dark:[&_code]:text-zinc-400 [&_code]:px-0",
+              )}
+            >
+              <div ref={contentRef}>
+                <Markdown isStreaming={Boolean(isThinking)}>
+                  {reasoningText || "Thinking…"}
+                </Markdown>
+              </div>
             </div>
           </motion.div>
         )}
@@ -978,7 +929,10 @@ export const ToolMessagePart = memo(
       return state.startsWith("output");
     }, [state]);
 
-    const [expanded, setExpanded] = useState(false);
+    // null = follow the call: web searches and fetches open while they run
+    // (so the live card is visible) and fold away when done. A click wins
+    // from then on.
+    const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
     const { copied: copiedInput, copy: copyInput } = useCopy();
     const { copied: copiedOutput, copy: copyOutput } = useCopy();
     const [isDeleting, setIsDeleting] = useState(false);
@@ -1077,17 +1031,35 @@ export const ToolMessagePart = memo(
       return null;
     }, [isCompleted, output, state, errorText]);
 
+    const presenterProps = useMemo(
+      () => presenterPropsFromToolPart(part),
+      [part],
+    );
+    const isWebCall =
+      toolName === "websearch" ||
+      toolName === "webfetch" ||
+      toolName === "webSearch" ||
+      toolName === "webContent";
+    const expanded =
+      userExpanded ?? (isWebCall && presenterProps.status === "pending");
+    const setExpanded = (next: boolean | ((v: boolean) => boolean)) =>
+      setUserExpanded(typeof next === "function" ? next(expanded) : next);
+
+    const presenter = useMemo(
+      () => getToolPresenter(toolName),
+      [toolName],
+    );
+
     const CustomToolComponent = useMemo(() => {
       // Registry first: a tool with a presenter renders through a shared
       // component, so the chat and any other surface cannot drift. Tools
       // still living in tool-invocation/ fall through below.
-      const presenter = getToolPresenter(toolName);
       if (presenter?.Expanded) {
         const Expanded = presenter.Expanded;
         return (
           <Expanded
             key={`${toolCallId}-${toolName}`}
-            {...presenterPropsFromToolPart(part)}
+            {...presenterProps}
           />
         );
       }
@@ -1131,6 +1103,8 @@ export const ToolMessagePart = memo(
       }
       return null;
     }, [
+      presenter,
+      presenterProps,
       toolName,
       state,
       onToolCallDirect,
@@ -1151,116 +1125,93 @@ export const ToolMessagePart = memo(
     }, [output]);
 
     const isExecuting = useMemo(() => {
-      return !isCompleted && isLast;
+      return !isCompleted && Boolean(isLast);
     }, [isCompleted, isLast]);
+
+    const toolDescription = useMemo(() => {
+      const intent =
+        typeof (input as any)?.intent === "string"
+          ? (input as any).intent.trim()
+          : typeof (input as any)?.description === "string"
+            ? (input as any).description.trim()
+            : "";
+      const glance = presenter?.glance(presenterProps)?.trim() ?? "";
+      if (intent && glance && intent !== glance) {
+        return `${intent} · ${glance}`;
+      }
+      if (intent) return intent;
+      if (glance) return glance;
+      return mcpToolName ? `${mcpServerName} / ${mcpToolName}` : mcpServerName;
+    }, [input, presenter, presenterProps, mcpServerName, mcpToolName]);
 
     return (
       <div className="group w-full">
-        {CustomToolComponent ? (
-          // Keyed on state so a card that failed to render a half-streamed
-          // input recovers by itself once the complete input lands, rather
-          // than staying stuck on the error.
-          <ToolRenderBoundary
-            key={`${toolCallId}-${state}`}
-            toolName={toolName}
-            input={input}
+        <div className="flex flex-col w-full my-0.5 fade-in duration-200 animate-in">
+          <button
+            type="button"
+            data-testid="tool-call-toggle"
+            data-tool-name={toolName}
+            aria-expanded={expanded}
+            className={cn(
+              "group/pill flex items-center gap-2 py-1 px-1.5 rounded-md text-xs cursor-pointer transition-colors text-left w-full hover:bg-muted/40",
+              isError || presenterProps.status === "error"
+                ? "text-destructive"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+            onClick={() => setExpanded((v) => !v)}
           >
-            {CustomToolComponent}
-          </ToolRenderBoundary>
-        ) : (
-          <div className="flex flex-col w-full my-1 fade-in duration-200 animate-in">
-            <div
+            <ChevronRight
               className={cn(
-                "group/pill flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-card text-xs cursor-pointer transition-colors hover:bg-muted/40",
-                isError &&
-                  "border-destructive/40 bg-destructive/5 text-destructive",
+                "size-3.5 shrink-0 text-muted-foreground/70 transition-transform duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]",
+                expanded && "rotate-90",
               )}
-              onClick={() => setExpanded(!expanded)}
-            >
-              <div className="p-1 text-primary bg-input/40 rounded shrink-0">
-                {isExecuting ? (
-                  <Loader className="size-3.5 animate-spin text-primary" />
-                ) : isError ? (
-                  <TriangleAlert className="size-3.5 text-destructive" />
-                ) : (
-                  <HammerIcon className="size-3.5 text-muted-foreground" />
-                )}
-              </div>
-              <div className="min-w-0 flex items-center gap-1.5 font-medium truncate flex-1">
-                {isExecuting ? (
-                  <TextShimmer>{mcpServerName}</TextShimmer>
-                ) : (
-                  <span>{mcpServerName}</span>
-                )}
-                {mcpToolName ? (
-                  <>
-                    <ChevronRight className="size-3 text-muted-foreground shrink-0" />
-                    <span className="font-mono text-muted-foreground truncate">
-                      {mcpToolName}
-                    </span>
-                  </>
-                ) : null}
-                {(input as any)?.intent ? (
-                  <span className="text-[11px] font-normal text-muted-foreground truncate hidden sm:inline">
-                    · {(input as any).intent}
-                  </span>
-                ) : null}
-              </div>
-              {parsedTiming.duration ? (
-                <span className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-muted border text-muted-foreground">
-                  {parsedTiming.duration}
-                </span>
-              ) : null}
-              <div className="shrink-0 p-1 rounded group-hover/pill:bg-muted text-muted-foreground transition-colors duration-200">
-                <ChevronDownIcon
-                  className={cn(
-                    "size-3.5 transition-transform duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]",
-                    expanded && "rotate-180",
-                  )}
-                />
-              </div>
-            </div>
-
-            <AnimatePresence initial={false}>
-              {expanded && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
-                  className="flex flex-col gap-2 pt-2 px-1 overflow-hidden"
+            />
+            {isExecuting || presenterProps.status === "pending" ? (
+              <Loader className="size-3 shrink-0 animate-spin text-muted-foreground" />
+            ) : isError || presenterProps.status === "error" ? (
+              <TriangleAlert className="size-3 shrink-0 text-destructive" />
+            ) : null}
+            <div className="min-w-0 flex items-center gap-1.5 truncate flex-1">
+              {isExecuting || presenterProps.status === "pending" ? (
+                <TextShimmer
+                  as="span"
+                  className="truncate text-xs font-normal"
                 >
-                  <div
-                    className={cn(
-                      "min-w-0 w-full p-3 rounded-lg bg-card border text-xs transition-colors",
-                    )}
-                  >
-                    <div className="flex items-center mb-1">
-                      <h5 className="text-muted-foreground font-medium select-none">
-                        Request
-                      </h5>
-                      <div className="flex-1" />
-                      {copiedInput ? (
-                        <Check className="size-3 text-emerald-500" />
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-4 text-muted-foreground"
-                          onClick={() =>
-                            copyInput(JSON.stringify(input, null, 2))
-                          }
-                        >
-                          <Copy className="size-3" />
-                        </Button>
-                      )}
-                    </div>
-                    <div className="max-h-[260px] overflow-y-auto">
-                      <JsonView data={input} />
-                    </div>
-                  </div>
+                  {toolDescription}
+                </TextShimmer>
+              ) : (
+                <span className="truncate text-xs font-normal">
+                  {toolDescription}
+                </span>
+              )}
+            </div>
+            {parsedTiming.duration ? (
+              <span className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-muted/60 text-muted-foreground">
+                {parsedTiming.duration}
+              </span>
+            ) : null}
+          </button>
 
-                  {result !== null && result !== undefined ? (
+          <AnimatePresence initial={false}>
+            {expanded && (
+              <motion.div
+                data-testid="tool-call-details"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
+                className="flex flex-col gap-2 pt-1.5 pl-4 pr-1 overflow-hidden"
+              >
+                {CustomToolComponent ? (
+                  <ToolRenderBoundary
+                    key={`${toolCallId}-${state}`}
+                    toolName={toolName}
+                    input={input}
+                  >
+                    {CustomToolComponent}
+                  </ToolRenderBoundary>
+                ) : (
+                  <>
                     <div
                       className={cn(
                         "min-w-0 w-full p-3 rounded-lg bg-card border text-xs transition-colors",
@@ -1268,10 +1219,10 @@ export const ToolMessagePart = memo(
                     >
                       <div className="flex items-center mb-1">
                         <h5 className="text-muted-foreground font-medium select-none">
-                          Response
+                          Request
                         </h5>
                         <div className="flex-1" />
-                        {copiedOutput ? (
+                        {copiedInput ? (
                           <Check className="size-3 text-emerald-500" />
                         ) : (
                           <Button
@@ -1279,11 +1230,7 @@ export const ToolMessagePart = memo(
                             size="icon"
                             className="size-4 text-muted-foreground"
                             onClick={() =>
-                              copyOutput(
-                                typeof result === "string"
-                                  ? result
-                                  : JSON.stringify(result, null, 2),
-                              )
+                              copyInput(JSON.stringify(input, null, 2))
                             }
                           >
                             <Copy className="size-3" />
@@ -1291,97 +1238,133 @@ export const ToolMessagePart = memo(
                         )}
                       </div>
                       <div className="max-h-[260px] overflow-y-auto">
-                        {typeof result === "string" ? (
-                          <pre className="font-mono text-xs whitespace-pre-wrap leading-relaxed text-muted-foreground">
-                            {parsedTiming.cleanText || result}
-                          </pre>
-                        ) : (
-                          <JsonView data={result} />
-                        )}
+                        <JsonView data={input} />
                       </div>
                     </div>
-                  ) : null}
 
-                  {isManualToolInvocation && (
-                    <div className="flex flex-row gap-2 items-center mt-1">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        className="rounded-full text-xs hover:ring py-2"
-                        onClick={() =>
-                          addToolResult?.({
-                            tool: toolName,
-                            toolCallId,
-                            output: ManualToolConfirmTag.create({
-                              confirm: true,
-                            }),
-                          })
-                        }
+                    {result !== null && result !== undefined ? (
+                      <div
+                        className={cn(
+                          "min-w-0 w-full p-3 rounded-lg bg-card border text-xs transition-colors",
+                        )}
                       >
-                        <Check />
-                        {t("Common.approve")}
-                        <Separator orientation="vertical" className="h-4" />
-                        <span className="text-muted-foreground">
-                          {getShortcutKeyList(
-                            approveToolInvocationShortcut,
-                          ).join(" ")}
-                        </span>
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        className="rounded-full text-xs hover:ring py-2"
-                        onClick={() =>
-                          addToolResult?.({
-                            tool: toolName,
-                            toolCallId,
-                            output: ManualToolConfirmTag.create({
-                              confirm: false,
-                            }),
-                          })
-                        }
-                      >
-                        <X />
-                        {t("Common.reject")}
-                        <Separator orientation="vertical" className="h-4" />
-                        <span className="text-muted-foreground">
-                          {getShortcutKeyList(
-                            rejectToolInvocationShortcut,
-                          ).join(" ")}
-                        </span>
-                      </Button>
-                    </div>
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
+                        <div className="flex items-center mb-1">
+                          <h5 className="text-muted-foreground font-medium select-none">
+                            Response
+                          </h5>
+                          <div className="flex-1" />
+                          {copiedOutput ? (
+                            <Check className="size-3 text-emerald-500" />
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-4 text-muted-foreground"
+                              onClick={() =>
+                                copyOutput(
+                                  typeof result === "string"
+                                    ? result
+                                    : JSON.stringify(result, null, 2),
+                                )
+                              }
+                            >
+                              <Copy className="size-3" />
+                            </Button>
+                          )}
+                        </div>
+                        <div className="max-h-[260px] overflow-y-auto">
+                          {typeof result === "string" ? (
+                            <pre className="font-mono text-xs whitespace-pre-wrap leading-relaxed text-muted-foreground">
+                              {parsedTiming.cleanText || result}
+                            </pre>
+                          ) : (
+                            <JsonView data={result} />
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
+                  </>
+                )}
 
-            {showActions && (
-              <div className="flex flex-row gap-2 items-center mt-1">
-                <Tooltip>
-                  <TooltipTrigger asChild>
+                {isManualToolInvocation && (
+                  <div className="flex flex-row gap-2 items-center mt-1">
                     <Button
-                      disabled={isDeleting}
-                      onClick={deleteMessage}
-                      variant="ghost"
-                      size="icon"
-                      className="size-3! p-4! opacity-0 group-hover/message:opacity-100 hover:text-destructive"
+                      variant="secondary"
+                      size="sm"
+                      className="rounded-full text-xs hover:ring py-2"
+                      onClick={() =>
+                        addToolResult?.({
+                          tool: toolName,
+                          toolCallId,
+                          output: ManualToolConfirmTag.create({
+                            confirm: true,
+                          }),
+                        })
+                      }
                     >
-                      {isDeleting ? (
-                        <Loader className="animate-spin" />
-                      ) : (
-                        <Trash2 />
-                      )}
+                      <Check />
+                      {t("Common.approve")}
+                      <Separator orientation="vertical" className="h-4" />
+                      <span className="text-muted-foreground">
+                        {getShortcutKeyList(
+                          approveToolInvocationShortcut,
+                        ).join(" ")}
+                      </span>
                     </Button>
-                  </TooltipTrigger>
-                  <TooltipContent className="text-destructive" side="bottom">
-                    Delete Message
-                  </TooltipContent>
-                </Tooltip>
-              </div>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="rounded-full text-xs hover:ring py-2"
+                      onClick={() =>
+                        addToolResult?.({
+                          tool: toolName,
+                          toolCallId,
+                          output: ManualToolConfirmTag.create({
+                            confirm: false,
+                          }),
+                        })
+                      }
+                    >
+                      <X />
+                      {t("Common.reject")}
+                      <Separator orientation="vertical" className="h-4" />
+                      <span className="text-muted-foreground">
+                        {getShortcutKeyList(
+                          rejectToolInvocationShortcut,
+                        ).join(" ")}
+                      </span>
+                    </Button>
+                  </div>
+                )}
+              </motion.div>
             )}
-          </div>
-        )}
+          </AnimatePresence>
+
+          {showActions && (
+            <div className="flex flex-row gap-2 items-center mt-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    disabled={isDeleting}
+                    onClick={deleteMessage}
+                    variant="ghost"
+                    size="icon"
+                    className="size-3! p-4! opacity-0 group-hover/message:opacity-100 hover:text-destructive"
+                  >
+                    {isDeleting ? (
+                      <Loader className="animate-spin" />
+                    ) : (
+                      <Trash2 />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent className="text-destructive" side="bottom">
+                  Delete Message
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          )}
+        </div>
       </div>
     );
   },

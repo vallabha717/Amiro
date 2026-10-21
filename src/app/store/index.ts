@@ -87,6 +87,8 @@ export interface AppState {
     openedFor?: string;
     /** File artifact to select when the Files tab opens (set by the chat card's Open button). */
     fileId?: string;
+    /** Workspace file to show in the Files tab viewer (set by clicking a path in chat). */
+    workspacePath?: string;
   };
   /**
    * The permission mode in effect before the user switched to Plan.
