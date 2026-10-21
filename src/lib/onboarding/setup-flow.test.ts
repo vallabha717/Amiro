@@ -11,7 +11,7 @@ import {
 } from "./setup-flow";
 
 describe("setup flow", () => {
-  it("walks look → prompt → personality → provider → search → connectors → voice", () => {
+  it("walks look → prompt → personality → provider → search → connectors → speak → listen", () => {
     expect(SETUP_STEPS).toEqual([
       "greet",
       "look",
@@ -21,10 +21,12 @@ describe("setup flow", () => {
       "search",
       "connectors",
       "voice",
+      "listen",
       "done",
     ]);
     expect(nextStep("look")).toBe("prompt");
-    expect(nextStep("voice")).toBe("done");
+    expect(nextStep("voice")).toBe("listen");
+    expect(nextStep("listen")).toBe("done");
     expect(nextStep("done")).toBe("done");
   });
 
@@ -32,12 +34,13 @@ describe("setup flow", () => {
     expect(mainStepOf("providerConnect")).toBe("provider");
     expect(nextStep("providerConnect")).toBe("search");
     expect(nextStep("searchConnect")).toBe("connectors");
-    expect(nextStep("voiceConnect")).toBe("done");
+    expect(nextStep("voiceConnect")).toBe("listen");
+    expect(nextStep("listenConnect")).toBe("done");
   });
 
   it("counts progress over the real steps only", () => {
-    expect(progressOf("look")).toEqual({ index: 1, total: 7 });
-    expect(progressOf("providerConnect")).toEqual({ index: 4, total: 7 });
+    expect(progressOf("look")).toEqual({ index: 1, total: 8 });
+    expect(progressOf("providerConnect")).toEqual({ index: 4, total: 8 });
     expect(progressOf("greet").index).toBe(0);
   });
 

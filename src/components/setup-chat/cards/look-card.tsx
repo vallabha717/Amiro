@@ -136,7 +136,9 @@ export function LookCard({
                       {t(option === "copy" ? "brainCopy" : "brainEmpty")}
                     </span>
                     <span className="block text-xs text-muted-foreground">
-                      {t(option === "copy" ? "brainCopyHint" : "brainEmptyHint")}
+                      {t(
+                        option === "copy" ? "brainCopyHint" : "brainEmptyHint",
+                      )}
                     </span>
                   </span>
                 </label>

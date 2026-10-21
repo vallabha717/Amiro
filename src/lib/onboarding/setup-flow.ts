@@ -22,6 +22,8 @@ export type SetupStepId =
   | "connectors"
   | "voice"
   | "voiceConnect"
+  | "listen"
+  | "listenConnect"
   | "done";
 
 /** The main line, in order. Follow-ups slot in after their parent. */
@@ -34,6 +36,7 @@ export const SETUP_STEPS: readonly SetupStepId[] = [
   "search",
   "connectors",
   "voice",
+  "listen",
   "done",
 ];
 
@@ -42,6 +45,7 @@ export const FOLLOW_UP: Partial<Record<SetupStepId, SetupStepId>> = {
   providerConnect: "provider",
   searchConnect: "search",
   voiceConnect: "voice",
+  listenConnect: "listen",
 };
 
 /** Steps the user may skip; the rest must be answered. */
@@ -54,6 +58,8 @@ export const SKIPPABLE: ReadonlySet<SetupStepId> = new Set([
   "connectors",
   "voice",
   "voiceConnect",
+  "listen",
+  "listenConnect",
 ]);
 
 /** The step on the main line that a step (or its follow-up) belongs to. */

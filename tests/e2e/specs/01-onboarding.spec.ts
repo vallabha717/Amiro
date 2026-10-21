@@ -83,7 +83,7 @@ test.describe("onboarding", () => {
       const turn = await openTurn(page, "look");
       await expect(turn.getByTestId("setup-look-card")).toBeVisible();
       await expect(turn.getByTestId("setup-agent-name")).toHaveCount(0);
-      await expect(page.getByTestId("setup-progress")).toHaveText("Step 1 of 7");
+      await expect(page.getByTestId("setup-progress")).toHaveText("Step 1 of 8");
       const story = page.getByTestId("setup-story");
       await expect(story).toHaveAttribute("data-step", "look");
       await expect(page.getByTestId("setup-story-title")).toHaveText("Give your agent a face you'll love");
@@ -102,7 +102,7 @@ test.describe("onboarding", () => {
 
     await step("Default prompt: IDENTITY.md and SOUL.md, exactly what the agent reads", async () => {
       const turn = await openTurn(page, "prompt");
-      await expect(page.getByTestId("setup-progress")).toHaveText("Step 2 of 7");
+      await expect(page.getByTestId("setup-progress")).toHaveText("Step 2 of 8");
       await expect(turn.getByTestId("setup-prompt-text")).toContainText(`**Name:** ${DEFAULT_AGENT_NAME}`);
       await turn.getByTestId("setup-prompt-tab-SOUL.md").click();
       await expect(turn.getByTestId("setup-prompt-text")).toContainText("# SOUL.md");
@@ -124,8 +124,12 @@ test.describe("onboarding", () => {
     await step("Provider: the side story says 'Choose a brain'; every supported provider is listed", async () => {
       const turn = await openTurn(page, "provider");
       await expect(page.getByTestId("setup-story-title")).toHaveText("Choose a brain for your agent to think with");
-      await expect(page.getByTestId("setup-story-chapter")).toContainText("Chapter 4 of 7");
+      await expect(page.getByTestId("setup-story-chapter")).toContainText("Chapter 4 of 8");
       await expect(page.getByTestId("setup-journey-look")).toHaveAttribute("data-state", "done");
+      // The left panel keeps what was chosen so far under the agent.
+      await expect(page.getByTestId("setup-agent-panel")).toBeVisible();
+      await expect(page.getByTestId("setup-journey-answer-look")).toContainText(new RegExp(agent.colour, "i"));
+      await expect(page.getByTestId("setup-journey-answer-personality")).toHaveText("Warm Companion");
       await expect(turn.getByRole("heading", { name: "API key", exact: true })).toBeVisible();
       const count = await turn.locator('button[data-testid^="setup-provider-"]').count();
       expect(count, "the whole catalog, not a featured few").toBeGreaterThan(10);
@@ -142,6 +146,10 @@ test.describe("onboarding", () => {
         new RegExp(`To connect ${provider.label}, paste its API key`),
       );
       await expect(turn.getByTestId("login-panel")).toBeVisible();
+      // Only the chosen provider: no second search box or provider picker.
+      await expect(turn.getByTestId("login-provider-locked")).toContainText(provider.label);
+      await expect(turn.getByRole("textbox", { name: "Search providers" })).toHaveCount(0);
+      await expect(turn.getByTestId("login-provider-select")).toHaveCount(0);
       await expect(turn.locator('input[type="password"]').first()).toBeVisible();
       await expect(turn.getByTestId("setup-provider-continue")).toBeDisabled();
     });
@@ -160,6 +168,7 @@ test.describe("onboarding", () => {
       turn = await openTurn(page, "search");
       await turn.getByTestId("setup-search-duckduckgo").click();
       await expect(replyOf(page, "search")).toHaveText("DuckDuckGo");
+      await expect(page.getByTestId("setup-journey-answer-search")).toHaveText("DuckDuckGo");
       const saved = await amiro.api<Array<{ provider: string; isActive: boolean }>>("/api/search/providers");
       expect(saved.body.filter((p) => p.isActive).map((p) => p.provider)).toEqual(["duckduckgo"]);
       expect(saved.body.filter((p) => p.provider === "duckduckgo"), "updated in place, not duplicated").toHaveLength(1);
@@ -178,13 +187,27 @@ test.describe("onboarding", () => {
       await expect(replyOf(page, "connectors")).toHaveText("Skip for now");
     });
 
-    await step("Voice: a keyed provider asks for its key securely; pick another, then skip", async () => {
+    await step("Speaking voice: OpenAI asks for its key and offers to listen with it too; pick another, then skip", async () => {
       let turn = await openTurn(page, "voice");
+      await expect(page.getByTestId("setup-story-title")).toHaveText("Let your agent speak");
+      await expect(turn.getByTestId("setup-voice-elevenlabs")).toContainText("Live voice");
       await turn.getByTestId("setup-voice-openai").click();
       turn = await openTurn(page, "voiceConnect");
       await expect(turn.getByTestId("setup-voice-key")).toHaveAttribute("type", "password");
+      await expect(turn.getByTestId("setup-voice-also-listen")).toBeChecked();
       await turn.getByRole("button", { name: "Pick another" }).click();
       turn = await openTurn(page, "voice");
+      await turn.getByTestId("setup-skip").click();
+    });
+
+    await step("Listening: its own step; live voice is explained as ElevenLabs-only, not the browser's voice", async () => {
+      const turn = await openTurn(page, "listen");
+      await expect(page.getByTestId("setup-story-title")).toHaveText("Let your agent listen");
+      await expect(turn.locator("[data-streaming]").first()).toHaveAttribute("aria-label", /live voice.*ElevenLabs/i);
+      const live = turn.getByTestId("setup-live-voice");
+      await expect(live).toHaveAttribute("data-state", "needs-elevenlabs");
+      await expect(live).toContainText("not live voice");
+      await expect(turn.getByTestId("setup-listen-deepgram")).toBeVisible();
       await turn.getByTestId("setup-skip").click();
     });
 
@@ -196,6 +219,7 @@ test.describe("onboarding", () => {
       await expect(turn.getByTestId("setup-summary-search")).toHaveAttribute("data-state", "done");
       await expect(turn.getByTestId("setup-summary-provider")).toHaveAttribute("data-state", "later");
       await expect(turn.getByTestId("setup-summary-voice")).toHaveAttribute("data-state", "later");
+      await expect(turn.getByTestId("setup-summary-listen")).toHaveAttribute("data-state", "later");
     });
 
     await step("Start working with Amiro → the Team page with Amiro as its first card", async () => {

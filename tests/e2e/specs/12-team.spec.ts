@@ -142,6 +142,16 @@ test.describe.serial("team", () => {
       await expect(replyOf(page, "voice")).toContainText("Browser");
     });
 
+    await step("Listening: the browser's own speech recognition (no key); live voice still needs ElevenLabs", async () => {
+      const turn = await openTurn(page, "listen");
+      await expect(turn.getByTestId("setup-live-voice")).toHaveAttribute("data-state", "needs-elevenlabs");
+      await turn.getByTestId("setup-listen-browser-native").click();
+      await expect(replyOf(page, "listen")).toContainText("Browser");
+      const voice = await amiro.api<{ settings: { ttsProvider: string; sttProvider: string } }>("/api/voice/settings");
+      expect(voice.body.settings.ttsProvider).toBe("browser-native");
+      expect(voice.body.settings.sttProvider).toBe("browser-native");
+    });
+
     await step("Summary → Open Scout's thread → Scout's Team thread opens", async () => {
       const turn = await openTurn(page, "done");
       await expect(turn.getByTestId("setup-summary-connectors")).toHaveAttribute("data-state", "later");

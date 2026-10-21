@@ -8,6 +8,8 @@ import {
   fetchVoiceSettings,
   updateVoiceSettings,
 } from "@/lib/backend/voice-api";
+import { cn } from "@/lib/utils";
+import { AudioLines, CheckCircle2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
@@ -24,49 +26,111 @@ import {
 } from "../card-ui";
 import { SecretField } from "./search-cards";
 
-function useVoice() {
+/** Speaking (text to speech) or listening (speech to text). */
+export type VoiceKind = "tts" | "stt";
+
+/** Live voice runs on this provider only (backend/src/routes/live_voice.rs). */
+export const LIVE_VOICE_PROVIDER = "elevenlabs";
+
+export function useVoice() {
   return useSWR<VoiceSettingsResponse>(VOICE_SETTINGS_KEY, fetchVoiceSettings, {
     revalidateOnFocus: false,
   });
 }
 
-/**
- * Make `entry` the speaking voice, and the listening engine too when the same
- * provider offers speech-to-text, so one key turns on both directions.
- */
-async function applyVoiceProvider(
-  entry: VoiceProviderCatalogEntry,
-  voice: VoiceSettingsResponse,
-  input: { apiKey?: string; baseUrl?: string },
+function catalogOf(voice: VoiceSettingsResponse | undefined, kind: VoiceKind) {
+  return (kind === "tts" ? voice?.ttsCatalog : voice?.sttCatalog) ?? [];
+}
+
+function isConfigured(
+  voice: VoiceSettingsResponse | undefined,
+  kind: VoiceKind,
+  id: string,
 ) {
-  const payload: UpdateVoiceSettingsPayload = {
+  const slot =
+    kind === "tts"
+      ? voice?.settings.ttsProviders
+      : voice?.settings.sttProviders;
+  return !!slot?.[id]?.configured;
+}
+
+/** What one engine choice sends: the chosen direction, and listening too when asked. */
+export function voicePayload(
+  kind: VoiceKind,
+  entry: VoiceProviderCatalogEntry,
+  input: { apiKey?: string; baseUrl?: string; alsoListen?: boolean },
+): UpdateVoiceSettingsPayload {
+  const apiKey = input.apiKey || undefined;
+  const baseUrl = input.baseUrl || undefined;
+  const listen = {
+    sttProvider: entry.id,
+    sttProviderUpdate: {
+      provider: entry.id,
+      model: entry.defaultModel,
+      baseUrl,
+      apiKey,
+    },
+  };
+  if (kind === "stt") return listen;
+  return {
     readAloudEnabled: true,
     ttsProvider: entry.id,
     ttsProviderUpdate: {
       provider: entry.id,
       model: entry.defaultModel,
       voiceId: entry.defaultVoice,
-      baseUrl: input.baseUrl || undefined,
-      apiKey: input.apiKey || undefined,
+      baseUrl,
+      apiKey,
     },
+    ...(input.alsoListen ? listen : {}),
   };
-  if (voice.sttCatalog.some((s) => s.id === entry.id)) {
-    payload.sttProvider = entry.id;
-    payload.sttProviderUpdate = {
-      provider: entry.id,
-      baseUrl: input.baseUrl || undefined,
-      apiKey: input.apiKey || undefined,
-    };
-  }
+}
+
+async function applyVoice(payload: UpdateVoiceSettingsPayload) {
   await updateVoiceSettings(payload);
   await mutate(VOICE_SETTINGS_KEY);
 }
 
+/**
+ * Whether live voice (a hands-free conversation) can run. It needs an
+ * ElevenLabs key; the browser's own voices cover read-aloud and dictation
+ * but not live voice.
+ */
+export function LiveVoiceNote() {
+  const t = useTranslations("SetupChat");
+  const { data: voice } = useVoice();
+  const ready = !!voice?.settings.liveVoice?.configured;
+  return (
+    <p
+      className={cn(
+        "mt-3 flex items-start gap-2 rounded-xl border px-3 py-2 text-xs",
+        ready
+          ? "border-emerald-500/40 text-foreground"
+          : "border-dashed text-muted-foreground",
+      )}
+      data-testid="setup-live-voice"
+      data-state={ready ? "ready" : "needs-elevenlabs"}
+    >
+      {ready ? (
+        <CheckCircle2
+          className="mt-px size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400"
+          aria-hidden
+        />
+      ) : (
+        <AudioLines className="mt-px size-3.5 shrink-0" aria-hidden />
+      )}
+      <span>{ready ? t("liveVoiceReady") : t("liveVoiceNeeds")}</span>
+    </p>
+  );
+}
+
 export function VoicePickCard({
+  kind,
   onSaved,
   onNeedsKey,
   onSkip,
 }: {
+  kind: VoiceKind;
   onSaved: (label: string) => void;
   onNeedsKey: (entry: VoiceProviderCatalogEntry) => void;
   onSkip: () => void;
@@ -75,22 +139,22 @@ export function VoicePickCard({
   const { data: voice, isLoading } = useVoice();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const configured = (id: string) =>
-    !!voice?.settings.ttsProviders[id]?.configured;
-  const current = voice?.ttsCatalog.find(
-    (e) => e.id === voice.settings.ttsProvider && configured(e.id),
+  const catalog = catalogOf(voice, kind);
+  const currentId =
+    kind === "tts" ? voice?.settings.ttsProvider : voice?.settings.sttProvider;
+  const current = catalog.find(
+    (e) => e.id === currentId && isConfigured(voice, kind, e.id),
   );
 
   const pick = async (entry: VoiceProviderCatalogEntry) => {
-    if (!voice) return;
-    if (!entry.keyless && !configured(entry.id)) {
+    if (!entry.keyless && !isConfigured(voice, kind, entry.id)) {
       onNeedsKey(entry);
       return;
     }
     setBusy(entry.id);
     setError(null);
     try {
-      await applyVoiceProvider(entry, voice, {});
+      await applyVoice(voicePayload(kind, entry, {}));
       onSaved(entry.displayName);
     } catch (err) {
       setError(errorText(err, t("saveError")));
@@ -99,32 +163,43 @@ export function VoicePickCard({
   };
 
   return (
-    <SetupCard testId="setup-voice-card">
+    <SetupCard
+      testId={kind === "tts" ? "setup-voice-card" : "setup-listen-card"}
+    >
       {isLoading ? (
         <Skeleton className="h-32 w-full" />
       ) : (
         <div className="grid gap-2 sm:grid-cols-2">
-          {(voice?.ttsCatalog ?? []).map((entry) => (
+          {catalog.map((entry) => (
             <ChoiceButton
               key={entry.id}
               title={entry.displayName}
               subtitle={entry.subtitle}
-              badge={entry.keyless ? t("noKey") : null}
-              connected={configured(entry.id)}
+              badge={
+                entry.id === LIVE_VOICE_PROVIDER
+                  ? t("liveBadge")
+                  : entry.keyless
+                    ? t("noKey")
+                    : null
+              }
+              connected={isConfigured(voice, kind, entry.id)}
               disabled={busy !== null}
               onClick={() => pick(entry)}
-              testId={`setup-voice-${entry.id}`}
+              testId={`setup-${kind === "tts" ? "voice" : "listen"}-${entry.id}`}
             />
           ))}
         </div>
       )}
+      <LiveVoiceNote />
       <ErrorLine error={error} />
       <CardActions onSkip={onSkip} busy={busy !== null}>
         {current && (
           <Button
             variant="outline"
             onClick={() => onSaved(current.displayName)}
-            data-testid="setup-voice-keep"
+            data-testid={
+              kind === "tts" ? "setup-voice-keep" : "setup-listen-keep"
+            }
           >
             {t("keepProvider", { provider: current.displayName })}
           </Button>
@@ -135,37 +210,47 @@ export function VoicePickCard({
 }
 
 export function VoiceKeyCard({
+  kind,
   providerId,
   onSaved,
   onBack,
   onSkip,
 }: {
+  kind: VoiceKind;
   providerId: string;
-  onSaved: () => void;
+  onSaved: (alsoListen: boolean) => void;
   onBack: () => void;
   onSkip: () => void;
 }) {
   const t = useTranslations("SetupChat");
   const { data: voice } = useVoice();
-  const entry = voice?.ttsCatalog.find((e) => e.id === providerId);
+  const entry = catalogOf(voice, kind).find((e) => e.id === providerId);
+  const canListen =
+    kind === "tts" && !!voice?.sttCatalog.some((s) => s.id === providerId);
   const [key, setKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
+  const [alsoListen, setAlsoListen] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const needsBase = !!entry?.requiresBaseUrl;
   const ready = !!entry && key.trim() && (!needsBase || baseUrl.trim());
+  const prefix = kind === "tts" ? "setup-voice" : "setup-listen";
 
   const save = async () => {
-    if (!voice || !entry || !ready || busy) return;
+    if (!entry || !ready || busy) return;
     setBusy(true);
     setError(null);
     try {
-      await applyVoiceProvider(entry, voice, {
-        apiKey: key.trim(),
-        baseUrl: baseUrl.trim(),
-      });
+      const listen = canListen && alsoListen;
+      await applyVoice(
+        voicePayload(kind, entry, {
+          apiKey: key.trim(),
+          baseUrl: baseUrl.trim(),
+          alsoListen: listen,
+        }),
+      );
       setKey("");
-      onSaved();
+      onSaved(listen);
     } catch (err) {
       setError(errorText(err, t("saveError")));
       setBusy(false);
@@ -174,7 +259,7 @@ export function VoiceKeyCard({
 
   const label = entry?.displayName ?? providerId;
   return (
-    <SetupCard testId="setup-voice-key-card">
+    <SetupCard testId={`${prefix}-key-card`}>
       <form
         className="space-y-3"
         onSubmit={(e) => {
@@ -184,36 +269,52 @@ export function VoiceKeyCard({
       >
         {needsBase && (
           <div className="space-y-1.5">
-            <Label htmlFor="setup-voice-base">{t("baseUrl")}</Label>
+            <Label htmlFor={`${prefix}-base`}>{t("baseUrl")}</Label>
             <Input
-              id="setup-voice-base"
+              id={`${prefix}-base`}
               value={baseUrl}
               placeholder={entry?.defaultBaseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
-              data-testid="setup-voice-base"
+              data-testid={`${prefix}-base`}
             />
           </div>
         )}
         <SecretField
-          id="setup-voice-key"
+          id={`${prefix}-key`}
           label={t("apiKeyFor", { provider: label })}
           value={key}
           onChange={setKey}
           placeholder={entry?.apiKeyPlaceholder}
           docsUrl={entry?.docsUrl}
           docsLabel={t("getKey", { provider: label })}
-          testId="setup-voice-key"
+          testId={`${prefix}-key`}
         />
+        {canListen && (
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={alsoListen}
+              onChange={(e) => setAlsoListen(e.target.checked)}
+              data-testid="setup-voice-also-listen"
+            />
+            {t("alsoListen", { provider: label })}
+          </label>
+        )}
         <ErrorLine error={error} />
         <CardActions onSkip={onSkip} busy={busy}>
           <Button
             type="submit"
             disabled={!ready || busy}
-            data-testid="setup-voice-save"
+            data-testid={`${prefix}-save`}
           >
             {busy ? t("saving") : t("saveKey")}
           </Button>
-          <Button type="button" variant="ghost" onClick={onBack} disabled={busy}>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={onBack}
+            disabled={busy}
+          >
             {t("pickAnother")}
           </Button>
         </CardActions>

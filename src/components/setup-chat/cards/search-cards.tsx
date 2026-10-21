@@ -203,7 +203,12 @@ export function SearchKeyCard({
           >
             {busy ? t("saving") : t("saveKey")}
           </Button>
-          <Button type="button" variant="ghost" onClick={onBack} disabled={busy}>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={onBack}
+            disabled={busy}
+          >
             {t("pickAnother")}
           </Button>
         </CardActions>

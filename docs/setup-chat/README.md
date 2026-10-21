@@ -17,24 +17,33 @@ a card under it. This page records what it does and why it is built this way.
 | 5 | Web search | The search catalog; keyless engines save at once | `POST /api/search/providers` + activate | yes |
 | 5b | Search key | Password field | same | yes |
 | 6 | Connectors | Composio key and app catalog (Amiro only), and "Add server" (the Connectors page dialog) | the connector routes | yes |
-| 7 | Voice | The TTS catalog; keyless voices save at once | `PUT /api/voice/settings` (STT too, when the provider offers it) | yes |
-| 7b | Voice key | Password field (and base URL when required) | same | yes |
+| 7 | Speaking voice | The TTS catalog; keyless voices save at once | `PUT /api/voice/settings` | yes |
+| 7b | Voice key | Password field (and base URL when required), with "use it to listen too" when the provider also does STT | same | yes |
+| 8 | Listening | The STT catalog, and whether live voice can run | same | yes |
+| 8b | Listen key | Password field | same | yes |
 | — | Done | What was set up and what is left for later; "Good to know" for onboarding | `POST /api/onboarding/complete` (onboarding) | — |
 
 The script is `src/lib/onboarding/setup-flow.ts` (pure, unit tested). The chat
 is `src/components/setup-chat/`: `setup-chat.tsx` runs the turns,
 `streaming-text.tsx` types each line, and `cards/` holds one card per step.
 
-Beside the chat, `story-panel.tsx` tells the open step as a chapter of the
-agent's journey: The look, The soul (prompt), The character (personality),
-The brain (provider), The eyes (search), Superpowers (connectors), A voice of
-its own. Each chapter has a headline ("Choose a brain for your agent to think
-with", "Give your agent the superpowers it needs"), a short explanation, three
-points, and the agent at the centre with that chapter's icons orbiting it.
-Underneath, the journey list shows each chapter as done, current, later or
-upcoming. A follow-up turn (connect the provider) keeps its parent's chapter.
-On narrow screens the panel becomes a one-line strip under the header; with
-reduced motion the orbit and transitions stand still.
+The page is three columns on one seamless, accent-tinted surface, with no
+dividing lines (`story-panel.tsx`):
+
+- **Left, `AgentPanel`:** the agent itself, with the open chapter's icons
+  orbiting it, its name, and the journey: each chapter as done (with what was
+  chosen, e.g. "Teal · Starfish", "DuckDuckGo"), current, later or upcoming.
+  It does not scroll.
+- **Centre:** the chat, the only part that scrolls, fading at its edges.
+- **Right, `StepPanel`:** the open step told as a chapter: The look, The soul,
+  The character, The brain ("Choose a brain for your agent to think with"),
+  The eyes, Superpowers ("Give your agent the superpowers it needs"), A voice
+  of its own, Ears to hear you. A headline, a short explanation and three
+  points. A follow-up turn (connect the provider) keeps its parent's chapter.
+
+Below 1280px the left column folds into a small header; below 1024px the
+right one becomes a one-line chapter strip. With reduced motion the orbit and
+transitions stand still.
 
 ## Decisions
 
@@ -71,6 +80,20 @@ whole instance.
 returns `IDENTITY.md` and `SOUL.md` from the agent's home with the `_ ` note
 lines stripped, which is what the runtime puts in the prompt. For a fresh
 owner it writes the files first (`ensure_owner_identity_file` + seed).
+
+**Speaking and listening are separate steps, and live voice is spelled out.**
+Read-aloud uses the TTS engine and dictation the STT engine, so each gets its
+own step. Live voice (a hands-free conversation) is a different path: it runs
+only on ElevenLabs (`backend/src/routes/live_voice.rs`, Scribe STT and
+streaming TTS) with an ElevenLabs key saved for either direction. The browser's
+own voices cover read-aloud and dictation, not live voice. Both voice cards and
+the summary say whether live voice is ready, and ElevenLabs carries a "Live
+voice" badge. Keys are saved per direction, so the speaking key step offers to
+use the same provider and key for listening.
+
+**The connect step shows only the chosen provider.** `LoginPanel` takes
+`lockProvider`, which hides its search box and provider picker; the chat has
+already chosen, and "Pick another" goes back to the full list.
 
 **Engines that need more than a key stay in Admin.** SearXNG needs a server
 address and custom HTTP search needs the full editor, so the chat leaves them

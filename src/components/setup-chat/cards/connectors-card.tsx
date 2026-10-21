@@ -90,7 +90,9 @@ export function ConnectorsCard({
           >
             <p className="mb-3 text-sm">
               <span className="font-medium">{t("composioTitle")}</span>{" "}
-              <span className="text-muted-foreground">{t("composioBlurb")}</span>
+              <span className="text-muted-foreground">
+                {t("composioBlurb")}
+              </span>
             </p>
             <SecretField
               id="setup-composio-key"
@@ -150,7 +152,10 @@ export function ConnectorsCard({
       <ErrorLine error={error} />
       <CardActions onSkip={summary ? undefined : onSkip}>
         {summary && (
-          <Button onClick={() => onDone(summary)} data-testid="setup-connectors-continue">
+          <Button
+            onClick={() => onDone(summary)}
+            data-testid="setup-connectors-continue"
+          >
             {t("continue")}
           </Button>
         )}

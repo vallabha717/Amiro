@@ -176,6 +176,7 @@ export function ProviderConnectCard({
     <SetupCard testId="setup-provider-connect-card" className="p-2 sm:p-3">
       <LoginPanel
         initialProviderId={providerId}
+        lockProvider
         onProviderChange={setCurrent}
         onClose={onBack}
       />

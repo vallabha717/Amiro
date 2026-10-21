@@ -39,7 +39,12 @@ import { PromptCard } from "./cards/prompt-card";
 import { ProviderConnectCard, ProviderPickCard } from "./cards/provider-cards";
 import { SearchKeyCard, SearchPickCard } from "./cards/search-cards";
 import { VoiceKeyCard, VoicePickCard } from "./cards/voice-cards";
-import { STORY_CSS, StoryPanel, StoryStrip } from "./story-panel";
+import {
+  AgentPanel,
+  STORY_CSS,
+  StepPanel,
+  StoryStrip,
+} from "./story-panel";
 import { StreamingText } from "./streaming-text";
 
 export interface SetupResult {
@@ -149,6 +154,7 @@ export function SetupChat({
         );
       case "connectors":
       case "voice":
+      case "listen":
         return t(`say.${turn.step}${team ? "Team" : ""}`, vars);
       default:
         return t(`say.${turn.step}`, vars);
@@ -259,14 +265,19 @@ export function SetupChat({
           />
         );
       case "voice":
+      case "listen": {
+        const kind = turn.step === "voice" ? "tts" : "stt";
+        const connect =
+          turn.step === "voice" ? "voiceConnect" : "listenConnect";
         return (
           <VoicePickCard
+            kind={kind}
             onSkip={skip}
             onSaved={(label) => answer(label)}
             onNeedsKey={(entry) =>
               answer(entry.displayName, {
                 next: {
-                  step: "voiceConnect",
+                  step: connect,
                   subject: entry.id,
                   meta: { label: entry.displayName },
                 },
@@ -274,17 +285,26 @@ export function SetupChat({
             }
           />
         );
+      }
       case "voiceConnect":
+      case "listenConnect": {
+        const speak = turn.step === "voiceConnect";
         return (
           <VoiceKeyCard
+            kind={speak ? "tts" : "stt"}
             providerId={turn.subject ?? ""}
-            onSaved={() => answer(t("reply.keySaved"))}
+            onSaved={(alsoListen) =>
+              answer(t(alsoListen ? "reply.keySavedBoth" : "reply.keySaved"))
+            }
             onBack={() =>
-              answer(t("reply.pickAnother"), { next: { step: "voice" } })
+              answer(t("reply.pickAnother"), {
+                next: { step: speak ? "voice" : "listen" },
+              })
             }
             onSkip={skip}
           />
         );
+      }
       case "done":
         return (
           <DoneCard
@@ -303,42 +323,53 @@ export function SetupChat({
   return (
     <div
       className="flex h-full min-h-0"
-      style={{ "--setup-accent": accent } as React.CSSProperties}
+      style={
+        {
+          "--setup-accent": accent,
+          background:
+            "radial-gradient(55% 60% at 0% 0%, color-mix(in oklab, var(--setup-accent) 14%, transparent), transparent 70%), radial-gradient(45% 55% at 100% 100%, color-mix(in oklab, var(--setup-accent) 10%, transparent), transparent 70%)",
+        } as React.CSSProperties
+      }
       data-testid="setup-chat"
       data-mode={mode}
       data-step={open.step}
     >
+      <div className="hidden w-[300px] shrink-0 xl:block">
+        <AgentPanel
+          step={open.step}
+          turns={turns}
+          traits={traits}
+          accent={accent}
+          name={name || t("newAgent")}
+          subtitle={team ? t("subtitleTeam") : t("subtitle")}
+        />
+      </div>
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-3 border-b px-4 py-3 sm:px-6">
+        <header className="flex items-center gap-3 px-4 pt-3 sm:px-6 xl:hidden">
           <AgentCharacterAvatar
             traits={traits}
             accentColor={accent}
-            size={40}
+            size={36}
             animated
           />
           <div className="min-w-0 flex-1">
-            <p
-              className="truncate font-semibold"
-              data-testid="setup-agent-title"
-            >
-              {name || t("newAgent")}
-            </p>
+            <p className="truncate font-semibold">{name || t("newAgent")}</p>
             <p className="text-xs text-muted-foreground">
               {team ? t("subtitleTeam") : t("subtitle")}
             </p>
           </div>
-          {progress.index > 0 && (
-            <p
-              className="text-xs tabular-nums text-muted-foreground"
-              data-testid="setup-progress"
-            >
-              {t("progress", progress)}
-            </p>
-          )}
         </header>
         <StoryStrip step={open.step} />
+        {progress.index > 0 && (
+          <p
+            className="mx-auto mt-3 rounded-full bg-background/70 px-3 py-1 text-xs tabular-nums text-muted-foreground shadow-sm"
+            data-testid="setup-progress"
+          >
+            {t("progress", progress)}
+          </p>
+        )}
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto [mask-image:linear-gradient(to_bottom,transparent,black_28px,black_calc(100%-28px),transparent)]">
           <ol
             className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-6 sm:px-6"
             aria-live="polite"
@@ -392,13 +423,8 @@ export function SetupChat({
           <div ref={bottom} />
         </div>
       </div>
-      <div className="hidden w-[min(40%,440px)] shrink-0 lg:block">
-        <StoryPanel
-          step={open.step}
-          turns={turns}
-          traits={traits}
-          accent={accent}
-        />
+      <div className="hidden w-[340px] shrink-0 lg:block">
+        <StepPanel step={open.step} />
       </div>
       <style>{STORY_CSS}</style>
     </div>

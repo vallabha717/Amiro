@@ -142,11 +142,12 @@ export function OnboardingWizard() {
   if (step === "chat") {
     return (
       <div
-        className="flex h-dvh flex-col bg-background text-foreground"
+        className="relative flex h-dvh flex-col bg-background text-foreground"
         data-testid="onboarding-wizard"
         data-step="chat"
       >
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b px-5 text-[15px] font-semibold sm:px-8">
+        {/* Floats over the chat's own background: one seamless surface. */}
+        <header className="pointer-events-none absolute left-0 top-0 z-10 flex h-14 items-center gap-2 px-5 text-[15px] font-semibold sm:px-8">
           <VrndaLogo className="size-5" />
           <span className="font-brand">Amiro</span>
         </header>

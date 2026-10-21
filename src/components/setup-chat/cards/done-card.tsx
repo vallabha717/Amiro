@@ -11,6 +11,7 @@ import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { Button } from "ui/button";
 import { CardActions, ErrorLine, SetupCard, errorText } from "../card-ui";
+import { LiveVoiceNote } from "./voice-cards";
 
 const code = (chunks: ReactNode) => (
   <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.95em] text-foreground">
@@ -68,7 +69,10 @@ export function DoneCard({
               {later ? (
                 <CircleDashed className="size-4" aria-hidden />
               ) : (
-                <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400" aria-hidden />
+                <CheckCircle2
+                  className="size-4 text-emerald-600 dark:text-emerald-400"
+                  aria-hidden
+                />
               )}
               <span>{t(`steps.${step}`)}</span>
               {later && <span className="text-xs">· {t("later")}</span>}
@@ -76,14 +80,22 @@ export function DoneCard({
           );
         })}
       </ul>
+      <LiveVoiceNote />
       {skipped.size > 0 && (
         <p className="mt-3 text-xs text-muted-foreground">{t("laterHint")}</p>
       )}
       {mode === "onboarding" && (
-        <details className="mt-4 text-xs text-muted-foreground" data-testid="setup-good-to-know">
-          <summary className="cursor-pointer hover:text-foreground">{t("goodToKnow")}</summary>
+        <details
+          className="mt-4 text-xs text-muted-foreground"
+          data-testid="setup-good-to-know"
+        >
+          <summary className="cursor-pointer hover:text-foreground">
+            {t("goodToKnow")}
+          </summary>
           <ul className="mt-2 list-disc space-y-1.5 pl-4 leading-relaxed">
-            {accessUrl && <li>{t.rich("accessAt", { url: accessUrl, code })}</li>}
+            {accessUrl && (
+              <li>{t.rich("accessAt", { url: accessUrl, code })}</li>
+            )}
             <li>{t.rich("resetPassword", { code })}</li>
             <li>{t.rich("configFile", { code })}</li>
             <li>{t("runAgain")}</li>

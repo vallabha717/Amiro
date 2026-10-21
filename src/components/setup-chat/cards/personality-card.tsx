@@ -87,8 +87,13 @@ export function PersonalityCard({
           const left = t(`axes.${axis.id}.left`);
           const right = t(`axes.${axis.id}.right`);
           return (
-            <div key={axis.id} className="grid grid-cols-[6.5rem_1fr_6.5rem] items-center gap-3 text-xs sm:text-sm">
-              <span className={cn("text-right", value < 45 && "font-semibold")}>{left}</span>
+            <div
+              key={axis.id}
+              className="grid grid-cols-[6.5rem_1fr_6.5rem] items-center gap-3 text-xs sm:text-sm"
+            >
+              <span className={cn("text-right", value < 45 && "font-semibold")}>
+                {left}
+              </span>
               <input
                 type="range"
                 min={0}
@@ -108,10 +113,16 @@ export function PersonalityCard({
           );
         })}
       </div>
-      <p className="mt-4 text-xs text-muted-foreground">{t("personalityNote")}</p>
+      <p className="mt-4 text-xs text-muted-foreground">
+        {t("personalityNote")}
+      </p>
       <ErrorLine error={error} />
       <CardActions onSkip={onSkip} skipLabel={t("keepDefault")} busy={busy}>
-        <Button onClick={save} disabled={busy} data-testid="setup-personality-save">
+        <Button
+          onClick={save}
+          disabled={busy}
+          data-testid="setup-personality-save"
+        >
           {busy ? t("saving") : t("savePersonality")}
         </Button>
       </CardActions>

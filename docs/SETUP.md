@@ -22,7 +22,8 @@ line per step, and you answer each with a card under it:
 | AI provider | Any provider Amiro supports, grouped by how it connects. Amiro then guides the connect step: an API key into the vault, an OAuth or device-code sign-in, or a local endpoint. | Yes. Later in **Admin → Providers**. |
 | Web search | A search engine. Keyless ones (DuckDuckGo, Bing, provider native) are set straight away; the rest ask for their key. | Yes. Later in **Admin → Search**. |
 | Connectors | Composio's key for 1,000+ apps, or any MCP server. | Yes. Later in **Connectors**. |
-| Voice | A speech provider for read-aloud and dictation, with its key. | Yes. Later in **Admin → Voice**. |
+| Speaking voice | A text-to-speech provider for read-aloud, with its key (and the option to listen with it too). | Yes. Later in **Admin → Voice**. |
+| Listening | A speech-to-text provider for dictation. Live voice, a hands-free conversation, runs on ElevenLabs only; the browser's built-in voice covers read-aloud and dictation, not live voice. | Yes. Later in **Admin → Voice**. |
 
 The chat ends with a summary of what was set up, what was left for later, and
 where Amiro can be reached on your network. Keys are typed into password

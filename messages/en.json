@@ -1029,7 +1029,8 @@
       "provider": "AI provider",
       "search": "Web search",
       "connectors": "Connectors",
-      "voice": "Voice"
+      "voice": "Speaking voice",
+      "listen": "Listening"
     },
     "mechanism": {
       "oauth": "Sign in with your account",
@@ -1078,7 +1079,8 @@
       "keepDefault": "Keep the default",
       "connected": "{provider} connected",
       "keySaved": "Key saved",
-      "pickAnother": "Let me pick another"
+      "pickAnother": "Let me pick another",
+      "keySavedBoth": "Key saved for speaking and listening"
     },
     "say": {
       "greet": {
@@ -1104,13 +1106,16 @@
       "searchConnect": "Paste your {provider} API key. Like every key, it goes to the vault, not the chat.",
       "connectors": "Now connect the apps you use so I can work in them: 1,000+ apps through Composio, or any MCP server.",
       "connectorsTeam": "Now connect the services I should use. I can use remote MCP servers. Apps through Composio stay with Amiro for now.",
-      "voice": "Last one: my voice. Choose a speech provider so I can talk and listen.",
-      "voiceTeam": "Last one: voice. Choose a speech provider so I can talk and listen. Voice is shared by everyone on your team.",
-      "voiceConnect": "Paste your {provider} API key. I'll use it to speak, and to listen if {provider} can.",
+      "voice": "Next, my voice. Choose how I speak, so I can read my answers aloud.",
+      "voiceTeam": "Next, my voice. Choose how I speak, so I can read my answers aloud. Voice is shared by everyone on your team.",
+      "voiceConnect": "Paste your {provider} API key so I can speak with it.",
       "done": {
         "onboarding": "All set{owner}! Here's what we set up. Let's get to work.",
         "team": "I'm ready. Here's how I'm set up. Say hi in my Team thread."
-      }
+      },
+      "listen": "Last one: my ears. Choose how I listen, so you can talk instead of type. For live voice, a hands-free conversation, I need ElevenLabs; the browser's own voice works for dictation and read-aloud only.",
+      "listenTeam": "Last one: my ears. Choose how I listen, so you can talk instead of type. For live voice I need ElevenLabs. Voice is shared by everyone on your team.",
+      "listenConnect": "Paste your {provider} API key so I can turn your speech into text."
     },
     "goodToKnow": "Good to know",
     "accessAt": "Open Amiro from anywhere on your network at <code>{url}</code>.",
@@ -1178,11 +1183,11 @@
       },
       "voice": {
         "chapter": "A voice of its own",
-        "title": "Let your agent speak and listen",
-        "body": "Give your agent a voice to read answers aloud, and ears to take dictation or hold a live conversation hands-free.",
-        "p1": "Read-aloud and dictation",
-        "p2": "Live voice conversations",
-        "p3": "English, Hindi or auto-detect"
+        "title": "Let your agent speak",
+        "body": "Give your agent a voice to read its answers aloud while you cook, drive or just look away from the screen.",
+        "p1": "Read answers aloud, one tap away",
+        "p2": "Pick the voice you like best",
+        "p3": "The browser's own voice needs no key"
       },
       "done": {
         "chapter": "Epilogue",
@@ -1191,8 +1196,20 @@
         "p1": "Talk in its Team thread",
         "p2": "Tune it further on its pages",
         "p3": "Run setup again from Admin → General"
+      },
+      "listen": {
+        "chapter": "Ears to hear you",
+        "title": "Let your agent listen",
+        "body": "Talk instead of typing: dictate a message, or hold a live, hands-free conversation where it answers out loud.",
+        "p1": "Dictation straight into the chat",
+        "p2": "Live voice runs on ElevenLabs",
+        "p3": "English, Hindi or auto-detect"
       }
-    }
+    },
+    "liveVoiceReady": "Live voice is ready: a hands-free conversation runs on your ElevenLabs key.",
+    "liveVoiceNeeds": "Live voice, a hands-free conversation, runs on ElevenLabs only. The browser's built-in voice handles read-aloud and dictation, not live voice.",
+    "liveBadge": "Live voice",
+    "alsoListen": "Use {provider} to listen too (speech to text)"
   },
   "Team": {
     "title": "Team",

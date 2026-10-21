@@ -32,7 +32,7 @@ export function NewAgentWizard() {
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="team-new-agent">
-      <div className="flex shrink-0 items-center gap-3 border-b px-4 py-2">
+      <div className="flex shrink-0 items-center gap-3 px-4 py-2">
         <Link
           href="/team"
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
