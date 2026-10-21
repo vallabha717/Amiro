@@ -72,6 +72,17 @@ vi.mock("ui/popover", () => ({
   PopoverAnchor: ({ children }: any) => <>{children}</>,
 }));
 
+// The overflow menu renders open, so its items can be asserted statically.
+vi.mock("@/components/ui/dropdown-menu", () => ({
+  DropdownMenu: ({ children }: any) => <div data-slot="menu">{children}</div>,
+  DropdownMenuTrigger: ({ children }: any) => <>{children}</>,
+  DropdownMenuContent: ({ children }: any) => <div role="menu">{children}</div>,
+  DropdownMenuItem: ({ children, onSelect, variant, ...props }: any) => (
+    <div role="menuitem" {...props}>{children}</div>
+  ),
+  DropdownMenuSeparator: () => <hr />,
+}));
+
 vi.mock("@/lib/backend/client", () => ({
   apiJson: vi.fn().mockResolvedValue({}),
   apiFetch: vi.fn().mockResolvedValue(new Response()),
@@ -133,39 +144,43 @@ describe("NotificationsBell", () => {
     expect(html).toContain('data-testid="notifications-unread-badge"');
     expect(html).toContain('data-testid="notifications-bell-popover"');
     expect(html).toContain('data-testid="notifications-bell-count"');
-    // Per-04-ui.md row testids carry the notification id.
+    // Opens on unread only, like Vellum: the read row waits behind the switch.
     expect(html).toContain('data-testid="notification-row-n1"');
-    expect(html).toContain('data-testid="notification-row-n2"');
+    expect(html).not.toContain('data-testid="notification-row-n2"');
   });
 
-  it("renders feed filters, header actions, and the settings entry", () => {
+  it("renders the unread switch and one overflow menu instead of filter chips", () => {
     const html = renderToStaticMarkup(createElement(NotificationsBell));
     expect(html).toContain('data-testid="notifications-feed"');
-    expect(html).toContain('data-testid="notifications-filter-all"');
     expect(html).toContain('data-testid="notifications-filter-unread"');
-    expect(html).toContain('data-testid="notifications-filter-chat_reply"');
-    expect(html).toContain('data-testid="notifications-mark-all-read"');
-    expect(html).toContain('data-testid="notifications-clear-all"');
-    expect(html).toContain('data-testid="notifications-settings-button"');
+    expect(html).toContain('aria-checked="true"');
+    expect(html).toContain('data-testid="notifications-actions"');
+    expect(html).not.toContain('data-testid="notifications-filter-all"');
+    expect(html).not.toContain('data-testid="notifications-filter-chat_reply"');
   });
 
-  it("shows the unread filter empty state with a send-test action", () => {
+  it("names the unread count on the bell for screen readers", () => {
+    const html = renderToStaticMarkup(createElement(NotificationsBell));
+    expect(html).toContain('aria-label="labelUnread"');
+  });
+
+  it("shows the empty state and keeps send-test in the menu", () => {
     swrData = [];
     const html = renderToStaticMarkup(createElement(NotificationsBell));
     expect(html).toContain('data-testid="notifications-empty-state"');
     expect(html).toContain('data-testid="notifications-send-test"');
   });
 
-  it("shows a browser permission banner when permission is prompt", () => {
+  it("offers browser notifications in the menu when permission is prompt", () => {
     (window.Notification as any).permission = "default";
     const html = renderToStaticMarkup(createElement(NotificationsBell));
     expect(html).toContain('data-testid="notifications-enable-browser"');
   });
 
-  it("shows Desktop Native Active pill when in Amiro Desktop", () => {
+  it("never asks for browser permission inside Amiro Desktop", () => {
     (window as any).__AMIRO_DESKTOP__ = true;
     const html = renderToStaticMarkup(createElement(NotificationsBell));
-    expect(html).toContain("desktopActive");
+    expect(html).not.toContain('data-testid="notifications-enable-browser"');
     delete (window as any).__AMIRO_DESKTOP__;
   });
 

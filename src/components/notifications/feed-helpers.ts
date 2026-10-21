@@ -1,19 +1,4 @@
-import type {
-  AmiroNotification,
-  NotificationCategory,
-} from "@/lib/notifications/notification-types";
-
-export type FeedFilter = "all" | "unread" | NotificationCategory;
-
-export const FEED_FILTERS: FeedFilter[] = [
-  "all",
-  "unread",
-  "chat_reply",
-  "schedule_result",
-  "heartbeat",
-  "approval",
-  "system",
-];
+import type { AmiroNotification } from "@/lib/notifications/notification-types";
 
 export interface RelativeTime {
   unit: "now" | "minute" | "hour" | "day";
@@ -37,42 +22,41 @@ export function describeRelativeTime(
   return { unit: "day", value: Math.floor(diffHr / 24) };
 }
 
-/** Legacy English formatter (kept for non-translated surfaces). */
-export function formatRelativeTime(isoString?: string): string {
-  const rel = describeRelativeTime(isoString);
-  if (!rel) return "";
-  switch (rel.unit) {
-    case "now":
-      return "just now";
-    case "minute":
-      return `${rel.value}m ago`;
-    case "hour":
-      return `${rel.value}h ago`;
-    case "day":
-      return `${rel.value}d ago`;
-  }
+/** An unread approval is waiting on the user, so it sorts above everything. */
+export function needsAttention(n: AmiroNotification): boolean {
+  return n.category === "approval" && !n.read;
 }
 
-/** Unread-first, newest-first; dismissed items never reach the feed. */
-export function filterNotifications(
+/**
+ * What the inbox lists, in Vellum's order: whatever is waiting on the user
+ * first, then newest first. Dismissed items never show; `unreadOnly` keeps
+ * just the unread ones.
+ */
+export function visibleFeed(
   notifications: AmiroNotification[],
-  filter: FeedFilter,
+  unreadOnly: boolean,
 ): AmiroNotification[] {
-  const visible = notifications.filter((n) => !n.dismissed);
-  const filtered =
-    filter === "all"
-      ? visible
-      : filter === "unread"
-        ? visible.filter((n) => !n.read)
-        : visible.filter((n) => n.category === filter);
-  return [...filtered].sort((a, b) => {
-    if (a.read !== b.read) return a.read ? 1 : -1;
+  const shown = notifications.filter((n) => !n.dismissed && (!unreadOnly || !n.read));
+  return [...shown].sort((a, b) => {
+    const attention = Number(needsAttention(b)) - Number(needsAttention(a));
+    if (attention !== 0) return attention;
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
 }
 
-export function isFeedCategory(
-  filter: FeedFilter,
-): filter is NotificationCategory {
-  return filter !== "all" && filter !== "unread";
+/**
+ * One line of plain text from a notification body. Replies are markdown, and
+ * a list row must never show `**` or `#`.
+ */
+export function plainPreview(text: string | undefined, max = 160): string {
+  if (!text) return "";
+  const plain = text
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/[*_~`]+/g, "")
+    .replace(/^\s{0,3}(#{1,6}|>|[-+]|\d+[.)])\s+/gm, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return plain.length > max ? `${plain.slice(0, max - 1).trimEnd()}…` : plain;
 }

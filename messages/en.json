@@ -405,7 +405,10 @@
     "reportAnIssue": "Report an issue",
     "joinCommunity": "Join Community",
     "userSettings": "User Settings",
-    "adminPreferences": "Admin Preferences"
+    "adminPreferences": "Admin Preferences",
+    "threadWorking": "Working…",
+    "threadUnseen": "New reply you haven't seen",
+    "threadFailed": "Failed while you were away"
   },
   "Archive": {
     "title": "Archive",
@@ -1558,31 +1561,23 @@
     "Bell": {
       "label": "Notifications",
       "back": "Back",
-      "unreadCount": "{count} unread",
       "markAllRead": "Mark all read",
       "clearAll": "Clear all",
       "settings": "Notification settings",
       "markedAllRead": "All notifications marked read.",
       "clearedAll": "All notifications cleared.",
-      "updated": "Notification updated.",
       "testSent": "Test notification sent.",
       "actionFailed": "That did not work. Please try again.",
-      "permissionTitle": "Enable OS push notifications",
-      "enableBrowser": "Enable browser notifications",
-      "desktopActive": "Desktop Native Active",
-      "desktopTitle": "Amiro Desktop"
+      "permissionTitle": "Get alerts when Amiro is in the background",
+      "enableBrowser": "Turn on",
+      "labelUnread": "Notifications, {count} unread",
+      "unreadOnly": "Unread",
+      "actions": "Notification actions",
+      "sendTest": "Send a test notification"
     },
     "Feed": {
-      "filterAll": "All",
-      "filterUnread": "Unread",
-      "filterLabel": "Filter notifications",
       "emptyAll": "No notifications yet",
-      "emptyUnread": "No unread notifications",
-      "emptyCategory": "No {category} notifications",
-      "emptyHint": "Turn completions, schedules, approvals, and system alerts appear here.",
-      "clearFilter": "Clear filter",
-      "sendTest": "Send test notification",
-      "testSent": "Test notification sent.",
+      "emptyHint": "When a chat finishes while you're away, a schedule runs, or something needs your approval, it lands here.",
       "markRead": "Mark read",
       "markUnread": "Mark unread",
       "dismiss": "Dismiss",
@@ -1592,7 +1587,9 @@
       "hoursAgo": "{n}h ago",
       "daysAgo": "{n}d ago",
       "loading": "Loading notifications…",
-      "loadFailed": "Could not load notifications."
+      "loadFailed": "Could not load notifications.",
+      "unread": "Unread",
+      "noUnread": "No unread notifications"
     },
     "Categories": {
       "chat_reply": "Chat reply",
@@ -1606,7 +1603,6 @@
       "deliveriesLoading": "Loading delivery state…",
       "deliveriesError": "Delivery state is unavailable right now.",
       "noDeliveries": "No delivery attempts recorded yet.",
-      "viewSource": "View",
       "resend": "Resend",
       "resendChannel": "Resend via {channel}",
       "resent": "Resent via {channel}.",
@@ -1618,7 +1614,11 @@
       "sent": "Sent",
       "failed": "Failed",
       "skipped": "Skipped",
-      "actionFailed": "That did not work. Please try again."
+      "actionFailed": "That did not work. Please try again.",
+      "openSchedule": "Open schedule",
+      "back": "Back",
+      "goToConversation": "Go to conversation",
+      "deliveredHere": "Delivered here in Amiro"
     },
     "Settings": {
       "title": "Notification settings",

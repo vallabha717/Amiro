@@ -59,6 +59,7 @@ const base: AmiroNotification = {
 
 const props = {
   notification: base,
+  onBack: () => {},
   onMutate: () => {},
   onDismissed: () => {},
   onNavigate: () => {},
@@ -89,7 +90,12 @@ describe("NotificationDetail", () => {
   it("renders the detail shell with heading, body, and actions", () => {
     const html = renderToStaticMarkup(createElement(NotificationDetail, props));
     expect(html).toContain('data-testid="notification-detail"');
+    // Vellum's detail: the title is the panel heading, back sits beside it,
+    // and the footer carries the time and the way to the chat.
     expect(html).toContain("<h2");
+    expect(html).toContain('data-testid="notifications-back"');
+    expect(html).toContain('data-testid="notification-detail-footer"');
+    expect(html).toContain("goToConversation");
     expect(html).toContain("The agent has replied.");
     expect(html).toContain('data-testid="notification-view-source"');
     expect(html).toContain('data-testid="notification-toggle-read"');
