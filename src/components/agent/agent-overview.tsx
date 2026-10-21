@@ -132,7 +132,7 @@ function FloodableTile({
       onMouseLeave={() => onHoverChange(sectionKey, false)}
       style={style}
       className={cn(
-        "group relative flex overflow-hidden border border-border/60 bg-card/85 backdrop-blur-xl transition-transform duration-200 active:scale-[0.985] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "group relative flex overflow-hidden border border-border/60 bg-card/85 backdrop-blur-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         className,
       )}
     >
@@ -569,8 +569,8 @@ export function AgentOverview() {
             data-testid="agent-center-stage"
             className="relative flex min-h-[360px] flex-col items-center justify-between rounded-3xl px-4 py-6 lg:col-span-4"
           >
-            {/* Greeting + Inline Rename + Handle */}
-            <div className="z-10 flex flex-col items-center gap-1.5 text-center">
+            {/* Greeting + Inline Rename + Handle with fixed reserved height to prevent vertical jitter */}
+            <div className="z-10 flex min-h-[72px] flex-col items-center justify-center gap-1.5 text-center">
               {editingNameInline ? (
                 <form
                   onSubmit={(e) => {
@@ -601,12 +601,7 @@ export function AgentOverview() {
                   <h1
                     data-testid="agent-greeting-headline"
                     aria-label={headlineText}
-                    className={cn(
-                      "relative font-brand font-semibold tracking-tight text-foreground transition-all",
-                      hoverLine
-                        ? "text-2xl sm:text-[1.75rem]"
-                        : "text-3xl sm:text-[2.5rem] leading-tight",
-                    )}
+                    className="relative font-brand text-2xl sm:text-[1.85rem] font-semibold leading-tight tracking-tight text-foreground"
                   >
                     <span className="invisible" aria-hidden="true">
                       {headlineText}
@@ -634,7 +629,7 @@ export function AgentOverview() {
               <div
                 className={cn(
                   "flex items-center gap-2 text-xs text-muted-foreground transition-opacity duration-200",
-                  hoverLine && "opacity-0",
+                  hoverLine ? "invisible pointer-events-none" : "opacity-100",
                 )}
               >
                 <span className="font-mono font-medium">{identity.handle}</span>
@@ -645,8 +640,8 @@ export function AgentOverview() {
               </div>
             </div>
 
-            {/* Interactive Center Avatar, click to open Customizer */}
-            <div className="relative my-2 flex flex-1 items-center justify-center">
+            {/* Interactive Center Avatar, click to open Customizer with fixed height to prevent layout shifts */}
+            <div className="relative my-2 flex h-[300px] w-full shrink-0 items-center justify-center">
               <div
                 aria-hidden="true"
                 className="pointer-events-none absolute size-64 rounded-full opacity-25 blur-3xl transition-all duration-500"
@@ -662,10 +657,9 @@ export function AgentOverview() {
                 data-testid="agent-hero-avatar-button"
                 onClick={() => setCustomizerOpen(true)}
                 animate={{
-                  opacity: hugged ? 0.14 : 1,
-                  scale: hugged ? 0.84 : 1,
+                  opacity: hugged ? 0.18 : 1,
                 }}
-                transition={{ type: "spring", stiffness: 200, damping: 22 }}
+                transition={{ duration: 0.2 }}
                 className="group/avatar relative flex cursor-pointer flex-col items-center justify-center rounded-full p-2 outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <AgentCharacterAvatar
@@ -691,7 +685,7 @@ export function AgentOverview() {
         {/* BOTTOM STRIP: Superpowers · Memory · Workspace · Channels · Contacts */}
         <div
           data-testid="agent-bottom-strip"
-          className="relative z-10 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5"
+          className="relative z-10 shrink-0 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5"
         >
           {bottomSections.map((sec) => {
             const Icon = sec.icon;
