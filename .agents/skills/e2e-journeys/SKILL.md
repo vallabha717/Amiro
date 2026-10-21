@@ -76,6 +76,7 @@ reviewing agent; it already contains the review instructions.
 | voice-live | 09 | read-aloud, dictation, live voice room (fake mic) |
 | schedules | 10 | schedules page, heartbeat |
 | ux-audit | 11 | every page × desktop/phone: a11y names, h1, overflow |
+| team | 12 | Team view, channels, New agent wizard, agent page, per-agent workspace |
 
 ## Don't
 
