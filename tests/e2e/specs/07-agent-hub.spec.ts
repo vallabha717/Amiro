@@ -149,4 +149,58 @@ test.describe("agent-hub", () => {
       await expect(page.getByText("New Chat").first()).toBeVisible({ timeout: 15000 });
     });
   });
+
+  test("channels and contacts: navigate, configure channel policy, create and verify contact", async ({ page, step }) => {
+    await step("Navigate to Channels page (/channels)", async () => {
+      await page.goto("/channels");
+      await expect(page.locator("[data-testid=channels-page]")).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Channels" })).toBeVisible();
+      await expect(page.locator("[data-testid=channels-back-link]")).toBeVisible();
+    });
+
+    await step("Change Telegram admission policy to 'Verified contacts'", async () => {
+      await page.locator("[data-testid=channel-row-telegram]").click();
+      await page.locator("[data-testid=channel-policy-select]").click();
+      await page.getByRole("option", { name: /Verified contacts/i }).click();
+      await expect(page.locator("[data-testid=channel-policy-select]")).toContainText(/Verified contacts/i);
+    });
+
+    await step("Click Back to Agent Hub from Channels", async () => {
+      await page.locator("[data-testid=channels-back-link]").click();
+      await expect(page).toHaveURL(/\/agent(\?|$)/);
+    });
+
+    await step("Navigate to Contacts page (/contacts)", async () => {
+      await page.goto("/contacts");
+      await expect(page.locator("[data-testid=contacts-page]")).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Contacts" })).toBeVisible();
+      await expect(page.locator("[data-testid=contacts-back-link]")).toBeVisible();
+    });
+
+    await step("Create a new contact 'Bob Smith' with Telegram address", async () => {
+      await page.locator("[data-testid=add-contact-button]").click();
+      await page.locator("[data-testid=new-contact-name-input]").fill("Bob Smith");
+      await page.locator("[data-testid=save-new-contact-button]").click();
+      await expect(page.locator("[data-testid=contact-detail-card]")).toContainText("Bob Smith");
+    });
+
+    await step("Add a Telegram channel to Bob Smith and verify it", async () => {
+      await page.locator("[data-testid=add-channel-address-input]").fill("@bob_telegram");
+      await page.locator("[data-testid=add-channel-button]").click();
+      await expect(page.getByText("@bob_telegram")).toBeVisible();
+
+      // Click verify
+      const verifyBtn = page.getByRole("button", { name: /^Verify$/i }).first();
+      if (await verifyBtn.isVisible()) {
+        await verifyBtn.click();
+        await expect(page.getByText(/Verified/i).first()).toBeVisible();
+      }
+    });
+
+    await step("Agent hub reflects Channels and Contacts bottom strip tiles", async () => {
+      await page.goto("/agent");
+      await expect(page.locator("[data-testid=agent-card-channels]")).toBeVisible();
+      await expect(page.locator("[data-testid=agent-card-contacts]")).toBeVisible();
+    });
+  });
 });

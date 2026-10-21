@@ -17,6 +17,14 @@ and subsequent work will accumulate under a fresh `Unreleased` section.
 
 ### Added
 
+- Native Channels & Contacts integration ported from Vellum:
+  - Channels readiness endpoints, multi-channel admission policies (trust floors: `no_one`, `guardian_only`, `trusted_contacts`, `any_contact`, `strangers`), conversation-tier Slack permissions, and secure vault storage for Slack, Telegram, Discord, and Phone (Twilio) credentials.
+  - Contacts graph CRUD, search, channel linking, account verification and revocation, contact merging with donor cleanup, and A2A invite links.
+  - Agent MCP tools for contact discovery and channel policy management (`contact_search`, `contact_create`, `contact_merge`, `channel_readiness_get`, `channel_policy_set`).
+  - Modular UI architecture: `PageShell`, `ChannelAdapterList`, `ChannelPanel`, `SlackConnectionCard`, `ConnectedChannelHeader`, `ChannelTrustFloorSection`, `ContactsList`, `ContactDetailView`, `ContactChannelsSection`, and `ContactPermissionsSection`.
+  - Full bilingual i18n support in English (`messages/en.json`) and Hindi (`messages/hi.json`).
+  - Playwright E2E journey test in `07-agent-hub.spec.ts` and Rust integration tests in `backend/tests/channels_contacts.rs`.
+
 - Native Rust backend, `backend/` (crate `amiro-backend`, axum). It owns
   application auth, the UI routes, thread to session mapping, and the runtime
   bridge lifecycle, and it serves the built frontend export itself.

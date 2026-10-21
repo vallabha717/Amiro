@@ -422,6 +422,29 @@ pub fn tool_definitions() -> Vec<Value> {
             "contentBase64":{"type":"string"}
         },"required":["id"],"additionalProperties":false}}),
         json!({"name":"artifact_delete","description":"Delete a file artifact and its workspace file.","inputSchema":{"type":"object","properties":{"id":{"type":"string"}},"required":["id"],"additionalProperties":false}}),
+        // --- Contacts & Relationship Graph ---
+        json!({"name":"contact_search","description":"Search contacts by name, channel address, or channel type.","inputSchema":{"type":"object","properties":{
+            "query":{"type":"string","description":"Search by display name (partial match)"},
+            "channel_address":{"type":"string","description":"Search by channel address (email, phone, handle)"},
+            "channel_type":{"type":"string","description":"Filter by channel type (slack, telegram, phone, email, discord)"},
+            "limit":{"type":"integer","description":"Max results (default 50)"}
+        },"additionalProperties":false}}),
+        json!({"name":"contact_create","description":"Create a contact with optional channel address and notes.","inputSchema":{"type":"object","properties":{
+            "name":{"type":"string","description":"Contact display name"},
+            "notes":{"type":"string","description":"Notes about this contact"},
+            "channel_type":{"type":"string","description":"Optional initial channel type (slack, telegram, phone, email, discord)"},
+            "channel_address":{"type":"string","description":"Channel address (handle, phone, email)"}
+        },"required":["name"],"additionalProperties":false}}),
+        json!({"name":"contact_merge","description":"Merge two contacts when you discover they are the same person. Absorbs donor's channels and notes into keeper and deletes donor.","inputSchema":{"type":"object","properties":{
+            "keep_id":{"type":"string","description":"ID of the contact to keep (survivor)"},
+            "merge_id":{"type":"string","description":"ID of the contact to merge into the kept one (donor, will be deleted)"}
+        },"required":["keep_id","merge_id"],"additionalProperties":false}}),
+        // --- Channels & Integration Adapters ---
+        json!({"name":"channel_readiness_get","description":"Check operational readiness and connection health of communication channels (Slack, Telegram, Discord, Phone, Email).","inputSchema":{"type":"object","properties":{},"additionalProperties":false}}),
+        json!({"name":"channel_policy_set","description":"Set the admission policy (trust floor) for a communication channel (no_one, guardian_only, trusted_contacts, any_contact, strangers).","inputSchema":{"type":"object","properties":{
+            "channel_type":{"type":"string","description":"Channel type (slack, telegram, discord, phone, email)"},
+            "policy":{"type":"string","enum":["no_one","guardian_only","trusted_contacts","any_contact","strangers"],"description":"Admission trust floor"}
+        },"required":["channel_type","policy"],"additionalProperties":false}}),
         // --- Encrypted Vault & Interactive UI Surfaces ---
         json!({"name":"credentials_list","description":"List all credentials stored in Amiro's encrypted vault (metadata and env var names only, never secret values).","inputSchema":{"type":"object","properties":{},"additionalProperties":false}}),
         json!({"name":"ui_prompt_secret","description":"Render an encrypted secret input card in the chat UI so the user can securely enter an API key, token, or secret into the vault without ever typing it in plain chat.","inputSchema":{"type":"object","properties":{
@@ -1503,6 +1526,119 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<(String
                 .map_err(err_text)?;
             Ok((format!("Deleted artifact {id}."), json!({"deleted": id})))
         }
+        // ===================================================================
+        // Contacts
+        // ===================================================================
+        "contact_search" => {
+            let mut search_body = json!({});
+            if let Some(q) = arg_str(args, "query")? {
+                search_body["query"] = json!(q);
+            }
+            if let Some(addr) = arg_str(args, "channel_address")? {
+                search_body["channelAddress"] = json!(addr);
+            }
+            if let Some(ct) = arg_str(args, "channel_type")? {
+                search_body["channelType"] = json!(ct);
+            }
+            let res = crate::routes::contacts::search_contacts(
+                axum::extract::State(state.clone()),
+                crate::state::AuthUser(json!({"id": uid, "role": "admin"})),
+                axum::Json(search_body),
+            )
+            .await
+            .map_err(err_text)?;
+
+            let list = res.0.as_array().cloned().unwrap_or_default();
+            let mut lines = Vec::new();
+            for c in &list {
+                let name = c.get("displayName").and_then(Value::as_str).unwrap_or("Unknown");
+                let id = c.get("id").and_then(Value::as_str).unwrap_or("");
+                let role = c.get("role").and_then(Value::as_str).unwrap_or("contact");
+                lines.push(format!("- **{}** (`{}`), role: `{}`", name, id, role));
+            }
+            let text = if lines.is_empty() {
+                "No matching contacts found.".to_string()
+            } else {
+                format!("Found {} contact(s):\n{}", list.len(), lines.join("\n"))
+            };
+            Ok((text, res.0))
+        }
+
+        "contact_create" => {
+            let name = require_str(args, "name")?;
+            let notes = arg_str(args, "notes")?;
+            let mut body = json!({
+                "displayName": name,
+                "notes": notes,
+            });
+            if let Some(ct) = arg_str(args, "channel_type")? {
+                if let Some(ca) = arg_str(args, "channel_address")? {
+                    body["channels"] = json!([{
+                        "type": ct,
+                        "address": ca,
+                        "isPrimary": true
+                    }]);
+                }
+            }
+            let res = crate::routes::contacts::upsert_contact(
+                axum::extract::State(state.clone()),
+                crate::state::AuthUser(json!({"id": uid, "role": "admin"})),
+                axum::Json(body),
+            )
+            .await
+            .map_err(err_text)?;
+
+            let created_name = res.0.get("contact").and_then(|c| c.get("displayName")).and_then(Value::as_str).unwrap_or(name);
+            let text = format!("Contact **{created_name}** created successfully.");
+            Ok((text, res.0))
+        }
+
+        "contact_merge" => {
+            let keep_id = require_str(args, "keep_id")?;
+            let merge_id = require_str(args, "merge_id")?;
+            let res = crate::routes::contacts::merge_contacts(
+                axum::extract::State(state.clone()),
+                crate::state::AuthUser(json!({"id": uid, "role": "admin"})),
+                axum::Json(json!({ "keepId": keep_id, "mergeId": merge_id })),
+            )
+            .await
+            .map_err(err_text)?;
+
+            let text = format!("Merged contact `{merge_id}` into survivor `{keep_id}`.");
+            Ok((text, res.0))
+        }
+
+        // ===================================================================
+        // Channels
+        // ===================================================================
+        "channel_readiness_get" => {
+            let snapshots = crate::routes::channels::compute_channel_snapshots(state).await.map_err(err_text)?;
+            let mut lines = Vec::new();
+            for s in &snapshots {
+                let ch = s.get("channel").and_then(Value::as_str).unwrap_or("");
+                let ready = s.get("ready").and_then(Value::as_bool).unwrap_or(false);
+                let st = s.get("setupStatus").and_then(Value::as_str).unwrap_or("unknown");
+                lines.push(format!("- **{}**: {} (status: `{}`)", ch, if ready { "✅ ready" } else { "⚠️ not ready" }, st));
+            }
+            let text = format!("**Channel Readiness Snapshot**:\n{}", lines.join("\n"));
+            Ok((text, json!({ "snapshots": snapshots })))
+        }
+
+        "channel_policy_set" => {
+            let ch_type = require_str(args, "channel_type")?;
+            let policy = require_str(args, "policy")?;
+            let res = crate::routes::channels::set_channel_policy_root(
+                axum::extract::State(state.clone()),
+                crate::state::AuthUser(json!({"id": uid, "role": "admin"})),
+                axum::Json(json!({ "channelType": ch_type, "policy": policy })),
+            )
+            .await
+            .map_err(err_text)?;
+
+            let text = format!("Updated admission policy for **{ch_type}** to `{policy}`.");
+            Ok((text, res.0))
+        }
+
         "ui_navigate" => {
             let page = require_str(args, "page")?;
             let (title, path) = match page {
@@ -1520,6 +1656,8 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<(String
                 "personality" => ("Agent Personality", "/agent/personality"),
                 "memory" => ("Agent Memory", "/agent/memory"),
                 "workspace" => ("Agent Workspace", "/agent/workspace"),
+                "channels" => ("Channels", "/agent/channels"),
+                "contacts" => ("Contacts", "/agent/contacts"),
                 _ => ("Settings", "/admin/general"),
             };
             let text = format!("Opened [**{}**]({}) in Amiro.", title, path);

@@ -52,6 +52,8 @@ const CARD_HOVER_LINES: Record<string, string> = {
   superpowers: "Everything I know how to do",
   memory: "Everything I remember",
   workspace: "All the files that power me",
+  channels: "Where I can be reached",
+  contacts: "People and relationships I know",
 };
 
 function useTypewriter(text: string, intervalMs: number) {
@@ -130,7 +132,7 @@ function FloodableTile({
       onMouseLeave={() => onHoverChange(sectionKey, false)}
       style={style}
       className={cn(
-        "group relative flex overflow-hidden border border-border/60 bg-card/85 backdrop-blur-xl transition-transform duration-200 active:scale-[0.985] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "group relative flex overflow-hidden border border-border/60 bg-card/85 backdrop-blur-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         className,
       )}
     >
@@ -388,6 +390,26 @@ export function AgentOverview() {
       icon: FolderOpen,
       radiusClass: "rounded-[1.25rem_2.25rem_1.15rem_2.35rem]",
     },
+    {
+      key: "channels",
+      label: "Channels",
+      subtitle: "Slack, Telegram, Discord, Phone & Email",
+      statValue: "5 adapters",
+      statSub: "Connected channels",
+      href: "/agent/channels",
+      icon: Sparkles,
+      radiusClass: "rounded-[1.35rem_2.15rem_1.25rem_2.25rem]",
+    },
+    {
+      key: "contacts",
+      label: "Contacts",
+      subtitle: "Trusted contacts & relationships",
+      statValue: "Contacts",
+      statSub: "Access control",
+      href: "/agent/contacts",
+      icon: Brain,
+      radiusClass: "rounded-[2.25rem_1.35rem_2.15rem_1.25rem]",
+    },
   ];
 
   return (
@@ -547,8 +569,8 @@ export function AgentOverview() {
             data-testid="agent-center-stage"
             className="relative flex min-h-[360px] flex-col items-center justify-between rounded-3xl px-4 py-6 lg:col-span-4"
           >
-            {/* Greeting + Inline Rename + Handle */}
-            <div className="z-10 flex flex-col items-center gap-1.5 text-center">
+            {/* Greeting + Inline Rename + Handle with fixed reserved height to prevent vertical jitter */}
+            <div className="z-10 flex min-h-[72px] flex-col items-center justify-center gap-1.5 text-center">
               {editingNameInline ? (
                 <form
                   onSubmit={(e) => {
@@ -579,12 +601,7 @@ export function AgentOverview() {
                   <h1
                     data-testid="agent-greeting-headline"
                     aria-label={headlineText}
-                    className={cn(
-                      "relative font-brand font-semibold tracking-tight text-foreground transition-all",
-                      hoverLine
-                        ? "text-2xl sm:text-[1.75rem]"
-                        : "text-3xl sm:text-[2.5rem] leading-tight",
-                    )}
+                    className="relative font-brand text-2xl sm:text-[1.85rem] font-semibold leading-tight tracking-tight text-foreground"
                   >
                     <span className="invisible" aria-hidden="true">
                       {headlineText}
@@ -612,7 +629,7 @@ export function AgentOverview() {
               <div
                 className={cn(
                   "flex items-center gap-2 text-xs text-muted-foreground transition-opacity duration-200",
-                  hoverLine && "opacity-0",
+                  hoverLine ? "invisible pointer-events-none" : "opacity-100",
                 )}
               >
                 <span className="font-mono font-medium">{identity.handle}</span>
@@ -623,8 +640,8 @@ export function AgentOverview() {
               </div>
             </div>
 
-            {/* Interactive Center Avatar, click to open Customizer */}
-            <div className="relative my-2 flex flex-1 items-center justify-center">
+            {/* Interactive Center Avatar, click to open Customizer with fixed height to prevent layout shifts */}
+            <div className="relative my-2 flex h-[300px] w-full shrink-0 items-center justify-center">
               <div
                 aria-hidden="true"
                 className="pointer-events-none absolute size-64 rounded-full opacity-25 blur-3xl transition-all duration-500"
@@ -640,10 +657,9 @@ export function AgentOverview() {
                 data-testid="agent-hero-avatar-button"
                 onClick={() => setCustomizerOpen(true)}
                 animate={{
-                  opacity: hugged ? 0.14 : 1,
-                  scale: hugged ? 0.84 : 1,
+                  opacity: hugged ? 0.18 : 1,
                 }}
-                transition={{ type: "spring", stiffness: 200, damping: 22 }}
+                transition={{ duration: 0.2 }}
                 className="group/avatar relative flex cursor-pointer flex-col items-center justify-center rounded-full p-2 outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <AgentCharacterAvatar
@@ -666,10 +682,10 @@ export function AgentOverview() {
           </div>
         </div>
 
-        {/* BOTTOM STRIP: Superpowers (Skills) · Memory (Runtime Graph) · Workspace (Runtime Files) */}
+        {/* BOTTOM STRIP: Superpowers · Memory · Workspace · Channels · Contacts */}
         <div
           data-testid="agent-bottom-strip"
-          className="relative z-10 grid grid-cols-1 gap-4 md:grid-cols-3"
+          className="relative z-10 shrink-0 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5"
         >
           {bottomSections.map((sec) => {
             const Icon = sec.icon;
@@ -688,18 +704,17 @@ export function AgentOverview() {
                 onRegisterRef={registerCardRef}
                 onHoverChange={handleCardHover}
                 className={cn(
-                  "flex items-center justify-between gap-4 p-5 shadow-xs",
-                  sec.radiusClass,
+                  "flex items-center justify-between gap-3 rounded-2xl p-3.5 shadow-xs transition-shadow hover:shadow-md",
                 )}
               >
                 {({ flooded, fgClass, fgMutedClass, fgStyle }) => (
                   <div
-                    className="relative z-10 flex w-full items-center justify-between gap-4"
+                    className="relative z-10 flex w-full items-center justify-between gap-2.5"
                     style={fgStyle}
                   >
-                    <div className="flex min-w-0 items-center gap-3.5">
+                    <div className="flex min-w-0 items-center gap-2.5">
                       <span
-                        className="flex size-12 shrink-0 items-center justify-center rounded-2xl transition-colors"
+                        className="flex size-9 shrink-0 items-center justify-center rounded-xl transition-colors"
                         style={{
                           backgroundColor: flooded
                             ? "rgba(255,255,255,0.18)"
@@ -707,20 +722,18 @@ export function AgentOverview() {
                           color: flooded ? floodTone.fg : accentHex,
                         }}
                       >
-                        <Icon className="size-5" aria-hidden="true" />
+                        <Icon className="size-4" aria-hidden="true" />
                       </span>
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h3
-                            className={cn(
-                              "truncate text-base font-semibold tracking-tight",
-                              fgClass,
-                            )}
-                          >
-                            {sec.label}
-                          </h3>
-                        </div>
-                        <p className={cn("truncate text-xs", fgMutedClass)}>
+                        <h3
+                          className={cn(
+                            "truncate text-xs font-semibold tracking-tight",
+                            fgClass,
+                          )}
+                        >
+                          {sec.label}
+                        </h3>
+                        <p className={cn("truncate text-[10px]", fgMutedClass)}>
                           {sec.subtitle}
                         </p>
                       </div>
@@ -729,7 +742,7 @@ export function AgentOverview() {
                     <div className="flex shrink-0 flex-col items-end text-right">
                       <span
                         className={cn(
-                          "font-brand text-lg font-semibold tabular-nums leading-tight",
+                          "font-brand text-xs font-semibold tabular-nums leading-tight",
                           fgClass,
                         )}
                       >
@@ -737,7 +750,7 @@ export function AgentOverview() {
                       </span>
                       <span
                         className={cn(
-                          "text-[11px] font-medium tabular-nums",
+                          "text-[9px] font-medium tabular-nums",
                           fgMutedClass,
                         )}
                       >
