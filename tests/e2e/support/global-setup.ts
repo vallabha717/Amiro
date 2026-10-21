@@ -13,7 +13,16 @@ import { execFileSync, spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { FAKE_MIC_WAV, type InstanceState, REPO_ROOT, STATE_FILE, TESTS_DIR, loadConfig, runDir } from "./config";
+import {
+  type E2EConfig,
+  FAKE_MIC_WAV,
+  type InstanceState,
+  REPO_ROOT,
+  STATE_FILE,
+  TESTS_DIR,
+  loadConfig,
+  runDir,
+} from "./config";
 
 function firstExisting(...candidates: string[]): string {
   for (const c of candidates) if (c && fs.existsSync(c)) return c;
@@ -92,13 +101,17 @@ export default async function globalSetup() {
   const tmpBase = process.platform === "win32" ? os.tmpdir() : "/tmp";
   const root = fs.mkdtempSync(path.join(tmpBase, "amx-e2e-"));
   for (const d of ["home", "rt", "run"]) fs.mkdirSync(path.join(root, d), { recursive: true });
+  const sandbox = startSandbox(cfg.sandbox, dir);
   const socket = path.join(root, "run", "api.sock");
   const backendLog = path.join(dir, "backend.log");
   const log = fs.openSync(backendLog, "a");
 
   const env: NodeJS.ProcessEnv = {
     ...process.env,
-    AMIRO_HOME: path.join(root, "home"),
+    // With a sandbox the home lives under $HOME: snap-packaged Docker cannot
+    // bind-mount /tmp, and the agents' folders are mounted into containers.
+    AMIRO_HOME: sandbox?.home ?? path.join(root, "home"),
+    ...(sandbox ? { AMIRO_SANDBOX_URL: `http://127.0.0.1:${sandbox.port}` } : {}),
     AMIRO_RUNTIME_HOME: path.join(root, "rt"),
     AMIRO_RUNTIME_DIR: path.join(root, "run"),
     AMIRO_API_SOCKET: socket,
@@ -111,6 +124,7 @@ export default async function globalSetup() {
     AMIRO_ENV_FILE: path.join(root, "none.env"),
   };
   // Never let the user's own provider keys or owner settings leak into a "first run".
+  for (const k of ["AMIRO_SANDBOX_TOKEN", "AMIRO_SANDBOX_MASTER", "AMIRO_SANDBOX_ENV_FILE"]) delete env[k];
   for (const k of Object.keys(env)) {
     if (/^(AMIRO_OWNER_|AMIRO_SKIP_ONBOARDING|AMIRO_CRED_|AMIRO_DEFAULT_MODEL)/.test(k)) delete env[k];
     if (/^(ANTHROPIC|OPENAI|OPENROUTER|GEMINI|COMPOSIO|ELEVENLABS)_API_KEY$/.test(k)) delete env[k];
@@ -130,10 +144,52 @@ export default async function globalSetup() {
   while (!fs.existsSync(socket) && Date.now() < sockDeadline) await new Promise((r) => setTimeout(r, 500));
   if (!fs.existsSync(socket)) throw new Error(`Amiro runtime never opened ${socket}; see ${backendLog}`);
 
-  const state: InstanceState = { baseUrl, mode: "isolated", root, pids, socket, backendLog };
+  const state: InstanceState = { baseUrl, mode: "isolated", root, pids, socket, backendLog, sandbox: sandbox ?? undefined };
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
   fs.writeFileSync(path.join(dir, "instance.json"), JSON.stringify({ ...state, backendBin, runtimeBin, outDir }, null, 2));
   console.log(`[e2e] isolated Amiro at ${baseUrl} (home ${root}); recordings → ${path.relative(TESTS_DIR, dir)}`);
+}
+
+/**
+ * Start this run's own sandbox supervisor (scripts/sandbox.sh, namespace
+ * `amiroe2e`) so team agents' tools run in real containers. Returns null, with
+ * the reason printed, when it is off or (in "auto") Docker or an image is
+ * missing; the team journey then checks the "unavailable" state instead.
+ */
+function startSandbox(sandbox: E2EConfig["sandbox"], dir: string) {
+  if (sandbox.mode === "off" || process.platform === "win32") return null;
+  const why = (() => {
+    try {
+      execFileSync("docker", ["image", "inspect", "amiro-agent:local", "amiro-sandboxd:local"], { stdio: "ignore" });
+      return "";
+    } catch {
+      return "Docker or the images amiro-agent:local / amiro-sandboxd:local are missing (bash scripts/sandbox.sh up builds them)";
+    }
+  })();
+  if (why) {
+    if (sandbox.mode === "on") throw new Error(`sandbox.mode=on but ${why}`);
+    console.log(`[e2e] no team-agent sandbox: ${why}`);
+    return null;
+  }
+  const sandboxRoot = fs.mkdtempSync(path.join(os.homedir(), ".cache", "amx-e2e-sandbox-"));
+  const home = path.join(sandboxRoot, "home");
+  fs.mkdirSync(home, { recursive: true });
+  const env = sandboxEnv({ namespace: "amiroe2e", port: sandbox.port, root: sandboxRoot, home });
+  const out = fs.openSync(path.join(dir, "sandbox.log"), "a");
+  execFileSync("bash", [path.join(REPO_ROOT, "scripts/sandbox.sh"), "up"], { env, stdio: ["ignore", out, out] });
+  console.log(`[e2e] team-agent sandbox on 127.0.0.1:${sandbox.port} (home ${home})`);
+  return { namespace: "amiroe2e", port: sandbox.port, root: sandboxRoot, home };
+}
+
+/** Environment for scripts/sandbox.sh for this run's sandbox. */
+export function sandboxEnv(sb: NonNullable<InstanceState["sandbox"]>): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    AMIRO_HOME: sb.home,
+    AMIRO_SANDBOX_PORT: String(sb.port),
+    AMIRO_SANDBOX_NAMESPACE: sb.namespace,
+    AMIRO_SANDBOX_SKIP_BUILD: "1",
+  };
 }
 
 /**

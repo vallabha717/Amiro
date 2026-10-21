@@ -98,6 +98,19 @@ pub fn is_channel(entry: &Value) -> bool {
     entry.get("channel").and_then(Value::as_bool).unwrap_or(false)
 }
 
+/// The state whose runtime holds this thread's session: the team agent's own
+/// runtime for threads it ran (`runtime: "agent"`), else the shared one.
+pub async fn runtime_state(state: &AppState, entry: &Value) -> AppState {
+    if entry.get("runtime").and_then(Value::as_str) == Some("agent") {
+        if let Some(agent) = entry.get("agentId").and_then(Value::as_str) {
+            if let Ok(scoped) = crate::routes::agents::scoped_state(state, agent).await {
+                return scoped;
+            }
+        }
+    }
+    state.clone()
+}
+
 fn history_msg_id(session_id: &str, index: usize) -> String {
     format!("msg_{}_{}", index, session_id)
 }
@@ -278,8 +291,12 @@ fn thread_messages(entry: &Value, thread_id: &str, session_id: &str, history: &[
     messages
 }
 
-async fn list_threads(State(state): State<AppState>, user: AuthUser) -> Result<Json<Value>, ApiError> {
+/// The caller's chat list: the main agent's threads, or — in a team agent's
+/// space (`X-Amiro-Agent`) — that agent's. The runtime titles come from the
+/// same agent's runtime.
+async fn list_threads(crate::routes::agents::AgentState(state): crate::routes::agents::AgentState, user: AuthUser) -> Result<Json<Value>, ApiError> {
     let uid = user_id(&user);
+    let scope = state.agent_scope();
     let doc = read_json(&threads_path(&state), json!({})).await?;
     let obj = doc.as_object().cloned().unwrap_or_default();
     let runtime_titles = if obj.values().any(|entry| owns(entry, &uid) && entry.get("titleSource").and_then(Value::as_str) != Some("manual")) {
@@ -300,7 +317,11 @@ async fn list_threads(State(state): State<AppState>, user: AuthUser) -> Result<J
     let team = crate::routes::agents::team_agent_ids(&state).await;
     let mut list: Vec<Value> = obj.iter().filter_map(|(id, e)| {
         if !owns(e, &uid) { return None; }
-        if e.get("agentId").and_then(Value::as_str).is_some_and(|a| team.iter().any(|t| t == a)) { return None; }
+        let agent = e.get("agentId").and_then(Value::as_str);
+        match scope.as_deref() {
+            Some(scoped) => if agent != Some(scoped) { return None; },
+            None => if agent.is_some_and(|a| team.iter().any(|t| t == a)) { return None; },
+        }
         Some(json!({
             "id": id,
             "title": e.get("title").and_then(|v| v.as_str()).unwrap_or("New Chat"),
@@ -328,8 +349,9 @@ async fn get_thread(State(state): State<AppState>, user: AuthUser, Path(id): Pat
     }
     let session_id_owned = entry.get("sessionId").and_then(|v| v.as_str()).unwrap_or("").to_string();
     let session_id = session_id_owned.as_str();
+    let runtime = runtime_state(&state, &entry).await;
     if !session_id.is_empty() && entry.get("titleSource").and_then(Value::as_str) != Some("manual") {
-        if let Ok(Some(title)) = crate::runtime::session_title(&state, session_id).await {
+        if let Ok(Some(title)) = crate::runtime::session_title(&runtime, session_id).await {
             if let Some(title) = sync_runtime_title(&state, &id, &uid, session_id, &title).await? {
                 entry["title"] = json!(title);
             }
@@ -338,7 +360,7 @@ async fn get_thread(State(state): State<AppState>, user: AuthUser, Path(id): Pat
     let history = if session_id.is_empty() {
         Vec::new()
     } else {
-        crate::runtime::get_history(&state, session_id)
+        crate::runtime::get_history(&runtime, session_id)
             .await
             .map_err(|error| {
                 ApiError(
@@ -381,7 +403,7 @@ async fn put_thread(State(state): State<AppState>, user: AuthUser, Path(id): Pat
     }
     let sid = entry.get("sessionId").and_then(|v| v.as_str()).unwrap_or("");
     if !sid.is_empty() {
-        let _ = crate::runtime::rename_session(&state, sid, title).await;
+        let _ = crate::runtime::rename_session(&runtime_state(&state, &entry).await, sid, title).await;
     }
     write_json(&path, &doc).await?;
     let updated = doc.get(&id).cloned().unwrap_or(json!({}));
@@ -406,7 +428,7 @@ async fn delete_thread(State(state): State<AppState>, user: AuthUser, Path(id): 
             return Err(ApiError(StatusCode::CONFLICT, "An agent's channel can't be deleted.".into()));
         }
         if let Some(sid) = entry.get("sessionId").and_then(|v| v.as_str()) {
-            let _ = crate::runtime::archive_session(&state, sid).await;
+            let _ = crate::runtime::archive_session(&runtime_state(&state, &entry).await, sid).await;
         }
         if let Some(obj) = doc.as_object_mut() { obj.remove(&id); }
         write_json(&path, &doc).await?;
@@ -433,7 +455,7 @@ async fn delete_threads(State(state): State<AppState>, user: AuthUser, Query(q):
     for id in &ids {
         if let Some(entry) = obj.get(id).cloned() {
             if let Some(sid) = entry.get("sessionId").and_then(|v| v.as_str()) {
-                let _ = crate::runtime::archive_session(&state, sid).await;
+                let _ = crate::runtime::archive_session(&runtime_state(&state, &entry).await, sid).await;
             }
         }
         obj.remove(id);
@@ -456,7 +478,7 @@ async fn edit_local_message(state: &AppState, uid: &str, id: &str, truncate: boo
                 if truncate { messages.truncate(index + 1); } else { messages.remove(index); }
                 if truncate {
                     if let Some(sid) = entry.get("sessionId").and_then(Value::as_str).filter(|sid| !sid.is_empty()) {
-                        crate::runtime::rewind_session(state, sid, 0).await?;
+                        crate::runtime::rewind_session(&runtime_state(state, entry).await, sid, 0).await?;
                     }
                 }
                 found = true;
@@ -474,10 +496,8 @@ async fn delete_msg(State(state): State<AppState>, user: AuthUser, Path(id): Pat
     let Some((idx, sid)) = parse_msg_id(&id) else {
         return edit_local_message(&state, &uid, &id, false).await;
     };
-    let doc = read_json(&threads_path(&state), json!({})).await?;
-    let owns_any = doc.as_object().map(|obj| obj.values().any(|e| e.get("sessionId").and_then(|v| v.as_str()) == Some(&sid) && owns(e, &uid))).unwrap_or(false);
-    if !owns_any { return Err(ApiError(StatusCode::NOT_FOUND, "thread not found".into())); }
-    crate::runtime::rewind_session(&state, &sid, idx).await.map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "unable to delete message".into()))?;
+    let entry = owned_session_entry(&state, &uid, &sid).await?;
+    crate::runtime::rewind_session(&runtime_state(&state, &entry).await, &sid, idx).await.map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "unable to delete message".into()))?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -486,11 +506,18 @@ async fn truncate_msg(State(state): State<AppState>, user: AuthUser, Path(id): P
     let Some((idx, sid)) = parse_msg_id(&id) else {
         return edit_local_message(&state, &uid, &id, true).await;
     };
-    let doc = read_json(&threads_path(&state), json!({})).await?;
-    let owns_any = doc.as_object().map(|obj| obj.values().any(|e| e.get("sessionId").and_then(|v| v.as_str()) == Some(&sid) && owns(e, &uid))).unwrap_or(false);
-    if !owns_any { return Err(ApiError(StatusCode::NOT_FOUND, "thread not found".into())); }
-    crate::runtime::rewind_session(&state, &sid, idx+1).await.map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "unable to truncate messages".into()))?;
+    let entry = owned_session_entry(&state, &uid, &sid).await?;
+    crate::runtime::rewind_session(&runtime_state(&state, &entry).await, &sid, idx+1).await.map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "unable to truncate messages".into()))?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// The caller's thread entry that holds runtime session `sid`, or 404.
+async fn owned_session_entry(state: &AppState, uid: &str, sid: &str) -> Result<Value, ApiError> {
+    let doc = read_json(&threads_path(state), json!({})).await?;
+    doc.as_object()
+        .and_then(|obj| obj.values().find(|e| e.get("sessionId").and_then(|v| v.as_str()) == Some(sid) && owns(e, uid)))
+        .cloned()
+        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "thread not found".into()))
 }
 
 pub fn router() -> Router<AppState> {

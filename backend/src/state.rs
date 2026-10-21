@@ -100,6 +100,44 @@ impl AppState {
     pub fn out_dir(&self) -> PathBuf {
         out_dir(self)
     }
+
+    /// The same instance as seen by one team agent: its own runtime (and so
+    /// its own providers, connectors, memory and sessions), its own socket and
+    /// its own workspace. `home` — users, sessions, threads, the agent
+    /// registry — stays shared. The caller validates `agent_id`
+    /// (`routes::agents`); see docs/multi-agent-team/03-per-agent-config.md.
+    pub fn for_agent(&self, agent_id: &str) -> AppState {
+        let private = agent_private_root(&self.home, agent_id);
+        // Unix sockets cap at ~108 bytes, so the socket lives under a short
+        // per-agent folder rather than inside the private runtime home.
+        let short: String = agent_id.chars().take(12).collect();
+        AppState {
+            home: self.home.clone(),
+            runtime_home: private.join("runtime"),
+            runtime_socket: self.home.join("run").join(short).join("api.sock"),
+            workspace: self.home.join("agents").join(agent_id),
+            runtime_bin: self.runtime_bin.clone(),
+            token: self.token.clone(),
+            store: self.store.clone(),
+        }
+    }
+
+    /// The team agent this state is scoped to, if any (see [`Self::for_agent`]).
+    pub fn agent_scope(&self) -> Option<String> {
+        let private = self.runtime_home.parent()?;
+        if private.parent()? != self.home.join(AGENTS_PRIVATE_DIR) {
+            return None;
+        }
+        Some(private.file_name()?.to_string_lossy().to_string())
+    }
+}
+
+/// Parent of each team agent's private data (runtime home, key vault). Never
+/// inside the agent's workspace, so the agent's own tools cannot read it.
+pub const AGENTS_PRIVATE_DIR: &str = "agents-private";
+
+pub fn agent_private_root(home: &Path, agent_id: &str) -> PathBuf {
+    home.join(AGENTS_PRIVATE_DIR).join(agent_id)
 }
 pub fn now_iso() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)

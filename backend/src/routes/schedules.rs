@@ -22,6 +22,7 @@ use axum::{Json, Router};
 use serde_json::{json, Value};
 
 use crate::schedules;
+use crate::routes::agents::AgentState;
 use crate::state::{ApiError, AppState, AuthUser};
 
 fn uid_of(user: &AuthUser) -> String {
@@ -37,7 +38,7 @@ fn missing_id() -> ApiError {
 }
 
 async fn create_schedule(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Json(body): Json<Value>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
@@ -46,7 +47,7 @@ async fn create_schedule(
 }
 
 async fn list_schedules(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
 ) -> Result<Json<Value>, ApiError> {
     let list = schedules::list_schedules(&state, &uid_of(&user)).await?;
@@ -54,7 +55,7 @@ async fn list_schedules(
 }
 
 async fn get_schedule(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
@@ -65,7 +66,7 @@ async fn get_schedule(
 }
 
 async fn update_schedule(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Path(id): Path<String>,
     Json(body): Json<Value>,
@@ -75,7 +76,7 @@ async fn update_schedule(
 }
 
 async fn delete_schedule(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
@@ -84,7 +85,7 @@ async fn delete_schedule(
 }
 
 async fn run_schedule(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
@@ -93,7 +94,7 @@ async fn run_schedule(
 }
 
 async fn list_runs(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
@@ -113,7 +114,7 @@ async fn preview(
 }
 
 async fn system_tasks(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     _user: AuthUser,
 ) -> Result<Json<Value>, ApiError> {
     Ok(Json(schedules::system_tasks(&state).await?))

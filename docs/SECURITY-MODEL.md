@@ -53,6 +53,36 @@ Fields the host cannot report are `null` and the UI shows "Unavailable".
 The timezone choice is stored per browser in `localStorage`
 (`amiro.timezone`), not on the server. Tests: `backend/tests/system.rs`.
 
+## Team agents (`backend/src/sandbox.rs`, `backend/sandboxd/`)
+
+The main agent runs with the runtime's own tools as the Amiro user; the VM is
+its boundary. **Team agents** (created on the Team page) do not:
+
+- Their runtime sessions are configured with no built-in and no MCP tools
+  (`configure_tools` with `enabled: []`). This also applies to any session
+  whose folder is inside `AMIRO_AGENTS_ROOT`, whatever started the turn.
+- The owner switches **Shell** and **Files** on per agent (Computer tab; all
+  off by default). Those tools run in the agent's own Docker container,
+  created by `amiro-sandboxd` — the only process holding the Docker socket
+  (container with `cap_drop: ALL`, read-only root, non-root, loopback port).
+- Each container runs as the owner's uid (never 0) with no capabilities,
+  `no-new-privileges`, a read-only root filesystem, memory/CPU/pids limits and
+  exactly one mount: `~/.amiro/agents/<id>` at `/home/agent`.
+- The backend addresses one agent's container with
+  `HMAC-SHA256(master, "amiro-agent:" + id)` plus the supervisor token. The
+  master and token live in `$AMIRO_HOME/sandbox/supervisor.env` (0600) and
+  never reach a container, a model, a response or a log.
+- If the supervisor is missing or down, a team agent's tool call fails with a
+  message; nothing falls back to the host.
+
+Limits: containers share the host kernel unless `AMIRO_SANDBOX_RUNTIME=runsc`
+(gVisor, installed by you). The default network is a normal bridge, so an
+agent with Shell can reach the internet (`AMIRO_SANDBOX_NETWORK=none` cuts it
+for all agents). Snap-packaged Docker cannot run containers under
+`no-new-privileges`; `scripts/sandbox.sh` turns it off there and the agent
+page's isolation check says so. Design and phases:
+[multi-agent-team-isolation/](multi-agent-team-isolation/README.md).
+
 ## Limitations
 
 - The vault key sits beside the encrypted file. This protects against casual

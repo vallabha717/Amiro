@@ -15,7 +15,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use axum::body::Body;
-use axum::extract::{DefaultBodyLimit, Query, State};
+use axum::extract::{DefaultBodyLimit, Query};
 use axum::http::header::{
     CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_SECURITY_POLICY, CONTENT_TYPE,
 };
@@ -28,6 +28,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::agent::{is_blocked_workspace_path, sanitize_user_id};
+use crate::routes::agents::AgentState;
 use crate::state::{ApiError, AppState, AuthUser};
 
 const MAX_INLINE_BYTES: u64 = 2 * 1024 * 1024;
@@ -409,7 +410,7 @@ async fn blocking<T: Send + 'static>(
 }
 
 async fn get_tree(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     _user: AuthUser,
     Query(p): Params,
 ) -> Result<Json<Value>, ApiError> {
@@ -418,7 +419,7 @@ async fn get_tree(
 }
 
 async fn get_file(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     _user: AuthUser,
     Query(p): Params,
 ) -> Result<Json<Value>, ApiError> {
@@ -433,7 +434,7 @@ fn header_filename(name: &str) -> String {
 }
 
 async fn get_file_raw(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     _user: AuthUser,
     Query(p): Params,
 ) -> Result<Response, ApiError> {
@@ -476,7 +477,7 @@ struct WriteBody {
 }
 
 async fn post_write(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Json(body): Json<WriteBody>,
 ) -> Result<Json<Value>, ApiError> {
@@ -504,7 +505,7 @@ struct RenameBody {
 }
 
 async fn post_mkdir(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Json(body): Json<PathBody>,
 ) -> Result<Json<Value>, ApiError> {
@@ -514,7 +515,7 @@ async fn post_mkdir(
 }
 
 async fn post_rename(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Json(body): Json<RenameBody>,
 ) -> Result<Json<Value>, ApiError> {
@@ -524,7 +525,7 @@ async fn post_rename(
 }
 
 async fn post_delete(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Json(body): Json<PathBody>,
 ) -> Result<Json<Value>, ApiError> {
@@ -534,7 +535,7 @@ async fn post_delete(
 }
 
 async fn get_agent_files(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
 ) -> Result<Json<Value>, ApiError> {
     let uid = user.0.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();

@@ -26,6 +26,7 @@ import { ChatToolbar } from "./workspace/chat-toolbar";
 import { SessionPanel } from "./workspace/session-panel";
 import { AgentPane } from "./workspace/agent-pane";
 import { useSwarm, type SwarmMember } from "@/lib/backend/swarm-api";
+import { getAgentScope } from "@/lib/backend/agent-scope";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -259,7 +260,13 @@ export default function ChatBot({
       api: backendUrl("/api/chat"),
       fetch: backendFetch,
       prepareSendMessagesRequest: ({ messages, body, id }) => {
-        const threadUrl = threadPath ?? `/?thread=${threadId}`;
+        // In a team agent's space the URL keeps naming the agent.
+        const scope = getAgentScope();
+        const threadUrl =
+          threadPath ??
+          (scope
+            ? `/?thread=${threadId}&agent=${encodeURIComponent(scope)}`
+            : `/?thread=${threadId}`);
         if (window.location.pathname + window.location.search !== threadUrl) {
           console.log("replace-state");
           window.history.replaceState({}, "", threadUrl);
@@ -323,7 +330,9 @@ export default function ChatBot({
             model: latestRef.current.threadImageToolModel[threadId],
           },
           attachments,
-          agentId,
+          // In a team agent's space (agent-scope.ts) every new chat is with
+          // that agent.
+          agentId: agentId ?? getAgentScope() ?? undefined,
         };
         return { body: requestBody };
       },

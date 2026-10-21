@@ -68,5 +68,11 @@
   "timeouts": {
     "agentReplyMs": 180000,
     "testMs": 600000
+  },
+
+  "sandbox": {
+    "$comment": "Team-agent containers for the isolated instance. auto = start scripts/sandbox.sh when Docker and the images amiro-agent:local + amiro-sandboxd:local exist (build them once with: bash scripts/sandbox.sh up). on = require it. off = never.",
+    "mode": "auto",
+    "port": 4314
   }
 }

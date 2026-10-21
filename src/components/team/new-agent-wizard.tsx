@@ -6,10 +6,11 @@ import {
 } from "@/lib/agent/character-catalog";
 import {
   AGENTS_KEY,
+  type AgentInput,
   createAgent,
-  teamPath,
 } from "@/lib/backend/agents-api";
 import { useSession } from "@/lib/backend/session-context";
+import { cn } from "@/lib/utils";
 import { ArrowLeftIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
@@ -23,6 +24,7 @@ import { Label } from "ui/label";
 import { Textarea } from "ui/textarea";
 import { AgentLookPicker, accentFor } from "./agent-look-picker";
 import { AgentAvatar } from "./agent-avatar";
+import { teamThreadPath } from "./team-paths";
 
 type Step = "look" | "role";
 
@@ -45,6 +47,7 @@ export function NewAgentWizard() {
   });
   const [role, setRole] = useState("");
   const [instructions, setInstructions] = useState("");
+  const [brain, setBrain] = useState<"copy" | "empty">("copy");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -71,10 +74,11 @@ export function NewAgentWizard() {
         role: role.trim(),
         instructions: instructions.trim(),
         traits,
-      });
+        brain,
+      } as AgentInput & { brain: "copy" | "empty" });
       await mutate(AGENTS_KEY);
       toast.success(t("created", { name: agent.name }));
-      router.push(teamPath(agent.id));
+      router.push(teamThreadPath(agent.id));
     } catch (err) {
       setError(err instanceof Error ? err.message : t("createError"));
       setBusy(false);
@@ -163,6 +167,36 @@ export function NewAgentWizard() {
                 {t("instructionsHint")}
               </p>
             </div>
+            <fieldset className="space-y-2">
+              <legend className="mb-1 text-sm font-medium">{t("brain")}</legend>
+              {(["copy", "empty"] as const).map((option) => (
+                <label
+                  key={option}
+                  className={cn(
+                    "flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-sm transition-colors",
+                    brain === option ? "border-ring bg-accent/60" : "hover:bg-accent/40",
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="team-agent-brain"
+                    value={option}
+                    checked={brain === option}
+                    onChange={() => setBrain(option)}
+                    className="mt-0.5"
+                    data-testid={`team-brain-${option}`}
+                  />
+                  <span>
+                    <span className="block font-medium">
+                      {t(option === "copy" ? "brainCopy" : "brainEmpty")}
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      {t(option === "copy" ? "brainCopyHint" : "brainEmptyHint")}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
             {error && (
               <p role="alert" className="text-sm text-destructive">
                 {error}

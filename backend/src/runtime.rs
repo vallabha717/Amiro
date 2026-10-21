@@ -273,7 +273,7 @@ pub async fn ensure_bridge(state: &AppState) -> Result<(), ApiError> {
     })?;
     // Detach: the runtime outlives this request. It is reaped by the app, by
     // the supervisor on restart, or by the OS.
-    remember_bridge_child(child);
+    remember_bridge_child(&state.runtime_socket, child);
     let deadline = std::time::Instant::now() + BRIDGE_STARTUP_TIMEOUT;
     while std::time::Instant::now() < deadline {
         if socket_ready(&state.runtime_socket) {
@@ -291,29 +291,53 @@ pub async fn ensure_bridge(state: &AppState) -> Result<(), ApiError> {
     ))
 }
 
-static BRIDGE_CHILD: std::sync::OnceLock<std::sync::Mutex<Option<std::process::Child>>> =
+/// Bridges this backend started, keyed by socket: the main runtime and one
+/// per team agent that has been used (`AppState::for_agent`).
+type BridgeChildren = std::collections::HashMap<PathBuf, std::process::Child>;
+
+static BRIDGE_CHILD: std::sync::OnceLock<std::sync::Mutex<BridgeChildren>> =
     std::sync::OnceLock::new();
 
-fn bridge_child_slot() -> &'static std::sync::Mutex<Option<std::process::Child>> {
-    BRIDGE_CHILD.get_or_init(|| std::sync::Mutex::new(None))
+fn bridge_child_slot() -> &'static std::sync::Mutex<BridgeChildren> {
+    BRIDGE_CHILD.get_or_init(|| std::sync::Mutex::new(BridgeChildren::new()))
 }
 
-fn remember_bridge_child(child: std::process::Child) {
+fn remember_bridge_child(socket: &Path, child: std::process::Child) {
     if let Ok(mut slot) = bridge_child_slot().lock() {
-        *slot = Some(child);
+        slot.insert(socket.to_path_buf(), child);
     }
 }
 
-/// Stop the bridge this backend started. A bridge that another supervisor owns
-/// (the desktop sidecar) is left alone.
-fn stop_spawned_bridge() {
+fn owns_bridge(socket: &Path) -> bool {
+    bridge_child_slot()
+        .lock()
+        .map(|slot| slot.contains_key(socket))
+        .unwrap_or(false)
+}
+
+/// Stop the bridge this backend started on `socket`. A bridge that another
+/// supervisor owns (the desktop sidecar) is left alone.
+fn stop_spawned_bridge(socket: &Path) {
     let Ok(mut slot) = bridge_child_slot().lock() else {
         return;
     };
-    if let Some(mut child) = slot.take() {
+    if let Some(mut child) = slot.remove(socket) {
         let _ = child.kill();
         let _ = child.wait();
     }
+}
+
+/// Whether `state`'s runtime is accepting connections right now (without
+/// starting one).
+pub fn socket_ready_for(state: &AppState) -> bool {
+    socket_ready(&state.runtime_socket)
+}
+
+/// Stop a runtime this backend started for `state` (a deleted team agent's)
+/// and clear its socket.
+pub fn stop_runtime(state: &AppState) {
+    stop_spawned_bridge(&state.runtime_socket);
+    remove_stale_socket(&state.runtime_socket);
 }
 
 /// Remove a socket file nothing is accepting on, so a restarted bridge can bind
@@ -370,7 +394,7 @@ fn ensure_bridge_blocking(state: &AppState) -> Result<(), ApiError> {
             ),
         )
     })?;
-    remember_bridge_child(child);
+    remember_bridge_child(&state.runtime_socket, child);
     let deadline = std::time::Instant::now() + BRIDGE_STARTUP_TIMEOUT;
     while std::time::Instant::now() < deadline {
         if socket_ready(&state.runtime_socket) {
@@ -378,7 +402,7 @@ fn ensure_bridge_blocking(state: &AppState) -> Result<(), ApiError> {
         }
         std::thread::sleep(Duration::from_millis(50));
     }
-    stop_spawned_bridge();
+    stop_spawned_bridge(&state.runtime_socket);
     remove_stale_socket(&state.runtime_socket);
     Err(ApiError(
         StatusCode::SERVICE_UNAVAILABLE,
@@ -401,7 +425,7 @@ fn runtime_healthy(state: &AppState) -> bool {
 /// Recover a dead runtime: stop our own stale bridge, clear its socket and
 /// start a fresh one.
 fn restart_bridge_blocking(state: &AppState) -> Result<(), ApiError> {
-    stop_spawned_bridge();
+    stop_spawned_bridge(&state.runtime_socket);
     remove_stale_socket(&state.runtime_socket);
     ensure_bridge_blocking(state)
 }
@@ -412,11 +436,7 @@ fn restart_bridge_blocking(state: &AppState) -> Result<(), ApiError> {
 /// start the runtime: an externally supervised runtime owns its own environment,
 /// which is documented in the credential-store report.
 pub fn restart_for_env_change(state: &AppState) -> bool {
-    let owned = bridge_child_slot()
-        .lock()
-        .map(|slot| slot.is_some())
-        .unwrap_or(false);
-    if !owned {
+    if !owns_bridge(&state.runtime_socket) {
         return false;
     }
     restart_bridge_blocking(state).is_ok()
@@ -1190,6 +1210,9 @@ pub struct TurnPlan {
     /// Tool results answered by the client for the previous assistant turn.
     pub tool_results: Vec<(String, String)>,
     pub system_reminder: Option<String>,
+    /// A team agent's container-backed tools. `Some` replaces every built-in
+    /// and MCP tool with only these (possibly none).
+    pub agent_tools: Option<crate::sandbox::AgentToolset>,
 }
 
 /// A message from the runtime turn worker.
@@ -1295,8 +1318,10 @@ fn run_turn_worker(
         }
     }
     let session_id = handle.session_id.clone();
+    let session_dir = handle.working_dir.clone().unwrap_or_else(|| plan.working_dir.clone());
+    let in_team_folder = in_agents_root(&state, &session_dir) || in_agents_root(&state, &plan.working_dir);
 
-    let result = drive_turn(&client, &plan, &session_id, &updates_tx);
+    let result = drive_turn(&client, &plan, &session_id, in_team_folder, &updates_tx);
     match result {
         Ok(usage) => {
             let _ = updates_tx.send(TurnUpdate::Done(usage));
@@ -1309,16 +1334,53 @@ fn run_turn_worker(
     let _ = client.detach_session(&session_id);
 }
 
+/// Whether `dir` is a team agent's folder (inside `AMIRO_AGENTS_ROOT`).
+fn in_agents_root(state: &AppState, dir: &str) -> bool {
+    !dir.is_empty() && std::path::Path::new(dir).starts_with(crate::routes::agents::agents_root(state))
+}
+
+/// The tool configuration a turn applies, or `None` for the runtime's own
+/// defaults. A team agent's folder never gets the defaults: with no toolset
+/// (a caller that did not build one) it gets no tools at all.
+pub fn turn_tool_configuration(plan: &TurnPlan, in_team_folder: bool) -> Option<ToolConfiguration> {
+    match &plan.agent_tools {
+        Some(toolset) => Some(ToolConfiguration {
+            enabled: Some(Vec::new()),
+            disabled: Vec::new(),
+            custom: toolset.definitions.clone(),
+        }),
+        None if in_team_folder || !plan.expose_tools => Some(no_tools()),
+        None => None,
+    }
+}
+
 fn drive_turn(
     client: &AmiroClient,
     plan: &TurnPlan,
     session_id: &str,
+    in_team_folder: bool,
     updates_tx: &mpsc::UnboundedSender<TurnUpdate>,
 ) -> Result<Option<TurnUsage>, String> {
-    if !plan.expose_tools {
+    if let Some(tools) = turn_tool_configuration(plan, in_team_folder) {
+        let custom = tools.custom.clone();
         client
-            .configure_tools(session_id, no_tools())
+            .configure_tools(session_id, tools)
             .map_err(|error| error.to_string())?;
+        // A team agent with its own remote connectors also gets their MCP
+        // tools, enabled by exact name. Listing needs the MCP surface
+        // briefly on (no turn is running); any failure keeps it off.
+        if let Some(toolset) = plan.agent_tools.as_ref().filter(|t| !t.mcp_servers.is_empty()) {
+            let probe = ToolConfiguration { enabled: Some(vec!["mcp".into()]), disabled: Vec::new(), custom: custom.clone() };
+            let listed = client
+                .configure_tools(session_id, probe)
+                .and_then(|()| client.list_tools(session_id))
+                .map(|tools| tools.into_iter().map(|t| t.name).collect::<Vec<_>>())
+                .unwrap_or_default();
+            let enabled = crate::sandbox::mcp_enabled_tools(&listed, &toolset.mcp_servers);
+            client
+                .configure_tools(session_id, ToolConfiguration { enabled: Some(enabled), disabled: Vec::new(), custom })
+                .map_err(|error| error.to_string())?;
+        }
     }
     if let Some(model) = plan.model.as_deref().filter(|model| !model.is_empty()) {
         client
@@ -1327,8 +1389,25 @@ fn drive_turn(
     }
 
     let sender = updates_tx.clone();
+    let toolset = plan.agent_tools.clone();
+    let (responder, sid) = (client.clone(), session_id.to_string());
     let forward = move |event: &ApiEvent| {
         let _ = sender.send(TurnUpdate::Event(event.clone()));
+        // A team agent's tool call runs in its container. Answered off the
+        // event loop so the turn keeps streaming, exactly like `probe_model`.
+        if let (Some(toolset), ApiEvent::ToolCall { call_id, name, input, .. }) = (&toolset, event) {
+            if toolset.handles(name) {
+                let (toolset, responder, sid) = (toolset.clone(), responder.clone(), sid.clone());
+                let (call_id, name, input) = (call_id.clone(), name.clone(), input.clone());
+                std::thread::spawn(move || {
+                    let (output, error) = match toolset.run_blocking(&name, &input) {
+                        Ok(output) => (output, None),
+                        Err(error) => (String::new(), Some(error)),
+                    };
+                    let _ = responder.submit_tool_result(&sid, &call_id, &output, error);
+                });
+            }
+        }
     };
 
     if !plan.tool_results.is_empty() {
@@ -1575,6 +1654,32 @@ mod tests {
             Some("claude:claude-opus-4-6[1m]")
         );
         assert_eq!(resolve_model("claude", "   ").as_deref(), None);
+    }
+
+    fn plan(expose_tools: bool) -> TurnPlan {
+        TurnPlan {
+            session_id: None,
+            working_dir: String::new(),
+            expose_tools,
+            model: None,
+            prompt: String::new(),
+            images: Vec::new(),
+            tool_results: Vec::new(),
+            system_reminder: None,
+            agent_tools: None,
+        }
+    }
+
+    #[test]
+    fn a_team_folder_never_gets_the_runtime_tools() {
+        // Main workspace, tools exposed: the runtime's own defaults.
+        assert!(turn_tool_configuration(&plan(true), false).is_none());
+        // A team agent's folder without a toolset (a caller that forgot to
+        // build one): nothing at all, not the defaults.
+        let tools = turn_tool_configuration(&plan(true), true).expect("configured");
+        assert_eq!(tools.enabled, Some(Vec::new()));
+        assert!(tools.custom.is_empty());
+        assert_eq!(turn_tool_configuration(&plan(false), false).unwrap().enabled, Some(Vec::new()));
     }
 
     #[test]

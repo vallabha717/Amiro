@@ -10,8 +10,10 @@
 //! - A channel is an ordinary thread entry with `agentId` and `channel: true`,
 //!   so the chat pipeline streams and replays it like any other thread.
 //!
-//! A folder per agent is not a security boundary: the runtime's tools run as
-//! the Amiro user. See `docs/multi-agent-team/02-design.md`.
+//! A folder alone is not a security boundary. A team agent's sessions get no
+//! host tools at all; the shell and file tools the owner switches on run in
+//! the agent's own container (`sandbox.rs`, `routes/agent_computer.rs`,
+//! `docs/multi-agent-team-isolation/`).
 //!
 //! - `GET    /api/agents`              main first, then by creation time
 //! - `POST   /api/agents`              owner: create
@@ -56,15 +58,15 @@ fn registry_path(state: &AppState) -> PathBuf {
 }
 
 /// Ids are server-generated 32-hex uuids; anything else never reaches a path.
-fn valid_agent_id(id: &str) -> bool {
+pub(crate) fn valid_agent_id(id: &str) -> bool {
     id.len() == 32 && id.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
-fn not_found() -> ApiError {
+pub(crate) fn not_found() -> ApiError {
     ApiError(StatusCode::NOT_FOUND, "agent not found".into())
 }
 
-fn require_admin(user: &AuthUser) -> Result<(), ApiError> {
+pub(crate) fn require_admin(user: &AuthUser) -> Result<(), ApiError> {
     if user.0.get("role").and_then(Value::as_str) == Some("admin") {
         Ok(())
     } else {
@@ -116,6 +118,46 @@ pub async fn team_agent_ids(state: &AppState) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// A team agent's tool switches (`shell`, `files`, `browser`), all off unless
+/// the owner turned them on. `Ok(None)` for the main agent, whose tools are the
+/// runtime's own; 404 for an unknown agent.
+pub async fn agent_tools(state: &AppState, agent_id: &str) -> Result<Option<Value>, ApiError> {
+    if agent_id.is_empty() || agent_id == MAIN_AGENT_ID {
+        return Ok(None);
+    }
+    if !valid_agent_id(agent_id) {
+        return Err(not_found());
+    }
+    let registry = read_registry(state).await?;
+    let record = find_record(&registry, agent_id).ok_or_else(not_found)?;
+    Ok(Some(normalize_tools(record.get("tools"))))
+}
+
+/// `{shell, files, browser}` with every missing or non-boolean switch off.
+pub fn normalize_tools(raw: Option<&Value>) -> Value {
+    let on = |key: &str| raw.and_then(|t| t.get(key)).and_then(Value::as_bool).unwrap_or(false);
+    json!({"shell": on("shell"), "files": on("files"), "browser": on("browser")})
+}
+
+/// Merge `changes` into a team agent's switches and store them.
+pub async fn set_agent_tools(state: &AppState, agent_id: &str, changes: &Map<String, Value>) -> Result<Value, ApiError> {
+    let _guard = state.store.lock().await;
+    let mut registry = read_registry(state).await?;
+    let agents = registry["agents"].as_array_mut().ok_or_else(not_found)?;
+    let slot = agents
+        .iter_mut()
+        .find(|a| a.get("id").and_then(Value::as_str) == Some(agent_id))
+        .ok_or_else(not_found)?;
+    let mut tools = normalize_tools(slot.get("tools"));
+    for (key, value) in changes {
+        tools[key] = value.clone();
+    }
+    slot["tools"] = tools.clone();
+    slot["updatedAt"] = json!(now_iso());
+    write_json(&registry_path(state), &registry).await?;
+    Ok(tools)
+}
+
 /// The working folder for a chat with `agent_id`. `Ok(None)` for the main
 /// agent (the caller keeps its usual folder); 404 for an unknown agent.
 pub async fn working_dir_for(state: &AppState, agent_id: &str) -> Result<Option<PathBuf>, ApiError> {
@@ -132,6 +174,89 @@ pub async fn working_dir_for(state: &AppState, agent_id: &str) -> Result<Option<
     let dir = agents_root(state).join(agent_id);
     tokio::fs::create_dir_all(&dir).await?;
     Ok(Some(dir))
+}
+
+/// The instance as `agent_id` sees it: the shared state for the main agent,
+/// else the agent's own runtime, socket, vault and workspace
+/// (`AppState::for_agent`). 404 for an unknown agent.
+pub async fn scoped_state(state: &AppState, agent_id: &str) -> Result<AppState, ApiError> {
+    if working_dir_for(state, agent_id).await?.is_none() {
+        return Ok(state.clone());
+    }
+    let scoped = state.for_agent(agent_id);
+    create_private_dir(&scoped.runtime_home).await?;
+    if let Some(dir) = scoped.runtime_socket.parent() {
+        create_private_dir(dir).await?;
+    }
+    Ok(scoped)
+}
+
+async fn create_private_dir(dir: &Path) -> Result<(), ApiError> {
+    tokio::fs::create_dir_all(dir).await?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        tokio::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).await?;
+    }
+    Ok(())
+}
+
+/// The header the UI sends on an agent's page so the same provider,
+/// connector, key and model routes act on that agent.
+pub const AGENT_HEADER: &str = "x-amiro-agent";
+
+/// `State<AppState>` scoped by the `X-Amiro-Agent` header: absent or `main`
+/// is the shared state, a team agent's id is its own (see [`scoped_state`]).
+pub struct AgentState(pub AppState);
+
+impl axum::extract::FromRequestParts<AppState> for AgentState {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        let agent = parts
+            .headers
+            .get(AGENT_HEADER)
+            .and_then(|value| value.to_str().ok())
+            .map(str::trim)
+            .unwrap_or("");
+        Ok(AgentState(scoped_state(state, agent).await?))
+    }
+}
+
+/// Copy the main agent's API-key providers into a new agent: its provider
+/// settings (`config.toml`) and stored API keys (`config/jcode/*.env`).
+/// Subscription sign-ins (OAuth tokens) are not copied: two runtimes
+/// refreshing one token can sign the main agent out, so an agent signs in to
+/// those itself. Memory, sessions and connectors are never copied.
+async fn copy_brain(from: &AppState, to: &AppState) -> Result<(), ApiError> {
+    create_private_dir(&to.runtime_home).await?;
+    let config = from.runtime_home.join("config.toml");
+    if tokio::fs::try_exists(&config).await.unwrap_or(false) {
+        tokio::fs::copy(&config, to.runtime_home.join("config.toml")).await?;
+    }
+    let keys_from = from.runtime_home.join("config").join("jcode");
+    let keys_to = to.runtime_home.join("config").join("jcode");
+    if let Ok(mut entries) = tokio::fs::read_dir(&keys_from).await {
+        create_private_dir(&keys_to).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let name = entry.file_name();
+            let is_key_file = name.to_string_lossy().ends_with(".env");
+            let meta = tokio::fs::symlink_metadata(entry.path()).await?;
+            if is_key_file && meta.is_file() {
+                let target = keys_to.join(&name);
+                tokio::fs::copy(entry.path(), &target).await?;
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    tokio::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o600)).await?;
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 fn clean_text(raw: Option<&Value>, max: usize) -> String {
@@ -195,16 +320,57 @@ fn team_identity_md(record: &Value) -> String {
     )
     .replace(
         "Generated from the Personality page. Edit it there",
-        "Generated from this agent's page in Team. Edit it there",
+        "Generated from this agent's Personality page in its Amiro space. Edit it there",
     );
-    md.push_str(
+    md.push_str(&team_note(instructions));
+    md
+}
+
+/// What every team agent's `IDENTITY.md` ends with: that it is one of a team,
+/// and its owner's instructions.
+fn team_note(instructions: &str) -> String {
+    let mut note = String::from(
         "\nYou are one agent on the owner's Amiro team. Your working folder is your own; \
          other agents have theirs. Stay in your folder unless the owner asks otherwise.\n",
     );
+    let instructions = instructions.trim();
     if !instructions.is_empty() {
-        md.push_str(&format!("\n## Role and instructions\n\n{instructions}\n"));
+        note.push_str(&format!("\n## Role and instructions\n\n{instructions}\n"));
     }
-    md
+    note
+}
+
+/// The team note for `agent_id`, for the Personality page's regenerated
+/// `IDENTITY.md` (agent.rs `sync_persona_files`).
+pub(crate) async fn team_identity_extras(state: &AppState, agent_id: &str) -> String {
+    let instructions = match read_registry(state).await {
+        Ok(registry) => find_record(&registry, agent_id)
+            .and_then(|record| record["instructions"].as_str())
+            .unwrap_or("")
+            .to_string(),
+        Err(_) => String::new(),
+    };
+    team_note(&instructions)
+}
+
+/// Save the identity the agent's Personality page reads (name, look,
+/// tagline) from its Team record.
+async fn write_identity_file(state: &AppState, record: &Value) -> Result<(), ApiError> {
+    let id = record["id"].as_str().unwrap_or("");
+    let path = crate::agent::team_identity_path(state, id);
+    let mut identity = read_json(&path, json!({})).await?;
+    if !identity.is_object() {
+        identity = json!({});
+    }
+    identity["name"] = record["name"].clone();
+    identity["traits"] = record["traits"].clone();
+    let role = record["role"].as_str().unwrap_or("").trim();
+    identity["tagline"] = json!(if role.is_empty() { "A member of your Amiro team" } else { role });
+    identity["updatedAt"] = json!(now_iso());
+    if let Some(dir) = path.parent() {
+        create_private_dir(dir).await?;
+    }
+    write_json(&path, &identity).await
 }
 
 /// Write `IDENTITY.md` (always) and seed the other home files (once).
@@ -310,19 +476,44 @@ async fn main_agent(state: &AppState, uid: &str) -> Result<Value, ApiError> {
 
 async fn team_agent(state: &AppState, record: &Value, uid: &str) -> Result<Value, ApiError> {
     let id = record["id"].as_str().unwrap_or("");
-    let name = record["name"].as_str().unwrap_or("Agent");
+    // Its Personality page (in its Amiro space) owns name, look and tagline
+    // once saved; the Team record is the starting point.
+    let identity = if tokio::fs::try_exists(crate::agent::team_identity_path(state, id))
+        .await
+        .unwrap_or(false)
+    {
+        Some(get_agent_identity(&state.for_agent(id), None).await?)
+    } else {
+        None
+    };
+    let name = identity
+        .as_ref()
+        .and_then(|i| i["name"].as_str())
+        .or_else(|| record["name"].as_str())
+        .unwrap_or("Agent")
+        .to_string();
+    let traits = identity.as_ref().map(|i| i["traits"].clone()).unwrap_or_else(|| record["traits"].clone());
+    let color = traits["color"].as_str().unwrap_or("orange");
+    let accent = identity
+        .as_ref()
+        .and_then(|i| i["accentHex"].as_str())
+        .unwrap_or_else(|| accent_palette(color).unwrap_or("#E9642F"))
+        .to_string();
+    let role = identity
+        .as_ref()
+        .map(|i| i["tagline"].clone())
+        .unwrap_or_else(|| record["role"].clone());
     let dir = agents_root(state).join(id);
     tokio::fs::create_dir_all(&dir).await?;
-    let channel = ensure_channel(state, id, name, &dir, uid).await?;
-    let color = record["traits"]["color"].as_str().unwrap_or("orange");
+    let channel = ensure_channel(state, id, &name, &dir, uid).await?;
     Ok(json!({
         "id": id,
         "name": name,
-        "role": record["role"],
+        "role": role,
         "instructions": record["instructions"],
-        "traits": record["traits"],
-        "accentHex": accent_palette(color).unwrap_or("#E9642F"),
-        "customImageUrl": Value::Null,
+        "traits": traits,
+        "accentHex": accent,
+        "customImageUrl": identity.as_ref().map(|i| i["customImageUrl"].clone()).unwrap_or(Value::Null),
         "isMain": false,
         "channelThreadId": channel,
         "workspaceDir": dir.to_string_lossy(),
@@ -371,6 +562,12 @@ async fn create_agent(
     let record = Value::Object(record);
 
     write_home(&state, &agents_root(&state).join(&id), &record).await?;
+    write_identity_file(&state, &record).await?;
+    // `brain: "copy"` (the default) starts the agent on the main agent's
+    // API-key providers; `"empty"` leaves it to be set up on its page.
+    if body.get("brain").and_then(Value::as_str) != Some("empty") {
+        copy_brain(&state, &state.for_agent(&id)).await?;
+    }
     {
         let _guard = state.store.lock().await;
         let mut registry = read_registry(&state).await?;
@@ -391,7 +588,7 @@ async fn get_agent(
     Ok(Json(agent_json(&state, &id, &user_id(&user)).await?))
 }
 
-fn main_is_fixed() -> ApiError {
+pub(crate) fn main_is_fixed() -> ApiError {
     ApiError(
         StatusCode::CONFLICT,
         "The main agent is edited on its Personality page.".into(),
@@ -429,6 +626,7 @@ async fn patch_agent(
         updated
     };
     write_home(&state, &agents_root(&state).join(&id), &updated).await?;
+    write_identity_file(&state, &updated).await?;
     Ok(Json(team_agent(&state, &updated, &user_id(&user)).await?))
 }
 
@@ -474,8 +672,29 @@ async fn delete_agent(
         write_json(&registry_path(&state), &registry).await?;
         sessions
     };
+    // Its sessions lived on its own runtime (older threads on the shared one);
+    // archiving a session the other runtime does not know is a no-op.
+    let own = state.for_agent(&id);
     for sid in sessions {
         let _ = crate::runtime::archive_session(&state, &sid).await;
+        if crate::runtime::socket_ready_for(&own) {
+            let _ = crate::runtime::archive_session(&own, &sid).await;
+        }
+    }
+    // Its runtime, providers, connectors and keys go with it.
+    crate::runtime::stop_runtime(&own);
+    let private = crate::state::agent_private_root(&state.home, &id);
+    if tokio::fs::try_exists(&private).await.unwrap_or(false) {
+        // Move it out of the agent's path at once, then remove it in the
+        // background: its runtime daemon can still be writing for a moment
+        // after the bridge stops, which makes an immediate remove fail.
+        let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%S%3f");
+        let trash = private.with_file_name(format!(".deleted-{id}-{stamp}"));
+        tokio::fs::rename(&private, &trash).await?;
+        tokio::spawn(remove_with_retries(trash));
+    }
+    if let Some(socket_dir) = own.runtime_socket.parent() {
+        let _ = tokio::fs::remove_dir_all(socket_dir).await;
     }
     // The folder is kept, never read again: deleting an agent must not destroy
     // the files it made.
@@ -487,6 +706,21 @@ async fn delete_agent(
         tokio::fs::rename(&dir, archive.join(format!("{id}-{stamp}"))).await?;
     }
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Remove a deleted agent's private folder, retrying while its runtime daemon
+/// winds down (it exits on its own once idle).
+async fn remove_with_retries(dir: PathBuf) {
+    for attempt in 0..40u32 {
+        match tokio::fs::remove_dir_all(&dir).await {
+            Ok(()) => return,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+            Err(error) if attempt == 39 => {
+                tracing::warn!(dir = %dir.display(), %error, "could not remove a deleted agent's private folder");
+            }
+            Err(_) => tokio::time::sleep(std::time::Duration::from_secs(15)).await,
+        }
+    }
 }
 
 async fn agent_threads(
@@ -613,7 +847,7 @@ mod tests {
         assert!(md.contains("**Handle:** @scout"));
         assert!(md.contains("**Tagline:** Researcher"));
         assert!(md.contains("## Role and instructions\n\nCite sources."));
-        assert!(md.contains("this agent's page in Team"));
+        assert!(md.contains("Personality page in its Amiro space"));
     }
 
     #[test]

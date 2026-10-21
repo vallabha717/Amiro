@@ -1,3 +1,4 @@
+import { agentScopeHeaders } from "./agent-scope";
 import {
   backendUrl,
   getBackendSharedSecret,
@@ -39,6 +40,8 @@ function authHeaders(): HeadersInit {
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
+  // The team agent whose settings the page acts on (agent-scope.ts).
+  Object.assign(headers, agentScopeHeaders());
   return headers;
 }
 

@@ -10,6 +10,7 @@ pub mod heartbeat;
 pub mod models;
 pub mod onboarding;
 pub mod runtime;
+pub mod sandbox;
 pub mod schedules;
 pub mod state;
 pub mod swarm;

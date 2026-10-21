@@ -319,7 +319,7 @@ pub async fn apply_config(state: &AppState) {
                 body["traits"] = traits;
             }
             match crate::agent::put_identity(
-                State(state.clone()),
+                crate::routes::agents::AgentState(state.clone()),
                 AuthUser(owner.clone()),
                 Some(Json(body)),
             )

@@ -1,4 +1,4 @@
-use axum::extract::{Path as AxumPath, Query, State};
+use axum::extract::{Path as AxumPath, Query};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use crate::routes::agents::AgentState;
 use crate::routes::fsbrowse::{is_denied, is_inside_roots, resolve_browse_roots};
 use crate::state::{read_json, write_json, ApiError, AppState, AuthUser};
 
@@ -682,7 +683,7 @@ async fn mirror_skill(state: &AppState, name: &str, skill: &DiscoveredSkill) -> 
 }
 
 async fn list_skills(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Query(query): Query<SkillsQuery>,
 ) -> Result<Json<Value>, ApiError> {
@@ -708,7 +709,7 @@ async fn list_skills(
 }
 
 async fn get_skill_detail(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     AxumPath(name): AxumPath<String>,
     Query(query): Query<SkillsQuery>,
@@ -737,7 +738,7 @@ async fn get_skill_detail(
 }
 
 async fn create_skill(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
@@ -854,7 +855,7 @@ async fn create_skill(
 }
 
 async fn update_skill(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     AxumPath(name): AxumPath<String>,
     Json(body): Json<Value>,
@@ -969,7 +970,7 @@ async fn update_skill(
 }
 
 async fn delete_skill(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     AxumPath(name): AxumPath<String>,
 ) -> Result<Json<Value>, ApiError> {
@@ -1022,7 +1023,7 @@ async fn delete_skill(
 }
 
 async fn duplicate_skill(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     AxumPath(name): AxumPath<String>,
 ) -> Result<Json<Value>, ApiError> {

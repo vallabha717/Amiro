@@ -3,6 +3,8 @@
 import { SidebarProvider } from "ui/sidebar";
 import { AppSidebar } from "@/components/layouts/app-sidebar";
 import { AppHeader } from "@/components/layouts/app-header";
+import { AgentScopeBanner } from "@/components/team/agent-scope-banner";
+import { useAgentScope } from "@/lib/backend/agent-scope";
 
 import { COOKIE_KEY_SIDEBAR_STATE } from "lib/const";
 import { AppPopupProvider } from "@/components/layouts/app-popup-provider";
@@ -34,6 +36,7 @@ function readSidebarCollapsedCookie(): boolean {
 function ChatLayoutInner({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession();
   const isCollapsed = useMemo(() => readSidebarCollapsedCookie(), []);
+  const agentScope = useAgentScope();
 
   return (
     // VegaAI shell (app.vegaai.dev): the provider paints the textured canvas;
@@ -58,8 +61,15 @@ function ChatLayoutInner({ children }: { children: React.ReactNode }) {
             data-testid="main-window"
             className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border bg-background shadow-panel"
           >
+            <AgentScopeBanner />
             <AppHeader />
-            <div className="custom-scrollbar min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+            {/* Keyed by the agent scope: switching whose settings these are
+                remounts the page, so pages that load once on mount refetch
+                for the right agent (agent-scope.ts). */}
+            <div
+              key={agentScope ?? "main"}
+              className="custom-scrollbar min-w-0 flex-1 overflow-y-auto overflow-x-hidden"
+            >
               {children}
             </div>
           </main>

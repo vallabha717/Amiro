@@ -94,22 +94,73 @@ export function deleteAgent(id: string) {
   return apiJson<void>(agentKey(id), { method: "DELETE" });
 }
 
-/** The Team view URL for an agent's channel. */
-export function teamPath(agentId: string) {
-  return agentId === MAIN_AGENT_ID
-    ? "/team"
-    : `/team?agent=${encodeURIComponent(agentId)}`;
-}
-
-/** The agent page URL (profile, chats, files). */
-export function agentPagePath(agentId: string) {
-  return `/team/agent?id=${encodeURIComponent(agentId)}`;
-}
-
 /** Channel first, then the most recently active chats. */
 export function sortAgentThreads(threads: AgentThread[]): AgentThread[] {
   return [...threads].sort((a, b) => {
     if (a.channel !== b.channel) return a.channel ? -1 : 1;
     return (b.lastMessageAt ?? "").localeCompare(a.lastMessageAt ?? "");
+  });
+}
+
+/** A team agent's tool switches; every one starts off. */
+export interface AgentTools {
+  shell: boolean;
+  files: boolean;
+  browser: boolean;
+}
+
+/**
+ * What the agent page says about the boundary: `none` (no tools at all),
+ * `container` (tools run in the agent's own container) or `unavailable`
+ * (tools are on but the sandbox is down, so calls fail instead of running
+ * on this machine). See backend/src/routes/agent_computer.rs.
+ */
+export type AgentIsolation = "none" | "container" | "unavailable";
+
+export interface AgentComputer {
+  tools: AgentTools;
+  /** The sandbox supervisor's address and secrets are set up. */
+  configured: boolean;
+  /** The supervisor answered and Docker is up. */
+  available: boolean;
+  state: "missing" | "running" | "stopped" | null;
+  network: string | null;
+  runtime: string | null;
+  isolation: AgentIsolation;
+}
+
+/** The boundary as measured from inside the agent's container. */
+export interface AgentComputerCheck {
+  uid: number | null;
+  gid: number | null;
+  capEff: string;
+  noCapabilities: boolean;
+  noNewPrivs: boolean;
+  dockerSocket: boolean;
+  readOnlyRoot: boolean;
+  homeWritable: boolean;
+  homeMounts: string[];
+  network: string;
+  runtime: string;
+}
+
+export function agentComputerKey(id: string) {
+  return `${agentKey(id)}/computer`;
+}
+
+export function useAgentComputer(id: string | null | undefined) {
+  return useSWR<AgentComputer>(id ? agentComputerKey(id) : null, fetcher);
+}
+
+export function setAgentTools(id: string, tools: Partial<Pick<AgentTools, "shell" | "files">>) {
+  return apiJson<AgentComputer>(agentComputerKey(id), {
+    method: "PATCH",
+    body: JSON.stringify({ tools }),
+  });
+}
+
+export function checkAgentComputer(id: string) {
+  return apiJson<AgentComputerCheck>(`${agentComputerKey(id)}/check`, {
+    method: "POST",
   });
 }

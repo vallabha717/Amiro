@@ -1,16 +1,18 @@
 # Multi-agent Team
 
-Amiro grows from one agent to a small team. After onboarding the owner lands
-on a **Team** view: a list of agents on the left and, on the right, a
-permanent conversation — the agent's **channel** — that works like a direct
-message in Teams or Slack. Every agent has its own persona and its own
-workspace folder. The main Amiro UI (chats, connectors, schedules, the
-agent's Personality page) is unchanged and one click away.
+Amiro grows from one agent to a team. After onboarding the owner lands on
+**Team**, a full-page app of its own: every agent in a list, and clicking one
+opens its fixed **Team thread** beside the list, like a direct message in
+Teams. **Open <name>** (e.g. **Open Nova**) goes to that agent's **space**: the full Amiro app,
+unchanged, acting as that agent — its chats, Personality, models, connectors,
+keys and schedules. Amiro (the onboarded agent) is just the default; new
+agents are created in Team and configured in their own space.
 
 | Read in order | What it settles |
 | --- | --- |
 | [01-reference-architectures.md](01-reference-architectures.md) | What rakazo and OpenDots do, and what Amiro takes from each |
 | [02-design.md](02-design.md) | Data model, storage layout, API, runtime patch, UI, isolation |
+| [03-per-agent-config.md](03-per-agent-config.md) | One runtime per agent; agent spaces; per-agent providers, connectors, keys, schedules |
 | [implementation-plan.md](implementation-plan.md) | Phases, deliverables, exit criteria |
 | [progress.md](progress.md) | What was actually built and verified (the record, not the plan) |
 
@@ -41,4 +43,6 @@ agent's Personality page) is unchanged and one click away.
 | Main sidebar lists only main-agent threads; other agents' threads appear on their own page | The main UI stays uncluttered as the team grows |
 | Stage 1 isolation = separate folder + persona; **not** a security boundary, and the UI/docs say so | Honest product rule. Container-per-agent (OpenDots model) is Stage 2 — see [02-design.md](02-design.md#isolation) |
 | Memory, schedules, heartbeat and connectors stay shared in Stage 1 | Splitting them touches the runtime memory store and the scheduler; recorded as follow-ups |
-| `/team` lives inside the existing `(chat)` layout | Keeps the icon rail/sidebar (Option B navigation) so the main UI is always one click away |
+| Team is its own full-page app (`src/app/(team)/`), not inside the main sidebar layout | Owner's call (2026-10-21): Team is a separate place; the main app is reached with **Open <name>** (e.g. **Open Nova**) |
+| An agent's configuration happens in its **space** — the existing Amiro pages scoped to it — not on a new agent page | Owner's call: no second set of settings pages; Amiro's pages already cover models, connectors, keys, schedules, personality |
+| Each agent has its own runtime process (providers, connectors, memory, sessions) and key vault | See [03-per-agent-config.md](03-per-agent-config.md) |

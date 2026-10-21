@@ -1,0 +1,55 @@
+# Amiro team-agent sandbox. Start it with `scripts/sandbox.sh up`, which
+# writes the secrets file and the variables below; do not start it by hand
+# without them.
+#
+# Only the supervisor is a long-running service. It creates one container per
+# team agent from the `agent-image` build. Neither the backend nor any agent
+# container receives the Docker socket.
+name: amiro-sandbox
+
+services:
+  agent-image:
+    profiles: [build]
+    image: ${AMIRO_SANDBOX_IMAGE:-amiro-agent:local}
+    build:
+      context: .
+      dockerfile: agent.Dockerfile
+    command: ["true"]
+
+  supervisor:
+    image: amiro-sandboxd:local
+    build:
+      context: ../../backend/sandboxd
+      dockerfile: ../../packaging/sandbox/supervisor.Dockerfile
+    environment:
+      # Read by scripts/sandbox.sh from $AMIRO_HOME/sandbox/supervisor.env
+      # (0600) and passed through; not an env_file because snap-packaged
+      # Docker's CLI cannot read hidden folders such as ~/.amiro.
+      AMIRO_SANDBOX_TOKEN: ${AMIRO_SANDBOX_TOKEN:?run scripts/sandbox.sh up}
+      AMIRO_SANDBOX_MASTER: ${AMIRO_SANDBOX_MASTER:?run scripts/sandbox.sh up}
+      AMIRO_SANDBOX_USER: ${AMIRO_SANDBOX_USER:?run scripts/sandbox.sh up}
+      AMIRO_SANDBOX_AGENTS_ROOT: ${AMIRO_SANDBOX_AGENTS_ROOT:?run scripts/sandbox.sh up}
+      AMIRO_SANDBOX_IMAGE: ${AMIRO_SANDBOX_IMAGE:-amiro-agent:local}
+      AMIRO_SANDBOX_NAMESPACE: ${AMIRO_SANDBOX_NAMESPACE:-amiro}
+      AMIRO_SANDBOX_NETWORK: ${AMIRO_SANDBOX_NETWORK:-bridge}
+      AMIRO_SANDBOX_RUNTIME: ${AMIRO_SANDBOX_RUNTIME:-}
+      AMIRO_SANDBOX_MEMORY_MB: ${AMIRO_SANDBOX_MEMORY_MB:-1024}
+      AMIRO_SANDBOX_CPUS: ${AMIRO_SANDBOX_CPUS:-1}
+      AMIRO_SANDBOX_PIDS: ${AMIRO_SANDBOX_PIDS:-256}
+      AMIRO_SANDBOX_NO_NEW_PRIVILEGES: ${AMIRO_SANDBOX_NO_NEW_PRIVILEGES:-true}
+      AMIRO_SANDBOX_LISTEN: 0.0.0.0:4313
+    ports:
+      # Loopback only: the backend on this host is the one caller.
+      - "127.0.0.1:${AMIRO_SANDBOX_PORT:-4313}:4313"
+    volumes:
+      - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
+    group_add:
+      - "${DOCKER_GID:?run scripts/sandbox.sh up}"
+    user: "65532:65532"
+    cap_drop: [ALL]
+    security_opt:
+      # false only on snap-packaged Docker (see scripts/sandbox.sh).
+      - no-new-privileges:${AMIRO_SANDBOX_NO_NEW_PRIVILEGES:-true}
+    read_only: true
+    init: true
+    restart: unless-stopped

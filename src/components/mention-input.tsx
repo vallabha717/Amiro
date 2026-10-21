@@ -259,7 +259,14 @@ export default function MentionInput({
           : []),
       ],
       content: defaultContent ?? content,
-      autofocus: true,
+      // The editor loads asynchronously; focusing it on creation would steal
+      // focus from whatever the user has moved to meanwhile (closing an open
+      // model picker, say). Focus it only when nothing else has focus yet.
+      autofocus: false,
+      onCreate: ({ editor }) => {
+        const active = typeof document === "undefined" ? null : document.activeElement;
+        if (!active || active === document.body) editor.commands.focus("end");
+      },
       onUpdate: ({ editor }) => {
         const json = editor.getJSON() as TipTapMentionJsonContent;
         const text = editor.getText();

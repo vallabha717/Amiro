@@ -1,21 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  type AgentThread,
-  agentPagePath,
-  sortAgentThreads,
-  teamPath,
-} from "./agents-api";
-
-describe("team agent paths", () => {
-  it("opens the main agent on the bare Team view", () => {
-    expect(teamPath("main")).toBe("/team");
-    expect(teamPath("abc")).toBe("/team?agent=abc");
-  });
-
-  it("encodes ids in query parameters", () => {
-    expect(agentPagePath("a&b")).toBe("/team/agent?id=a%26b");
-  });
-});
+import { type AgentThread, sortAgentThreads } from "./agents-api";
 
 describe("sortAgentThreads", () => {
   it("pins the channel above newer chats", () => {

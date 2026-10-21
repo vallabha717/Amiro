@@ -47,6 +47,9 @@ mime_guess = "2"
 # workspace so the backend can never drift onto an invented wire format.
 amiro-session-types = { path = "../runtime/crates/amiro-session-types" }
 amiro-sdk = { path = "../runtime/crates/amiro-sdk" }
+# Team-agent sandbox: the supervisor client, the per-agent credential and the
+# path rules shared with the supervisor binary (backend/sandboxd).
+amiro-sandboxd = { path = "sandboxd" }
 # Encrypted credential store: AES-256-GCM with a per-store random key. The
 # `zeroize` feature scrubs key material on drop; `zeroize` (with `alloc`) scrubs
 # owned plaintext buffers; `base64` carries nonce/ciphertext in the JSON document.

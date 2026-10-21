@@ -102,18 +102,33 @@ chosen in the composer must never be able to replace the persona.
 
 | Route | Component | Purpose |
 | --- | --- | --- |
-| `/team?agent=<id>` | `src/components/team/team-view.tsx` | Agent list (left) + channel (right). Defaults to the main agent. |
-| `/team/new` | `src/components/team/new-agent-wizard.tsx` | Steps: look & name → role & instructions → create. Lands on the new agent's channel. |
-| `/team/agent?id=<id>` | `src/components/team/agent-page.tsx` | Tabs: Chats (channel pinned first, then other chats), Profile (edit), Workspace (read-only file list + isolation note). Main agent's Profile links to `/agent/personality`. |
-| `/team/chat?agent=<id>&thread=<tid>` | `src/components/team/agent-chat-page.tsx` | A non-channel chat with a team agent; no `thread` starts a new one. Main-agent chats keep using `/?thread=`. |
+| `/team` | `team-view.tsx` in the full-page `(team)` layout (`team-shell.tsx`) | Agent list; "Pick an agent" until one is clicked. |
+| `/team?agent=<id>` | same | The agent's fixed Team thread beside the list. Header: **Open <name>** (e.g. **Open Nova**), and for a team agent **Computer** (Stage 2 dialog) and **Delete**. |
+| `/team/new` | `new-agent-wizard.tsx` | Look & name → role, instructions, AI providers (copy Amiro's API-key providers or start empty) → create. Lands on its Team thread. |
+| `/?agent=<id>` (and every main-app page after it) | the existing app + `agent-scope-banner.tsx` | The agent's **space**: the whole Amiro app acting as that agent. The main agent's space is plain `/`. |
 
 Static export rule: ids are query parameters, never route segments.
 
-The channel reuses `ChatBot` with two new optional props: `agentId` (sent in
-the request body) and `threadPath` (the URL `ChatBot` writes with
-`replaceState`, so it stays on `/team?agent=…` instead of jumping to `/`).
+The Team thread reuses `ChatBot` with optional props `agentId`, `threadPath`
+(so `replaceState` keeps the Team URL), `emptyState` and `workspaceLabel`
+(the composer shows "<name>'s own folder" instead of the folder picker).
 
-The sidebar menu gains a **Team** entry. Onboarding's final step and the
+### Agent spaces
+
+`?agent=<id>` sets the agent scope (`src/lib/backend/agent-scope.ts`, kept for
+the tab). Every API call then sends `X-Amiro-Agent`; the backend's
+`AgentState` extractor resolves it to `AppState::for_agent`. Scoped in the
+backend: the chat list (`GET /api/thread` lists that agent's threads), new
+chats (`ChatBot` sends the scope as `agentId`), the Personality/identity
+routes (a team agent's identity is `agents-private/<id>/identity.json`, and
+its regenerated `IDENTITY.md` keeps its team note and instructions), memory,
+workspace browser, providers and models, connectors, keys, search, skills and
+schedules (a schedule carries `agentId` and runs on that agent's runtime). A
+banner on every page says whose space it is, with **Back to Team** and
+**Switch to Amiro**; the page content is keyed by the scope, so switching
+remounts it.
+
+The main sidebar keeps a **Team** entry. Onboarding's final step and the
 "already onboarded" redirect go to `/team`.
 
 Theme: only existing tokens (`bg-background`, `border`, `text-muted-foreground`,
@@ -143,7 +158,11 @@ rakazo's shared Team Computer, which documents the same limit.
    enforced in the backend through the runtime's `configure_tools`.
 5. Optional egress restriction and gVisor (`runsc`).
 
-Stage 2 changes the runtime's tool execution path and is planned separately.
+Stage 2 is planned and tracked in
+[../multi-agent-team-isolation/](../multi-agent-team-isolation/README.md).
+Its first phase (container per agent, supervisor, per-agent credential, tool
+switches) replaces the Stage 1 note: team agents no longer get host tools at
+all, so the Workspace tab now says their tools never run on this machine.
 
 ## Not in Stage 1
 

@@ -86,10 +86,14 @@ test.describe("onboarding", () => {
       await expect(page.getByText(`Signed in as ${owner.email}`)).toBeVisible();
     });
 
-    await step("Start chatting → the Team view with the agent's channel open, the agent in the sidebar and a setup reminder", async () => {
+    await step("Start chatting → the Team page with the new agent as its first card", async () => {
       await page.getByRole("button", { name: "Start chatting" }).click();
-      await expect(page).toHaveURL(/\/team/);
-      await expect(page.getByTestId("team-channel-title")).toHaveText(agent.name);
+      await expect(page).toHaveURL(/\/team$/);
+      await expect(page.getByTestId("team-agent-main")).toContainText(agent.name);
+    });
+
+    await step("Open Amiro → the main app, with the agent in the sidebar and a setup reminder", async () => {
+      await page.getByTestId("team-open-amiro").click();
       await expect(page.getByRole("link", { name: new RegExp(`${agent.name}.*Personality`) })).toBeVisible();
       await expect(page.getByRole("link", { name: "Connect an AI provider" })).toBeVisible();
       const h1 = (await page.locator("main h1").first().innerText().catch(() => "")).trim();

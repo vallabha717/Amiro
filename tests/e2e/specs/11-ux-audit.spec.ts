@@ -17,7 +17,6 @@ const PAGES = [
   "/schedules",
   "/team",
   "/team/new",
-  "/team/agent",
   "/agent",
   "/agent/personality",
   "/agent/memory",

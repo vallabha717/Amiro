@@ -15,13 +15,14 @@ use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
-use axum::extract::{Path, State};
+use axum::extract::Path;
 use axum::http::StatusCode;
 use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use serde_json::{json, Map, Value};
 
 use crate::credentials;
+use crate::routes::agents::AgentState;
 use crate::runtime::McpReloadOutcome;
 use crate::state::{read_json, write_json, ApiError, AppState, AuthUser};
 
@@ -101,8 +102,34 @@ pub async fn mutate_mcp_servers<R>(
     if document == before {
         return Ok((result, false));
     }
+    // A team agent's runtime would start a local (stdio) connector on this
+    // machine as the Amiro user, outside the agent's container, so a team
+    // agent may only have remote (URL) connectors.
+    if state.agent_scope().is_some() {
+        let servers = document
+            .as_object()
+            .and_then(|object| object.get(key))
+            .and_then(Value::as_object);
+        if servers.is_some_and(|servers| servers.values().any(is_local_server)) {
+            return Err(ApiError(
+                StatusCode::BAD_REQUEST,
+                "Team agents can only use remote (URL) connectors: a local command would run on this machine, outside the agent's container.".into(),
+            ));
+        }
+    }
     write_json(&path, &document).await?;
     Ok((result, true))
+}
+
+/// A connector the runtime starts as a local process (a command, or an
+/// explicit stdio transport) rather than reaching over HTTP.
+pub fn is_local_server(entry: &Value) -> bool {
+    let transport = entry
+        .get("type")
+        .or_else(|| entry.get("transport"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    entry.get("command").is_some() || transport.eq_ignore_ascii_case("stdio")
 }
 
 /// Insert (`Some`) or remove (`None`) one named server.
@@ -959,7 +986,7 @@ fn plan_custom(body: &Value, existing: Option<&Value>) -> Result<Plan, ApiError>
 // Handlers
 // ---------------------------------------------------------------------------
 
-async fn list(State(state): State<AppState>, _user: AuthUser) -> Result<Json<Value>, ApiError> {
+async fn list(AgentState(state): AgentState, _user: AuthUser) -> Result<Json<Value>, ApiError> {
     if let Err(error) = migrate_legacy(&state).await {
         tracing::warn!("legacy MCP migration failed: {}", error.1);
     }
@@ -1007,7 +1034,7 @@ pub async fn upsert_custom_server(
 }
 
 async fn upsert_custom(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
@@ -1016,7 +1043,7 @@ async fn upsert_custom(
 }
 
 async fn put_secrets(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Path(name): Path<String>,
     Json(body): Json<Value>,
@@ -1090,7 +1117,7 @@ pub async fn set_server_enabled(
 }
 
 async fn set_enabled(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Path(name): Path<String>,
     Json(body): Json<Value>,
@@ -1139,7 +1166,7 @@ pub async fn delete_custom_server(
 }
 
 async fn delete_custom(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Path(name): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
@@ -1148,7 +1175,7 @@ async fn delete_custom(
 }
 
 async fn reload_route(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
 ) -> Result<Json<Value>, ApiError> {
     require_admin(&user)?;
@@ -1349,7 +1376,7 @@ pub async fn get_mcp_oauth_status(name: &str) -> Result<Value, ApiError> {
 }
 
 async fn post_mcp_oauth_start_route(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Path(name): Path<String>,
 ) -> Result<Json<Value>, ApiError> {

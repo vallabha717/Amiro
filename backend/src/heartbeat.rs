@@ -310,6 +310,7 @@ pub(crate) async fn agent_turn(
             images: Vec::new(),
             tool_results: Vec::new(),
             system_reminder: None,
+            agent_tools: None,
         },
     )
     .await?;
