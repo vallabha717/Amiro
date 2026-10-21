@@ -435,6 +435,25 @@ test.describe("chat", () => {
       expect.soft(combinedText).toMatch(/e2e-inline-edit\.txt|line 2/i);
     });
 
+    await step("Tools filter shows only what is ticked", async () => {
+      const menuItem = (name: string) => page.getByRole("menuitemcheckbox", { name: new RegExp(name) });
+      const open = async () => {
+        await page.getByTestId("tool-filter-trigger").click();
+      };
+      await open();
+      await menuItem("Web").click();
+      await page.keyboard.press("Escape");
+      await expect.soft(page.getByTestId("tool-call-toggle"), "only Web is ticked, so terminal and file calls are hidden").toHaveCount(0);
+      await open();
+      await menuItem("Web").click();
+      await menuItem("Terminal").click();
+      await page.keyboard.press("Escape");
+      await expect.soft(page.getByTestId("work-summary").filter({ hasText: /ran \d+ command/i }).first(), "ticking Terminal brings its calls back").toBeVisible();
+      await open();
+      await page.getByRole("menuitem", { name: /Show everything/ }).click();
+      await expect.soft(page.getByTestId("work-summary").first()).toBeVisible();
+    });
+
     await step("Reload the page → the thinking is still a collapsed light block, not dark answer text", async () => {
       await page.reload();
       await expect(page.getByTestId("chat-messages-container")).toBeVisible({ timeout: 30000 });

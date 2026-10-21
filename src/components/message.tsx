@@ -205,8 +205,8 @@ const PurePreviewMessage = ({
   const { grantedMode, decide } = usePlanDecision(addToolResult);
   // Subscribing here (not in the memo comparator) is fine: zustand re-renders
   // this component itself when the filter changes, memo or not.
-  const [hiddenToolCategories, hideAllTools] = chatUxStore(
-    useShallow((s) => [s.hiddenToolCategories, s.hideAllTools] as const),
+  const [onlyToolCategories, hideAllTools] = chatUxStore(
+    useShallow((s) => [s.onlyToolCategories, s.hideAllTools] as const),
   );
   const t = useTranslations("Chat.Tool");
   const grantedModeLabel =
@@ -701,9 +701,10 @@ const PurePreviewMessage = ({
               const filtered =
                 !needsUser &&
                 (hideAllTools ||
-                  hiddenToolCategories.includes(
-                    toolCategoryOf(toolName, (part as any).input),
-                  ));
+                  (onlyToolCategories.length > 0 &&
+                    !onlyToolCategories.includes(
+                      toolCategoryOf(toolName, (part as any).input),
+                    )));
               if (filtered) {
                 hiddenCount++;
                 continue;

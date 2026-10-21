@@ -36,9 +36,9 @@ export const CATEGORY_ICON: Record<ToolCategory, typeof TerminalIcon> = {
 };
 
 /**
- * Which tool rows the transcript shows. Hiding a category removes its rows
- * from the work log (the count in the header stays honest and says how many
- * are hidden); "Answers only" hides the work log entirely.
+ * Which tool rows the transcript shows. Tick a category and only the ticked
+ * ones are shown, everything else is hidden. Nothing ticked means no filter.
+ * "Answers only" hides the work log entirely.
  */
 export function ToolFilterMenu({
   counts,
@@ -47,10 +47,10 @@ export function ToolFilterMenu({
   counts?: Partial<Record<ToolCategory, number>>;
   className?: string;
 }) {
-  const [hidden, hideAll, mutate] = chatUxStore(
-    useShallow((s) => [s.hiddenToolCategories, s.hideAllTools, s.mutate]),
+  const [only, hideAll, mutate] = chatUxStore(
+    useShallow((s) => [s.onlyToolCategories, s.hideAllTools, s.mutate]),
   );
-  const activeFilters = hideAll ? 1 : hidden.length;
+  const activeFilters = hideAll ? 1 : only.length;
 
   return (
     <DropdownMenu>
@@ -69,14 +69,14 @@ export function ToolFilterMenu({
           Tools
           {activeFilters > 0 && (
             <span className="rounded-full bg-primary/15 text-primary px-1.5 text-[10px] tabular-nums">
-              {hideAll ? "off" : `−${activeFilters}`}
+              {hideAll ? "off" : activeFilters}
             </span>
           )}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
         <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
-          Show in transcript
+          Show only the ticked tools (none ticked shows all)
         </DropdownMenuLabel>
         <DropdownMenuCheckboxItem
           checked={hideAll}
@@ -98,11 +98,11 @@ export function ToolFilterMenu({
             <DropdownMenuCheckboxItem
               key={c.id}
               disabled={hideAll}
-              checked={!hidden.includes(c.id)}
+              checked={only.includes(c.id)}
               onSelect={(e) => e.preventDefault()}
               onCheckedChange={() =>
                 mutate((s) => ({
-                  hiddenToolCategories: toggleIn(s.hiddenToolCategories, c.id),
+                  onlyToolCategories: toggleIn(s.onlyToolCategories, c.id),
                 }))
               }
             >
@@ -114,11 +114,11 @@ export function ToolFilterMenu({
             </DropdownMenuCheckboxItem>
           );
         })}
-        {(hidden.length > 0 || hideAll) && (
+        {(only.length > 0 || hideAll) && (
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              onSelect={() => mutate({ hiddenToolCategories: [], hideAllTools: false })}
+              onSelect={() => mutate({ onlyToolCategories: [], hideAllTools: false })}
               className="text-xs"
             >
               Show everything
