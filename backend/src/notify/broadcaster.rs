@@ -217,12 +217,19 @@ async fn emit_inner(
     if let Ok(bindings) = pairing::list_bindings(state, user_id).await {
         for binding in bindings {
             let channel = binding.channel.clone();
+            // Prefer the model's per-channel copy; fall back to the
+            // decision copy when the engine did not render one.
+            let external_copy = decided
+                .copies
+                .get(&channel)
+                .cloned()
+                .unwrap_or_else(|| fallback_copy.clone());
             match crate::routes::notify_channels::deliver(
                 state,
                 user_id,
                 &channel,
-                &copy.title,
-                &copy.body,
+                &external_copy.title,
+                &external_copy.body,
                 &parsed.source_context_id,
             )
             .await
