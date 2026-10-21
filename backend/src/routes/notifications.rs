@@ -384,51 +384,6 @@ pub(crate) fn intent_event(user_id: &str, delivery_id: &str, item: &Value, unrea
     })
 }
 
-/// Compat helper: persists directly without going through the signal
-/// pipeline. Deprecated since Phase 02 (all in-tree emitters use
-/// `notify::emit_signal`); removal is Phase 05. Kept so out-of-tree callers
-/// and old payloads keep working, and so its intent matches the pipeline
-/// shape (`deliveryId` + `deepLinkTarget`).
-pub async fn emit_notification(
-    state: &AppState,
-    user_id: &str,
-    title: &str,
-    body: &str,
-    category: &str,
-    urgency: &str,
-    thread_id: Option<String>,
-    schedule_id: Option<String>,
-    source_event_name: &str,
-) -> Result<Value, ApiError> {
-    if user_id.trim().is_empty() {
-        return Err(ApiError(
-            StatusCode::BAD_REQUEST,
-            "notification requires a user id".to_string(),
-        ));
-    }
-    let settings_doc = load_settings_doc(state).await?;
-    let settings = settings_for(&settings_doc, user_id);
-
-    let mut input = Map::new();
-    input.insert("title".into(), json!(title));
-    input.insert("body".into(), json!(body));
-    input.insert("category".into(), json!(category));
-    input.insert("urgency".into(), json!(urgency));
-    input.insert("threadId".into(), json!(thread_id));
-    input.insert("scheduleId".into(), json!(schedule_id));
-    input.insert("sourceEventName".into(), json!(source_event_name));
-    let item = build_item(user_id, &Value::Object(input), &settings, None)?;
-    let delivery_id = item
-        .get("deliveryId")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-
-    let unread = persist_item(state, user_id, item.clone()).await?;
-    publish(intent_event(user_id, &delivery_id, &item, unread));
-    Ok(item)
-}
-
 // ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------

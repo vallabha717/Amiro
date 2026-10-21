@@ -19,7 +19,7 @@ parallel worktrees. 04 needs 02 (delivery states it renders) and 03
 | 02 | [Local delivery](phase-02-local-delivery.md) | M | Emitters switch to signals |
 | 03 | [External adapters](phase-03-external-adapters.md) | L | Review point: token flow |
 | 04 | [Bell inbox UI](phase-04-bell-ui.md) | L | Review point: visual pass |
-| 05 | [Rollout](phase-05-rollout.md) | S | Removes deprecated path |
+| 05 | [Rollout](phase-05-rollout.md) | S | ✅ Done 2026-10-21 |
 
 ## Rules for every phase
 

@@ -195,7 +195,9 @@ key goes to the encrypted vault and never passes through the chat. See
   [docs/AGENT.md](docs/AGENT.md).
 - **Memory.** A read-only map and card view of what the runtime remembers.
 - **Notifications.** A bell inbox for finished replies, schedule runs and
-  heartbeat notes, with optional browser or desktop notifications.
+  heartbeat notes, with optional browser or desktop notifications — plus
+  opt-in Telegram, Slack, and Discord delivery bound on the notifications
+  admin page.
 
 ### Superpowers (skills)
 

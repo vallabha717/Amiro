@@ -4,7 +4,7 @@ What has actually been built, as opposed to what is planned. The
 [phases](README.md) hold the intent; this folder holds the record — dated,
 with real numbers, and honest about what diverged.
 
-**Last updated:** 2026-10-21 (Phase 00 shipped)
+**Last updated:** 2026-10-21 (Phases 00–05 shipped)
 
 ## Status
 
@@ -15,7 +15,7 @@ with real numbers, and honest about what diverged.
 | 02 | Local delivery | ⚠️ Done with gaps 2026-10-21 (3/4 MET) | [record](phase-02-local-delivery.md) |
 | 03 | External adapters | ⚠️ Done with gaps 2026-10-21 (3/4 MET) | [record](phase-03-external-adapters.md) |
 | 04 | Bell inbox UI | ⚠️ Done with gaps 2026-10-21 (3/4 MET) | [record](phase-04-bell-ui.md) |
-| 05 | Rollout | ⬜ Not started — blocked on 04 | — |
+| 05 | Rollout | ⚠️ Done with gaps 2026-10-21 (3/4 MET) | [record](phase-05-rollout.md) |
 
 ## What works today
 
@@ -28,13 +28,15 @@ with real numbers, and honest about what diverged.
 
 ## What does **not** exist yet
 
-External adapters (03), inbox UI (04), rollout cleanup (05).
-Merged: Phase 02 (emitters on signals, intent with `deliveryId` +
-`deepLinkTarget`), Phase 01 (LLM routing with deterministic fallback),
-and Phase 03 (Telegram/Slack/Discord adapters, vault tokens, pairing,
-channel connect UI, `13-notifications` journey). Merged-tree gates green:
-lib notify 26, pipeline 12, notifications 9, channels 7, agent_mcp 38,
-tsc clean for notifications, vitest 49, i18n parity.
+All six phases shipped. Everything executable in this sandbox is MET
+(full backend suite incl. lib 264, tsc clean for notifications, biome
+lint clean, vitest 945, i18n 1109 keys match); live E2E journey execution
+is the standing PARTIAL (needs provider keys and a build machine).
+
+## What does **not** exist yet
+
+Nothing planned. Open follow-ups: execute the E2E journeys with keys and
+watch the feature video; review LLM copy tone and Hindi strings.
 
 ## Next up
 

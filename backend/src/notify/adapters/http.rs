@@ -132,3 +132,44 @@ fn short_body(value: &Value) -> String {
     };
     text.chars().take(300).collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn base_url_prefers_production_without_override() {
+        std::env::remove_var("AMIRO_NOTIFY_TEST_ONLY_BASE_URL");
+        assert_eq!(
+            base_url(
+                "AMIRO_NOTIFY_TEST_ONLY_BASE_URL",
+                "https://api.example.test"
+            ),
+            "https://api.example.test"
+        );
+    }
+
+    #[test]
+    fn provider_status_maps_auth_failures_to_401() {
+        assert_eq!(
+            provider_status(reqwest::StatusCode::UNAUTHORIZED),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            provider_status(reqwest::StatusCode::FORBIDDEN),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            provider_status(reqwest::StatusCode::TOO_MANY_REQUESTS),
+            StatusCode::BAD_GATEWAY
+        );
+    }
+
+    #[test]
+    fn short_body_truncates_to_300_chars() {
+        let long = "x".repeat(500);
+        assert_eq!(short_body(&json!(long)).chars().count(), 300);
+        assert_eq!(short_body(&json!({"ok": false})), "{\"ok\":false}");
+    }
+}

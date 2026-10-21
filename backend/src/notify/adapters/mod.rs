@@ -45,3 +45,26 @@ pub trait ChannelAdapter {
         context: &Value,
     ) -> impl std::future::Future<Output = Result<DeliveryResult, ApiError>> + Send;
 }
+
+#[cfg(test)]
+mod tests {
+    /// Meta guard (Phase 05): every adapter module must carry its own test
+    /// module, so no untested adapter lands later. Add the file here when a
+    /// new adapter is added.
+    #[test]
+    fn every_adapter_has_a_test_module() {
+        for file in [
+            include_str!("discord.rs"),
+            include_str!("http.rs"),
+            include_str!("local.rs"),
+            include_str!("pairing.rs"),
+            include_str!("slack.rs"),
+            include_str!("telegram.rs"),
+        ] {
+            assert!(
+                file.contains("mod tests"),
+                "adapter file without a test module"
+            );
+        }
+    }
+}

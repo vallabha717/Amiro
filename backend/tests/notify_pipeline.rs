@@ -256,10 +256,22 @@ async fn heartbeat_signal_reaches_the_thread_feed() {
 
 #[test]
 fn no_emitter_calls_the_old_direct_persist_path() {
-    // Phase 02 exit criterion: the three emitters call exactly one path
-    // (`notify::emit_signal`); the compat helper stays but has no in-tree
-    // callers. Paths resolve from the backend package root; fall back to a
-    // workspace-root-relative lookup.
+    // Phase 02 exit criterion, hardened in Phase 05: the three emitters call
+    // exactly one path (`notify::emit_signal`), and the deprecated compat
+    // helper is gone entirely (any reintroduction fails to compile *and*
+    // trips this guard). Paths resolve from the backend package root; fall
+    // back to a workspace-root-relative lookup.
+    let routes = [
+        "src/routes/notifications.rs",
+        "backend/src/routes/notifications.rs",
+    ]
+    .iter()
+    .find_map(|p| std::fs::read_to_string(p).ok())
+    .expect("cannot read notifications route source");
+    assert!(
+        !routes.contains("pub async fn emit_notification"),
+        "the deprecated direct-persist helper is back"
+    );
     let candidates = ["src/chat.rs", "src/schedules.rs", "src/heartbeat.rs"];
     for file in candidates {
         let source = ["src", "backend/src"]

@@ -60,3 +60,50 @@ impl ChannelAdapter for LocalAdapter {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    fn state() -> AppState {
+        let root =
+            std::env::temp_dir().join(format!("amiro-notify-local-{}", uuid::Uuid::new_v4()));
+        let home = root.join("home");
+        std::fs::create_dir_all(&home).unwrap();
+        AppState {
+            home,
+            runtime_home: root.join("runtime"),
+            runtime_socket: root.join("s.sock"),
+            workspace: root.join("workspace"),
+            runtime_bin: root.join("rt"),
+            token: String::new(),
+            store: Arc::new(tokio::sync::Mutex::new(())),
+        }
+    }
+
+    #[tokio::test]
+    async fn send_persists_the_feed_item_and_reports_it() {
+        let state = state();
+        let copy = ChannelCopy {
+            title: "Hi".into(),
+            body: "There".into(),
+        };
+        let context = json!({
+            "category": "system",
+            "urgency": "normal",
+            "silent": true,
+            "sourceEventName": "system.test",
+        });
+        let result = LocalAdapter
+            .send(&state, "u1", "d1", &copy, &context)
+            .await
+            .unwrap();
+        assert!(result.success);
+        let detail = result.detail.expect("local adapter reports the item");
+        assert_eq!(detail["item"]["title"], json!("Hi"));
+        assert_eq!(detail["item"]["silent"], json!(true));
+        assert_eq!(detail["unreadCount"], json!(1));
+        let _ = std::fs::remove_dir_all(state.home.parent().unwrap());
+    }
+}

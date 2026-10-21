@@ -113,3 +113,13 @@ pub async fn send(
 pub fn display_name(raw: &str) -> String {
     raw.trim().to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_name_trims_whitespace() {
+        assert_eq!(display_name("  Amiro Bot\n"), "Amiro Bot");
+    }
+}

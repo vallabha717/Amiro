@@ -31,6 +31,26 @@ pub struct SendOutcome {
     pub thread_ts: Option<String>,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn auth_uses_bearer_scheme() {
+        assert_eq!(auth("tok"), "Bearer tok");
+    }
+
+    #[test]
+    fn check_ok_accepts_ok_true_and_maps_auth_errors() {
+        assert!(check_ok(&json!({"ok": true}), "verify").is_ok());
+        let err = check_ok(&json!({"ok": false, "error": "invalid_auth"}), "verify").unwrap_err();
+        assert_eq!(err.0, StatusCode::UNAUTHORIZED);
+        let err = check_ok(&json!({"ok": false, "error": "ratelimited"}), "send").unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_GATEWAY);
+    }
+}
+
 fn check_ok(body: &Value, what: &str) -> Result<(), ApiError> {
     if body.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
         return Ok(());

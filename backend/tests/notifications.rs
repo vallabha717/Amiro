@@ -398,12 +398,12 @@ async fn test_endpoint_emits_real_notification() {
 }
 
 #[tokio::test]
-async fn emit_notification_helper_persists_without_http() {
+async fn pipeline_emit_persists_without_http() {
     let (app, root) = app();
     let (_, _) = request(&app, "GET", "/api/notifications", None, true).await;
-    // Reach into the same home the router was built with by constructing state
-    // from the env the harness wrote. Instead, drive it through a fresh state
-    // pointing at that home.
+    // Drive the pipeline through a fresh state pointing at the same home the
+    // router was built with (the deprecated direct-persist helper is gone;
+    // signals are the only path).
     let home = root.join("home");
     let state = AppState {
         home: home.clone(),
@@ -414,19 +414,22 @@ async fn emit_notification_helper_persists_without_http() {
         token: "sidecar".into(),
         store: Arc::new(tokio::sync::Mutex::new(())),
     };
-    let item = backend::routes::notifications::emit_notification(
+    let out = backend::notify::emit_signal(
         &state,
         "u1",
-        "Schedule finished",
-        "Your morning briefing completed.",
-        "schedule_result",
-        "normal",
-        None,
-        Some("sched-9".to_string()),
-        "schedule.result",
+        &json!({
+            "sourceChannel": "scheduler",
+            "sourceContextId": "sched-9",
+            "sourceEventName": "schedule.result",
+            "title": "Schedule finished",
+            "body": "Your morning briefing completed.",
+            "urgency": "normal",
+            "scheduleId": "sched-9",
+        }),
     )
     .await
     .unwrap();
+    let item = &out["item"];
     assert_eq!(item["category"], json!("schedule_result"));
     assert_eq!(item["scheduleId"], json!("sched-9"));
 

@@ -1,5 +1,8 @@
 # Phase 05 — Rollout
 
+> **Shipped 2026-10-21 with gaps (3/4 MET).** See [progress/phase-05-rollout.md](../progress/phase-05-rollout.md)
+> for what was built, what diverged, and the verification log.
+
 **Depends on:** 04 · **Blocks:** — · **Size:** S
 
 **Surfaces touched:** backend, web, docs

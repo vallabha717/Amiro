@@ -29,6 +29,16 @@ pub struct SendOutcome {
     pub channel_id: Option<String>,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn auth_uses_bot_scheme() {
+        assert_eq!(auth("tok"), "Bot tok");
+    }
+}
+
 /// Verify the token with `GET /users/@me`. Returns `username` for display.
 pub async fn verify(token: &str) -> Result<String, ApiError> {
     if token.trim().is_empty() {
