@@ -1,4 +1,4 @@
-use axum::extract::{Path, State};
+use axum::extract::Path;
 use axum::http::StatusCode;
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
@@ -7,6 +7,7 @@ use std::process::Stdio;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
+use crate::routes::agents::AgentState;
 use crate::state::{ApiError, AppState, AuthUser};
 
 fn require_admin(user: &AuthUser) -> Result<(), ApiError> {
@@ -228,7 +229,7 @@ pub async fn catalog_payload(state: &AppState) -> Value {
 }
 
 async fn get_provider_catalog(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     _user: AuthUser,
 ) -> Result<Json<Value>, ApiError> {
     Ok(Json(catalog_payload(&state).await))
@@ -315,7 +316,7 @@ pub async fn store_api_key(
 }
 
 async fn post_provider_api_key(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Path(id): Path<String>,
     Json(body): Json<Value>,
@@ -384,7 +385,7 @@ pub async fn remove_api_key(state: &AppState, provider_id: &str) -> Result<Value
 }
 
 async fn delete_provider_credentials(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
@@ -464,7 +465,7 @@ mod tests {
     #[tokio::test]
     async fn oauth_key_request_never_invokes_login() {
         let fixture = Fixture::new("test \"$1\" = auth\nprintf '%s' '{\"providers\":[{\"id\":\"openai\",\"auth_kind\":\"OAuth\"}]}'");
-        let error = post_provider_api_key(State(fixture.0.clone()), admin(), Path("openai".to_string()), Json(json!({"apiKey":"test-key"}))).await.unwrap_err();
+        let error = post_provider_api_key(AgentState(fixture.0.clone()), admin(), Path("openai".to_string()), Json(json!({"apiKey":"test-key"}))).await.unwrap_err();
         assert_eq!(error.0, StatusCode::BAD_REQUEST);
         assert!(error.1.contains("single-key setup"));
     }
@@ -482,7 +483,7 @@ IFS= read -r key
 mkdir -p "$AMIRO_HOME/config/jcode"
 printf '%s' "$key" > "$AMIRO_HOME/config/jcode/groq.env"
 fi"#);
-        let response = post_provider_api_key(State(fixture.0.clone()), admin(), Path("groq".to_string()), Json(json!({"apiKey":"test-key"}))).await.unwrap();
+        let response = post_provider_api_key(AgentState(fixture.0.clone()), admin(), Path("groq".to_string()), Json(json!({"apiKey":"test-key"}))).await.unwrap();
         assert_eq!(response.0["ok"], true);
         assert_eq!(std::fs::read_to_string(env_file_path(&fixture.0, "groq")).unwrap(), "test-key");
         assert!(!fixture.0.home.exists());
@@ -502,14 +503,14 @@ test "$6" = test-key
 test "$7" = --no-validate
 test "$#" = 7
 fi"#);
-        let response = post_provider_api_key(State(fixture.0.clone()), admin(), Path("openai-compatible".to_string()), Json(json!({"apiKey":"test-key", "apiBase":"https://example.test/v1"}))).await.unwrap();
+        let response = post_provider_api_key(AgentState(fixture.0.clone()), admin(), Path("openai-compatible".to_string()), Json(json!({"apiKey":"test-key", "apiBase":"https://example.test/v1"}))).await.unwrap();
         assert_eq!(response.0["ok"], true);
     }
 
     #[tokio::test]
     async fn fallback_uses_api_key_provider_ids_not_oauth_ids() {
         let fixture = Fixture::new("exit 1");
-        let response = get_provider_catalog(State(fixture.0.clone()), admin()).await.unwrap();
+        let response = get_provider_catalog(AgentState(fixture.0.clone()), admin()).await.unwrap();
         let ids: Vec<&str> = response.0["providers"].as_array().unwrap().iter()
             .filter_map(|entry| entry["id"].as_str()).collect();
         assert!(ids.contains(&"openai-api"));
@@ -522,7 +523,7 @@ fi"#);
     async fn invalid_key_or_ignored_base_is_rejected_before_cli() {
         let fixture = Fixture::new("exit 1");
         for body in [json!({"apiKey":"first\nsecond"}), json!({"apiKey":"first\rsecond"}), json!({"apiKey":"test-key", "apiBase":"https://example.test/v1"})] {
-            let error = post_provider_api_key(State(fixture.0.clone()), admin(), Path("groq".to_string()), Json(body)).await.unwrap_err();
+            let error = post_provider_api_key(AgentState(fixture.0.clone()), admin(), Path("groq".to_string()), Json(body)).await.unwrap_err();
             assert_eq!(error.0, StatusCode::BAD_REQUEST);
             assert!(error.1.contains("single line") || error.1.contains("apiBase is only"));
         }

@@ -111,7 +111,7 @@ export function OnboardingWizard() {
     }
     if (!onboarding) return;
     if (!onboarding.isOwner) {
-      router.replace("/");
+      router.replace("/team");
       return;
     }
     const s = onboarding.steps;
@@ -201,7 +201,8 @@ export function OnboardingWizard() {
   const finish = async () => {
     setPhase("speaking");
     await completeOnboarding(skipped);
-    router.replace("/");
+    // Land on the Team view with the onboarded agent's channel open.
+    router.replace("/team");
   };
 
   const back = () => {

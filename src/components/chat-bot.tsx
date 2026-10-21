@@ -6,6 +6,7 @@ import clsx from "clsx";
 import { cn, createDebounce, generateUUID } from "lib/utils";
 import {
   Fragment,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -26,6 +27,7 @@ import { ChatToolbar } from "./workspace/chat-toolbar";
 import { SessionPanel } from "./workspace/session-panel";
 import { AgentPane } from "./workspace/agent-pane";
 import { useSwarm, type SwarmMember } from "@/lib/backend/swarm-api";
+import { getAgentScope } from "@/lib/backend/agent-scope";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -94,6 +96,14 @@ type Props = {
   threadId: string;
   initialMessages: Array<UIMessage>;
   selectedChatModel?: string;
+  /** Team agent this chat belongs to (sent as `agentId`); unset = main chat. */
+  agentId?: string;
+  /** URL to show once the first message is sent; defaults to `/?thread=<id>`. */
+  threadPath?: string;
+  /** Replaces the greeting shown while the chat is empty. */
+  emptyState?: ReactNode;
+  /** Replaces the composer's folder picker when the folder is fixed. */
+  workspaceLabel?: string;
 };
 
 const LightRays = dynamic(() => import("ui/light-rays"), {
@@ -110,7 +120,14 @@ const firstTimeStorage = getStorageManager("IS_FIRST");
 const isFirstTime = firstTimeStorage.get() ?? true;
 firstTimeStorage.set(false);
 
-export default function ChatBot({ threadId, initialMessages }: Props) {
+export default function ChatBot({
+  threadId,
+  initialMessages,
+  agentId,
+  threadPath,
+  emptyState,
+  workspaceLabel,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // The composer, dock and strips float over the message list; the list's
   // bottom padding follows their real height so nothing scrolls under them.
@@ -250,7 +267,13 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
       api: backendUrl("/api/chat"),
       fetch: backendFetch,
       prepareSendMessagesRequest: ({ messages, body, id }) => {
-        const threadUrl = `/?thread=${threadId}`;
+        // In a team agent's space the URL keeps naming the agent.
+        const scope = getAgentScope();
+        const threadUrl =
+          threadPath ??
+          (scope
+            ? `/?thread=${threadId}&agent=${encodeURIComponent(scope)}`
+            : `/?thread=${threadId}`);
         if (window.location.pathname + window.location.search !== threadUrl) {
           console.log("replace-state");
           window.history.replaceState({}, "", threadUrl);
@@ -314,6 +337,9 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
             model: latestRef.current.threadImageToolModel[threadId],
           },
           attachments,
+          // In a team agent's space (agent-scope.ts) every new chat is with
+          // that agent.
+          agentId: agentId ?? getAgentScope() ?? undefined,
         };
         return { body: requestBody };
       },
@@ -1034,7 +1060,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
                 </div>
               )}
               {emptyMessage ? (
-                <ChatGreeting />
+                (emptyState ?? <ChatGreeting />)
               ) : (
                 <>
                   <div
@@ -1159,6 +1185,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
                   onQueueFollowUp={queuePendingFollowUp}
                   onCancelFollowUp={cancelPendingFollowUp}
                   onInterruptAndSend={interruptAndSend}
+                  workspaceLabel={workspaceLabel}
                 />
               </div>
               <DeleteThreadPopup

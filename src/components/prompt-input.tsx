@@ -14,6 +14,7 @@ import {
   ChevronDown,
   Clock,
   CornerRightUp,
+  FolderIcon,
   ImagesIcon,
   Loader2,
   Mic,
@@ -101,6 +102,11 @@ interface PromptInputProps {
    * Wired to Cmd/Ctrl+Enter while streaming.
    */
   onInterruptAndSend?: (followUp: PendingFollowUp) => void;
+  /**
+   * Shown instead of the folder picker when the folder is fixed (a team
+   * agent always works in its own folder).
+   */
+  workspaceLabel?: string;
 }
 
 const ChatMentionInput = dynamic(() => import("./chat-mention-input"), {
@@ -127,6 +133,7 @@ export default function PromptInput({
   onQueueFollowUp,
   onCancelFollowUp,
   onInterruptAndSend,
+  workspaceLabel,
 }: PromptInputProps) {
   const t = useTranslations("Chat");
   const liveVoiceActive = useVoiceStore((s) => s.active);
@@ -1094,7 +1101,17 @@ export default function PromptInput({
             {/* Sub-bar below composer with Project */}
             <div className="flex items-center justify-between px-3.5 py-1.5 border-t border-border/40 dark:border-white/[0.06] bg-background/40 dark:bg-white/[0.03] rounded-b-4xl transition-colors">
               <div className="flex items-center gap-1.5">
-                <ProjectSelector />
+                {workspaceLabel ? (
+                  <span
+                    className="inline-flex items-center gap-1.5 px-1 text-xs text-muted-foreground"
+                    data-testid="composer-agent-folder"
+                  >
+                    <FolderIcon className="size-3.5" />
+                    {workspaceLabel}
+                  </span>
+                ) : (
+                  <ProjectSelector />
+                )}
               </div>
             </div>
           </div>

@@ -10,6 +10,7 @@ use tokio::process::Command;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+use crate::routes::agents::AgentState;
 use crate::state::{ApiError, AppState, AuthUser};
 
 fn require_admin(user: &AuthUser) -> Result<(), ApiError> {
@@ -300,7 +301,7 @@ pub async fn oauth_status_for_user(uid: &str, id: &str) -> Result<Value, ApiErro
 }
 
 async fn post_oauth_start(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
@@ -320,7 +321,7 @@ async fn get_oauth_status(
 }
 
 async fn post_oauth_callback(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Path(id): Path<String>,
     Json(body): Json<Value>,
@@ -403,7 +404,7 @@ async fn post_oauth_callback(
 }
 
 async fn cancel_oauth(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {

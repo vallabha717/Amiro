@@ -270,15 +270,55 @@ async fn chat_handler(
         }
     }
 
-    let requested_dir = body
-        .get("workingDir")
-        .or_else(|| body.get("projectDirectory"))
-        .or_else(|| body.get("workspaceRoot"))
+    // A thread that already belongs to an agent keeps it; the body only picks
+    // the agent for a brand-new thread. A team agent always works in its own
+    // folder, so a client folder can never point it at another agent's files.
+    let agent_id = entry
+        .as_ref()
+        .and_then(|entry| entry.get("agentId"))
+        .or_else(|| body.get("agentId"))
         .and_then(|value| value.as_str())
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .map(validate_working_dir)
-        .transpose()?;
+        .map(str::to_string);
+    let agent_dir = match agent_id.as_deref() {
+        Some(id) => crate::routes::agents::working_dir_for(&state, id)
+            .await?
+            .map(|dir| dir.to_string_lossy().to_string()),
+        None => None,
+    };
+    // A team agent's turn runs on its own runtime: its providers, connectors,
+    // keys, memory and sessions (docs/multi-agent-team/03-per-agent-config.md).
+    let agent_runtime = agent_dir.is_some();
+    let state_for_stream = match agent_id.as_deref() {
+        Some(id) if agent_runtime => crate::routes::agents::scoped_state(&state, id).await?,
+        _ => state.clone(),
+    };
+    // A team agent gets only its container tools (possibly none), never the
+    // runtime's host tools. See `sandbox.rs`. It must read the agent-scoped
+    // state, so only the agent's own connectors are ever offered.
+    let agent_tools = match (&agent_id, &agent_dir) {
+        (Some(id), Some(_)) => crate::sandbox::AgentToolset::for_agent(&state_for_stream, id).await?,
+        _ => None,
+    };
+    let is_channel = entry
+        .as_ref()
+        .and_then(|entry| entry.get("channel"))
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
+
+    let requested_dir = if agent_dir.is_some() {
+        None
+    } else {
+        body.get("workingDir")
+            .or_else(|| body.get("projectDirectory"))
+            .or_else(|| body.get("workspaceRoot"))
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(validate_working_dir)
+            .transpose()?
+    };
 
     let message = body.get("message").cloned().unwrap_or(json!({}));
     let user_text = extract_text(&message);
@@ -324,7 +364,10 @@ async fn chat_handler(
     let mode_ok = !tools || permission_mode == "auto" || permission_mode == "edit";
 
     let response_id = uuid::Uuid::new_v4().to_string();
-    let state_for_stream = state.clone();
+    // Threads from before agents had their own runtime hold a session on the
+    // shared runtime; such a thread starts a new session on the agent's.
+    let stale_session = agent_runtime
+        && entry.as_ref().and_then(|e| e.get("runtime")).and_then(Value::as_str) != Some("agent");
     let mentions_arr = body
         .get("mentions")
         .and_then(|mentions| mentions.as_array())
@@ -363,15 +406,18 @@ async fn chat_handler(
             .as_ref()
             .and_then(|entry| entry.get("sessionId"))
             .and_then(|value| value.as_str())
-            .filter(|value| !value.is_empty())
+            .filter(|value| !value.is_empty() && !stale_session)
             .map(str::to_string);
         let stored_dir = state_for_stream.workspace.to_string_lossy().to_string();
-        let stored_dir = entry
-            .as_ref()
-            .and_then(|entry| entry.get("workingDir"))
-            .and_then(|value| value.as_str())
-            .unwrap_or(&stored_dir)
-            .to_string();
+        let stored_dir = match agent_dir.clone() {
+            Some(dir) => dir,
+            None => entry
+                .as_ref()
+                .and_then(|entry| entry.get("workingDir"))
+                .and_then(|value| value.as_str())
+                .unwrap_or(&stored_dir)
+                .to_string(),
+        };
         let rotation = requested_dir
             .as_deref()
             .map(|dir| dir != stored_dir)
@@ -508,6 +554,7 @@ async fn chat_handler(
             images,
             tool_results,
             system_reminder: Some(reminder).filter(|reminder| !reminder.is_empty()),
+            agent_tools: agent_tools.clone(),
         };
 
         let turn = match runtime::start_turn(state_for_stream.clone(), plan).await {
@@ -548,8 +595,16 @@ async fn chat_handler(
         } else {
             patch["workingDir"] = json!(working_dir);
         }
+        if let Some(id) = agent_id.as_deref() {
+            patch["agentId"] = json!(id);
+        }
+        if agent_runtime {
+            patch["runtime"] = json!("agent");
+        }
         if entry.as_ref().and_then(|e| e.get("heartbeat")).and_then(|v| v.as_bool()) == Some(true) {
             patch["unread"] = json!(false);
+        } else if is_channel {
+            // A channel keeps the agent's name as its title.
         } else if previous_session.is_none() {
             patch["title"] = json!(derive_title(&user_text));
             patch["titleSource"] = json!("runtime");
@@ -673,7 +728,12 @@ async fn chat_handler(
                                 text_open = false;
                             }
                             tool_names.insert(call_id.clone(), name.clone());
-                            yield frame(json!({"type": "tool-input-available", "toolCallId": call_id, "toolName": name, "input": input}));
+                            if crate::sandbox::is_agent_tool(&name) {
+                                // Answered by the backend in the agent's container, not by the UI.
+                                yield frame(json!({"type": "tool-input-available", "toolCallId": call_id, "toolName": name, "input": input, "providerExecuted": true}));
+                            } else {
+                                yield frame(json!({"type": "tool-input-available", "toolCallId": call_id, "toolName": name, "input": input}));
+                            }
                             tool_input_emitted.insert(call_id);
                             tool_count += 1;
                         }
@@ -851,6 +911,7 @@ async fn chat_temporary(
             images,
             tool_results: Vec::new(),
             system_reminder: Some(instructions).filter(|value| !value.is_empty()),
+            agent_tools: None,
         };
         let turn = match runtime::start_turn(state_for_stream.clone(), plan).await {
             Ok(turn) => turn,
@@ -968,7 +1029,12 @@ async fn chat_temporary(
                                 text_open = false;
                             }
                             tool_names.insert(call_id.clone(), name.clone());
-                            yield frame(json!({"type": "tool-input-available", "toolCallId": call_id, "toolName": name, "input": input}));
+                            if crate::sandbox::is_agent_tool(&name) {
+                                // Answered by the backend in the agent's container, not by the UI.
+                                yield frame(json!({"type": "tool-input-available", "toolCallId": call_id, "toolName": name, "input": input, "providerExecuted": true}));
+                            } else {
+                                yield frame(json!({"type": "tool-input-available", "toolCallId": call_id, "toolName": name, "input": input}));
+                            }
                             tool_input_emitted.insert(call_id);
                             tool_count += 1;
                         }

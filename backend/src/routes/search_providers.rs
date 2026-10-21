@@ -1,5 +1,5 @@
 use amiro_config_types::{CustomWebSearchConfig, CustomWebSearchMethod};
-use axum::extract::{Path, State};
+use axum::extract::Path;
 use axum::http::StatusCode;
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
@@ -9,6 +9,7 @@ use std::path::{Path as FilePath, PathBuf};
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
+use crate::routes::agents::AgentState;
 use crate::state::{read_json, write_json, ApiError, AppState, AuthUser};
 
 const STORE: &str = "search-providers.json";
@@ -493,7 +494,7 @@ pub async fn active_search_payload(state: &AppState) -> Result<Value, ApiError> 
 }
 
 async fn get_search_active(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     _user: AuthUser,
 ) -> Result<Json<Value>, ApiError> {
     Ok(Json(active_search_payload(&state).await?))
@@ -529,7 +530,7 @@ pub async fn list_search_providers_payload(state: &AppState) -> Result<Vec<Value
 }
 
 async fn get_search_providers(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
 ) -> Result<Json<Value>, ApiError> {
     require_admin(&user)?;
@@ -606,7 +607,7 @@ pub async fn upsert_search_provider(
 }
 
 async fn post_search_provider(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
@@ -631,7 +632,7 @@ pub async fn remove_search_provider(state: &AppState, id: &str) -> Result<Value,
 }
 
 async fn delete_search_provider(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
@@ -671,7 +672,7 @@ pub async fn set_active_search_provider(state: &AppState, id: &str) -> Result<Va
 }
 
 async fn activate_search_provider(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
@@ -820,7 +821,7 @@ pub async fn run_search_provider_test(state: &AppState, id: &str) -> Result<Valu
 }
 
 async fn test_search_provider(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
@@ -898,7 +899,7 @@ mod tests {
             json!({"endpoint":"https://example.org/search","snippet_pointer":"/bad~x"}),
         ] {
             let error = post_search_provider(
-                State(state.clone()),
+                AgentState(state.clone()),
                 admin(),
                 Json(json!({"name":"Invalid custom", "provider":"custom", "custom":custom})),
             )
@@ -942,7 +943,7 @@ mod tests {
                 .any(|provider| provider.engine == engine));
         }
         assert_eq!(
-            get_search_active(State(state.clone()), AuthUser(json!({"role":"user"})))
+            get_search_active(AgentState(state.clone()), AuthUser(json!({"role":"user"})))
                 .await
                 .unwrap()
                 .0["provider"],
@@ -1124,7 +1125,7 @@ mod tests {
         let state = state();
         initialize(&state).await.unwrap();
         let added = post_search_provider(
-            State(state.clone()),
+            AgentState(state.clone()),
             admin(),
             Json(json!({"name":"Tavily","provider":"tavily","apiKey":"secret"})),
         )
@@ -1136,7 +1137,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(registry["providers"].as_array().unwrap().len(), 4);
-        let _ = activate_search_provider(State(state.clone()), admin(), Path(id.into()))
+        let _ = activate_search_provider(AgentState(state.clone()), admin(), Path(id.into()))
             .await
             .unwrap();
         assert_eq!(
@@ -1145,7 +1146,7 @@ mod tests {
                 .unwrap()["default_provider"],
             id
         );
-        let _ = delete_search_provider(State(state.clone()), admin(), Path(id.into()))
+        let _ = delete_search_provider(AgentState(state.clone()), admin(), Path(id.into()))
             .await
             .unwrap();
         let registry = read_json(&state.runtime_home.join(REGISTRY), Value::Null)
@@ -1162,7 +1163,7 @@ mod tests {
             .await
             .unwrap();
         assert!(post_search_provider(
-            State(state.clone()),
+            AgentState(state.clone()),
             admin(),
             Json(json!({"name":"extra","provider":"bing"}))
         )
@@ -1186,7 +1187,7 @@ mod tests {
             let state = state.clone();
             tasks.push(tokio::spawn(async move {
                 let _ = post_search_provider(
-                    State(state),
+                    AgentState(state),
                     admin(),
                     Json(json!({"name":format!("DDG {index}"),"provider":"duckduckgo"})),
                 )

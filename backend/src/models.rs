@@ -31,6 +31,7 @@ use axum::{Json, Router};
 use serde_json::{json, Value};
 use tokio::time::{Duration, Instant};
 
+use crate::routes::agents::AgentState;
 use crate::state::{ApiError, AppState, AuthUser};
 
 /// Marker the runtime writes to stderr when it could not refresh a provider's
@@ -436,7 +437,7 @@ pub async fn connected_provider_count(state: &AppState) -> usize {
         .unwrap_or(0)
 }
 
-async fn get_chat_models(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
+async fn get_chat_models(AgentState(state): AgentState) -> Result<Json<Value>, ApiError> {
     let catalog = build_catalog(&state).await;
     let pinned = allowed_refs(&state);
     let is_pinned = pinned.is_some();
@@ -491,7 +492,7 @@ async fn get_chat_models(State(state): State<AppState>) -> Result<Json<Value>, A
     Ok(Json(json!(result)))
 }
 
-async fn get_ai_providers(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
+async fn get_ai_providers(AgentState(state): AgentState) -> Result<Json<Value>, ApiError> {
     let catalog = build_catalog(&state).await;
     let providers: Vec<Value> = catalog
         .get("providers")
@@ -533,7 +534,7 @@ fn require_admin(user: &AuthUser) -> Result<(), ApiError> {
 /// answers with an empty list rather than an error: the editor lets the user
 /// type ids by hand in that case.
 async fn post_provider_models(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
@@ -568,13 +569,13 @@ async fn provider_status(State(_state): State<AppState>) -> Json<Value> {
 }
 
 async fn sync_provider_models(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<Json<Value>, ApiError> {
     require_admin(&user)?;
     invalidate_catalog();
-    post_provider_models(State(state), user, Json(json!({"id": id}))).await
+    post_provider_models(AgentState(state), user, Json(json!({"id": id}))).await
 }
 
 /// Point the runtime's startup default (`[provider] default_provider` and
@@ -681,7 +682,7 @@ fn with_default_model(contents: &str, provider: &str, model: &str) -> Result<Str
 /// and token usage. A provider that rejects the request answers `ok: false`
 /// with the runtime's error rather than an HTTP failure, so the page can show it.
 async fn test_provider_model(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     axum::extract::Path(id): axum::extract::Path<String>,
     Json(body): Json<Value>,

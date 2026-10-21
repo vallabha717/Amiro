@@ -3321,3 +3321,120 @@ async fn resume_heals_stale_credential_route_after_credential_type_change() {
         "workers inheriting the healed session must target the live credential"
     );
 }
+
+/// Provider that first calls `bash` (which the session's SDK policy refuses)
+/// and then, once it sees the tool result, finishes normally. It records each
+/// request so the test can check what the model was told.
+#[derive(Clone, Default)]
+struct RefusedToolProvider {
+    requests: Arc<std::sync::Mutex<Vec<Vec<Message>>>>,
+}
+
+#[async_trait]
+impl Provider for RefusedToolProvider {
+    async fn complete(
+        &self,
+        messages: &[Message],
+        _tools: &[ToolDefinition],
+        _system: &str,
+        _resume_session_id: Option<&str>,
+    ) -> Result<EventStream> {
+        let first = {
+            let mut requests = self.requests.lock().unwrap();
+            requests.push(messages.to_vec());
+            requests.len() == 1
+        };
+        let (tx, rx) = tokio_mpsc::channel::<Result<StreamEvent>>(8);
+        tokio::spawn(async move {
+            let events = if first {
+                vec![
+                    StreamEvent::ToolUseStart { id: "refused-call".into(), name: "bash".into() },
+                    StreamEvent::ToolInputDelta(r#"{"command":"id"}"#.into()),
+                    StreamEvent::ToolUseEnd,
+                    StreamEvent::MessageEnd { stop_reason: Some("tool_use".into()) },
+                ]
+            } else {
+                vec![
+                    StreamEvent::TextDelta("recovered without bash".into()),
+                    StreamEvent::MessageEnd { stop_reason: Some("end_turn".into()) },
+                ]
+            };
+            for event in events {
+                let _ = tx.send(Ok(event)).await;
+            }
+        });
+        Ok(Box::pin(ReceiverStream::new(rx)))
+    }
+
+    fn name(&self) -> &str {
+        "refused-tool"
+    }
+
+    fn fork(&self) -> Arc<dyn Provider> {
+        Arc::new(self.clone())
+    }
+}
+
+/// The tool error the second request carried for the refused call, if any.
+fn refused_tool_result(requests: &[Vec<Message>]) -> Option<(String, Option<bool>)> {
+    requests.get(1)?.iter().flat_map(|m| m.content.iter()).find_map(|block| match block {
+        ContentBlock::ToolResult { tool_use_id, content, is_error } if tool_use_id == "refused-call" => {
+            Some((content.clone(), *is_error))
+        }
+        _ => None,
+    })
+}
+
+async fn agent_refusing_every_builtin(provider: RefusedToolProvider) -> Agent {
+    let provider: Arc<dyn Provider> = Arc::new(provider);
+    let registry = Registry::new(provider.clone()).await;
+    let agent = Agent::new(provider, registry);
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    // What Amiro's backend sets for a team agent: no built-in tools at all.
+    crate::tool::sdk::configure(
+        agent.session_id(),
+        "refusal-owner",
+        crate::protocol::SessionToolConfig { enabled: Some(vec![]), disabled: vec![], custom: vec![] },
+        tx,
+    )
+    .unwrap();
+    agent
+}
+
+/// Amiro patch `refused-tool-is-a-tool-error`: a call the session policy
+/// refuses must reach the model as a tool error it can recover from, on both
+/// turn loops, instead of aborting the turn with a chat error.
+#[tokio::test]
+async fn refused_tool_call_is_answered_as_a_tool_error_not_a_turn_error() {
+    let _guard = crate::storage::lock_test_env();
+
+    // Non-streaming loop (`turn_loops::run_turn`).
+    let provider = RefusedToolProvider::default();
+    let requests = provider.requests.clone();
+    let mut agent = agent_refusing_every_builtin(provider).await;
+    let text = agent.run_once_capture("check who you are").await.expect("turn must complete");
+    assert!(text.contains("recovered without bash"), "{text:?}");
+    let (content, is_error) = refused_tool_result(&requests.lock().unwrap()).expect("tool result sent");
+    assert_eq!(is_error, Some(true));
+    assert!(content.contains("Tool 'bash' is not allowed"), "{content}");
+
+    // Streaming loop (`turn_streaming_mpsc::run_turn_streaming_mpsc`).
+    let provider = RefusedToolProvider::default();
+    let requests = provider.requests.clone();
+    let mut agent = agent_refusing_every_builtin(provider).await;
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    agent
+        .run_once_streaming_mpsc("check who you are", Vec::new(), None, tx)
+        .await
+        .expect("turn must complete");
+    let (content, is_error) = refused_tool_result(&requests.lock().unwrap()).expect("tool result sent");
+    assert_eq!(is_error, Some(true));
+    assert!(content.contains("Tool 'bash' is not allowed"), "{content}");
+    let mut saw_error_done = false;
+    while let Ok(event) = rx.try_recv() {
+        if let ServerEvent::ToolDone { name, error: Some(_), .. } = event {
+            saw_error_done |= name == "bash";
+        }
+    }
+    assert!(saw_error_done, "the client sees the refused call as a failed tool");
+}

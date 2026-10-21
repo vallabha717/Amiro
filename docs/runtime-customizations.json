@@ -236,6 +236,58 @@
         "cargo test --locked --manifest-path runtime/Cargo.toml -p amiro-app-core --no-default-features -- tool::applet tool::tests::only_the_known_open_world_tools_are_ineligible_for_openai_strict_mode agent::tests::user_response_capability_updates_locked_tool_surface",
         "pnpm --dir tests e2e --project chat  # 'visualize skill renders an inline visual'"
       ]
+    },
+    {
+      "id": "team-agent-home",
+      "requirement": "Load the agent-home persona files from the session's team-agent folder when its working directory is inside $AMIRO_AGENTS_ROOT (set by the backend to ~/.amiro/agents), else from $AMIRO_AGENT_HOME. Folders outside the root never replace the persona. See docs/multi-agent-team/02-design.md.",
+      "sentinels": [
+        {
+          "path": "runtime/crates/amiro-base/src/agent_home.rs",
+          "contains": [
+            "AGENTS_ROOT_ENV: &str = \"AMIRO_AGENTS_ROOT\"",
+            "pub fn load_agent_home_files(working_dir: Option<&Path>)"
+          ]
+        },
+        {
+          "path": "runtime/crates/amiro-base/src/agent_home_tests.rs",
+          "contains": [
+            "fn team_agent_folder_replaces_the_main_home",
+            "fn project_folder_with_identity_cannot_replace_the_persona"
+          ]
+        }
+      ],
+      "checks": [
+        "cargo test --manifest-path runtime/Cargo.toml -p amiro-base agent_home"
+      ]
+    },
+    {
+      "id": "refused-tool-is-a-tool-error",
+      "requirement": "A tool call the session's tool policy refuses (SDK configure_tools enabled/disabled lists, allowed/disabled tools) is answered to the model as an error tool result and counts toward the malformed-round bound, on both turn loops, instead of aborting the whole turn. The refusal itself is unchanged. Amiro's team agents rely on this: their sessions allow no built-in tools, and a model that still reaches for one must be able to recover. See docs/multi-agent-team-isolation/progress/phase-00-agent-computer.md.",
+      "sentinels": [
+        {
+          "path": "runtime/crates/amiro-app-core/src/agent/turn_loops.rs",
+          "contains": [
+            "let refusal = tc.validation_error().or_else(|| {",
+            "Use only the tools you were given."
+          ]
+        },
+        {
+          "path": "runtime/crates/amiro-app-core/src/agent/turn_streaming_mpsc.rs",
+          "contains": [
+            "let refusal = tc.validation_error().or_else(|| {",
+            "Use only the tools you were given."
+          ]
+        },
+        {
+          "path": "runtime/crates/amiro-app-core/src/agent_tests.rs",
+          "contains": [
+            "fn refused_tool_call_is_answered_as_a_tool_error_not_a_turn_error"
+          ]
+        }
+      ],
+      "checks": [
+        "cargo test --manifest-path runtime/Cargo.toml -p amiro-app-core --lib refused_tool_call"
+      ]
     }
   ],
   "mandatoryFiles": [

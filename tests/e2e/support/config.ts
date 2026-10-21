@@ -59,6 +59,12 @@ export interface E2EConfig {
     stitch: boolean;
   };
   timeouts: { agentReplyMs: number; testMs: number };
+  /**
+   * Team-agent sandbox for the isolated instance (scripts/sandbox.sh).
+   * "auto" starts it when Docker and both images (amiro-agent:local,
+   * amiro-sandboxd:local) are present; "on" fails the run without them.
+   */
+  sandbox: { mode: "auto" | "on" | "off"; port: number };
 }
 
 /** env var → config path. Env always wins over the file. */
@@ -85,6 +91,8 @@ const ENV: Record<string, string> = {
   AMIRO_E2E_HEADLESS: "recording.headless",
   AMIRO_E2E_SLOWMO: "recording.slowMoMs",
   AMIRO_E2E_VIDEO: "recording.video",
+  AMIRO_E2E_SANDBOX: "sandbox.mode",
+  AMIRO_E2E_SANDBOX_PORT: "sandbox.port",
 };
 
 function merge<T>(base: T, over: unknown): T {
@@ -146,6 +154,8 @@ export interface InstanceState {
   pids?: number[];
   socket?: string;
   backendLog?: string;
+  /** The run's own sandbox supervisor, when one was started. */
+  sandbox?: { namespace: string; port: number; root: string; home: string };
 }
 
 export function readInstance(): InstanceState {

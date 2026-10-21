@@ -442,7 +442,7 @@ pub fn build_system_prompt_full_with_capabilities(
     }
 
     // Agent home files (re-read every turn; changes often)
-    if let Some((block, chars)) = crate::agent_home::load_agent_home_files() {
+    if let Some((block, chars)) = crate::agent_home::load_agent_home_files(working_dir) {
         info.agent_home_chars = chars;
         parts.push(block);
     }
@@ -595,7 +595,7 @@ fn build_system_prompt_split_with_capabilities_and_agents_md(
     }
 
     // Agent home files (re-read every turn; changes often, so dynamic/uncached)
-    if let Some((block, chars)) = crate::agent_home::load_agent_home_files() {
+    if let Some((block, chars)) = crate::agent_home::load_agent_home_files(working_dir) {
         info.agent_home_chars = chars;
         dynamic_parts.push(block);
     }

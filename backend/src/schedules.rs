@@ -108,6 +108,10 @@ pub struct Schedule {
     /// Chat thread the agent created this from, when it said so.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_from_thread_id: Option<String>,
+    /// The team agent whose space this schedule belongs to and whose runtime
+    /// runs it; `None` is the main agent (docs/multi-agent-team).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -656,9 +660,11 @@ pub async fn list_schedules(state: &AppState, uid: &str) -> Result<Vec<Value>, A
     let mut out: Vec<(String, Value)> = doc
         .as_object()
         .map(|map| {
+            // Each agent's space lists only its own schedules.
+            let scope = state.agent_scope();
             map.iter()
                 .filter_map(|(id, v)| decode_schedule(id, v))
-                .filter(|s| owned(s, uid))
+                .filter(|s| owned(s, uid) && s.agent_id == scope)
                 .map(|s| (s.created_at.clone(), public_schedule(&s)))
                 .collect()
         })
@@ -759,6 +765,7 @@ pub async fn create_schedule_from(
         thread_id: None,
         created_by: created_by.to_string(),
         created_from_thread_id,
+        agent_id: state.agent_scope(),
         created_at: now.clone(),
         updated_at: now,
     };
@@ -1261,7 +1268,7 @@ async fn persist_result_thread(
     {
         return None;
     }
-    let entry = json!({
+    let mut entry = json!({
         "sessionId": "",
         "userId": uid,
         "title": title,
@@ -1271,6 +1278,11 @@ async fn persist_result_thread(
         "archived": false,
         "workingDir": state.workspace.to_string_lossy().to_string(),
     });
+    // A team agent's result lands in that agent's chats.
+    if let Some(agent) = state.agent_scope() {
+        entry["agentId"] = json!(agent);
+        entry["runtime"] = json!("agent");
+    }
     if let Some(map) = doc.as_object_mut() {
         map.insert(thread_id.clone(), entry);
     }
@@ -1340,6 +1352,7 @@ async fn scheduled_model_turn(state: &AppState, schedule: &Schedule) -> Result<S
             images: Vec::new(),
             tool_results: Vec::new(),
             system_reminder: None,
+            agent_tools: None,
         },
     )
     .await?;
@@ -1485,6 +1498,24 @@ async fn execute_agent(state: &AppState, schedule: &Schedule, now: &str) -> Exec
 }
 
 async fn run_execution(state: &AppState, schedule: Schedule) -> ExecOutcome {
+    // A team agent's schedule runs on that agent's own runtime and folder.
+    let scoped;
+    let state = match schedule.agent_id.as_deref() {
+        Some(agent) => match crate::routes::agents::scoped_state(state, agent).await {
+            Ok(agent_state) => {
+                scoped = agent_state;
+                &scoped
+            }
+            Err(_) => {
+                return ExecOutcome {
+                    status: "failed".to_string(),
+                    preview: "This schedule's agent no longer exists. No task was executed.".to_string(),
+                    thread_id: None,
+                };
+            }
+        },
+        None => state,
+    };
     let now = crate::state::now_iso();
     let owner_exists = read_json(&state.home.join("users.json"), json!({"users":[]}))
         .await

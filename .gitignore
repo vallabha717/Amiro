@@ -12,6 +12,7 @@ out/
 # Generated native sidecar binaries
 src-tauri/binaries/
 backend/target/
+backend/sandboxd/target/
 runtime/target/
 
 # Tauri

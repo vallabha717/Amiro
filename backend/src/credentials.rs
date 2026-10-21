@@ -228,8 +228,13 @@ pub fn masked_hint(value: &str) -> String {
     format!("••••{tail}")
 }
 
+/// The key vault: the instance's for the main agent, the agent's own for a
+/// team agent (`AppState::for_agent`), so keys are never shared between agents.
 pub fn protected_dir(state: &AppState) -> PathBuf {
-    state.home.join(PROTECTED_DIR)
+    match state.agent_scope() {
+        Some(agent) => crate::state::agent_private_root(&state.home, &agent).join(PROTECTED_DIR),
+        None => state.home.join(PROTECTED_DIR),
+    }
 }
 
 /// The encrypted store file, exposed for tests.

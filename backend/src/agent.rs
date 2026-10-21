@@ -27,6 +27,7 @@ use axum::{Json, Router};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 
+use crate::routes::agents::AgentState;
 use crate::state::{read_json, write_json, ApiError, AppState, AuthUser};
 
 // ---------------------------------------------------------------------------
@@ -49,7 +50,7 @@ const BLACK_HEX: &str = "#17171C";
 /// Accent palette keyed by color id. Kept byte-identical to `AVATAR_COLORS`
 /// in the UI catalog. Sidebar themes are CSS-token driven and are NOT part
 /// of this palette. `black` is the plush near-black the customizer offers.
-fn accent_palette(color: &str) -> Option<&'static str> {
+pub(crate) fn accent_palette(color: &str) -> Option<&'static str> {
     match color {
         "green" => Some(GREEN_HEX),
         "orange" => Some(ORANGE_HEX),
@@ -290,7 +291,7 @@ fn clamp_slider(v: &Value, fallback: f64) -> i64 {
     num.max(0.0).min(100.0).round() as i64
 }
 
-fn normalize_sliders(raw: &Value) -> Value {
+pub(crate) fn normalize_sliders(raw: &Value) -> Value {
     let get = |k: &str, dflt: f64| -> i64 {
         match raw.get(k) {
             Some(v) => clamp_slider(v, dflt),
@@ -306,7 +307,7 @@ fn normalize_sliders(raw: &Value) -> Value {
     })
 }
 
-fn normalize_traits(raw: &Value) -> Value {
+pub(crate) fn normalize_traits(raw: &Value) -> Value {
     let mut body_shape = js_string_or(raw.get("bodyShape"), DEFAULT_BODY_SHAPE)
         .trim()
         .to_lowercase();
@@ -509,6 +510,21 @@ fn store_path(state: &AppState, key: &str) -> PathBuf {
     state.home.join("store").join(key)
 }
 
+/// Where an identity is saved: the user's own file for the main agent, or —
+/// in a team agent's space (`AppState::for_agent`) — that agent's, so the
+/// Personality page edits whichever agent's space it is in.
+fn identity_path(state: &AppState, user_id: Option<&str>) -> PathBuf {
+    match state.agent_scope() {
+        Some(agent) => team_identity_path(state, &agent),
+        None => store_path(state, &identity_key_for_user(user_id)),
+    }
+}
+
+/// A team agent's saved identity (name, look, tagline, personality).
+pub(crate) fn team_identity_path(state: &AppState, agent_id: &str) -> PathBuf {
+    crate::state::agent_private_root(&state.home, agent_id).join("identity.json")
+}
+
 // ---------------------------------------------------------------------------
 // Identity read
 // ---------------------------------------------------------------------------
@@ -535,6 +551,8 @@ pub async fn get_agent_identity(state: &AppState, user_id: Option<&str>) -> Resu
     let uid = sanitize_user_id(user_id);
 
     let saved = match &uid {
+        // A team agent's identity never falls back to the main agent's.
+        _ if state.agent_scope().is_some() => read_json(&identity_path(state, None), Value::Null).await?,
         Some(uid) => {
             let per_user =
                 read_json(&store_path(state, &identity_key_for_user(Some(uid))), Value::Null)
@@ -637,7 +655,7 @@ pub async fn get_agent_identity(state: &AppState, user_id: Option<&str>) -> Resu
 }
 
 /// `name.toLowerCase().replace(/[^a-z0-9]+/g, '')`
-fn alpha_lower(name: &str) -> String {
+pub(crate) fn alpha_lower(name: &str) -> String {
     name.to_lowercase()
         .chars()
         .filter(|c| c.is_ascii_alphanumeric())
@@ -914,13 +932,17 @@ async fn sync_persona_files_inner(
     let updated_at = js_string_or(identity.get("updatedAt"), "");
 
     let s = normalize_sliders(identity.get("sliders").unwrap_or(&Value::Null));
-    let identity_md = build_identity_md(
+    let mut identity_md = build_identity_md(
         &name,
         &handle,
         &tagline,
         &personality,
         &s,
     );
+    // A team agent keeps its team note and its owner's instructions.
+    if let Some(agent) = state.agent_scope() {
+        identity_md.push_str(&crate::routes::agents::team_identity_extras(state, &agent).await);
+    }
     let _ = (&accent_hex, &updated_at, &traits);
 
     // Guard each target against symlinks: remove any existing symlink before write.
@@ -1842,7 +1864,7 @@ fn read_only_error() -> ApiError {
 
 /// GET /api/agent/identity -- per-user agent identity, avatar, personality.
 async fn get_identity(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
 ) -> Result<Json<Value>, ApiError> {
     let uid = user_id_of(&user);
@@ -1870,7 +1892,7 @@ async fn get_identity(
 
 /// PUT /api/agent/identity -- per-user update with strict validation.
 pub(crate) async fn put_identity(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     body: Option<Json<Value>>,
 ) -> Result<Json<Value>, ApiError> {
@@ -1990,7 +2012,7 @@ pub(crate) async fn put_identity(
         "updatedAt": now_iso(),
     });
 
-    write_json(&store_path(&state, &identity_key_for_user(Some(&uid))), &updated).await?;
+    write_json(&identity_path(&state, Some(&uid)), &updated).await?;
     sync_persona_files(&state, &updated, Some(&uid)).await;
 
     let fingerprint = persona_fingerprint(&updated);
@@ -2004,7 +2026,7 @@ pub(crate) async fn put_identity(
 
 /// GET /api/agent/personality -- per-user read of the 5 sliders and persona summary.
 async fn get_personality(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
 ) -> Result<Json<Value>, ApiError> {
     let uid = user_id_of(&user);
@@ -2024,7 +2046,7 @@ async fn get_personality(
 /// PUT /api/agent/personality -- per-user update; never mutates the runtime's
 /// global memory (the engine owns its own memory writes through the native SDK).
 async fn put_personality(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     body: Option<Json<Value>>,
 ) -> Result<Json<Value>, ApiError> {
@@ -2071,7 +2093,7 @@ async fn put_personality(
     updated.insert("updatedAt".to_string(), Value::String(now_iso()));
     let updated = Value::Object(updated);
 
-    write_json(&store_path(&state, &identity_key_for_user(Some(&uid))), &updated).await?;
+    write_json(&identity_path(&state, Some(&uid)), &updated).await?;
     sync_persona_files(&state, &updated, Some(&uid)).await;
 
     let fingerprint = persona_fingerprint(&updated);
@@ -2085,7 +2107,7 @@ async fn put_personality(
 
 /// GET /api/agent/memory -- READ ONLY, admin-gated.
 async fn get_memory(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
 ) -> Result<Json<Value>, ApiError> {
     require_admin(&user)?;
@@ -2123,7 +2145,7 @@ async fn delete_memory(_user: AuthUser) -> Result<Json<Value>, ApiError> {
 
 /// GET /api/agent/workspace -- admin-gated, allowlisted, realpath-contained.
 async fn get_workspace(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<Value>, ApiError> {
@@ -2273,7 +2295,7 @@ async fn get_workspace(
 
 /// GET /api/agent/workspace/file -- admin-gated, allowlisted, realpath-contained.
 async fn get_workspace_file(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<Value>, ApiError> {

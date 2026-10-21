@@ -17,13 +17,14 @@
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use axum::extract::{Path, State};
+use axum::extract::Path;
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::{json, Value};
 
 use crate::credentials;
+use crate::routes::agents::AgentState;
 use crate::state::{ApiError, AppState, AuthUser};
 
 const VALIDATE_TIMEOUT: Duration = Duration::from_secs(15);
@@ -63,7 +64,7 @@ fn string_array(value: Option<&Value>) -> Vec<String> {
         .unwrap_or_default()
 }
 
-async fn list(State(state): State<AppState>, _user: AuthUser) -> Result<Json<Value>, ApiError> {
+async fn list(AgentState(state): AgentState, _user: AuthUser) -> Result<Json<Value>, ApiError> {
     let items = credentials::list_metadata(&state).await?;
     Ok(Json(json!({ "items": items })))
 }
@@ -106,7 +107,7 @@ fn search_provider_for_service(service: &str) -> Option<(&'static str, &'static 
 }
 
 async fn put_credential(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
@@ -195,7 +196,7 @@ async fn put_credential(
 }
 
 async fn delete_credential(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Path((service, field)): Path<(String, String)>,
 ) -> Result<Json<Value>, ApiError> {
@@ -206,7 +207,7 @@ async fn delete_credential(
 }
 
 async fn validate(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
@@ -309,7 +310,7 @@ pub fn scrub_secret(text: &str, secret: &str) -> String {
 }
 
 async fn broker(
-    State(state): State<AppState>,
+    AgentState(state): AgentState,
     user: AuthUser,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {

@@ -1094,7 +1094,15 @@ impl Agent {
                     .clone()
                     .unwrap_or_else(|| self.session.id.clone());
 
-                if let Some(error_msg) = tc.validation_error() {
+                // Amiro: a tool the session's policy refuses is answered as a
+                // tool error (and counts toward the malformed-round bound)
+                // instead of aborting the whole turn.
+                let refusal = tc.validation_error().or_else(|| {
+                    self.validate_tool_allowed(&tc.name)
+                        .err()
+                        .map(|refused| format!("{refused}. Use only the tools you were given."))
+                });
+                if let Some(error_msg) = refusal {
                     malformed_calls.push(MalformedToolCallInfo {
                         name: tc.name.clone(),
                         error: error_msg.clone(),
@@ -1128,7 +1136,6 @@ impl Agent {
                 // the tool itself later fails: it resets the malformed-round
                 // bound in handle_malformed_tool_round below.
                 executed_valid_call = true;
-                self.validate_tool_allowed(&tc.name)?;
 
                 let is_native_tool = AMIRO_NATIVE_TOOLS.contains(&tc.name.as_str());
 

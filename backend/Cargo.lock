@@ -81,6 +81,7 @@ version = "0.1.0"
 dependencies = [
  "aes-gcm",
  "amiro-config-types",
+ "amiro-sandboxd",
  "amiro-sdk",
  "amiro-session-types",
  "anyhow",
@@ -149,6 +150,28 @@ name = "amiro-provider-metadata"
 version = "0.1.0"
 dependencies = [
  "url",
+]
+
+[[package]]
+name = "amiro-sandboxd"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "bytes",
+ "hex",
+ "hmac",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "subtle",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
