@@ -84,6 +84,10 @@ test.describe("onboarding", () => {
       await expect(turn.getByTestId("setup-look-card")).toBeVisible();
       await expect(turn.getByTestId("setup-agent-name")).toHaveCount(0);
       await expect(page.getByTestId("setup-progress")).toHaveText("Step 1 of 7");
+      const story = page.getByTestId("setup-story");
+      await expect(story).toHaveAttribute("data-step", "look");
+      await expect(page.getByTestId("setup-story-title")).toHaveText("Give your agent a face you'll love");
+      await expect(page.getByTestId("setup-journey-look")).toHaveAttribute("data-state", "current");
     });
 
     await step(`Pick the ${agent.look} shape and ${agent.colour} colour → "That's me"`, async () => {
@@ -117,8 +121,11 @@ test.describe("onboarding", () => {
       expect(identity.body.sliders.companionCoworker).toBe(22);
     });
 
-    await step("Provider: every supported provider is listed, grouped by how it connects", async () => {
+    await step("Provider: the side story says 'Choose a brain'; every supported provider is listed", async () => {
       const turn = await openTurn(page, "provider");
+      await expect(page.getByTestId("setup-story-title")).toHaveText("Choose a brain for your agent to think with");
+      await expect(page.getByTestId("setup-story-chapter")).toContainText("Chapter 4 of 7");
+      await expect(page.getByTestId("setup-journey-look")).toHaveAttribute("data-state", "done");
       await expect(turn.getByRole("heading", { name: "API key", exact: true })).toBeVisible();
       const count = await turn.locator('button[data-testid^="setup-provider-"]').count();
       expect(count, "the whole catalog, not a featured few").toBeGreaterThan(10);
@@ -160,6 +167,8 @@ test.describe("onboarding", () => {
 
     await step("Connectors: Composio's key field and the MCP button; the add-server dialog opens", async () => {
       const turn = await openTurn(page, "connectors");
+      await expect(page.getByTestId("setup-story-title")).toHaveText("Give your agent the superpowers it needs");
+      await expect(page.getByTestId("setup-journey-provider")).toHaveAttribute("data-state", "later");
       await expect(turn.getByTestId("setup-composio-key")).toHaveAttribute("type", "password");
       await turn.getByTestId("setup-mcp-add").click();
       await expect(page.getByRole("dialog")).toBeVisible();
@@ -181,6 +190,7 @@ test.describe("onboarding", () => {
 
     await step("Summary: what was set up and what is left for later", async () => {
       const turn = await openTurn(page, "done");
+      await expect(page.getByTestId("setup-story-title")).toHaveText("Your agent is ready to work");
       await expect(turn.getByTestId("setup-summary-look")).toHaveAttribute("data-state", "done");
       await expect(turn.getByTestId("setup-summary-personality")).toHaveAttribute("data-state", "done");
       await expect(turn.getByTestId("setup-summary-search")).toHaveAttribute("data-state", "done");

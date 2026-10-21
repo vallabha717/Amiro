@@ -1116,7 +1116,83 @@
     "accessAt": "Open Amiro from anywhere on your network at <code>{url}</code>.",
     "resetPassword": "Forgot your password? On the machine running Amiro, run <code>amiro reset-password</code>.",
     "configFile": "Every choice here can also live in <code>~/.amiro/amiro.toml</code> (every option: <code>amiro.example.toml</code> next to the app).",
-    "runAgain": "Run this setup again any time from Admin → General."
+    "runAgain": "Run this setup again any time from Admin → General.",
+    "story": {
+      "journey": "Your agent's journey",
+      "chapterOf": "Chapter {index} of {total}",
+      "greet": {
+        "chapter": "Prologue",
+        "title": "Let's bring your agent to life",
+        "body": "A few small choices, one at a time, and this agent becomes yours: how it looks, how it thinks, what it can see and what it can do.",
+        "p1": "Takes about two minutes",
+        "p2": "Skip anything, finish it later",
+        "p3": "Every choice can change later"
+      },
+      "look": {
+        "chapter": "The look",
+        "title": "Give your agent a face you'll love",
+        "body": "This little character lives in your sidebar and wears headphones when you talk to it. Pick the colour and shape that feel like yours.",
+        "p1": "The colour tints the whole app",
+        "p2": "Four shapes, each with its own charm",
+        "p3": "Restyle it any time on the Agent page"
+      },
+      "prompt": {
+        "chapter": "The soul",
+        "title": "Every agent starts with a few words",
+        "body": "Before every conversation your agent reads two short files. They are who it is and how it works. Nothing hidden: this is the whole of it.",
+        "p1": "IDENTITY.md: its name and personality",
+        "p2": "SOUL.md: its habits, grown as it learns you",
+        "p3": "Plain text you can read any time"
+      },
+      "personality": {
+        "chapter": "The character",
+        "title": "How should it talk to you?",
+        "body": "Warm companion or sharp operator? Playful or serious? Tune the dials until it sounds like someone you want to work with.",
+        "p1": "Presets for a quick start",
+        "p2": "Five dials for fine tuning",
+        "p3": "Changes tone only, never permissions"
+      },
+      "provider": {
+        "chapter": "The brain",
+        "title": "Choose a brain for your agent to think with",
+        "body": "Your agent thinks with an AI model from a provider you choose. Bring an API key, sign in with an account you already have, or run a model on your own machine.",
+        "p1": "Every provider Amiro supports",
+        "p2": "Keys stay encrypted on this machine",
+        "p3": "Switch brains whenever you like"
+      },
+      "search": {
+        "chapter": "The eyes",
+        "title": "Let your agent see the live web",
+        "body": "With web search your agent can look things up as they happen today: news, docs, prices, answers it doesn't already know.",
+        "p1": "Free engines need no key at all",
+        "p2": "Sources it can cite back to you",
+        "p3": "Change engines in Admin → Search"
+      },
+      "connectors": {
+        "chapter": "Superpowers",
+        "title": "Give your agent the superpowers it needs",
+        "body": "Connect the apps you live in so your agent can act there too: read the inbox, file the ticket, update the doc, post the message.",
+        "p1": "1,000+ apps through Composio",
+        "p2": "Any MCP server, local or remote",
+        "p3": "It asks before anything leaves the machine"
+      },
+      "voice": {
+        "chapter": "A voice of its own",
+        "title": "Let your agent speak and listen",
+        "body": "Give your agent a voice to read answers aloud, and ears to take dictation or hold a live conversation hands-free.",
+        "p1": "Read-aloud and dictation",
+        "p2": "Live voice conversations",
+        "p3": "English, Hindi or auto-detect"
+      },
+      "done": {
+        "chapter": "Epilogue",
+        "title": "Your agent is ready to work",
+        "body": "That's everything. Say hi, hand it a task, and see what it can do. Anything you skipped is waiting in the setup checklist.",
+        "p1": "Talk in its Team thread",
+        "p2": "Tune it further on its pages",
+        "p3": "Run setup again from Admin → General"
+      }
+    }
   },
   "Team": {
     "title": "Team",

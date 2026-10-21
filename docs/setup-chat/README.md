@@ -25,6 +25,17 @@ The script is `src/lib/onboarding/setup-flow.ts` (pure, unit tested). The chat
 is `src/components/setup-chat/`: `setup-chat.tsx` runs the turns,
 `streaming-text.tsx` types each line, and `cards/` holds one card per step.
 
+Beside the chat, `story-panel.tsx` tells the open step as a chapter of the
+agent's journey: The look, The soul (prompt), The character (personality),
+The brain (provider), The eyes (search), Superpowers (connectors), A voice of
+its own. Each chapter has a headline ("Choose a brain for your agent to think
+with", "Give your agent the superpowers it needs"), a short explanation, three
+points, and the agent at the centre with that chapter's icons orbiting it.
+Underneath, the journey list shows each chapter as done, current, later or
+upcoming. A follow-up turn (connect the provider) keeps its parent's chapter.
+On narrow screens the panel becomes a one-line strip under the header; with
+reduced motion the orbit and transitions stand still.
+
 ## Decisions
 
 **The name stays Amiro during onboarding.** The default agent is the product's

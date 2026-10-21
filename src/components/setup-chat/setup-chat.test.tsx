@@ -3,9 +3,11 @@ import { type ReactElement, createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import en from "../../../messages/en.json";
-import { answerTurn, firstTurn } from "@/lib/onboarding/setup-flow";
+import { DEFAULT_CHARACTER_TRAITS } from "@/lib/agent/character-catalog";
+import { SETUP_STEPS, answerTurn, firstTurn } from "@/lib/onboarding/setup-flow";
 import { DoneCard } from "./cards/done-card";
 import { SecretField } from "./cards/search-cards";
+import { StoryPanel, chapterOf, chapterState } from "./story-panel";
 import { StreamingText } from "./streaming-text";
 
 function render(element: ReactElement) {
@@ -66,5 +68,42 @@ describe("setup chat pieces", () => {
     expect(html).toContain('data-testid="setup-summary-provider" data-state="later"');
     expect(html).toContain('data-testid="setup-summary-voice" data-state="later"');
     expect(html).toContain("Open Scout&#x27;s thread");
+  });
+});
+
+describe("story panel", () => {
+  const story = (step: Parameters<typeof StoryPanel>[0]["step"]) =>
+    render(
+      createElement(StoryPanel, {
+        step,
+        turns: firstTurn(),
+        traits: DEFAULT_CHARACTER_TRAITS,
+        accent: "#0E9B8B",
+      }),
+    );
+
+  it("tells every step's chapter, and a follow-up tells its parent's", () => {
+    for (const step of SETUP_STEPS) {
+      const html = story(step);
+      expect(html).toContain(`data-step="${step}"`);
+      expect(html).not.toContain("SetupChat.story");
+    }
+    const html = story("providerConnect");
+    expect(html).toContain("Choose a brain for your agent to think with");
+    expect(html).toContain("Chapter 4 of 7");
+    expect(story("connectors")).toContain("Give your agent the superpowers it needs");
+  });
+
+  it("marks the journey: done, current, later and upcoming", () => {
+    let turns = firstTurn();
+    for (const reply of ["Let's go", "Teal · Sprout", "Looks good"]) {
+      turns = answerTurn(turns, reply);
+    }
+    turns = answerTurn(turns, "Keep the default", { skipped: true }); // personality
+    expect(chapterState("look", "provider", turns)).toBe("done");
+    expect(chapterState("personality", "provider", turns)).toBe("later");
+    expect(chapterState("provider", "provider", turns)).toBe("current");
+    expect(chapterState("voice", "provider", turns)).toBe("upcoming");
+    expect(chapterOf("searchConnect")).toBe("search");
   });
 });

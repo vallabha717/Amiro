@@ -39,6 +39,7 @@ import { PromptCard } from "./cards/prompt-card";
 import { ProviderConnectCard, ProviderPickCard } from "./cards/provider-cards";
 import { SearchKeyCard, SearchPickCard } from "./cards/search-cards";
 import { VoiceKeyCard, VoicePickCard } from "./cards/voice-cards";
+import { STORY_CSS, StoryPanel, StoryStrip } from "./story-panel";
 import { StreamingText } from "./streaming-text";
 
 export interface SetupResult {
@@ -142,7 +143,10 @@ export function SetupChat({
       case "done":
         return t(`say.${turn.step}.${mode}`, vars);
       case "providerConnect":
-        return t(`say.providerConnect.${turn.meta?.mechanism ?? "unknown"}`, vars);
+        return t(
+          `say.providerConnect.${turn.meta?.mechanism ?? "unknown"}`,
+          vars,
+        );
       case "connectors":
       case "voice":
         return t(`say.${turn.step}${team ? "Team" : ""}`, vars);
@@ -155,15 +159,26 @@ export function SetupChat({
     switch (turn.step) {
       case "greet":
         return (
-          <SetupCard testId="setup-greet-card" className="border-dashed bg-transparent shadow-none">
-            <Button onClick={() => answer(t("reply.go"))} data-testid="setup-start">
+          <SetupCard
+            testId="setup-greet-card"
+            className="border-dashed bg-transparent shadow-none"
+          >
+            <Button
+              onClick={() => answer(t("reply.go"))}
+              data-testid="setup-start"
+            >
               {t("letsGo")}
             </Button>
           </SetupCard>
         );
       case "look":
         return (
-          <LookCard mode={mode} traits={traits} onTraits={setTraits} onSubmit={saveLook} />
+          <LookCard
+            mode={mode}
+            traits={traits}
+            onTraits={setTraits}
+            onSubmit={saveLook}
+          />
         );
       case "prompt":
         return <PromptCard onContinue={() => answer(t("reply.looksGood"))} />;
@@ -186,7 +201,10 @@ export function SetupChat({
                     next: {
                       step: "providerConnect",
                       subject: choice.id,
-                      meta: { label: choice.label, mechanism: choice.mechanism },
+                      meta: {
+                        label: choice.label,
+                        mechanism: choice.mechanism,
+                      },
                     },
                   })
             }
@@ -196,8 +214,12 @@ export function SetupChat({
         return (
           <ProviderConnectCard
             providerId={turn.subject ?? ""}
-            onConnected={() => answer(t("reply.connected", { provider: turn.meta?.label ?? "" }))}
-            onBack={() => answer(t("reply.pickAnother"), { next: { step: "provider" } })}
+            onConnected={() =>
+              answer(t("reply.connected", { provider: turn.meta?.label ?? "" }))
+            }
+            onBack={() =>
+              answer(t("reply.pickAnother"), { next: { step: "provider" } })
+            }
             onSkip={skip}
           />
         );
@@ -208,7 +230,11 @@ export function SetupChat({
             onSaved={(label) => answer(label)}
             onNeedsKey={(spec) =>
               answer(spec.label, {
-                next: { step: "searchConnect", subject: spec.kind, meta: { label: spec.label } },
+                next: {
+                  step: "searchConnect",
+                  subject: spec.kind,
+                  meta: { label: spec.label },
+                },
               })
             }
           />
@@ -218,12 +244,20 @@ export function SetupChat({
           <SearchKeyCard
             kind={turn.subject ?? ""}
             onSaved={() => answer(t("reply.keySaved"))}
-            onBack={() => answer(t("reply.pickAnother"), { next: { step: "search" } })}
+            onBack={() =>
+              answer(t("reply.pickAnother"), { next: { step: "search" } })
+            }
             onSkip={skip}
           />
         );
       case "connectors":
-        return <ConnectorsCard mode={mode} onDone={(summary) => answer(summary)} onSkip={skip} />;
+        return (
+          <ConnectorsCard
+            mode={mode}
+            onDone={(summary) => answer(summary)}
+            onSkip={skip}
+          />
+        );
       case "voice":
         return (
           <VoicePickCard
@@ -245,7 +279,9 @@ export function SetupChat({
           <VoiceKeyCard
             providerId={turn.subject ?? ""}
             onSaved={() => answer(t("reply.keySaved"))}
-            onBack={() => answer(t("reply.pickAnother"), { next: { step: "voice" } })}
+            onBack={() =>
+              answer(t("reply.pickAnother"), { next: { step: "voice" } })
+            }
             onSkip={skip}
           />
         );
@@ -266,70 +302,105 @@ export function SetupChat({
 
   return (
     <div
-      className="flex h-full min-h-0 flex-col"
+      className="flex h-full min-h-0"
       style={{ "--setup-accent": accent } as React.CSSProperties}
       data-testid="setup-chat"
       data-mode={mode}
       data-step={open.step}
     >
-      <header className="flex items-center gap-3 border-b px-4 py-3 sm:px-6">
-        <AgentCharacterAvatar traits={traits} accentColor={accent} size={40} animated />
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-semibold" data-testid="setup-agent-title">
-            {name || t("newAgent")}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {team ? t("subtitleTeam") : t("subtitle")}
-          </p>
-        </div>
-        {progress.index > 0 && (
-          <p className="text-xs tabular-nums text-muted-foreground" data-testid="setup-progress">
-            {t("progress", progress)}
-          </p>
-        )}
-      </header>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex items-center gap-3 border-b px-4 py-3 sm:px-6">
+          <AgentCharacterAvatar
+            traits={traits}
+            accentColor={accent}
+            size={40}
+            animated
+          />
+          <div className="min-w-0 flex-1">
+            <p
+              className="truncate font-semibold"
+              data-testid="setup-agent-title"
+            >
+              {name || t("newAgent")}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {team ? t("subtitleTeam") : t("subtitle")}
+            </p>
+          </div>
+          {progress.index > 0 && (
+            <p
+              className="text-xs tabular-nums text-muted-foreground"
+              data-testid="setup-progress"
+            >
+              {t("progress", progress)}
+            </p>
+          )}
+        </header>
+        <StoryStrip step={open.step} />
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <ol className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-6 sm:px-6" aria-live="polite">
-          {turns.map((turn) => {
-            const done = turn.reply !== undefined;
-            const ready = done || streamed.has(turn.key);
-            return (
-              <li key={turn.key} className="flex flex-col gap-3" data-testid={`setup-turn-${turn.step}`}>
-                <div className="flex items-start gap-3">
-                  <AgentCharacterAvatar
-                    traits={traits}
-                    accentColor={accent}
-                    size={30}
-                    className="mt-0.5 shrink-0"
-                  />
-                  <div className="min-w-0 flex-1" data-testid="setup-agent-message">
-                    <StreamingText
-                      text={sayFor(turn)}
-                      instant={done}
-                      onDone={() =>
-                        setStreamed((s) => (s.has(turn.key) ? s : new Set(s).add(turn.key)))
-                      }
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <ol
+            className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-6 sm:px-6"
+            aria-live="polite"
+          >
+            {turns.map((turn) => {
+              const done = turn.reply !== undefined;
+              const ready = done || streamed.has(turn.key);
+              return (
+                <li
+                  key={turn.key}
+                  className="flex flex-col gap-3"
+                  data-testid={`setup-turn-${turn.step}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <AgentCharacterAvatar
+                      traits={traits}
+                      accentColor={accent}
+                      size={30}
+                      className="mt-0.5 shrink-0"
                     />
-                    {!done && ready && cardFor(turn)}
-                  </div>
-                </div>
-                {done && turn.step !== "done" && (
-                  <div className="flex justify-end">
-                    <p
-                      className="max-w-[80%] rounded-2xl rounded-br-md bg-primary px-4 py-2 text-sm text-primary-foreground"
-                      data-testid="setup-user-reply"
+                    <div
+                      className="min-w-0 flex-1"
+                      data-testid="setup-agent-message"
                     >
-                      {turn.reply}
-                    </p>
+                      <StreamingText
+                        text={sayFor(turn)}
+                        instant={done}
+                        onDone={() =>
+                          setStreamed((s) =>
+                            s.has(turn.key) ? s : new Set(s).add(turn.key),
+                          )
+                        }
+                      />
+                      {!done && ready && cardFor(turn)}
+                    </div>
                   </div>
-                )}
-              </li>
-            );
-          })}
-        </ol>
-        <div ref={bottom} />
+                  {done && turn.step !== "done" && (
+                    <div className="flex justify-end">
+                      <p
+                        className="max-w-[80%] rounded-2xl rounded-br-md bg-primary px-4 py-2 text-sm text-primary-foreground"
+                        data-testid="setup-user-reply"
+                      >
+                        {turn.reply}
+                      </p>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+          <div ref={bottom} />
+        </div>
       </div>
+      <div className="hidden w-[min(40%,440px)] shrink-0 lg:block">
+        <StoryPanel
+          step={open.step}
+          turns={turns}
+          traits={traits}
+          accent={accent}
+        />
+      </div>
+      <style>{STORY_CSS}</style>
     </div>
   );
 }

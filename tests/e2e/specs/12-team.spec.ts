@@ -68,6 +68,7 @@ test.describe.serial("team", () => {
       await page.getByTestId("team-new-agent").click();
       await expect(page).toHaveURL(/\/team\/new/);
       await expect(page.getByTestId("setup-chat")).toHaveAttribute("data-mode", "team");
+      await expect(page.getByTestId("setup-story-title")).toHaveText("Let's bring your agent to life");
       await (await openTurn(page, "greet")).getByTestId("setup-start").click();
     });
 
