@@ -102,7 +102,7 @@ describe("setup chat pieces", () => {
       'data-testid="setup-summary-listen" data-state="later"',
     );
     expect(html).toContain(
-      "Live voice, a hands-free conversation, runs on ElevenLabs only.",
+      "works with any speaking and listening provider that has an API key",
     );
     expect(html).toContain("Open Scout&#x27;s thread");
   });

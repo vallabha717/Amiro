@@ -1113,8 +1113,8 @@
         "onboarding": "All set{owner}! Here's what we set up. Let's get to work.",
         "team": "I'm ready. Here's how I'm set up. Say hi in my Team thread."
       },
-      "listen": "Last one: my ears. Choose how I listen, so you can talk instead of type. For live voice, a hands-free conversation, I need ElevenLabs; the browser's own voice works for dictation and read-aloud only.",
-      "listenTeam": "Last one: my ears. Choose how I listen, so you can talk instead of type. For live voice I need ElevenLabs. Voice is shared by everyone on your team.",
+      "listen": "Last one: my ears. Choose how I listen, so you can talk instead of type. Live voice, a hands-free conversation, works with any provider here that has an API key; the browser's own voice works for dictation and read-aloud only.",
+      "listenTeam": "Last one: my ears. Choose how I listen, so you can talk instead of type. Live voice works with any provider here that has an API key, not the browser's own voice. Voice is shared by everyone on your team.",
       "listenConnect": "Paste your {provider} API key so I can turn your speech into text."
     },
     "goodToKnow": "Good to know",
@@ -1202,14 +1202,14 @@
         "title": "Let your agent listen",
         "body": "Talk instead of typing: dictate a message, or hold a live, hands-free conversation where it answers out loud.",
         "p1": "Dictation straight into the chat",
-        "p2": "Live voice runs on ElevenLabs",
+        "p2": "Live voice with any keyed provider",
         "p3": "English, Hindi or auto-detect"
       }
     },
-    "liveVoiceReady": "Live voice is ready: a hands-free conversation runs on your ElevenLabs key.",
-    "liveVoiceNeeds": "Live voice, a hands-free conversation, runs on ElevenLabs only. The browser's built-in voice handles read-aloud and dictation, not live voice.",
-    "liveBadge": "Live voice",
-    "alsoListen": "Use {provider} to listen too (speech to text)"
+    "liveVoiceReady": "Live voice is ready: a hands-free conversation that listens with {stt} and speaks with {tts}.",
+    "liveVoiceNeeds": "Live voice, a hands-free conversation, works with any speaking and listening provider that has an API key: OpenAI, Deepgram, Groq, ElevenLabs and more. The browser's built-in voice works for read-aloud and dictation, not live voice.",
+    "alsoListen": "Use {provider} to listen too (speech to text)",
+    "browserOnly": "Browser · not live voice"
   },
   "Team": {
     "title": "Team",

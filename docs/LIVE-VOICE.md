@@ -11,9 +11,30 @@ time of writing (see [session-2026-10-18.md](session-2026-10-18.md)). It
 replaces the earlier inline stage described in
 [VOICE-AND-SPEECH.md](VOICE-AND-SPEECH.md).
 
-Scope: **ElevenLabs only.** Live voice uses one ElevenLabs key for both
-speech-to-text (Scribe) and text-to-speech. Dictation and per-message read-aloud
-still use whichever providers are configured.
+Scope: **any keyed speech provider.** Live voice listens with the
+speech-to-text provider and speaks with the text-to-speech provider chosen in
+Admin → Voice, when they have an API key: OpenAI, Deepgram, Groq, xAI, Fish
+Audio, ElevenLabs or an OpenAI-compatible server. The browser's built-in voice
+(`browser-native`) never counts: it runs in the page, and live voice runs on
+the server. With no keyed provider chosen, a saved ElevenLabs key still works,
+as before.
+
+How each side runs:
+
+- **ElevenLabs** keeps its streaming text-to-speech (`pcm_24000`) and Scribe
+  speech-to-text.
+- **Every other provider** is asked for a 16-bit WAV per sentence (`wav` /
+  `linear16` at 24 kHz where the API takes a rate). `wav_to_pcm16_mono` turns it
+  into the 24 kHz mono PCM the client plays, mixing stereo down and resampling
+  other rates, and it is sent in ~100 ms chunks like the stream. Listening
+  sends each utterance as a 16 kHz WAV to the provider's transcription API.
+- The requests themselves are the ones Admin → Voice uses
+  (`voice.rs` `tts_request` / `stt_request`), so keys, models, voices and base
+  URLs come from the same settings and the vault.
+
+`GET /api/live-voice/preflight` and `settings.liveVoice` report which
+providers live voice will use (`sttProvider`, `ttsProvider`, display names)
+and, when it cannot start, say what is missing.
 
 ## Architecture
 
@@ -295,8 +316,12 @@ These are dated observations from 2026-10-18. They are not release invariants.
 
 ## Limitations
 
-- ElevenLabs only for live voice. Other providers still serve dictation and
-  read-aloud, but not live sessions.
+- Not the browser's built-in voice: live voice needs a keyed provider for
+  both listening and speaking.
+- Providers other than ElevenLabs speak one sentence at a time (whole WAV per
+  sentence), so the first words take a little longer than ElevenLabs' stream.
+  Only ElevenLabs and the OpenAI-compatible path are exercised in tests
+  (the latter against a mock server); the others follow their documented APIs.
 - STT is per utterance. There are no partial transcripts while you speak.
 - Echo handling relies on browser echo cancellation plus the server's echo
   estimate. Loud speakers or a noisy room can still cause false barge-in.

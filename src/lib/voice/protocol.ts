@@ -90,6 +90,8 @@ export type ServerFrame = Base &
         tts: {
           provider: string;
           voiceId: string;
+          /** The provider's name for display, e.g. "OpenAI Speech". */
+          displayName?: string;
           model: string;
           sampleRate: number;
         };

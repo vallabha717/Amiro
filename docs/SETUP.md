@@ -23,7 +23,7 @@ line per step, and you answer each with a card under it:
 | Web search | A search engine. Keyless ones (DuckDuckGo, Bing, provider native) are set straight away; the rest ask for their key. | Yes. Later in **Admin → Search**. |
 | Connectors | Composio's key for 1,000+ apps, or any MCP server. | Yes. Later in **Connectors**. |
 | Speaking voice | A text-to-speech provider for read-aloud, with its key (and the option to listen with it too). | Yes. Later in **Admin → Voice**. |
-| Listening | A speech-to-text provider for dictation. Live voice, a hands-free conversation, runs on ElevenLabs only; the browser's built-in voice covers read-aloud and dictation, not live voice. | Yes. Later in **Admin → Voice**. |
+| Listening | A speech-to-text provider for dictation. Live voice, a hands-free conversation, works with any keyed provider here (OpenAI, Deepgram, Groq, ElevenLabs and more); the browser's built-in voice covers read-aloud and dictation, not live voice. | Yes. Later in **Admin → Voice**. |
 
 The chat ends with a summary of what was set up, what was left for later, and
 where Amiro can be reached on your network. Keys are typed into password

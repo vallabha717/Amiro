@@ -216,7 +216,7 @@ test.describe("onboarding", () => {
     await step("Speaking voice: OpenAI asks for its key and offers to listen with it too; pick another, then skip", async () => {
       let turn = await openTurn(page, "voice");
       await expect(page.getByTestId("setup-story-title")).toHaveText("Let your agent speak");
-      await expect(turn.getByTestId("setup-voice-elevenlabs")).toContainText("Live voice");
+      await expect(turn.getByTestId("setup-voice-browser-native")).toContainText("not live voice");
       await turn.getByTestId("setup-voice-openai").click();
       turn = await openTurn(page, "voiceConnect");
       await expect(turn.getByTestId("setup-voice-key")).toHaveAttribute("type", "password");
@@ -226,12 +226,13 @@ test.describe("onboarding", () => {
       await turn.getByTestId("setup-skip").click();
     });
 
-    await step("Listening: its own step; live voice is explained as ElevenLabs-only, not the browser's voice", async () => {
+    await step("Listening: its own step; live voice works with any keyed provider, not the browser's voice", async () => {
       const turn = await openTurn(page, "listen");
       await expect(page.getByTestId("setup-story-title")).toHaveText("Let your agent listen");
-      await expect(turn.locator("[data-streaming]").first()).toHaveAttribute("aria-label", /live voice.*ElevenLabs/i);
+      await expect(turn.locator("[data-streaming]").first()).toHaveAttribute("aria-label", /live voice.*any provider.*browser/i);
       const live = turn.getByTestId("setup-live-voice");
-      await expect(live).toHaveAttribute("data-state", "needs-elevenlabs");
+      await expect(live).toHaveAttribute("data-state", "needs-provider");
+      await expect(live).toContainText("OpenAI, Deepgram, Groq, ElevenLabs");
       await expect(live).toContainText("not live voice");
       await expect(turn.getByTestId("setup-listen-deepgram")).toBeVisible();
       await turn.getByTestId("setup-skip").click();
@@ -286,11 +287,20 @@ test.describe("onboarding", () => {
       await expect(page).toHaveURL(/sign-in/);
     });
 
-    await step("Correct password signs back in", async () => {
+    await step("Correct password signs back in → straight to Team, never back to onboarding", async () => {
       await page.getByLabel(/password/i).first().fill(owner.password);
       await page.getByRole("button", { name: /sign in|log in|continue/i }).first().click();
-      await expect(page).not.toHaveURL(/sign-in/, { timeout: 30000 });
+      await expect(page).toHaveURL(/\/team$/, { timeout: 30000 });
+      await expect(page.getByTestId("team-heading")).toHaveText("Team");
+      await expect(page.getByTestId("setup-chat")).toHaveCount(0);
       await saveAuth(page);
+    });
+
+    await step("Setup is finished: opening /onboarding or /sign-in again lands on Team", async () => {
+      await page.goto("/onboarding");
+      await expect(page).toHaveURL(/\/team$/, { timeout: 20000 });
+      await page.goto("/sign-in");
+      await expect(page).toHaveURL(/\/team$/, { timeout: 20000 });
     });
   });
 });

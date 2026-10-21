@@ -47,7 +47,9 @@ export default function SignIn() {
         },
       );
       if (res?.data) {
-        router.push("/onboarding");
+        // Team is home. An owner who has not finished setup is sent on to
+        // onboarding by the Team page's RequireAuth gate.
+        router.push("/team");
       }
       return res;
     }).watch(() => setLoading(false));

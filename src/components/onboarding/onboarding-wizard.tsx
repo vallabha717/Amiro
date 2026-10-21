@@ -79,7 +79,8 @@ export function OnboardingWizard() {
       return;
     }
     if (!onboarding) return;
-    if (!onboarding.isOwner) {
+    // Members, and an owner who already finished setup, belong on Team.
+    if (!onboarding.isOwner || onboarding.completed) {
       router.replace("/team");
       return;
     }

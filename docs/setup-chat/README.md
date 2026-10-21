@@ -88,12 +88,11 @@ owner it writes the files first (`ensure_owner_identity_file` + seed).
 
 **Speaking and listening are separate steps, and live voice is spelled out.**
 Read-aloud uses the TTS engine and dictation the STT engine, so each gets its
-own step. Live voice (a hands-free conversation) is a different path: it runs
-only on ElevenLabs (`backend/src/routes/live_voice.rs`, Scribe STT and
-streaming TTS) with an ElevenLabs key saved for either direction. The browser's
-own voices cover read-aloud and dictation, not live voice. Both voice cards and
-the summary say whether live voice is ready, and ElevenLabs carries a "Live
-voice" badge. Keys are saved per direction, so the speaking key step offers to
+own step. Live voice (a hands-free conversation) runs on the server with the
+chosen providers when they have a key (see [../LIVE-VOICE.md](../LIVE-VOICE.md));
+the browser's own voices run in the page and cover read-aloud and dictation
+only, so they carry a "Browser · not live voice" badge. Both voice cards and
+the summary say whether live voice is ready and which providers it uses. Keys are saved per direction, so the speaking key step offers to
 use the same provider and key for listening.
 
 **The connect step shows only the chosen provider.** `LoginPanel` takes

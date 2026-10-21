@@ -29,8 +29,6 @@ import { SecretField } from "./search-cards";
 /** Speaking (text to speech) or listening (speech to text). */
 export type VoiceKind = "tts" | "stt";
 
-/** Live voice runs on this provider only (backend/src/routes/live_voice.rs). */
-export const LIVE_VOICE_PROVIDER = "elevenlabs";
 
 export function useVoice() {
   return useSWR<VoiceSettingsResponse>(VOICE_SETTINGS_KEY, fetchVoiceSettings, {
@@ -92,14 +90,15 @@ async function applyVoice(payload: UpdateVoiceSettingsPayload) {
 }
 
 /**
- * Whether live voice (a hands-free conversation) can run. It needs an
- * ElevenLabs key; the browser's own voices cover read-aloud and dictation
- * but not live voice.
+ * Whether live voice (a hands-free conversation) can run. It works with any
+ * keyed speaking and listening provider; the browser's own voices cover
+ * read-aloud and dictation but not live voice, which runs on the server.
  */
 export function LiveVoiceNote() {
   const t = useTranslations("SetupChat");
   const { data: voice } = useVoice();
-  const ready = !!voice?.settings.liveVoice?.configured;
+  const live = voice?.settings.liveVoice;
+  const ready = !!live?.configured;
   return (
     <p
       className={cn(
@@ -109,7 +108,7 @@ export function LiveVoiceNote() {
           : "border-dashed text-muted-foreground",
       )}
       data-testid="setup-live-voice"
-      data-state={ready ? "ready" : "needs-elevenlabs"}
+      data-state={ready ? "ready" : "needs-provider"}
     >
       {ready ? (
         <CheckCircle2
@@ -119,7 +118,14 @@ export function LiveVoiceNote() {
       ) : (
         <AudioLines className="mt-px size-3.5 shrink-0" aria-hidden />
       )}
-      <span>{ready ? t("liveVoiceReady") : t("liveVoiceNeeds")}</span>
+      <span>
+        {ready
+          ? t("liveVoiceReady", {
+              stt: live?.sttName ?? "",
+              tts: live?.ttsName ?? "",
+            })
+          : t("liveVoiceNeeds")}
+      </span>
     </p>
   );
 }
@@ -175,13 +181,7 @@ export function VoicePickCard({
               key={entry.id}
               title={entry.displayName}
               subtitle={entry.subtitle}
-              badge={
-                entry.id === LIVE_VOICE_PROVIDER
-                  ? t("liveBadge")
-                  : entry.keyless
-                    ? t("noKey")
-                    : null
-              }
+              badge={entry.keyless ? t("browserOnly") : null}
               connected={isConfigured(voice, kind, entry.id)}
               disabled={busy !== null}
               onClick={() => pick(entry)}
