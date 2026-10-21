@@ -36,8 +36,6 @@ import { Skeleton } from "ui/skeleton";
 import { AgentAvatar } from "./agent-avatar";
 import { AgentChat } from "./agent-chat";
 import { agentSpacePath, teamThreadPath } from "./team-paths";
-import { AppSidebarUser } from "@/components/layouts/app-sidebar-user";
-import { SidebarProvider } from "ui/sidebar";
 
 function AgentRow({ agent, active }: { agent: TeamAgent; active: boolean }) {
   const t = useTranslations("Team");
@@ -166,7 +164,7 @@ export function TeamView() {
   return (
     <div className="flex h-full min-h-0 flex-col md:flex-row">
       <aside
-        className="flex shrink-0 flex-col border-b md:w-80 md:border-b-0 md:border-r"
+        className="flex shrink-0 flex-col border-b md:w-64 md:border-b-0 md:border-r"
         aria-label={t("listLabel")}
       >
         <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-2">
@@ -197,13 +195,6 @@ export function TeamView() {
             <AgentRow key={agent.id} agent={agent} active={agent.id === selected?.id} />
           ))}
         </nav>
-        <div className="mt-auto border-t border-sidebar-border/60 p-2">
-          <SidebarProvider className="!min-h-0 w-full">
-            <div className="w-full">
-              <AppSidebarUser user={session?.user} />
-            </div>
-          </SidebarProvider>
-        </div>
       </aside>
 
       <section
