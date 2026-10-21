@@ -233,7 +233,7 @@ test.describe("agent-driven", () => {
       }
       await page.locator('[data-testid^="artifact-open-"]').first().click();
       await expect(page.getByTestId("artifacts-panel")).toBeVisible();
-      await expect(page.getByTestId("artifact-text")).toContainText("E2E agent demo", { timeout: 15000 });
+      await expect(page.getByTestId("artifact-viewer")).toContainText("E2E agent demo", { timeout: 15000 });
     });
   });
 });

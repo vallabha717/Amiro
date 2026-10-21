@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { mutate as globalMutate } from "swr";
 import { appStore } from "@/app/store";
+import { WorkspaceFileViewer } from "@/components/workspace-browser/workspace-file-viewer";
 import { toast } from "sonner";
 import { Button } from "ui/button";
 import { cn } from "lib/utils";
@@ -20,11 +21,7 @@ import {
   deleteFileArtifact,
   downloadArtifactBlob,
   formatSize,
-  isFramedPreviewable,
-  isTextPreviewable,
-  kindLabel,
-  previewArtifactUrl,
-  useFileArtifact,
+  artifactKindLabel,
   useFileArtifacts,
   type FileArtifact,
 } from "@/lib/backend/artifacts-api";
@@ -150,7 +147,7 @@ export function FileArtifactsPanel({ threadId }: { threadId?: string }) {
                     {a.title}
                   </span>
                   <span className="block truncate text-[11px] text-muted-foreground">
-                    {kindLabel(a.kind)} · {a.filename} ·{" "}
+                    {artifactKindLabel(a)} · {a.filename} ·{" "}
                     {formatSize(a.size)}
                   </span>
                 </span>
@@ -192,37 +189,8 @@ function ArtifactPreview({
   onDeleted: () => void;
 }) {
   const t = useTranslations("Chat.Artifact");
-  const { data: detail } = useFileArtifact(
-    isTextPreviewable(artifact) ? artifact.id : null,
-  );
-  const [frameUrl, setFrameUrl] = useState<string | null>(null);
-  const [frameError, setFrameError] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [busy, setBusy] = useState(false);
-
-  const framed = isFramedPreviewable(artifact);
-  useEffect(() => {
-    let alive = true;
-    let url: string | null = null;
-    if (framed) {
-      previewArtifactUrl(artifact.id)
-        .then((u) => {
-          if (!alive) {
-            URL.revokeObjectURL(u);
-            return;
-          }
-          url = u;
-          setFrameUrl(u);
-        })
-        .catch(() => {
-          if (alive) setFrameError(true);
-        });
-    }
-    return () => {
-      alive = false;
-      if (url) URL.revokeObjectURL(url);
-    };
-  }, [framed, artifact.id]);
 
   async function download() {
     setBusy(true);
@@ -263,7 +231,7 @@ function ArtifactPreview({
           {artifact.title}
         </span>
         <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-          {kindLabel(artifact.kind)}
+          {artifactKindLabel(artifact)}
         </span>
         <Button
           type="button"
@@ -306,59 +274,26 @@ function ArtifactPreview({
           </Button>
         )}
       </div>
-      <div className="min-h-0 flex-1 overflow-auto p-3">
-        {framed && !frameError && frameUrl && (
-          <iframe
-            title={artifact.title}
-            src={frameUrl}
-            sandbox="allow-downloads"
-            data-testid="artifact-frame"
-            className="h-full min-h-64 w-full rounded border"
-          />
-        )}
-        {framed && (frameError || !frameUrl) && (
-          <PreviewFallback artifact={artifact} onDownload={() => void download()} />
-        )}
-        {!framed && isTextPreviewable(artifact) && (
-          <pre
-            data-testid="artifact-text"
-            className="whitespace-pre-wrap break-words text-xs leading-relaxed"
-          >
-            {detail?.contentText ?? t("loading")}
-          </pre>
-        )}
-        {!framed && !isTextPreviewable(artifact) && (
-          <PreviewFallback artifact={artifact} onDownload={() => void download()} />
-        )}
+      {/* The same viewer the chat's file paths and the Workspace page use, so a
+          file looks identical wherever it is opened from. */}
+      <div
+        className="flex min-h-0 flex-1 flex-col p-2 [&>section]:min-h-0 [&>section]:flex-1"
+        data-testid="artifact-viewer"
+      >
+        <WorkspaceFileViewer
+          key={artifact.workspacePath}
+          source={{ kind: "workspace", path: artifact.workspacePath }}
+          canWrite={false}
+          showHidden={false}
+          onSaved={noop}
+          onDirtyChange={noop}
+        />
       </div>
     </div>
   );
 }
 
-function PreviewFallback({
-  artifact,
-  onDownload,
-}: {
-  artifact: FileArtifact;
-  onDownload: () => void;
-}) {
-  const t = useTranslations("Chat.Artifact");
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
-      <FileTextIcon className="size-8 text-muted-foreground" />
-      <p className="text-xs text-muted-foreground">
-        {t("noPreview", {
-          filename: artifact.filename,
-          size: formatSize(artifact.size),
-        })}
-      </p>
-      <Button type="button" size="sm" onClick={onDownload} data-testid="artifact-download-fallback">
-        <DownloadIcon className="size-3.5" />
-        {t("download")}
-      </Button>
-    </div>
-  );
-}
+const noop = () => {};
 
 function CreateForm({
   threadId,

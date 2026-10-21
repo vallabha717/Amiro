@@ -197,7 +197,7 @@ test.describe("chat", () => {
     });
     await step("Select it → the markdown previews inline", async () => {
       await page.locator('[data-testid^="artifact-item-"]').first().click();
-      await expect(page.getByTestId("artifact-text")).toContainText("Hello artifacts.", { timeout: 15000 });
+      await expect(page.getByTestId("artifact-viewer").getByTestId("workspace-markdown")).toContainText("Hello artifacts.", { timeout: 15000 });
     });
     await step("Delete it → the list is empty again", async () => {
       await page.getByTestId("artifact-delete").click();
@@ -617,7 +617,34 @@ test.describe("chat", () => {
       await expect(page.getByTestId("workspace-file-tab")).toContainText(/No preview/i);
       await expect(page.getByTestId("workspace-file-tab").getByRole("button", { name: /Download/ }).first()).toBeVisible();
     });
-    await step("Back returns to the artifact files list", async () => {
+    await step("Opening the same files from the Artifacts list looks identical", async () => {
+      // Register the files as artifacts, then open each from the list instead of from chat.
+      const kinds: [string, string, string][] = [
+        ["guide.docx", `${T}/competitoriq/docs/Working-on-CompetitorIQ-with-Claude.docx`, "file-preview-docx"],
+        ["talk.pptx", `${T}/deployment-web-app/docs-service/public/haystack-tech-talk.pptx`, "file-preview-pptx"],
+        ["limits.xlsx", `${P}/app.vegaai.dev.v2/tests/fixtures/knowledge-bases/refund-limits.xlsx`, "file-preview-xlsx"],
+        ["resume.pdf", `${P}/local/Shrivallabha Somayaji (3).pdf`, "file-preview-pdf"],
+      ];
+      for (const [filename, from] of kinds) {
+        const res = await amiro.api("/api/artifacts", {
+          method: "POST",
+          body: JSON.stringify({ title: filename, filename, contentBase64: fs.readFileSync(from).toString("base64") }),
+        });
+        expect(res.status, `artifact ${filename} created`).toBeLessThan(300);
+      }
+      const back = page.getByTestId("workspace-file-tab-back");
+      if (await back.isVisible().catch(() => false)) await back.click();
+      await expect(page.getByTestId("artifacts-panel")).toBeVisible();
+      await page.getByTestId("artifacts-refresh").click();
+      await expect(page.locator('[data-testid^="artifact-item-"]').filter({ hasText: "guide.docx" }).first()).toBeVisible({ timeout: 15000 });
+      for (const [filename, , testId] of kinds) {
+        await page.locator('[data-testid^="artifact-item-"]').filter({ hasText: filename }).first().click();
+        await expect(page.getByTestId("artifact-viewer").getByTestId(testId), `${filename} from Artifacts`).toBeVisible({ timeout: 30000 });
+        await page.waitForTimeout(2500);
+      }
+    });
+    await step("Back from a chat-opened file returns to the artifact files list", async () => {
+      await open("graph.jpg");
       await page.getByTestId("workspace-file-tab-back").click();
       await expect(page.getByTestId("artifacts-panel")).toBeVisible();
     });
