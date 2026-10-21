@@ -534,32 +534,35 @@ pub async fn settings_payload(state: &AppState) -> Result<Value, ApiError> {
     merged["ttsProviders"] = Value::Object(tts);
     merged["sttProviders"] = Value::Object(stt);
 
-    let elevenlabs_saved_tts = saved_config(&merged, "ttsProviders", "elevenlabs");
-    let elevenlabs_saved_stt = saved_config(&merged, "sttProviders", "elevenlabs");
-    let eleven_tts_model = elevenlabs_saved_tts
-        .and_then(|c| non_empty(c, "model"))
-        .unwrap_or("eleven_flash_v2_5");
-    let eleven_stt_model = elevenlabs_saved_stt
-        .and_then(|c| non_empty(c, "model"))
-        .unwrap_or("scribe_v1");
-    let eleven_voice_id = elevenlabs_saved_tts
-        .and_then(|c| non_empty(c, "voiceId"))
-        .unwrap_or("EXAVITQu4vr4xnSDxMaL");
-    let eleven_voice_name = elevenlabs_voice_name(eleven_voice_id);
-    let eleven_configured = has_key(&hints, "tts.elevenlabs", "elevenlabs")
-        || has_key(&hints, "stt.elevenlabs", "elevenlabs");
-    let eleven_hint = hint_for(&hints, "tts.elevenlabs", "elevenlabs")
-        .or_else(|| hint_for(&hints, "stt.elevenlabs", "elevenlabs"));
-
+    // Live voice runs on the chosen keyed providers (see live_voice.rs).
+    let (live_stt, live_tts) = super::live_voice::resolve_engines(state, &merged).await?;
+    let name = |kind: &str, provider: Option<&String>| {
+        provider.map(|p| provider_display_name(kind, p))
+    };
+    let stt_name = name("stt", live_stt.as_ref().map(|e| &e.provider));
+    let tts_name = name("tts", live_tts.as_ref().map(|e| &e.provider));
+    let voice_id = live_tts.as_ref().map(|e| e.voice.clone()).unwrap_or_default();
+    let voice_name = match live_tts.as_ref() {
+        Some(e) if e.provider == "elevenlabs" => elevenlabs_voice_name(&voice_id),
+        _ => voice_id.clone(),
+    };
     let live_voice = json!({
-        "provider": "elevenlabs",
-        "displayName": "ElevenLabs Conversational Voice",
-        "configured": eleven_configured,
-        "apiKeyHint": eleven_hint,
-        "ttsModel": eleven_tts_model,
-        "sttModel": eleven_stt_model,
-        "voiceId": eleven_voice_id,
-        "voiceName": eleven_voice_name,
+        "provider": live_tts.as_ref().map(|e| e.provider.clone()).unwrap_or_default(),
+        "displayName": match (&stt_name, &tts_name) {
+            (Some(s), Some(t)) if s == t => s.clone(),
+            (Some(s), Some(t)) => format!("{s} + {t}"),
+            _ => String::new(),
+        },
+        "configured": live_stt.is_some() && live_tts.is_some(),
+        "sttProvider": live_stt.as_ref().map(|e| e.provider.clone()),
+        "ttsProvider": live_tts.as_ref().map(|e| e.provider.clone()),
+        "sttName": stt_name,
+        "ttsName": tts_name,
+        "apiKeyHint": Value::Null,
+        "ttsModel": live_tts.as_ref().map(|e| e.model.clone()).unwrap_or_default(),
+        "sttModel": live_stt.as_ref().map(|e| e.model.clone()).unwrap_or_default(),
+        "voiceId": voice_id,
+        "voiceName": voice_name,
     });
     merged["liveVoice"] = live_voice;
 
@@ -1001,95 +1004,15 @@ async fn synthesize(
     }
     let api_key = api_key.unwrap_or_default();
 
-    let (bytes, content_type) = match provider.as_str() {
-        "openai" | "custom-openai" => {
-            let url = normalize_speech_url(&base);
-            let response = tts_client()
-                .post(url)
-                .header(header::AUTHORIZATION, format!("Bearer {api_key}"))
-                .json(&json!({
-                    "model": model,
-                    "input": input,
-                    "voice": voice,
-                    "speed": speed,
-                    "response_format": "mp3",
-                }))
-                .send()
-                .await
-                .map_err(|_| unreachable_error(&provider))?;
-            finish_audio(&provider, response, Some(&api_key), "openai").await?
-        }
-        "elevenlabs" => {
-            let base = if base.is_empty() {
-                "https://api.elevenlabs.io".to_string()
-            } else {
-                base
-            };
-            let url = format!(
-                "{}/v1/text-to-speech/{}?output_format=mp3_44100_128",
-                base, voice
-            );
-            let response = tts_client()
-                .post(url)
-                .header("xi-api-key", api_key.clone())
-                .json(&json!({ "text": input, "model_id": model }))
-                .send()
-                .await
-                .map_err(|_| unreachable_error(&provider))?;
-            finish_audio(&provider, response, Some(&api_key), "elevenlabs").await?
-        }
-        "deepgram" => {
-            let model_id = if voice.is_empty() { model.clone() } else { voice.clone() };
-            let url = format!("https://api.deepgram.com/v1/speak?model={model_id}");
-            let response = tts_client()
-                .post(url)
-                .header(header::AUTHORIZATION, format!("Token {api_key}"))
-                .json(&json!({ "text": input }))
-                .send()
-                .await
-                .map_err(|_| unreachable_error(&provider))?;
-            finish_audio(&provider, response, Some(&api_key), "deepgram").await?
-        }
-        "fish-audio" => {
-            let base = if base.is_empty() {
-                "https://api.fish.audio".to_string()
-            } else {
-                base
-            };
-            let url = format!("{base}/v1/tts");
-            let response = tts_client()
-                .post(url)
-                .header(header::AUTHORIZATION, format!("Bearer {api_key}"))
-                .json(&json!({
-                    "text": input,
-                    "reference_id": voice,
-                    "format": "mp3",
-                }))
-                .send()
-                .await
-                .map_err(|_| unreachable_error(&provider))?;
-            finish_audio(&provider, response, Some(&api_key), "fish-audio").await?
-        }
-        "xai" => {
-            let response = tts_client()
-                .post("https://api.x.ai/v1/tts")
-                .header(header::AUTHORIZATION, format!("Bearer {api_key}"))
-                .json(&json!({
-                    "text": input,
-                    "voice_id": voice,
-                    "output_format": {
-                        "codec": "mp3",
-                        "sample_rate": 24000,
-                        "bit_rate": 128000,
-                    },
-                }))
-                .send()
-                .await
-                .map_err(|_| unreachable_error(&provider))?;
-            finish_audio(&provider, response, Some(&api_key), "xai").await?
-        }
-        _ => return Err(bad_request(&format!("unsupported tts provider: {provider}"))),
+    let request = TtsRequest {
+        provider: provider.clone(),
+        api_key,
+        model,
+        voice,
+        base,
+        speed,
     };
+    let (bytes, content_type) = tts_request(&request, input, TtsFormat::Mp3).await?;
 
     let mut response = Response::new(Body::from(bytes));
     *response.status_mut() = StatusCode::OK;
@@ -1129,6 +1052,301 @@ async fn finish_audio(
         .map_err(|_| unreachable_error(provider))?
         .to_vec();
     Ok((bytes, content_type))
+}
+
+// ---------------------------------------------------------------------------
+// Provider requests (shared by the routes above and live voice)
+// ---------------------------------------------------------------------------
+
+/// The audio a text-to-speech request asks for: MP3 for the browser to play,
+/// or 16-bit mono WAV at 24 kHz for live voice to stream as PCM.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TtsFormat {
+    Mp3,
+    Wav24k,
+}
+
+/// Everything one text-to-speech call needs, resolved from the voice settings
+/// and the vault. The key never leaves the backend.
+#[derive(Clone, Debug)]
+pub(crate) struct TtsRequest {
+    pub provider: String,
+    pub api_key: String,
+    pub model: String,
+    pub voice: String,
+    pub base: String,
+    pub speed: f64,
+}
+
+/// Everything one speech-to-text call needs.
+#[derive(Clone, Debug)]
+pub(crate) struct SttRequest {
+    pub provider: String,
+    pub api_key: String,
+    pub model: String,
+    pub base: String,
+    pub language: Option<String>,
+}
+
+/// The sample rate live voice plays and asks every provider for.
+pub(crate) const LIVE_TTS_SAMPLE_RATE: u32 = 24_000;
+
+/// Synthesize `input` with the request's provider. Returns the audio bytes
+/// and the content type the provider reported.
+pub(crate) async fn tts_request(
+    req: &TtsRequest,
+    input: &str,
+    format: TtsFormat,
+) -> Result<(Vec<u8>, Option<String>), ApiError> {
+    let wav = format == TtsFormat::Wav24k;
+    let provider = req.provider.as_str();
+    let api_key = req.api_key.as_str();
+    let (model, voice, speed) = (&req.model, &req.voice, req.speed);
+    let base = req.base.trim_end_matches('/');
+    match provider {
+        "openai" | "custom-openai" => {
+            let url = normalize_speech_url(base);
+            let response = tts_client()
+                .post(url)
+                .header(header::AUTHORIZATION, format!("Bearer {api_key}"))
+                .json(&json!({
+                    "model": model,
+                    "input": input,
+                    "voice": voice,
+                    "speed": speed,
+                    "response_format": if wav { "wav" } else { "mp3" },
+                }))
+                .send()
+                .await
+                .map_err(|_| unreachable_error(provider))?;
+            finish_audio(provider, response, Some(api_key), "openai").await
+        }
+        "elevenlabs" => {
+            let base = if base.is_empty() { "https://api.elevenlabs.io" } else { base };
+            let output = if wav { "pcm_24000" } else { "mp3_44100_128" };
+            let url = format!("{base}/v1/text-to-speech/{voice}?output_format={output}");
+            let response = tts_client()
+                .post(url)
+                .header("xi-api-key", api_key)
+                .json(&json!({ "text": input, "model_id": model }))
+                .send()
+                .await
+                .map_err(|_| unreachable_error(provider))?;
+            let (bytes, content_type) =
+                finish_audio(provider, response, Some(api_key), "elevenlabs").await?;
+            if wav {
+                // ElevenLabs sends raw PCM for pcm_*; give it a WAV header.
+                let wrapped = super::live_voice::pcm16_to_wav(&bytes, LIVE_TTS_SAMPLE_RATE);
+                return Ok((wrapped, Some("audio/wav".to_string())));
+            }
+            Ok((bytes, content_type))
+        }
+        "deepgram" => {
+            let model_id = if voice.is_empty() { model } else { voice };
+            let mut url = format!("https://api.deepgram.com/v1/speak?model={model_id}");
+            if wav {
+                url.push_str("&encoding=linear16&sample_rate=24000&container=wav");
+            }
+            let response = tts_client()
+                .post(url)
+                .header(header::AUTHORIZATION, format!("Token {api_key}"))
+                .json(&json!({ "text": input }))
+                .send()
+                .await
+                .map_err(|_| unreachable_error(provider))?;
+            finish_audio(provider, response, Some(api_key), "deepgram").await
+        }
+        "fish-audio" => {
+            let base = if base.is_empty() { "https://api.fish.audio" } else { base };
+            let mut body = json!({
+                "text": input,
+                "reference_id": voice,
+                "format": if wav { "wav" } else { "mp3" },
+            });
+            if wav {
+                body["sample_rate"] = json!(LIVE_TTS_SAMPLE_RATE);
+            }
+            let response = tts_client()
+                .post(format!("{base}/v1/tts"))
+                .header(header::AUTHORIZATION, format!("Bearer {api_key}"))
+                .json(&body)
+                .send()
+                .await
+                .map_err(|_| unreachable_error(provider))?;
+            finish_audio(provider, response, Some(api_key), "fish-audio").await
+        }
+        "xai" => {
+            let output = if wav {
+                json!({ "codec": "wav", "sample_rate": LIVE_TTS_SAMPLE_RATE })
+            } else {
+                json!({ "codec": "mp3", "sample_rate": 24000, "bit_rate": 128000 })
+            };
+            let response = tts_client()
+                .post("https://api.x.ai/v1/tts")
+                .header(header::AUTHORIZATION, format!("Bearer {api_key}"))
+                .json(&json!({ "text": input, "voice_id": voice, "output_format": output }))
+                .send()
+                .await
+                .map_err(|_| unreachable_error(provider))?;
+            finish_audio(provider, response, Some(api_key), "xai").await
+        }
+        _ => Err(bad_request(&format!("unsupported tts provider: {provider}"))),
+    }
+}
+
+/// Transcribe `audio` (of type `mime_type`) with the request's provider.
+pub(crate) async fn stt_request(
+    req: &SttRequest,
+    audio: Vec<u8>,
+    mime_type: &str,
+) -> Result<String, ApiError> {
+    let provider = req.provider.as_str();
+    let api_key = req.api_key.as_str();
+    let model = req.model.as_str();
+    let language = req.language.as_deref();
+    match provider {
+        "deepgram" => {
+            let mut url = format!("https://api.deepgram.com/v1/listen?model={model}&smart_format=true");
+            if let Some(language) = language {
+                url.push_str(&format!("&language={language}"));
+            }
+            let response = stt_client()
+                .post(url)
+                .header(header::AUTHORIZATION, format!("Token {api_key}"))
+                .header(header::CONTENT_TYPE, mime_type)
+                .body(audio)
+                .send()
+                .await
+                .map_err(|_| unreachable_error(provider))?;
+            if !response.status().is_success() {
+                return Err(upstream_error(provider, response, Some(api_key)).await);
+            }
+            let value: Value = response.json().await.map_err(|_| unreachable_error(provider))?;
+            Ok(value
+                .pointer("/results/channels/0/alternatives/0/transcript")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string())
+        }
+        "elevenlabs" => {
+            let boundary = format!("----amiro-{}", uuid::Uuid::new_v4().simple());
+            let filename = format!("audio.{}", audio_extension(mime_type));
+            let body = multipart_body(
+                &boundary,
+                &[
+                    Part { name: "file", filename: Some(&filename), content_type: Some(mime_type), data: &audio },
+                    Part { name: "model_id", filename: None, content_type: None, data: model.as_bytes() },
+                ],
+            );
+            let response = stt_client()
+                .post("https://api.elevenlabs.io/v1/speech-to-text")
+                .header("xi-api-key", api_key)
+                .header(header::CONTENT_TYPE, format!("multipart/form-data; boundary={boundary}"))
+                .body(body)
+                .send()
+                .await
+                .map_err(|_| unreachable_error(provider))?;
+            if !response.status().is_success() {
+                return Err(upstream_error(provider, response, Some(api_key)).await);
+            }
+            let value: Value = response.json().await.map_err(|_| unreachable_error(provider))?;
+            Ok(value.get("text").and_then(Value::as_str).unwrap_or("").to_string())
+        }
+        "openai" | "groq" | "xai" | "custom-openai" => {
+            let url = normalize_transcription_url(&req.base);
+            let boundary = format!("----amiro-{}", uuid::Uuid::new_v4().simple());
+            let filename = format!("audio.{}", audio_extension(mime_type));
+            let mut parts = vec![
+                Part { name: "file", filename: Some(&filename), content_type: Some(mime_type), data: &audio },
+                Part { name: "model", filename: None, content_type: None, data: model.as_bytes() },
+            ];
+            if let Some(language) = language {
+                parts.push(Part { name: "language", filename: None, content_type: None, data: language.as_bytes() });
+            }
+            let body = multipart_body(&boundary, &parts);
+            let response = stt_client()
+                .post(url)
+                .header(header::AUTHORIZATION, format!("Bearer {api_key}"))
+                .header(header::CONTENT_TYPE, format!("multipart/form-data; boundary={boundary}"))
+                .body(body)
+                .send()
+                .await
+                .map_err(|_| unreachable_error(provider))?;
+            if !response.status().is_success() {
+                return Err(upstream_error(provider, response, Some(api_key)).await);
+            }
+            let value: Value = response.json().await.map_err(|_| unreachable_error(provider))?;
+            Ok(value.get("text").and_then(Value::as_str).unwrap_or("").to_string())
+        }
+        _ => Err(bad_request(&format!("unsupported stt provider: {provider}"))),
+    }
+}
+
+/// The saved speaking engine for `provider`, or `None` when it runs in the
+/// browser (keyless), is unknown, or has no key in the vault.
+pub(crate) async fn tts_engine(
+    state: &AppState,
+    settings: &Value,
+    provider: &str,
+) -> Result<Option<TtsRequest>, ApiError> {
+    let Some(spec) = spec_for(&tts_catalog(), provider) else { return Ok(None) };
+    if is_keyless(&spec) {
+        return Ok(None);
+    }
+    let Some(api_key) = resolve_key(state, "tts", provider, None).await? else { return Ok(None) };
+    let saved = |field: &str, fallback: &str| {
+        resolve_saved_string(settings, "ttsProviders", provider, field, fallback)
+    };
+    Ok(Some(TtsRequest {
+        provider: provider.to_string(),
+        api_key,
+        model: saved("model", text(&spec, "defaultModel")),
+        voice: saved("voiceId", text(&spec, "defaultVoice")),
+        base: saved("baseUrl", text(&spec, "defaultBaseUrl")).trim_end_matches('/').to_string(),
+        speed: settings
+            .pointer(&format!("/ttsProviders/{provider}/speed"))
+            .and_then(Value::as_f64)
+            .unwrap_or(1.0),
+    }))
+}
+
+/// The saved listening engine for `provider`, or `None` (see [`tts_engine`]).
+pub(crate) async fn stt_engine(
+    state: &AppState,
+    settings: &Value,
+    provider: &str,
+) -> Result<Option<SttRequest>, ApiError> {
+    let Some(spec) = spec_for(&stt_catalog(), provider) else { return Ok(None) };
+    if is_keyless(&spec) {
+        return Ok(None);
+    }
+    let Some(api_key) = resolve_key(state, "stt", provider, None).await? else { return Ok(None) };
+    let saved = |field: &str, fallback: &str| {
+        resolve_saved_string(settings, "sttProviders", provider, field, fallback)
+    };
+    let language = settings
+        .pointer(&format!("/sttProviders/{provider}/language"))
+        .and_then(Value::as_str)
+        .or_else(|| settings.get("sttLanguage").and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.eq_ignore_ascii_case("multi"))
+        .map(str::to_string);
+    Ok(Some(SttRequest {
+        provider: provider.to_string(),
+        api_key,
+        model: saved("model", text(&spec, "defaultModel")),
+        base: saved("baseUrl", text(&spec, "defaultBaseUrl")).trim_end_matches('/').to_string(),
+        language,
+    }))
+}
+
+/// A catalog entry's display name, for messages ("OpenAI", "Deepgram Nova").
+pub(crate) fn provider_display_name(kind: &str, provider: &str) -> String {
+    let catalog = if kind == "tts" { tts_catalog() } else { stt_catalog() };
+    spec_for(&catalog, provider)
+        .map(|spec| text(&spec, "displayName").to_string())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| provider.to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -1209,137 +1427,14 @@ async fn transcribe(
     }
     let api_key = api_key.unwrap_or_default();
 
-    let transcript = match provider.as_str() {
-        "deepgram" => {
-            let mut url = format!(
-                "https://api.deepgram.com/v1/listen?model={model}&smart_format=true"
-            );
-            if let Some(language) = language.as_deref() {
-                url.push_str(&format!("&language={language}"));
-            }
-            let response = stt_client()
-                .post(url)
-                .header(header::AUTHORIZATION, format!("Token {api_key}"))
-                .header(header::CONTENT_TYPE, mime_type.clone())
-                .body(audio)
-                .send()
-                .await
-                .map_err(|_| unreachable_error(&provider))?;
-            if !response.status().is_success() {
-                return Err(upstream_error(&provider, response, Some(&api_key)).await);
-            }
-            let value: Value = response
-                .json()
-                .await
-                .map_err(|_| unreachable_error(&provider))?;
-            value
-                .get("results")
-                .and_then(|results| results.get("channels"))
-                .and_then(|channels| channels.get(0))
-                .and_then(|channel| channel.get("alternatives"))
-                .and_then(|alternatives| alternatives.get(0))
-                .and_then(|alternative| alternative.get("transcript"))
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string()
-        }
-        "elevenlabs" => {
-            let boundary = format!("----amiro-{}", uuid::Uuid::new_v4().simple());
-            let filename = format!("audio.{}", audio_extension(&mime_type));
-            let body = multipart_body(
-                &boundary,
-                &[
-                    Part {
-                        name: "file",
-                        filename: Some(&filename),
-                        content_type: Some(&mime_type),
-                        data: &audio,
-                    },
-                    Part {
-                        name: "model_id",
-                        filename: None,
-                        content_type: None,
-                        data: model.as_bytes(),
-                    },
-                ],
-            );
-            let response = stt_client()
-                .post("https://api.elevenlabs.io/v1/speech-to-text")
-                .header("xi-api-key", api_key.clone())
-                .header(
-                    header::CONTENT_TYPE,
-                    format!("multipart/form-data; boundary={boundary}"),
-                )
-                .body(body)
-                .send()
-                .await
-                .map_err(|_| unreachable_error(&provider))?;
-            if !response.status().is_success() {
-                return Err(upstream_error(&provider, response, Some(&api_key)).await);
-            }
-            let value: Value = response
-                .json()
-                .await
-                .map_err(|_| unreachable_error(&provider))?;
-            value
-                .get("text")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string()
-        }
-        "openai" | "groq" | "xai" | "custom-openai" => {
-            let url = normalize_transcription_url(&base);
-            let boundary = format!("----amiro-{}", uuid::Uuid::new_v4().simple());
-            let filename = format!("audio.{}", audio_extension(&mime_type));
-            let mut parts = vec![
-                Part {
-                    name: "file",
-                    filename: Some(&filename),
-                    content_type: Some(&mime_type),
-                    data: &audio,
-                },
-                Part {
-                    name: "model",
-                    filename: None,
-                    content_type: None,
-                    data: model.as_bytes(),
-                },
-            ];
-            if let Some(language) = language.as_deref() {
-                parts.push(Part {
-                    name: "language",
-                    filename: None,
-                    content_type: None,
-                    data: language.as_bytes(),
-                });
-            }
-            let body = multipart_body(&boundary, &parts);
-            let response = stt_client()
-                .post(url)
-                .header(header::AUTHORIZATION, format!("Bearer {api_key}"))
-                .header(
-                    header::CONTENT_TYPE,
-                    format!("multipart/form-data; boundary={boundary}"),
-                )
-                .body(body)
-                .send()
-                .await
-                .map_err(|_| unreachable_error(&provider))?;
-            if !response.status().is_success() {
-                return Err(upstream_error(&provider, response, Some(&api_key)).await);
-            }
-            let value: Value = response
-                .json()
-                .await
-                .map_err(|_| unreachable_error(&provider))?;
-            value
-                .get("text")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string()
-        }
-        _ => return Err(bad_request(&format!("unsupported stt provider: {provider}"))),
+    let request = SttRequest {
+        provider: provider.clone(),
+        api_key,
+        model,
+        base,
+        language,
     };
+    let transcript = stt_request(&request, audio, &mime_type).await?;
 
     Ok(Json(json!({
         "status": "ok",

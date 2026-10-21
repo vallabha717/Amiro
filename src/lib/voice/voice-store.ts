@@ -178,7 +178,10 @@ export const useVoiceStore = create<VoiceState>((set, get) => {
         ready = true;
         set({
           phase: "listening",
-          voiceLabel: formatVoiceLabel(frame.tts.provider, frame.tts.voiceId),
+          voiceLabel: formatVoiceLabel(
+            frame.tts.displayName || frame.tts.provider,
+            frame.tts.voiceId,
+          ),
           error: null,
         });
         break;

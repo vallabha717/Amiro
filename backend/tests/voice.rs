@@ -299,6 +299,84 @@ async fn transcribe_proxies_multipart_and_extracts_text() {
     assert_eq!(value["text"], "mock transcript (whisper-1)");
 }
 
+#[tokio::test]
+async fn live_voice_runs_on_the_chosen_keyed_providers_not_the_browser() {
+    let fixture = fixture();
+    let app = app(&fixture);
+    let preflight = || call_json(&app, Some(USER_TOKEN), Method::GET, "/api/live-voice/preflight", None);
+
+    // Nothing set up: not ready, and the message says the browser voice won't do.
+    let (status, body) = preflight().await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["ready"], false);
+    assert!(body["message"].as_str().unwrap().contains("browser's built-in voice"), "{body}");
+
+    // The browser's own voices never count for live voice.
+    let (status, _) = call_json(
+        &app,
+        Some(USER_TOKEN),
+        Method::PUT,
+        "/api/voice/settings",
+        Some(json!({"ttsProvider": "browser-native", "sttProvider": "browser-native"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(preflight().await.1["ready"], false);
+
+    // OpenAI speaks and Deepgram listens: live voice uses exactly those.
+    let (status, _) = call_json(
+        &app,
+        Some(USER_TOKEN),
+        Method::PUT,
+        "/api/voice/settings",
+        Some(json!({
+            "ttsProvider": "openai",
+            "ttsProviderUpdate": {"provider": "openai", "apiKey": "sk-openai-test", "voiceId": "nova"},
+            "sttProvider": "deepgram",
+            "sttProviderUpdate": {"provider": "deepgram", "apiKey": "dg-test"},
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, body) = preflight().await;
+    assert_eq!(body["ready"], true, "{body}");
+    assert_eq!(body["tts"]["provider"], "openai");
+    assert_eq!(body["tts"]["voiceId"], "nova");
+    assert_eq!(body["stt"]["provider"], "deepgram");
+    assert!(!body.to_string().contains("sk-openai-test"), "keys never leave the vault");
+
+    let (_, settings) = call_json(&app, Some(USER_TOKEN), Method::GET, "/api/voice/settings", None).await;
+    let live = &settings["settings"]["liveVoice"];
+    assert_eq!(live["configured"], true, "{live}");
+    assert_eq!(live["ttsProvider"], "openai");
+    assert_eq!(live["sttProvider"], "deepgram");
+    assert_eq!(live["ttsName"], "OpenAI Speech");
+}
+
+#[tokio::test]
+async fn live_voice_still_works_with_only_an_elevenlabs_key() {
+    let fixture = fixture();
+    let app = app(&fixture);
+    let (status, _) = call_json(
+        &app,
+        Some(USER_TOKEN),
+        Method::PUT,
+        "/api/voice/settings",
+        Some(json!({
+            "ttsProvider": "browser-native",
+            "sttProvider": "browser-native",
+            "ttsProviderUpdate": {"provider": "elevenlabs", "apiKey": "el-test"},
+            "sttProviderUpdate": {"provider": "elevenlabs", "apiKey": "el-test"},
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, body) = call_json(&app, Some(USER_TOKEN), Method::GET, "/api/live-voice/preflight", None).await;
+    assert_eq!(body["ready"], true, "{body}");
+    assert_eq!(body["tts"]["provider"], "elevenlabs");
+    assert_eq!(body["stt"]["provider"], "elevenlabs");
+}
+
 fn base64_encode(bytes: &[u8]) -> String {
     use base64::engine::general_purpose::STANDARD as BASE64;
     use base64::Engine;

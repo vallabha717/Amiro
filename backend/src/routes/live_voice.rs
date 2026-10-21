@@ -1,8 +1,15 @@
 //! Live voice mode: server side of `src/lib/voice/protocol.ts`.
 //!
 //! One WebSocket per session. The browser captures the mic and plays audio;
-//! this module does energy VAD, turn detection, barge-in, ElevenLabs Scribe
-//! STT, sentence chunking / markdown sanitising and ElevenLabs streaming TTS.
+//! this module does energy VAD, turn detection, barge-in, speech-to-text,
+//! sentence chunking / markdown sanitising and text-to-speech.
+//!
+//! Speech runs on the providers chosen in Admin → Voice (OpenAI, Deepgram,
+//! Groq, xAI, Fish Audio, ElevenLabs, OpenAI-compatible), not the browser's
+//! own voices, which never reach the server. ElevenLabs keeps its streaming
+//! TTS; the others answer with a WAV per sentence that is converted to the
+//! same 24 kHz PCM the client plays. With no keyed provider chosen, a saved
+//! ElevenLabs key still works, as before.
 //! VAD and the segmenter are ports of Vellum's `speech-energy`,
 //! `room-noise-floor`, `speakable-segments` and `tts-text-sanitizer`.
 
@@ -25,7 +32,10 @@ use serde_json::{json, Value};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::task::{JoinHandle, JoinSet};
 
-use super::voice::{load_settings, multipart_body, non_empty, resolve_key, resolve_saved_string, Part};
+use super::voice::{
+    load_settings, multipart_body, non_empty, provider_display_name,
+    stt_engine, stt_request, tts_engine, tts_request, Part, SttRequest, TtsFormat, TtsRequest,
+};
 use crate::state::{ApiError, AppState, AuthUser};
 
 // ---------------------------------------------------------------------------
@@ -108,24 +118,71 @@ async fn issue_ticket(user: AuthUser) -> Json<Value> {
 
 async fn preflight(State(state): State<AppState>, _user: AuthUser) -> Result<Json<Value>, ApiError> {
     let settings = load_settings(&state).await?;
-    let stt = resolve_key(&state, "stt", PROVIDER, None).await?.is_some();
-    let tts = resolve_key(&state, "tts", PROVIDER, None).await?.is_some();
-    let voice = voice_from_settings(&settings);
+    let (stt, tts) = resolve_engines(&state, &settings).await?;
     let mut out = json!({
-        "ready": stt && tts,
-        "stt": {"provider": PROVIDER, "configured": stt, "model": STT_MODEL},
-        "tts": {"provider": PROVIDER, "configured": tts, "model": TTS_MODEL, "voiceId": voice},
+        "ready": stt.is_some() && tts.is_some(),
+        "stt": engine_view("stt", stt.as_ref().map(|e| (&e.provider, &e.model, None))),
+        "tts": engine_view("tts", tts.as_ref().map(|e| (&e.provider, &e.model, Some(&e.voice)))),
     });
-    if !(stt && tts) {
-        out["message"] = json!(
-            "Live voice needs an ElevenLabs API key (used for both speech-to-text and text-to-speech). Add it in Settings > Voice."
-        );
+    if stt.is_none() || tts.is_none() {
+        out["message"] = json!(not_ready_message(stt.is_some(), tts.is_some()));
     }
     Ok(Json(out))
 }
 
-fn voice_from_settings(settings: &Value) -> String {
-    resolve_saved_string(settings, "ttsProviders", PROVIDER, "voiceId", DEFAULT_VOICE_ID)
+fn engine_view(kind: &str, engine: Option<(&String, &String, Option<&String>)>) -> Value {
+    match engine {
+        Some((provider, model, voice)) => {
+            let mut v = json!({
+                "provider": provider,
+                "displayName": provider_display_name(kind, provider),
+                "configured": true,
+                "model": model,
+            });
+            if let Some(voice) = voice {
+                v["voiceId"] = json!(voice);
+            }
+            v
+        }
+        None => json!({"configured": false}),
+    }
+}
+
+/// What to tell the user when live voice cannot start.
+pub fn not_ready_message(stt: bool, tts: bool) -> String {
+    let missing = match (stt, tts) {
+        (false, false) => "a speech-to-text and a text-to-speech provider",
+        (false, true) => "a speech-to-text provider",
+        _ => "a text-to-speech provider",
+    };
+    format!(
+        "Live voice needs {missing} with an API key (OpenAI, Deepgram, Groq, ElevenLabs and others). \
+         The browser's built-in voice works for read-aloud and dictation, not live voice. Set it in Admin > Voice."
+    )
+}
+
+/// The engines live voice uses: the speaking and listening providers chosen
+/// in the voice settings when they have a key (the browser's own voices do
+/// not count), else a saved ElevenLabs key, as live voice always accepted.
+pub(crate) async fn resolve_engines(
+    state: &AppState,
+    settings: &Value,
+) -> Result<(Option<SttRequest>, Option<TtsRequest>), ApiError> {
+    let chosen = |key: &str| settings.get(key).and_then(Value::as_str).unwrap_or("").to_string();
+    let mut stt = stt_engine(state, settings, &chosen("sttProvider")).await?;
+    if stt.is_none() {
+        stt = stt_engine(state, settings, PROVIDER).await?;
+    }
+    let mut tts = tts_engine(state, settings, &chosen("ttsProvider")).await?;
+    if tts.is_none() {
+        tts = tts_engine(state, settings, PROVIDER).await?;
+    }
+    if let Some(engine) = tts.as_mut() {
+        if engine.provider == PROVIDER && !valid_voice_id(&engine.voice) {
+            engine.voice = DEFAULT_VOICE_ID.to_string();
+        }
+    }
+    Ok((stt, tts))
 }
 
 fn language_from_settings(settings: &Value) -> Option<String> {
@@ -180,6 +237,8 @@ fn http() -> &'static reqwest::Client {
 
 #[derive(Debug, Clone)]
 pub struct UpstreamError {
+    /// Shown to the user, e.g. "ElevenLabs" or "OpenAI".
+    pub provider: String,
     pub status: Option<u16>,
     pub message: String,
 }
@@ -187,11 +246,104 @@ pub struct UpstreamError {
 impl UpstreamError {
     fn describe(&self, what: &str) -> String {
         let label = if what.is_empty() { String::new() } else { format!("{what} ") };
+        let provider = &self.provider;
         match self.status {
-            Some(s) => format!("ElevenLabs {label}{s}: {}", self.message),
-            None => format!("ElevenLabs {label}request failed: {}", self.message),
+            Some(s) => format!("{provider} {label}{s}: {}", self.message),
+            None => format!("{provider} {label}request failed: {}", self.message),
         }
     }
+
+    /// A voice-route error from another provider (its message is already
+    /// redacted and user-facing).
+    fn from_api(kind: &str, provider: &str, error: ApiError) -> Self {
+        UpstreamError {
+            provider: provider_display_name(kind, provider),
+            status: Some(error.0.as_u16()),
+            message: error.1,
+        }
+    }
+}
+
+/// Decode a 16-bit PCM WAV (any rate, mono or stereo) into mono PCM16 LE at
+/// `target_rate`, the stream live voice plays. Streamed WAVs whose size
+/// fields are left at their maximum are read to the end of the data.
+pub fn wav_to_pcm16_mono(bytes: &[u8], target_rate: u32) -> Result<Vec<u8>, String> {
+    if bytes.len() < 12 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
+        return Err("the provider did not send WAV audio".into());
+    }
+    let mut pos = 12;
+    let (mut channels, mut rate, mut bits, mut format) = (0u16, 0u32, 0u16, 0u16);
+    let mut data: Option<&[u8]> = None;
+    while pos + 8 <= bytes.len() {
+        let id = &bytes[pos..pos + 4];
+        let size = u32::from_le_bytes([bytes[pos + 4], bytes[pos + 5], bytes[pos + 6], bytes[pos + 7]]) as usize;
+        let body_start = pos + 8;
+        let body_end = body_start.saturating_add(size).min(bytes.len());
+        if id == b"fmt " && body_end - body_start >= 16 {
+            let f = &bytes[body_start..body_end];
+            format = u16::from_le_bytes([f[0], f[1]]);
+            channels = u16::from_le_bytes([f[2], f[3]]);
+            rate = u32::from_le_bytes([f[4], f[5], f[6], f[7]]);
+            bits = u16::from_le_bytes([f[14], f[15]]);
+        } else if id == b"data" {
+            data = Some(&bytes[body_start..body_end]);
+            break;
+        }
+        pos = body_end + (size & 1);
+    }
+    let data = data.ok_or("the WAV audio has no data")?;
+    // 1 = PCM; 0xFFFE = WAVE_FORMAT_EXTENSIBLE, which providers use for PCM too.
+    if !(format == 1 || format == 0xFFFE) || bits != 16 || channels == 0 || rate == 0 {
+        return Err(format!(
+            "unsupported WAV audio ({bits}-bit, {channels} channel(s), format {format}); live voice needs 16-bit PCM"
+        ));
+    }
+    let frame = channels as usize * 2;
+    let mono: Vec<i16> = data
+        .chunks_exact(frame)
+        .map(|f| {
+            let sum: i32 = f.chunks_exact(2).map(|s| i16::from_le_bytes([s[0], s[1]]) as i32).sum();
+            (sum / channels as i32) as i16
+        })
+        .collect();
+    let resampled = if rate == target_rate || mono.is_empty() {
+        mono
+    } else {
+        let out_len = (mono.len() as u64 * target_rate as u64 / rate as u64) as usize;
+        let step = rate as f64 / target_rate as f64;
+        (0..out_len)
+            .map(|i| {
+                let x = i as f64 * step;
+                let i0 = x.floor() as usize;
+                let i1 = (i0 + 1).min(mono.len() - 1);
+                let t = x - i0 as f64;
+                (mono[i0.min(mono.len() - 1)] as f64 * (1.0 - t) + mono[i1] as f64 * t).round() as i16
+            })
+            .collect()
+    };
+    Ok(resampled.iter().flat_map(|s| s.to_le_bytes()).collect())
+}
+
+/// Speak `text` with a provider that answers with a whole WAV: fetch it,
+/// convert it, and hand it to `sink` in ~100 ms chunks like the stream does.
+async fn tts_wav_chunks(
+    tts: &TtsRequest,
+    text: &str,
+    sink: &mut (dyn FnMut(Vec<u8>) + Send),
+) -> Result<(), UpstreamError> {
+    let (bytes, _) = tts_request(tts, text, TtsFormat::Wav24k)
+        .await
+        .map_err(|e| UpstreamError::from_api("tts", &tts.provider, e))?;
+    let pcm = wav_to_pcm16_mono(&bytes, TTS_SAMPLE_RATE).map_err(|message| UpstreamError {
+        provider: provider_display_name("tts", &tts.provider),
+        status: None,
+        message,
+    })?;
+    // 100 ms of 16-bit mono at 24 kHz.
+    for chunk in pcm.chunks(TTS_SAMPLE_RATE as usize / 10 * 2) {
+        sink(chunk.to_vec());
+    }
+    Ok(())
 }
 
 /// Best-effort short message from an ElevenLabs error body.
@@ -214,7 +366,7 @@ fn net_error(e: reqwest::Error, key: &str) -> UpstreamError {
     if !key.is_empty() {
         message = message.replace(key, "[REDACTED]");
     }
-    UpstreamError { status: None, message }
+    UpstreamError { provider: "ElevenLabs".into(), status: None, message }
 }
 
 async fn response_error(resp: reqwest::Response, key: &str) -> UpstreamError {
@@ -224,7 +376,7 @@ async fn response_error(resp: reqwest::Response, key: &str) -> UpstreamError {
     if !key.is_empty() {
         message = message.replace(key, "[REDACTED]");
     }
-    UpstreamError { status: Some(status), message }
+    UpstreamError { provider: "ElevenLabs".into(), status: Some(status), message }
 }
 
 /// Transcribe a WAV with ElevenLabs Scribe. Returns the raw transcript text.
@@ -1058,12 +1210,11 @@ struct TurnCtx {
     id: String,
     rx: UnboundedReceiver<TurnCmd>,
     out: Out,
-    key: String,
-    voice: String,
+    tts: TtsRequest,
 }
 
 async fn run_turn(ctx: TurnCtx) {
-    let TurnCtx { id, mut rx, out, key, voice } = ctx;
+    let TurnCtx { id, mut rx, out, tts } = ctx;
     let started = Instant::now();
     let mut seg = Segmenter::default();
     let mut open: VecDeque<Job> = VecDeque::new();
@@ -1076,13 +1227,18 @@ async fn run_turn(ctx: TurnCtx) {
         while open.len() < MAX_OPEN_JOBS {
             let Some(text) = seg.pending.pop_front() else { break };
             let (tx, jrx) = unbounded_channel();
-            let (k, v, t) = (key.clone(), voice.clone(), text.clone());
+            let (engine, t) = (tts.clone(), text.clone());
             jobs.spawn(async move {
                 let audio_tx = tx.clone();
                 let mut sink = move |chunk: Vec<u8>| {
                     let _ = audio_tx.send(JobEvent::Audio(chunk));
                 };
-                if let Err(e) = tts_stream(&k, &v, &t, &mut sink).await {
+                let result = if engine.provider == PROVIDER {
+                    tts_stream(&engine.api_key, &engine.voice, &t, &mut sink).await
+                } else {
+                    tts_wav_chunks(&engine, &t, &mut sink).await
+                };
+                if let Err(e) = result {
                     let _ = tx.send(JobEvent::Failed(e));
                 }
             });
@@ -1159,9 +1315,8 @@ struct Turn {
 
 struct Live {
     out: Out,
-    stt_key: String,
-    tts_key: String,
-    voice: String,
+    stt: SttRequest,
+    tts: TtsRequest,
     language: Option<String>,
     vad: Vad,
     muted: bool,
@@ -1217,13 +1372,20 @@ impl Live {
 
     fn spawn_stt(&mut self, pcm: Vec<i16>, duration_ms: u32) {
         let out = self.out.clone();
-        let key = self.stt_key.clone();
+        let engine = self.stt.clone();
         let language = self.language.clone();
         let bytes: Vec<u8> = pcm.iter().flat_map(|s| s.to_le_bytes()).collect();
         self.stt_tasks.spawn(async move {
             let wav = pcm16_to_wav(&bytes, INPUT_SAMPLE_RATE);
             let started = Instant::now();
-            match transcribe(&key, &wav, language.as_deref()).await {
+            let result = if engine.provider == PROVIDER {
+                transcribe(&engine.api_key, &wav, language.as_deref()).await
+            } else {
+                stt_request(&engine, wav, "audio/wav")
+                    .await
+                    .map_err(|e| UpstreamError::from_api("stt", &engine.provider, e))
+            };
+            match result {
                 Ok(raw) => {
                     let text = clean_transcript(raw.trim());
                     if text.is_empty() {
@@ -1253,8 +1415,7 @@ impl Live {
                 id: id.to_string(),
                 rx,
                 out: self.out.clone(),
-                key: self.tts_key.clone(),
-                voice: self.voice.clone(),
+                tts: self.tts.clone(),
             }));
             self.turn = Some(Turn { id: id.to_string(), tx, handle });
         }
@@ -1350,21 +1511,17 @@ async fn run_session(socket: WebSocket, state: AppState) {
                             }
                         };
                         let settings = load_settings(&state).await.unwrap_or_else(|_| json!({}));
-                        let stt_key = resolve_key(&state, "stt", PROVIDER, None).await.ok().flatten();
-                        let tts_key = resolve_key(&state, "tts", PROVIDER, None).await.ok().flatten();
-                        let (Some(stt_key), Some(tts_key)) = (stt_key, tts_key) else {
-                            send_error(
-                                &out,
-                                "credentials_unavailable",
-                                "No ElevenLabs API key is configured for live voice.",
-                                false,
-                            );
+                        let (stt, tts) = resolve_engines(&state, &settings).await.unwrap_or((None, None));
+                        let (Some(stt), Some(mut tts)) = (stt, tts) else {
+                            send_error(&out, "credentials_unavailable", "Live voice is not set up.", false);
                             break;
                         };
-                        let voice = voice_id
-                            .filter(|v| valid_voice_id(v))
-                            .unwrap_or_else(|| voice_from_settings(&settings));
-                        let voice = if valid_voice_id(&voice) { voice } else { DEFAULT_VOICE_ID.to_string() };
+                        // A voice picked in the client is an ElevenLabs voice id.
+                        if tts.provider == PROVIDER {
+                            if let Some(v) = voice_id.filter(|v| valid_voice_id(v)) {
+                                tts.voice = v;
+                            }
+                        }
                         let cfg = VadConfig {
                             manual,
                             silence_ms: silence_threshold_ms.unwrap_or(1200).clamp(100, 5000),
@@ -1375,15 +1532,24 @@ async fn run_session(socket: WebSocket, state: AppState) {
                             "type": "ready",
                             "sessionId": uuid::Uuid::new_v4().simple().to_string(),
                             "turnDetection": if manual { "manual" } else { "server_vad" },
-                            "tts": {"provider": PROVIDER, "voiceId": voice, "model": TTS_MODEL, "sampleRate": TTS_SAMPLE_RATE},
-                            "stt": {"provider": PROVIDER, "model": STT_MODEL},
+                            "tts": {
+                                "provider": tts.provider,
+                                "displayName": provider_display_name("tts", &tts.provider),
+                                "voiceId": tts.voice,
+                                "model": if tts.provider == PROVIDER { TTS_MODEL.to_string() } else { tts.model.clone() },
+                                "sampleRate": TTS_SAMPLE_RATE,
+                            },
+                            "stt": {
+                                "provider": stt.provider,
+                                "displayName": provider_display_name("stt", &stt.provider),
+                                "model": if stt.provider == PROVIDER { STT_MODEL.to_string() } else { stt.model.clone() },
+                            },
                         }));
                         live = Some(Live {
                             out: out.clone(),
-                            stt_key,
-                            tts_key,
-                            voice,
-                            language: language_from_settings(&settings),
+                            language: stt.language.clone().or_else(|| language_from_settings(&settings)),
+                            stt,
+                            tts,
                             vad: Vad::new(cfg),
                             muted: false,
                             playback_active: false,
@@ -1449,6 +1615,145 @@ async fn run_session(socket: WebSocket, state: AppState) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+
+    // -- other providers: WAV in, 24 kHz PCM out --
+
+    fn samples(pcm: &[u8]) -> Vec<i16> {
+        pcm.chunks_exact(2).map(|s| i16::from_le_bytes([s[0], s[1]])).collect()
+    }
+
+    fn stereo_wav(left: &[i16], right: &[i16], rate: u32) -> Vec<u8> {
+        let data: Vec<u8> = left
+            .iter()
+            .zip(right)
+            .flat_map(|(l, r)| [l.to_le_bytes(), r.to_le_bytes()].concat())
+            .collect();
+        let mut out = b"RIFF".to_vec();
+        out.extend_from_slice(&(36 + data.len() as u32).to_le_bytes());
+        out.extend_from_slice(b"WAVEfmt ");
+        out.extend_from_slice(&16u32.to_le_bytes());
+        out.extend_from_slice(&1u16.to_le_bytes());
+        out.extend_from_slice(&2u16.to_le_bytes());
+        out.extend_from_slice(&rate.to_le_bytes());
+        out.extend_from_slice(&(rate * 4).to_le_bytes());
+        out.extend_from_slice(&4u16.to_le_bytes());
+        out.extend_from_slice(&16u16.to_le_bytes());
+        out.extend_from_slice(b"data");
+        out.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        out.extend_from_slice(&data);
+        out
+    }
+
+    #[test]
+    fn wav_at_24k_mono_passes_through() {
+        let pcm: Vec<u8> = [100i16, -200, 300].iter().flat_map(|s| s.to_le_bytes()).collect();
+        let wav = pcm16_to_wav(&pcm, 24_000);
+        assert_eq!(wav_to_pcm16_mono(&wav, 24_000).unwrap(), pcm);
+    }
+
+    #[test]
+    fn wav_stereo_is_mixed_down_and_resampled() {
+        let wav = stereo_wav(&[1000; 160], &[3000; 160], 16_000);
+        let out = samples(&wav_to_pcm16_mono(&wav, 24_000).unwrap());
+        assert_eq!(out.len(), 240, "16 kHz → 24 kHz is 1.5× the samples");
+        assert!(out.iter().all(|&s| s == 2000), "left and right are averaged");
+    }
+
+    #[test]
+    fn streamed_wav_with_open_ended_size_reads_to_the_end() {
+        let pcm: Vec<u8> = [7i16; 10].iter().flat_map(|s| s.to_le_bytes()).collect();
+        let mut wav = pcm16_to_wav(&pcm, 24_000);
+        wav[40..44].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert_eq!(wav_to_pcm16_mono(&wav, 24_000).unwrap(), pcm);
+    }
+
+    #[test]
+    fn non_wav_audio_is_refused_with_a_reason() {
+        let err = wav_to_pcm16_mono(b"ID3\x03\x00mp3 bytes", 24_000).unwrap_err();
+        assert!(err.contains("WAV"), "{err}");
+    }
+
+    #[test]
+    fn not_ready_message_names_what_is_missing_and_the_browser_limit() {
+        let msg = not_ready_message(true, false);
+        assert!(msg.contains("a text-to-speech provider"), "{msg}");
+        assert!(msg.contains("browser's built-in voice"), "{msg}");
+        assert!(not_ready_message(false, false).contains("speech-to-text and a text-to-speech"));
+    }
+
+    /// An OpenAI-compatible server that answers speech with a 16 kHz WAV and
+    /// transcription with text, recording what live voice asked for.
+    async fn mock_openai() -> (String, Arc<Mutex<Vec<String>>>) {
+        use axum::body::Bytes;
+        let seen = Arc::new(Mutex::new(Vec::<String>::new()));
+        let (speech_seen, stt_seen) = (seen.clone(), seen.clone());
+        let app = Router::new()
+            .route(
+                "/v1/audio/speech",
+                post(move |Json(body): Json<Value>| {
+                    let seen = speech_seen.clone();
+                    async move {
+                        seen.lock().unwrap().push(format!("speech:{}", body["response_format"]));
+                        let pcm: Vec<u8> = vec![500i16; 1600].iter().flat_map(|s| s.to_le_bytes()).collect();
+                        ([("content-type", "audio/wav")], pcm16_to_wav(&pcm, 16_000))
+                    }
+                }),
+            )
+            .route(
+                "/v1/audio/transcriptions",
+                post(move |body: Bytes| {
+                    let seen = stt_seen.clone();
+                    async move {
+                        let raw = String::from_utf8_lossy(&body);
+                        let wav = raw.contains("audio.wav") && raw.contains("audio/wav");
+                        seen.lock().unwrap().push(format!("stt:wav={wav}"));
+                        Json(json!({"text": "hello from the mock"}))
+                    }
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        (format!("http://{addr}/v1"), seen)
+    }
+
+    #[tokio::test]
+    async fn an_openai_compatible_provider_speaks_and_listens_in_live_voice() {
+        let (base, seen) = mock_openai().await;
+        let tts = TtsRequest {
+            provider: "custom-openai".into(),
+            api_key: "sk-test".into(),
+            model: "tts-1".into(),
+            voice: "alloy".into(),
+            base: base.clone(),
+            speed: 1.0,
+        };
+        let mut pcm = Vec::new();
+        let mut chunks = 0;
+        tts_wav_chunks(&tts, "Hello there.", &mut |c: Vec<u8>| {
+            chunks += 1;
+            pcm.extend(c);
+        })
+        .await
+        .expect("speak");
+        // 1600 samples at 16 kHz is 100 ms: 2400 samples at 24 kHz.
+        assert_eq!(pcm.len(), 2400 * 2);
+        assert_eq!(chunks, 1, "one ~100 ms chunk");
+        assert!(samples(&pcm).iter().all(|&s| s == 500));
+
+        let stt = SttRequest {
+            provider: "custom-openai".into(),
+            api_key: "sk-test".into(),
+            model: "whisper-1".into(),
+            base,
+            language: None,
+        };
+        let wav = pcm16_to_wav(&[0u8; 320], INPUT_SAMPLE_RATE);
+        let text = stt_request(&stt, wav, "audio/wav").await.expect("listen");
+        assert_eq!(text, "hello from the mock");
+        assert_eq!(*seen.lock().unwrap(), vec!["speech:\"wav\"".to_string(), "stt:wav=true".into()]);
+    }
 
     fn frames(vad: &mut Vad, amp: i16, n: usize, active: bool) -> Vec<VadEvent> {
         let mut ev = Vec::new();

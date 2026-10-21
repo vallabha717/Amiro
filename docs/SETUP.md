@@ -6,19 +6,38 @@ The same flow works in a browser, in the desktop app, and on a remote VM.
 
 ## The onboarding wizard
 
-On a fresh install, opening Amiro shows the wizard (`/onboarding`):
+On a fresh install, opening Amiro shows the wizard (`/onboarding`). The first
+two steps are pages: **Welcome** (where Amiro is running) and **You** (your
+name, a login, a password and your timezone, which creates the single owner
+account; the only required step).
 
-| Step | What it does | Can you skip it? |
+Then setup continues as a chat with your agent, **Amiro**. It streams one
+line per step, and you answer each with a card under it:
+
+| Step | What you choose | Can you skip it? |
 | --- | --- | --- |
-| Welcome | Says where Amiro is running (this computer or your server). | — |
-| You | Your name, a login (email or username), a password, and your timezone (detected from the browser). This creates the single owner account. | No. This is the only required step. |
-| Your agent | Name, look (Headphones, Sprout, Starfish, Dreamer) and colour. The mascot on the right updates as you choose. | Yes. Later in **Agent → Customize**. |
-| Brain | Connect an AI provider: paste an Anthropic, OpenAI, OpenRouter or Gemini key, or open "Subscriptions, local models and more providers" for OAuth sign-ins and local endpoints. | Yes. Later in **Admin → Providers**. |
-| Ready | A checklist of what's done. Each skipped step says where to finish it, with a "Do it now" link. | — |
+| Look | Amiro's colour and shape (Headphones, Sprout, Starfish, Dreamer). The name stays **Amiro**. | — |
+| Default prompt | Nothing to choose: Amiro shows the prompt it reads at the start of every conversation, `IDENTITY.md` (name and personality) and `SOUL.md` (how it works, which it keeps current). | — |
+| Personality | A preset or the five dials from the Personality page. | Yes. Later in **Agent → Personality**. |
+| AI provider | Any provider Amiro supports, grouped by how it connects. Amiro then guides the connect step: an API key into the vault, an OAuth or device-code sign-in, or a local endpoint. | Yes. Later in **Admin → Providers**. |
+| Web search | A search engine. Keyless ones (DuckDuckGo, Bing, provider native) are set straight away; the rest ask for their key. | Yes. Later in **Admin → Search**. |
+| Connectors | Composio's key for 1,000+ apps, or any MCP server. | Yes. Later in **Connectors**. |
+| Speaking voice | A text-to-speech provider for read-aloud, with its key (and the option to listen with it too). | Yes. Later in **Admin → Voice**. |
+| Listening | A speech-to-text provider for dictation. Live voice, a hands-free conversation, works with any keyed provider here (OpenAI, Deepgram, Groq, ElevenLabs and more); the browser's built-in voice covers read-aloud and dictation, not live voice. | Yes. Later in **Admin → Voice**. |
 
-Skipped steps also show up as a **Finish setting up** card at the bottom of
-the sidebar. The card disappears once the step is done, or when you dismiss it.
+The chat ends with a summary of what was set up, what was left for later, and
+where Amiro can be reached on your network. Keys are typed into password
+fields that go straight to the backend vault; they never become chat
+messages. The lines are written into the app (no model is connected yet during
+setup), so they read the same every time.
+
+A skipped provider also shows up as a **Finish setting up** card at the bottom
+of the sidebar. The card disappears once it is done, or when you dismiss it.
 To run the wizard again, go to **Admin → General → Setup → Run setup again**.
+
+**Team → New agent** runs the same chat for a new agent, which you also name
+and give a role. Its provider, search and connectors are its own; voice is
+shared by the whole team. See [docs/setup-chat/README.md](setup-chat/README.md).
 
 Who sees the wizard:
 
@@ -200,7 +219,7 @@ scripts/amiro-server.sh install-service   # optional: systemd
 `amiro-server.sh` reads `[server] host`, `port` and `token` from the same
 `amiro.toml`, so the script and the server agree. With `host = "0.0.0.0"`,
 always set a token, and put TLS (Caddy or nginx) in front of anything
-reachable from the internet. The wizard's last step lists the URLs Amiro can
+reachable from the internet. The setup chat's summary lists the URL Amiro can
 be reached at. See [VM-SETUP.md](VM-SETUP.md) for the full walkthrough.
 
 To reach a VM's Amiro from your laptop without exposing it, forward the port
@@ -240,9 +259,12 @@ In the desktop app, the server binary sits next to the app:
 | `POST /api/onboarding/profile` | `{name?, timezone?}`. Refreshes `USER.md` if it is still as seeded. |
 | `POST /api/onboarding/complete` | `{skipped: ["agent" \| "provider"]}`. |
 | `POST /api/onboarding/reset` | Show the wizard again. |
+| `GET /api/agent/prompt` | `{files: [{name, content}]}`: the agent's `IDENTITY.md` and `SOUL.md` as the runtime loads them (note lines stripped). Owner only; follows the `X-Amiro-Agent` scope. The setup chat's prompt step. |
 
 Code locations:
 
 - Backend: `backend/src/config.rs` (files), `backend/src/onboarding.rs`
   (state, config import, migration), and the CLI in `backend/src/main.rs`.
-- UI: `src/components/onboarding/`.
+- UI: `src/components/onboarding/` (welcome, account) and
+  `src/components/setup-chat/` (the chat; its script is
+  `src/lib/onboarding/setup-flow.ts`).

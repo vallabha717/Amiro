@@ -71,10 +71,18 @@ export interface ConfiguredSttProviderState {
   apiKeyHint?: string;
 }
 
+/**
+ * Live voice runs on the chosen speaking and listening providers when they
+ * have a key (never the browser's own voices); see backend live_voice.rs.
+ */
 export interface LiveVoiceState {
   provider: string;
   displayName: string;
   configured: boolean;
+  sttProvider?: string | null;
+  ttsProvider?: string | null;
+  sttName?: string | null;
+  ttsName?: string | null;
   apiKeyHint?: string | null;
   ttsModel: string;
   sttModel: string;

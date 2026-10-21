@@ -371,12 +371,18 @@ export interface LoginPanelProps {
   onClose: () => void;
   initialProviderId?: string;
   onProviderChange?: (id: string) => void;
+  /**
+   * Show only `initialProviderId` and its connect steps, without the search
+   * box and provider picker (the setup chat has already picked it).
+   */
+  lockProvider?: boolean;
 }
 
 export function LoginPanel({
   onClose,
   initialProviderId,
   onProviderChange,
+  lockProvider = false,
 }: LoginPanelProps) {
   const { mutate } = useSWRConfig();
   const cardRef = useRef<HTMLDivElement>(null);
@@ -796,6 +802,22 @@ export function LoginPanel({
           </Alert>
         ) : (
           <>
+            {lockProvider && selected ? (
+              <div
+                className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm"
+                data-testid="login-provider-locked"
+              >
+                <span className="font-medium">{providerLabel(selected)}</span>
+                <Badge variant="outline" className="h-4 px-1 py-0 text-[9px]">
+                  {MECHANISM_LABEL[selectedMechanism] ?? selectedMechanism}
+                </Badge>
+                {isConfigured(selected) && (
+                  <Badge variant="secondary" className="h-4 px-1 py-0 text-[9px]">
+                    Connected
+                  </Badge>
+                )}
+              </div>
+            ) : (
             <div className="space-y-1.5">
               <Label className="text-xs">Provider</Label>
               <div className="relative">
@@ -854,6 +876,7 @@ export function LoginPanel({
                 {providers.length} providers · {providers.filter(isConfigured).length} connected
               </p>
             </div>
+            )}
 
             {selected && selectedIsOAuth ? (
               <div className="space-y-3">

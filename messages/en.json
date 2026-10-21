@@ -967,6 +967,250 @@
     "expandSidebar": "Expand sidebar",
     "collapseSidebar": "Collapse sidebar"
   },
+  "SetupChat": {
+    "subtitle": "Setting up together",
+    "subtitleTeam": "New agent for your team",
+    "newAgent": "New agent",
+    "progress": "Step {index} of {total}",
+    "letsGo": "Let's go",
+    "skip": "Skip for now",
+    "keepDefault": "Keep the default",
+    "continue": "Continue",
+    "saving": "Saving…",
+    "saveError": "That didn't save. Try again.",
+    "connected": "Connected",
+    "recommended": "Recommended",
+    "noKey": "No key",
+    "noMatches": "Nothing matches that.",
+    "pickAnother": "Pick another",
+    "keepProvider": "Keep {provider}",
+    "thatsMe": "That's me",
+    "createAgent": "Create agent",
+    "agentName": "Name",
+    "agentNamePlaceholder": "e.g. Scout",
+    "agentRole": "Role",
+    "agentRolePlaceholder": "e.g. Research assistant",
+    "agentInstructions": "Instructions",
+    "agentInstructionsPlaceholder": "How should it work? What should it always or never do?",
+    "brain": "Brain",
+    "brainCopy": "Use Amiro's providers",
+    "brainCopyHint": "Starts with a copy of Amiro's provider keys. Change them any time in its space.",
+    "brainEmpty": "Start empty",
+    "brainEmptyHint": "No providers yet. Connect one in the next steps.",
+    "looksGood": "Looks good",
+    "promptHint": "Change IDENTITY.md with the name and personality. SOUL.md belongs to the agent; ask it in chat to change how it works.",
+    "promptEmpty": "No prompt files yet.",
+    "promptError": "Couldn't load the prompt.",
+    "savePersonality": "Save personality",
+    "personalityNote": "These dials change tone and style only. They never change tool permissions, approvals or safety policy.",
+    "axisLabel": "{left} to {right}",
+    "providerSearch": "Search providers",
+    "waitingToConnect": "Waiting for the connection…",
+    "apiKeyFor": "{provider} API key",
+    "getKey": "Get a {provider} key",
+    "saveKey": "Save key",
+    "vaultNote": "Stored encrypted on this machine. Never shown again, never in the chat.",
+    "baseUrl": "Base URL",
+    "composioTitle": "Apps via Composio.",
+    "composioBlurb": "Gmail, Slack, GitHub, Notion and 1,000+ more, one click each, once the Composio key is in.",
+    "composioReady": "Composio apps",
+    "mcpTitle": "MCP servers.",
+    "mcpBlurb": "Any MCP server, local or remote, with its keys kept in the vault.",
+    "mcpBlurbTeam": "Remote MCP servers (a URL), with their keys kept in this agent's own vault.",
+    "addServer": "Add server",
+    "later": "later",
+    "laterHint": "Anything left for later is in the setup checklist and on the agent's settings pages.",
+    "finish": "Start working with {name}",
+    "finishTeam": "Open {name}'s thread",
+    "steps": {
+      "look": "Look",
+      "prompt": "Default prompt",
+      "personality": "Personality",
+      "provider": "AI provider",
+      "search": "Web search",
+      "connectors": "Connectors",
+      "voice": "Speaking voice",
+      "listen": "Listening"
+    },
+    "mechanism": {
+      "oauth": "Sign in with your account",
+      "device-code": "Sign in with a device code",
+      "api-key": "API key",
+      "cli": "Command-line login",
+      "local-endpoint": "Runs on your machine",
+      "unknown": "Other"
+    },
+    "presets": {
+      "operator": "Sharp Operator",
+      "companion": "Warm Companion",
+      "hacker": "Unfiltered Co-Founder",
+      "balanced": "Balanced Neutral",
+      "midnight-strategist": "Midnight Strategist",
+      "studio-dreamer": "Studio Dreamer",
+      "field-engineer": "Field Engineer"
+    },
+    "axes": {
+      "companionCoworker": {
+        "left": "Companion",
+        "right": "Coworker"
+      },
+      "genzBoomer": {
+        "left": "Gen Z",
+        "right": "Baby Boomer"
+      },
+      "executeCollaborate": {
+        "left": "Independent",
+        "right": "Collaborative"
+      },
+      "playfulSerious": {
+        "left": "Playful",
+        "right": "Serious"
+      },
+      "politeUnfiltered": {
+        "left": "Polite",
+        "right": "Unfiltered"
+      }
+    },
+    "reply": {
+      "go": "Let's go",
+      "skip": "Skip for now",
+      "looksGood": "Looks good",
+      "saved": "Saved",
+      "keepDefault": "Keep the default",
+      "connected": "{provider} connected",
+      "keySaved": "Key saved",
+      "pickAnother": "Let me pick another",
+      "keySavedBoth": "Key saved for speaking and listening"
+    },
+    "say": {
+      "greet": {
+        "onboarding": "Hi{owner}! I'm {name}. Come, let's set up your agent and start working on it.\nI'll ask one thing at a time. You can skip anything and finish it later.",
+        "team": "Hi! I'm your new agent. Let's set me up together, one step at a time."
+      },
+      "look": {
+        "onboarding": "First, how should I look? My name stays {name}. Pick my colour and shape.",
+        "team": "Who am I? Give me a name, a role and a look. You can also tell me how to work."
+      },
+      "prompt": "This is my default prompt: what I read at the start of every conversation. IDENTITY.md comes from my name and personality. SOUL.md is how I work, and I keep it current as I learn what you like.",
+      "personality": "Now tune how I talk. Pick a preset or slide the dials.",
+      "provider": "Next, my brain. Choose an AI provider. Every provider I support is here, grouped by how it connects.",
+      "providerConnect": {
+        "api-key": "To connect {provider}, paste its API key below. It goes straight to the encrypted vault on this machine, never into our chat.",
+        "oauth": "{provider} signs in with your account. Start the sign-in, approve it in the tab that opens, and paste the code back if it asks. I'll notice when it's done.",
+        "device-code": "{provider} uses a device code. Start the sign-in, open the link, enter the code shown, and I'll pick it up.",
+        "cli": "{provider} signs in through its own command-line login. Follow the steps below, then come back.",
+        "local-endpoint": "{provider} runs on your own machine. Tell me where to reach it below.",
+        "unknown": "Follow the steps below to connect {provider}."
+      },
+      "search": "Should I be able to search the web? Pick a search engine.",
+      "searchConnect": "Paste your {provider} API key. Like every key, it goes to the vault, not the chat.",
+      "connectors": "Now connect the apps you use so I can work in them: 1,000+ apps through Composio, or any MCP server.",
+      "connectorsTeam": "Now connect the services I should use. I can use remote MCP servers. Apps through Composio stay with Amiro for now.",
+      "voice": "Next, my voice. Choose how I speak, so I can read my answers aloud.",
+      "voiceTeam": "Next, my voice. Choose how I speak, so I can read my answers aloud. Voice is shared by everyone on your team.",
+      "voiceConnect": "Paste your {provider} API key so I can speak with it.",
+      "done": {
+        "onboarding": "All set{owner}! Here's what we set up. Let's get to work.",
+        "team": "I'm ready. Here's how I'm set up. Say hi in my Team thread."
+      },
+      "listen": "Last one: my ears. Choose how I listen, so you can talk instead of type. Live voice, a hands-free conversation, works with any provider here that has an API key; the browser's own voice works for dictation and read-aloud only.",
+      "listenTeam": "Last one: my ears. Choose how I listen, so you can talk instead of type. Live voice works with any provider here that has an API key, not the browser's own voice. Voice is shared by everyone on your team.",
+      "listenConnect": "Paste your {provider} API key so I can turn your speech into text."
+    },
+    "goodToKnow": "Good to know",
+    "accessAt": "Open Amiro from anywhere on your network at <code>{url}</code>.",
+    "resetPassword": "Forgot your password? On the machine running Amiro, run <code>amiro reset-password</code>.",
+    "configFile": "Every choice here can also live in <code>~/.amiro/amiro.toml</code> (every option: <code>amiro.example.toml</code> next to the app).",
+    "runAgain": "Run this setup again any time from Admin → General.",
+    "story": {
+      "journey": "Your agent's journey",
+      "chapterOf": "Chapter {index} of {total}",
+      "greet": {
+        "chapter": "Prologue",
+        "title": "Let's bring your agent to life",
+        "body": "A few small choices, one at a time, and this agent becomes yours: how it looks, how it thinks, what it can see and what it can do.",
+        "p1": "Takes about two minutes",
+        "p2": "Skip anything, finish it later",
+        "p3": "Every choice can change later"
+      },
+      "look": {
+        "chapter": "The look",
+        "title": "Give your agent a face you'll love",
+        "body": "This little character lives in your sidebar and wears headphones when you talk to it. Pick the colour and shape that feel like yours.",
+        "p1": "The colour tints the whole app",
+        "p2": "Four shapes, each with its own charm",
+        "p3": "Restyle it any time on the Agent page"
+      },
+      "prompt": {
+        "chapter": "The soul",
+        "title": "Every agent starts with a few words",
+        "body": "Before every conversation your agent reads two short files. They are who it is and how it works. Nothing hidden: this is the whole of it.",
+        "p1": "IDENTITY.md: its name and personality",
+        "p2": "SOUL.md: its habits, grown as it learns you",
+        "p3": "Plain text you can read any time"
+      },
+      "personality": {
+        "chapter": "The character",
+        "title": "How should it talk to you?",
+        "body": "Warm companion or sharp operator? Playful or serious? Tune the dials until it sounds like someone you want to work with.",
+        "p1": "Presets for a quick start",
+        "p2": "Five dials for fine tuning",
+        "p3": "Changes tone only, never permissions"
+      },
+      "provider": {
+        "chapter": "The brain",
+        "title": "Choose a brain for your agent to think with",
+        "body": "Your agent thinks with an AI model from a provider you choose. Bring an API key, sign in with an account you already have, or run a model on your own machine.",
+        "p1": "Every provider Amiro supports",
+        "p2": "Keys stay encrypted on this machine",
+        "p3": "Switch brains whenever you like"
+      },
+      "search": {
+        "chapter": "The eyes",
+        "title": "Let your agent see the live web",
+        "body": "With web search your agent can look things up as they happen today: news, docs, prices, answers it doesn't already know.",
+        "p1": "Free engines need no key at all",
+        "p2": "Sources it can cite back to you",
+        "p3": "Change engines in Admin → Search"
+      },
+      "connectors": {
+        "chapter": "Superpowers",
+        "title": "Give your agent the superpowers it needs",
+        "body": "Connect the apps you live in so your agent can act there too: read the inbox, file the ticket, update the doc, post the message.",
+        "p1": "1,000+ apps through Composio",
+        "p2": "Any MCP server, local or remote",
+        "p3": "It asks before anything leaves the machine"
+      },
+      "voice": {
+        "chapter": "A voice of its own",
+        "title": "Let your agent speak",
+        "body": "Give your agent a voice to read its answers aloud while you cook, drive or just look away from the screen.",
+        "p1": "Read answers aloud, one tap away",
+        "p2": "Pick the voice you like best",
+        "p3": "The browser's own voice needs no key"
+      },
+      "done": {
+        "chapter": "Epilogue",
+        "title": "Your agent is ready to work",
+        "body": "That's everything. Say hi, hand it a task, and see what it can do. Anything you skipped is waiting in the setup checklist.",
+        "p1": "Talk in its Team thread",
+        "p2": "Tune it further on its pages",
+        "p3": "Run setup again from Admin → General"
+      },
+      "listen": {
+        "chapter": "Ears to hear you",
+        "title": "Let your agent listen",
+        "body": "Talk instead of typing: dictate a message, or hold a live, hands-free conversation where it answers out loud.",
+        "p1": "Dictation straight into the chat",
+        "p2": "Live voice with any keyed provider",
+        "p3": "English, Hindi or auto-detect"
+      }
+    },
+    "liveVoiceReady": "Live voice is ready: a hands-free conversation that listens with {stt} and speaks with {tts}.",
+    "liveVoiceNeeds": "Live voice, a hands-free conversation, works with any speaking and listening provider that has an API key: OpenAI, Deepgram, Groq, ElevenLabs and more. The browser's built-in voice works for read-aloud and dictation, not live voice.",
+    "alsoListen": "Use {provider} to listen too (speech to text)",
+    "browserOnly": "Browser · not live voice"
+  },
   "Team": {
     "title": "Team",
     "subtitle": "Your agents. Each one has its own channel and folder.",

@@ -93,11 +93,15 @@ Either way, the first launch opens a short setup wizard.
 
 <img src="docs/assets/readme/demo-onboarding.gif" alt="Onboarding wizard: create the owner account, name the agent and pick its look and colour, then finish" width="100%" />
 
-A first-run wizard walks through five steps: **Welcome**, **You** (the owner
-account), **Your agent** (name, one of four plush looks, colour), **Brain**
-(connect a provider) and **Ready**. Only the account step is required. Each
+After the owner account is created, setup continues as a chat: Amiro
+streams one step at a time and you answer with a card. Pick its **look**
+(colour and shape; the name stays Amiro), read its **default prompt**, tune
+its **personality**, connect an **AI provider** (every supported one, with a
+guided API-key, OAuth or local step), then **web search**, **connectors** and
+**voice**. Only the account is required. Keys go straight to the vault, never
+into the chat. Team → New agent runs the same chat for a new agent. Each
 skipped step shows up as a "Finish setting up" card in the sidebar, and you
-can run the wizard again from **Admin → General**. See [docs/SETUP.md](docs/SETUP.md).
+can run setup again from **Admin → General**. See [docs/SETUP.md](docs/SETUP.md).
 
 <table>
   <tr>
@@ -634,7 +638,7 @@ and failures surface as errors.
 | `command not found: pnpm` | `corepack enable && corepack prepare pnpm@10.2.1 --activate` |
 | Port already in use | `AMIRO_PORT=8790 …`, or `[server] port` in `amiro.toml` |
 | 401 in frontend-only dev | `NEXT_PUBLIC_BACKEND_TOKEN` must match the backend's `AMIRO_TOKEN` |
-| No models listed after sign-in | No provider is connected yet. Use the wizard's Brain step or **Admin → Providers** |
+| No models listed after sign-in | No provider is connected yet. Use the setup chat's provider step or **Admin → Providers** |
 | Schedule edits rejected with 409 | Another backend holds the scheduler lock for this `AMIRO_HOME`. Use that instance |
 | Forgot the password | `amiro reset-password` on the machine running Amiro |
 

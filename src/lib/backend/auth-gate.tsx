@@ -58,7 +58,7 @@ export function RedirectIfAuthed({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (isPending || isLoading) return;
     if (session) {
-      router.replace("/");
+      router.replace("/team");
       return;
     }
     if (status?.needsSetup) {

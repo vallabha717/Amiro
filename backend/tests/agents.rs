@@ -578,3 +578,84 @@ async fn team_chat_with_unknown_agent_is_rejected_before_a_turn() {
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
 }
+
+#[tokio::test]
+async fn agent_prompt_shows_identity_and_soul_without_notes() {
+    let fx = fixture();
+    let app = app(&fx);
+
+    let (status, _) = call(&app, None, Method::GET, "/api/agent/prompt", None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, _) = call(&app, Some(MEMBER_TOKEN), Method::GET, "/api/agent/prompt", None).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // A fresh owner gets the files written on first read.
+    let (status, body) = call(&app, Some(OWNER_TOKEN), Method::GET, "/api/agent/prompt", None).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let files = body["files"].as_array().unwrap();
+    let names: Vec<&str> = files.iter().map(|f| f["name"].as_str().unwrap()).collect();
+    assert_eq!(names, ["IDENTITY.md", "SOUL.md"]);
+    assert!(files[0]["content"].as_str().unwrap().contains("**Name:** Amiro"));
+    let soul = files[1]["content"].as_str().unwrap();
+    assert!(soul.contains("# SOUL.md"));
+    assert!(soul.lines().all(|line| !line.starts_with("_ ")), "notes are stripped");
+
+    // A team agent's prompt is its own.
+    let scout = create_scout(&app).await;
+    let id = scout["id"].as_str().unwrap();
+    let (status, body) = call_as_agent(&app, id, Method::GET, "/api/agent/prompt", None).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let identity = body["files"][0]["content"].as_str().unwrap();
+    assert!(identity.contains("**Name:** Scout"));
+    assert!(identity.contains("Find sources and cite them."));
+}
+
+#[tokio::test]
+async fn team_agent_search_providers_are_its_own() {
+    let fx = fixture();
+    let app = app(&fx);
+    let scout = create_scout(&app).await;
+    let id = scout["id"].as_str().unwrap();
+
+    let (status, main) = call(
+        &app,
+        Some(OWNER_TOKEN),
+        Method::POST,
+        "/api/search/providers",
+        Some(json!({"name": "DuckDuckGo", "provider": "duckduckgo", "apiKey": ""})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{main}");
+    let uri = format!("/api/search/providers/{}/activate", main["id"].as_str().unwrap());
+    let (status, _) = call(&app, Some(OWNER_TOKEN), Method::POST, &uri, None).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, own) = call_as_agent(
+        &app,
+        id,
+        Method::POST,
+        "/api/search/providers",
+        Some(json!({"name": "Bing Search", "provider": "bing", "apiKey": ""})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{own}");
+    let uri = format!("/api/search/providers/{}/activate", own["id"].as_str().unwrap());
+    let (status, _) = call_as_agent(&app, id, Method::POST, &uri, None).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let active = |list: &Value| {
+        list.as_array()
+            .unwrap()
+            .iter()
+            .filter(|p| p["isActive"] == true)
+            .map(|p| p["provider"].as_str().unwrap().to_string())
+            .collect::<Vec<_>>()
+    };
+    let (_, main_list) = call(&app, Some(OWNER_TOKEN), Method::GET, "/api/search/providers", None).await;
+    let (_, scout_list) = call_as_agent(&app, id, Method::GET, "/api/search/providers", None).await;
+    assert_eq!(active(&main_list), ["duckduckgo"], "{main_list}");
+    assert_eq!(active(&scout_list), ["bing"], "{scout_list}");
+    // The team agent's store lives in its private folder, not its workspace.
+    let private = fx.state.home.join("agents-private").join(id).join("store/search-providers.json");
+    assert!(private.is_file());
+}

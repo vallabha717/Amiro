@@ -8,7 +8,9 @@
  * only), schedules — none of which Amiro sees, and it is deleted.
  */
 import { assistantMessages, ask, selectModel, send, waitForReply } from "../support/chat";
+import { DEFAULT_AGENT_NAME } from "../support/config";
 import { expect, test } from "../support/fixtures";
+import { openTurn, replyOf } from "../support/setup-chat";
 
 interface TeamAgent {
   id: string;
@@ -21,8 +23,8 @@ interface TeamAgent {
 const SCOUT = "Scout";
 
 test.describe.serial("team", () => {
-  test("team: the onboarded agent is listed and opens its fixed Team thread", async ({ page, step, amiro }) => {
-    const { agent } = amiro.cfg;
+  test("team: the onboarded agent is listed and opens its fixed Team thread", async ({ page, step }) => {
+    const agent = { name: DEFAULT_AGENT_NAME };
     await step("Open Team → a full page of its own listing the onboarded agent", async () => {
       await page.goto("/team");
       await expect(page.getByTestId("team-heading")).toHaveText("Team");
@@ -60,23 +62,101 @@ test.describe.serial("team", () => {
     });
   });
 
-  test("team: create an agent in Team and chat in its Team thread", async ({ page, step, amiro }) => {
-    await step("New agent → name it Scout and pick a look", async () => {
+  test("team: create an agent in Team through the setup chat and chat in its Team thread", async ({ page, step, amiro }) => {
+    await step("New agent → the same setup chat as onboarding, in team mode", async () => {
       await page.goto("/team");
       await page.getByTestId("team-new-agent").click();
       await expect(page).toHaveURL(/\/team\/new/);
-      await page.getByTestId("team-agent-name").fill(SCOUT);
-      await page.getByTestId("team-shape-star").click();
-      await page.getByTestId("team-colour-cobalt").click();
-      await page.getByTestId("team-wizard-next").click();
+      await expect(page.getByTestId("setup-chat")).toHaveAttribute("data-mode", "team");
+      await expect(page.getByTestId("setup-story-title")).toHaveText("Let's bring your agent to life");
+      await (await openTurn(page, "greet")).getByTestId("setup-start").click();
     });
 
-    await step("Role and instructions → Create → Scout's Team thread opens", async () => {
-      await page.getByTestId("team-agent-role").fill("Research assistant");
-      await page
-        .getByTestId("team-agent-instructions")
+    await step("Name Scout, give it a role, instructions and a look → Create agent", async () => {
+      const turn = await openTurn(page, "look");
+      await turn.getByTestId("setup-agent-name").fill(SCOUT);
+      await turn.getByTestId("setup-agent-role").fill("Research assistant");
+      await turn
+        .getByTestId("setup-agent-instructions")
         .fill("When asked your name, answer only with your name.");
-      await page.getByTestId("team-wizard-create").click();
+      await turn.getByTestId("team-shape-star").click();
+      await turn.getByTestId("team-colour-cobalt").click();
+      await expect(turn.getByTestId("setup-brain-copy")).toBeChecked();
+      await turn.getByTestId("setup-look-continue").click();
+      await expect(replyOf(page, "look")).toContainText(SCOUT);
+      await expect(page.getByTestId("setup-agent-title")).toHaveText(SCOUT);
+    });
+
+    const { body: created } = await amiro.api<{ agents: TeamAgent[] }>("/api/agents");
+    const scoutId = created.agents.find((a) => a.name === SCOUT)!.id;
+    const asScout = { "X-Amiro-Agent": scoutId };
+
+    await step("Scout's default prompt is its own: its name and its instructions", async () => {
+      const turn = await openTurn(page, "prompt");
+      await expect(turn.getByTestId("setup-prompt-text")).toContainText(`**Name:** ${SCOUT}`);
+      await expect(turn.getByTestId("setup-prompt-text")).toContainText("answer only with your name");
+      await turn.getByTestId("setup-prompt-continue").click();
+    });
+
+    await step("Personality: Sharp Operator → saved for Scout only", async () => {
+      const turn = await openTurn(page, "personality");
+      await turn.getByTestId("setup-preset-operator").click();
+      await turn.getByTestId("setup-personality-save").click();
+      await expect(replyOf(page, "personality")).toHaveText("Sharp Operator");
+      const scout = await amiro.api<{ sliders: Record<string, number> }>("/api/agent/identity", { headers: asScout });
+      expect(scout.body.sliders.companionCoworker).toBe(82);
+      const main = await amiro.api<{ sliders: Record<string, number> }>("/api/agent/identity");
+      expect(main.body.sliders.companionCoworker).not.toBe(82);
+    });
+
+    await step(`Provider: Scout's brain was copied from Amiro → keep ${amiro.cfg.provider.label}`, async () => {
+      const turn = await openTurn(page, "provider");
+      await expect(turn.getByTestId(`setup-provider-${amiro.cfg.provider.id}`)).toContainText("Connected");
+      await turn.getByTestId("setup-provider-keep").click();
+      await expect(replyOf(page, "provider")).toHaveText(amiro.cfg.provider.label);
+    });
+
+    await step("Web search: Bing for Scout; Amiro keeps DuckDuckGo", async () => {
+      const turn = await openTurn(page, "search");
+      await turn.getByTestId("setup-search-bing").click();
+      await expect(replyOf(page, "search")).toHaveText("Bing Search");
+      const scout = await amiro.api<Array<{ provider: string; isActive: boolean }>>("/api/search/providers", {
+        headers: asScout,
+      });
+      expect(scout.body.find((p) => p.isActive)?.provider).toBe("bing");
+      const main = await amiro.api<Array<{ provider: string; isActive: boolean }>>("/api/search/providers");
+      expect(main.body.find((p) => p.isActive)?.provider).toBe("duckduckgo");
+    });
+
+    await step("Connectors: a team agent gets remote MCP servers only, no Composio", async () => {
+      const turn = await openTurn(page, "connectors");
+      await expect(turn.getByTestId("setup-composio-key")).toHaveCount(0);
+      await expect(turn).toContainText("Remote MCP servers");
+      await turn.getByTestId("setup-skip").click();
+    });
+
+    await step("Voice is shared by the team: pick the browser's own voice (no key)", async () => {
+      const turn = await openTurn(page, "voice");
+      await expect(turn.locator("[data-streaming]").first()).toHaveAttribute("aria-label", /shared by everyone/);
+      await turn.getByTestId("setup-voice-browser-native").click();
+      await expect(replyOf(page, "voice")).toContainText("Browser");
+    });
+
+    await step("Listening: the browser's own speech recognition (no key); live voice still needs a keyed provider", async () => {
+      const turn = await openTurn(page, "listen");
+      await expect(turn.getByTestId("setup-live-voice")).toHaveAttribute("data-state", "needs-provider");
+      await turn.getByTestId("setup-listen-browser-native").click();
+      await expect(replyOf(page, "listen")).toContainText("Browser");
+      const voice = await amiro.api<{ settings: { ttsProvider: string; sttProvider: string } }>("/api/voice/settings");
+      expect(voice.body.settings.ttsProvider).toBe("browser-native");
+      expect(voice.body.settings.sttProvider).toBe("browser-native");
+    });
+
+    await step("Summary → Open Scout's thread → Scout's Team thread opens", async () => {
+      const turn = await openTurn(page, "done");
+      await expect(turn.getByTestId("setup-summary-connectors")).toHaveAttribute("data-state", "later");
+      await expect(turn.getByTestId("setup-summary-search")).toHaveAttribute("data-state", "done");
+      await turn.getByTestId("setup-finish").click();
       await expect(page).toHaveURL(/\/team\?agent=[a-f0-9]{32}$/);
       await expect(page.getByTestId("team-channel-title")).toHaveText(SCOUT);
     });

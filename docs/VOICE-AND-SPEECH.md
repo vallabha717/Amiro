@@ -16,7 +16,7 @@ and one encrypted credential store:
 | Admin Settings | `/admin/voice` (`src/app/(chat)/(admin)/admin/voice/page.tsx`) | Pick providers, models, voices, base URLs; store API keys; fetch live voice catalogs; preview voices; toggle Read Aloud. |
 | Composer Dictation | `src/components/prompt-input.tsx` | Mic button dictation using the configured STT provider (browser `SpeechRecognition` or server transcription). |
 | Per-Message & Auto Read Aloud | `src/components/message-parts.tsx`, `src/components/chat-bot.tsx` | A speaker action on each assistant message, plus an optional "speak the reply when the turn finishes" mode. Auto read-aloud is skipped while a live voice session is active. |
-| Live Voice Mode | `src/components/voice-room/*`, `src/lib/voice/*` | A live, hands-free voice conversation (ElevenLabs only), rendered inline above the composer. See [LIVE-VOICE.md](LIVE-VOICE.md). |
+| Live Voice Mode | `src/components/voice-room/*`, `src/lib/voice/*` | A live, hands-free voice conversation on the chosen keyed speech providers (not the browser's built-in voice), rendered inline above the composer. See [LIVE-VOICE.md](LIVE-VOICE.md). |
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -72,7 +72,7 @@ frontend fallback only fills in when the backend is unreachable.
 | id | Display name | Default model | Default voice | Base URL | Notes |
 | --- | --- | --- | --- | --- | --- |
 | `openai` | OpenAI Speech | `tts-1` | `alloy` | `https://api.openai.com/v1` | Models `tts-1`, `tts-1-hd`, `gpt-4o-mini-tts`. 11 voices. |
-| `elevenlabs` | ElevenLabs | `eleven_turbo_v2_5` | `EXAVITQu4vr4xnSDxMaL` | `https://api.elevenlabs.io` | `eleven_multilingual_v2`, `eleven_flash_v2_5`. Live voice catalog. Live voice always uses ElevenLabs. |
+| `elevenlabs` | ElevenLabs | `eleven_turbo_v2_5` | `EXAVITQu4vr4xnSDxMaL` | `https://api.elevenlabs.io` | `eleven_multilingual_v2`, `eleven_flash_v2_5`. Live voice streams its speech when ElevenLabs is the chosen provider. |
 | `deepgram` | Deepgram Aura | `aura-2-thalia-en` | `aura-2-thalia-en` | `https://api.deepgram.com` | Shares its key with Deepgram STT. |
 | `fish-audio` | Fish Audio | `speech-1.5` | *(none; reference ID)* | `https://api.fish.audio` | Voice cloning reference IDs; live model list. |
 | `xai` | xAI Grok Voice | `grok-tts` | `eve` | `https://api.x.ai` | Voices `eve`, `ara`, `rex`, `sal`, `leo`. |
@@ -202,9 +202,9 @@ have been deleted. The current design is documented in
 - **Inline, not a takeover.** The room mounts above the composer
   (`src/components/voice-room/voice-room.tsx`). The sidebar, header and text
   input stay usable. Minimizing it leaves a dock above the composer.
-- **ElevenLabs only.** Live voice always uses ElevenLabs, with one key for
-  speech in and out. It does not use the STT or TTS provider chosen on this
-  page.
+- **Any keyed provider.** Live voice listens and speaks with the STT and TTS
+  providers chosen on this page when they have a key (not `browser-native`),
+  and falls back to a saved ElevenLabs key. See [LIVE-VOICE.md](LIVE-VOICE.md).
 - **Controls.** Cmd/Ctrl+Shift+I toggles the session. Space, M and Esc act
   within the room. The full list is in [LIVE-VOICE.md](LIVE-VOICE.md).
 
