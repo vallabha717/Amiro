@@ -80,48 +80,54 @@ export function ContactsPage() {
   const mergeCandidates = regularContacts.filter((c) => c.id !== activeContact?.id);
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col gap-6 overflow-y-auto p-4 sm:p-6 lg:p-8" data-testid="contacts-page">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex flex-wrap items-start gap-3">
+    <div
+      className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col gap-5 overflow-y-auto p-4 sm:p-6"
+      data-testid="contacts-page"
+    >
+      {/* Top action header matching Memory / Workspace / Superpowers */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-3">
           <Link
             href="/agent"
             data-testid="contacts-back-link"
-            className="mt-1 inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-card px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-card px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
             <ArrowLeft className="size-3.5" aria-hidden="true" />
             Agent Hub
           </Link>
-          <div className="flex min-w-0 flex-col gap-1">
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">{t("title")}</h1>
-            <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
+          <div className="flex min-w-0 flex-col">
+            <h1 className="font-brand text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+              {t("title")}
+            </h1>
+            <p className="text-xs text-muted-foreground">{t("subtitle")}</p>
           </div>
         </div>
-        <Button onClick={() => setAddDialogOpen(true)} data-testid="add-contact-button" className="shrink-0 self-start sm:self-auto">
-          <UserPlus className="mr-2 size-4" />
+        <Button size="sm" onClick={() => setAddDialogOpen(true)} data-testid="add-contact-button" className="shrink-0 self-start sm:self-auto">
+          <UserPlus className="mr-1.5 size-3.5" />
           {t("addContact")}
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+      <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-12">
         {/* Left column: Contact entries list */}
-        <div className="lg:col-span-4">
-          <Card className="h-full">
-            <CardHeader className="pb-3">
+        <div className="md:col-span-4">
+          <Card className="gap-2.5 py-3 shadow-xs">
+            <CardHeader className="px-3 py-1">
               <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+                <Search className="absolute left-2.5 top-2 size-3.5 text-muted-foreground" />
                 <Input
                   placeholder={t("searchPlaceholder")}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="pl-8"
+                  className="h-8 pl-7 text-xs"
                   data-testid="contact-search-input"
                 />
               </div>
             </CardHeader>
-            <CardContent className="flex flex-col gap-2 p-2">
+            <CardContent className="flex flex-col gap-1 px-2 py-0">
               {isLoading ? (
-                <div className="flex items-center justify-center p-8 text-muted-foreground">
-                  <Loader2 className="size-5 animate-spin" />
+                <div className="flex items-center justify-center p-6 text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" />
                 </div>
               ) : (
                 <>
@@ -131,35 +137,29 @@ export function ContactsPage() {
                       type="button"
                       onClick={() => setSelectedId(guardian.id)}
                       data-testid={`contact-row-${guardian.id}`}
-                      className={`flex w-full items-center justify-between rounded-lg p-3 text-left transition-colors ${
+                      className={`group flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left transition-colors ${
                         activeContactId === guardian.id
-                          ? "bg-primary text-primary-foreground font-medium"
-                          : "hover:bg-accent text-foreground"
+                          ? "bg-accent text-accent-foreground font-medium"
+                          : "hover:bg-accent/60 text-muted-foreground hover:text-foreground"
                       }`}
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                          <User className="size-4" />
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                          <User className="size-3" />
                         </div>
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium">{guardian.displayName} ({t("you")})</span>
-                          <span
-                            className={`text-xs ${
-                              activeContactId === guardian.id ? "text-primary-foreground/80" : "text-muted-foreground"
-                            }`}
-                          >
-                            {t("roleGuardian")}
-                          </span>
+                        <div className="flex flex-col leading-tight">
+                          <span className="text-xs font-semibold text-foreground">{guardian.displayName} ({t("you")})</span>
+                          <span className="text-[10px] text-muted-foreground">{t("roleGuardian")}</span>
                         </div>
                       </div>
                     </button>
                   )}
 
-                  {guardian && regularContacts.length > 0 && <div className="my-1 border-t border-border" />}
+                  {guardian && regularContacts.length > 0 && <div className="my-1 border-t border-border/60" />}
 
                   {/* Regular contacts list */}
                   {filtered.length === 0 ? (
-                    <p className="p-4 text-center text-xs text-muted-foreground">{t("noMatches")}</p>
+                    <p className="p-3 text-center text-[11px] text-muted-foreground">{t("noMatches")}</p>
                   ) : (
                     filtered.map((c) => {
                       const isSelected = activeContactId === c.id;
@@ -171,23 +171,19 @@ export function ContactsPage() {
                           type="button"
                           onClick={() => setSelectedId(c.id)}
                           data-testid={`contact-row-${c.id}`}
-                          className={`flex w-full items-center justify-between rounded-lg p-3 text-left transition-colors ${
+                          className={`group flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left transition-colors ${
                             isSelected
-                              ? "bg-primary text-primary-foreground font-medium"
-                              : "hover:bg-accent text-foreground"
+                              ? "bg-accent text-accent-foreground font-medium"
+                              : "hover:bg-accent/60 text-muted-foreground hover:text-foreground"
                           }`}
                         >
-                          <div className="flex items-center gap-3">
-                            <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground font-medium text-xs">
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-medium text-foreground">
                               {c.displayName.charAt(0).toUpperCase()}
                             </div>
-                            <div className="flex flex-col">
-                              <span className="text-sm font-medium">{c.displayName}</span>
-                              <span
-                                className={`text-xs ${
-                                  isSelected ? "text-primary-foreground/80" : "text-muted-foreground"
-                                }`}
-                              >
+                            <div className="flex min-w-0 flex-col leading-tight">
+                              <span className="truncate text-xs font-medium text-foreground">{c.displayName}</span>
+                              <span className="truncate text-[10px] text-muted-foreground">
                                 {c.channels.length > 0
                                   ? c.channels.map((ch) => getChannelLabel(ch.type)).join(", ")
                                   : t("noChannels")}
@@ -195,11 +191,7 @@ export function ContactsPage() {
                             </div>
                           </div>
                           {verified ? (
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
-                                isSelected ? "bg-white/20 text-white" : "bg-green-500/10 text-green-600 dark:text-green-400"
-                              }`}
-                            >
+                            <span className="inline-flex shrink-0 items-center rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary border border-primary/20">
                               {t("verified")}
                             </span>
                           ) : null}
@@ -214,7 +206,7 @@ export function ContactsPage() {
         </div>
 
         {/* Right column: Selected contact details */}
-        <div className="flex flex-col gap-6 lg:col-span-8">
+        <div className="flex flex-col gap-4 md:col-span-8">
           {activeContact ? (
             <ContactDetailCard
               contact={activeContact}
@@ -223,8 +215,8 @@ export function ContactsPage() {
               canMerge={mergeCandidates.length > 0}
             />
           ) : (
-            <Card className="flex h-64 items-center justify-center text-center p-8">
-              <p className="text-sm text-muted-foreground">{t("selectContactPrompt")}</p>
+            <Card className="flex h-48 items-center justify-center text-center p-6 shadow-xs">
+              <p className="text-xs text-muted-foreground">{t("selectContactPrompt")}</p>
             </Card>
           )}
         </div>
@@ -242,22 +234,22 @@ export function ContactsPage() {
 
       {/* Merge Contact Dialog */}
       <Dialog open={mergeDialogOpen} onOpenChange={setMergeDialogOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <GitMerge className="size-5" />
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <GitMerge className="size-4 text-primary" />
               {t("mergeTitle")}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-xs">
               {t("mergeDescription", { survivor: activeContact?.displayName ?? "" })}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label>{t("selectDonorContact")}</Label>
+          <div className="space-y-3 py-1">
+            <div className="space-y-1">
+              <Label className="text-xs">{t("selectDonorContact")}</Label>
               <Select value={donorId} onValueChange={setDonorId}>
-                <SelectTrigger>
+                <SelectTrigger size="sm">
                   <SelectValue placeholder={t("chooseContactToMerge")} />
                 </SelectTrigger>
                 <SelectContent>
@@ -269,14 +261,14 @@ export function ContactsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <p className="text-xs text-muted-foreground">{t("mergeWarning")}</p>
+            <p className="text-[11px] text-muted-foreground">{t("mergeWarning")}</p>
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setMergeDialogOpen(false)}>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button size="sm" variant="outline" onClick={() => setMergeDialogOpen(false)}>
               {t("cancel")}
             </Button>
-            <Button variant="destructive" onClick={handleMerge} disabled={!donorId} data-testid="confirm-merge-button">
+            <Button size="sm" variant="destructive" onClick={handleMerge} disabled={!donorId} data-testid="confirm-merge-button">
               {t("mergeButton")}
             </Button>
           </DialogFooter>
@@ -377,13 +369,13 @@ function ContactDetailCard({
   };
 
   return (
-    <div className="flex flex-col gap-6" data-testid="contact-detail-card">
+    <div className="flex flex-col gap-4" data-testid="contact-detail-card">
       {/* General info */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+      <Card className="gap-4 py-4 shadow-xs">
+        <CardHeader className="flex flex-row items-center justify-between px-5 py-0">
           <div>
-            <CardTitle className="text-lg font-semibold">{contact.displayName}</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-base font-semibold">{contact.displayName}</CardTitle>
+            <CardDescription className="text-xs">
               {isGuardian ? t("guardianDescription") : t("contactDescription")}
             </CardDescription>
           </div>
@@ -402,22 +394,23 @@ function ContactDetailCard({
             ) : null}
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="contact-name">{t("nameLabel")}</Label>
+        <CardContent className="space-y-3 px-5 py-0">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label htmlFor="contact-name" className="text-xs">{t("nameLabel")}</Label>
               <Input
                 id="contact-name"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
+                className="h-8 text-xs"
                 data-testid="contact-name-input"
               />
             </div>
             {!isGuardian && (
-              <div className="space-y-1.5">
-                <Label htmlFor="contact-threshold">{t("autoApproveThreshold")}</Label>
+              <div className="space-y-1">
+                <Label htmlFor="contact-threshold" className="text-xs">{t("autoApproveThreshold")}</Label>
                 <Select value={threshold} onValueChange={setThreshold}>
-                  <SelectTrigger id="contact-threshold" data-testid="contact-threshold-select">
+                  <SelectTrigger id="contact-threshold" size="sm" data-testid="contact-threshold-select">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -431,55 +424,56 @@ function ContactDetailCard({
               </div>
             )}
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="contact-notes">{t("notesLabel")}</Label>
+          <div className="space-y-1">
+            <Label htmlFor="contact-notes" className="text-xs">{t("notesLabel")}</Label>
             <Input
               id="contact-notes"
               placeholder={t("notesPlaceholder")}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
+              className="h-8 text-xs"
               data-testid="contact-notes-input"
             />
           </div>
-          <Button onClick={handleSave} disabled={saving} data-testid="save-contact-button">
-            {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+          <Button size="sm" onClick={handleSave} disabled={saving} data-testid="save-contact-button">
+            {saving ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : null}
             {t("saveChanges")}
           </Button>
         </CardContent>
       </Card>
 
       {/* Linked channels */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base font-semibold">{t("linkedAccountsTitle")}</CardTitle>
-          <CardDescription>{t("linkedAccountsSubtitle")}</CardDescription>
+      <Card className="gap-4 py-4 shadow-xs">
+        <CardHeader className="px-5 py-0">
+          <CardTitle className="text-sm font-semibold">{t("linkedAccountsTitle")}</CardTitle>
+          <CardDescription className="text-xs">{t("linkedAccountsSubtitle")}</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="flex flex-col divide-y divide-border">
+        <CardContent className="space-y-4 px-5 py-0">
+          <div className="flex flex-col divide-y divide-border/60">
             {contact.channels.length === 0 ? (
-              <p className="py-4 text-center text-xs text-muted-foreground">{t("noChannelsLinked")}</p>
+              <p className="py-3 text-center text-[11px] text-muted-foreground">{t("noChannelsLinked")}</p>
             ) : (
               contact.channels.map((ch) => {
                 const isVerified = ch.status === "active" || ch.status === "verified";
                 const isRevoked = ch.status === "revoked";
 
                 return (
-                  <div key={ch.id} className="flex items-center justify-between py-3">
-                    <div className="flex items-center gap-3">
-                      <ChannelIcon channelId={ch.type} className="size-4 text-muted-foreground" />
-                      <div className="flex flex-col">
-                        <span className="text-sm font-medium">{getChannelLabel(ch.type)}</span>
-                        <span className="text-xs text-muted-foreground">{ch.address}</span>
+                  <div key={ch.id} className="flex items-center justify-between py-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <ChannelIcon channelId={ch.type} className="size-3.5 text-muted-foreground" />
+                      <div className="flex flex-col leading-tight">
+                        <span className="text-xs font-medium text-foreground">{getChannelLabel(ch.type)}</span>
+                        <span className="text-[11px] text-muted-foreground font-mono">{ch.address}</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       {isVerified ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary border border-primary/20">
                           <CheckCircle className="size-3" />
                           {t("verified")}
                         </span>
                       ) : isRevoked ? (
-                        <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-600">
+                        <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium text-destructive">
                           {t("revoked")}
                         </span>
                       ) : (
@@ -497,7 +491,7 @@ function ContactDetailCard({
                           variant="ghost"
                           size="sm"
                           onClick={() => handleRevokeChannel(ch.id)}
-                          className="text-destructive hover:bg-destructive/10"
+                          className="h-7 text-xs text-destructive hover:bg-destructive/10"
                           data-testid={`revoke-channel-${ch.id}`}
                         >
                           {t("revoke")}
@@ -511,11 +505,11 @@ function ContactDetailCard({
           </div>
 
           {/* Add channel address form */}
-          <form onSubmit={handleAddChannel} className="flex flex-col gap-3 rounded-lg border border-border p-3 sm:flex-row sm:items-end">
-            <div className="space-y-1 sm:w-40">
-              <Label className="text-xs">{t("channelType")}</Label>
+          <form onSubmit={handleAddChannel} className="flex flex-col gap-2 rounded-lg border border-border/70 bg-card p-2.5 sm:flex-row sm:items-end">
+            <div className="space-y-1 sm:w-36">
+              <Label className="text-[11px]">{t("channelType")}</Label>
               <Select value={newChannelType} onValueChange={setNewChannelType}>
-                <SelectTrigger>
+                <SelectTrigger size="sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -528,12 +522,13 @@ function ContactDetailCard({
               </Select>
             </div>
             <div className="flex-1 space-y-1">
-              <Label className="text-xs">{t("channelAddress")}</Label>
+              <Label className="text-[11px]">{t("channelAddress")}</Label>
               <Input
                 placeholder="e.g. @username or +1555..."
                 value={newChannelAddr}
                 onChange={(e) => setNewChannelAddr(e.target.value)}
                 required
+                className="h-8 text-xs"
                 data-testid="add-channel-address-input"
               />
             </div>
@@ -598,38 +593,40 @@ function AddContactDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>{t("addContactTitle")}</DialogTitle>
-            <DialogDescription>{t("addContactDescription")}</DialogDescription>
+            <DialogTitle className="text-base">{t("addContactTitle")}</DialogTitle>
+            <DialogDescription className="text-xs">{t("addContactDescription")}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="new-name">{t("nameLabel")}</Label>
+          <div className="space-y-3 py-3">
+            <div className="space-y-1">
+              <Label htmlFor="new-name" className="text-xs">{t("nameLabel")}</Label>
               <Input
                 id="new-name"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="e.g. Alice"
                 required
+                className="h-8 text-xs"
                 data-testid="new-contact-name-input"
               />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="new-notes">{t("notesLabel")}</Label>
+            <div className="space-y-1">
+              <Label htmlFor="new-notes" className="text-xs">{t("notesLabel")}</Label>
               <Input
                 id="new-notes"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder={t("notesPlaceholder")}
+                className="h-8 text-xs"
               />
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label>{t("optionalChannel")}</Label>
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label className="text-xs">{t("optionalChannel")}</Label>
                 <Select value={channelType} onValueChange={setChannelType}>
-                  <SelectTrigger>
+                  <SelectTrigger size="sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -641,23 +638,24 @@ function AddContactDialog({
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="new-address">{t("channelAddress")}</Label>
+              <div className="space-y-1">
+                <Label htmlFor="new-address" className="text-xs">{t("channelAddress")}</Label>
                 <Input
                   id="new-address"
                   value={channelAddress}
                   onChange={(e) => setChannelAddress(e.target.value)}
                   placeholder="e.g. @handle"
+                  className="h-8 text-xs"
                 />
               </div>
             </div>
           </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button size="sm" type="button" variant="outline" onClick={() => onOpenChange(false)}>
               {t("cancel")}
             </Button>
-            <Button type="submit" disabled={saving || !displayName.trim()} data-testid="save-new-contact-button">
-              {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+            <Button size="sm" type="submit" disabled={saving || !displayName.trim()} data-testid="save-new-contact-button">
+              {saving ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : null}
               {t("create")}
             </Button>
           </DialogFooter>

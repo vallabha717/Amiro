@@ -66,33 +66,41 @@ export function ChannelsPage() {
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col gap-6 overflow-y-auto p-4 sm:p-6 lg:p-8" data-testid="channels-page">
-      <div className="flex flex-wrap items-start gap-3">
+    <div
+      className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col gap-5 overflow-y-auto p-4 sm:p-6"
+      data-testid="channels-page"
+    >
+      {/* Header bar matching Memory / Workspace / Superpowers */}
+      <div className="flex flex-wrap items-center gap-3">
         <Link
           href="/agent"
           data-testid="channels-back-link"
-          className="mt-1 inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-card px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-card px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           <ArrowLeft className="size-3.5" aria-hidden="true" />
           Agent Hub
         </Link>
-        <div className="flex min-w-0 flex-col gap-1">
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">{t("title")}</h1>
-          <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
+        <div className="flex min-w-0 flex-col">
+          <h1 className="font-brand text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+            {t("title")}
+          </h1>
+          <p className="text-xs text-muted-foreground">{t("subtitle")}</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        {/* Left column: Channel adapters list */}
-        <div className="lg:col-span-4">
-          <Card className="h-full">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold">{t("adapters")}</CardTitle>
+      <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-12">
+        {/* Left column: Channel adapters list (compact rail) */}
+        <div className="md:col-span-4">
+          <Card className="gap-3 py-3 shadow-xs">
+            <CardHeader className="px-4 py-1">
+              <CardTitle className="text-xs font-semibold tracking-tight uppercase text-muted-foreground">
+                {t("adapters")}
+              </CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-col gap-1 p-2">
+            <CardContent className="flex flex-col gap-1 px-2 py-0">
               {availLoading ? (
-                <div className="flex items-center justify-center p-8 text-muted-foreground">
-                  <Loader2 className="size-5 animate-spin" />
+                <div className="flex items-center justify-center p-6 text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" />
                 </div>
               ) : (
                 channels.map((ch) => {
@@ -106,34 +114,21 @@ export function ChannelsPage() {
                       type="button"
                       onClick={() => setSelectedChannel(ch.id as SetupChannelId)}
                       data-testid={`channel-row-${ch.id}`}
-                      className={`flex w-full items-center justify-between rounded-lg p-3 text-left transition-colors ${
+                      className={`group flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left transition-colors ${
                         isSelected
-                          ? "bg-primary text-primary-foreground font-medium"
-                          : "hover:bg-accent text-foreground"
+                          ? "bg-accent text-accent-foreground font-medium"
+                          : "hover:bg-accent/60 text-muted-foreground hover:text-foreground"
                       }`}
                     >
-                      <div className="flex items-center gap-3">
-                        <ChannelIcon channelId={ch.id} className="size-5 shrink-0" />
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium">{ch.label}</span>
-                          <span
-                            className={`text-xs ${
-                              isSelected ? "text-primary-foreground/80" : "text-muted-foreground"
-                            }`}
-                          >
-                            {snap?.channelHandle || ch.subtitle}
-                          </span>
-                        </div>
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <ChannelIcon channelId={ch.id} className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground" />
+                        <span className="truncate text-xs font-medium text-foreground">{ch.label}</span>
                       </div>
                       <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
+                        className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-medium leading-none ${
                           isReady
-                            ? isSelected
-                              ? "bg-white/20 text-white"
-                              : "bg-green-500/10 text-green-600 dark:text-green-400"
-                            : isSelected
-                              ? "bg-black/20 text-white"
-                              : "bg-muted text-muted-foreground"
+                            ? "bg-primary/10 text-primary border border-primary/20"
+                            : "bg-muted text-muted-foreground"
                         }`}
                       >
                         {isReady ? t("connected") : t("notConnected")}
@@ -147,21 +142,23 @@ export function ChannelsPage() {
         </div>
 
         {/* Right column: Selected channel configuration */}
-        <div className="flex flex-col gap-6 lg:col-span-8">
+        <div className="flex flex-col gap-4 md:col-span-8">
           {/* Trust floor / Admission policy card */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base font-semibold">
-                <Lock className="size-4 text-muted-foreground" />
+          <Card className="gap-4 py-4 shadow-xs">
+            <CardHeader className="px-5 py-0">
+              <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                <Lock className="size-3.5 text-primary" />
                 {t("trustFloorTitle", { channel: getChannelLabel(selectedChannel) })}
               </CardTitle>
-              <CardDescription>{t("trustFloorDescription")}</CardDescription>
+              <CardDescription className="text-xs">{t("trustFloorDescription")}</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex max-w-sm flex-col gap-1.5">
-                <Label htmlFor="channel-policy-select">{t("whoCanMessage")}</Label>
+            <CardContent className="space-y-3 px-5 py-0">
+              <div className="flex max-w-xs flex-col gap-1.5">
+                <Label htmlFor="channel-policy-select" className="text-xs font-medium">
+                  {t("whoCanMessage")}
+                </Label>
                 <Select value={currentPolicy} onValueChange={(val) => handlePolicyChange(val as AdmissionPolicy)}>
-                  <SelectTrigger id="channel-policy-select" data-testid="channel-policy-select">
+                  <SelectTrigger id="channel-policy-select" size="sm" data-testid="channel-policy-select">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -173,7 +170,7 @@ export function ChannelsPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
                 {currentPolicy === "no_one" && t("policyDescNoOne")}
                 {currentPolicy === "guardian_only" && t("policyDescGuardianOnly")}
                 {currentPolicy === "trusted_contacts" && t("policyDescTrustedContacts")}
@@ -258,20 +255,20 @@ function SlackChannelSetupCard({ onUpdated }: { onUpdated: () => void }) {
   const isConnected = config?.connected ?? false;
 
   return (
-    <Card data-testid="slack-setup-card">
-      <CardHeader>
-        <CardTitle className="text-base font-semibold">{t("slackSetupTitle")}</CardTitle>
-        <CardDescription>{t("slackSetupSubtitle")}</CardDescription>
+    <Card className="gap-4 py-4 shadow-xs" data-testid="slack-setup-card">
+      <CardHeader className="px-5 py-0">
+        <CardTitle className="text-sm font-semibold">{t("slackSetupTitle")}</CardTitle>
+        <CardDescription className="text-xs">{t("slackSetupSubtitle")}</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className="space-y-4 px-5 py-0">
         {isConnected ? (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between rounded-lg border border-border p-4">
-              <div className="flex items-center gap-3">
-                <CheckCircle className="size-5 text-green-500" />
-                <div>
-                  <p className="text-sm font-medium">{config?.teamName || t("slackConnected")}</p>
-                  <p className="text-xs text-muted-foreground">{config?.botUsername ? `@${config.botUsername}` : ""}</p>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between rounded-lg border border-border/70 bg-card p-3">
+              <div className="flex items-center gap-2.5">
+                <CheckCircle className="size-4 text-primary" />
+                <div className="leading-tight">
+                  <p className="text-xs font-semibold text-foreground">{config?.teamName || t("slackConnected")}</p>
+                  <p className="text-[11px] text-muted-foreground">{config?.botUsername ? `@${config.botUsername}` : ""}</p>
                 </div>
               </div>
               <Button variant="destructive" size="sm" onClick={handleDisconnect} data-testid="slack-disconnect-button">
@@ -279,8 +276,8 @@ function SlackChannelSetupCard({ onUpdated }: { onUpdated: () => void }) {
               </Button>
             </div>
 
-            <div className="space-y-3">
-              <Label className="text-sm font-semibold">{t("threadBehavior")}</Label>
+            <div className="space-y-2">
+              <Label className="text-xs font-medium">{t("threadBehavior")}</Label>
               <RadioGroup
                 value={config?.threadMode ?? "mention_then_thread"}
                 onValueChange={(val) => handleThreadMode(val as "mention_only" | "mention_then_thread")}
@@ -288,13 +285,13 @@ function SlackChannelSetupCard({ onUpdated }: { onUpdated: () => void }) {
               >
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="mention_then_thread" id="mode-thread" />
-                  <Label htmlFor="mode-thread" className="text-sm font-normal">
+                  <Label htmlFor="mode-thread" className="text-xs font-normal">
                     {t("followThreads")}
                   </Label>
                 </div>
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="mention_only" id="mode-mention" />
-                  <Label htmlFor="mode-mention" className="text-sm font-normal">
+                  <Label htmlFor="mode-mention" className="text-xs font-normal">
                     {t("mentionsOnly")}
                   </Label>
                 </div>
@@ -302,9 +299,9 @@ function SlackChannelSetupCard({ onUpdated }: { onUpdated: () => void }) {
             </div>
           </div>
         ) : (
-          <form onSubmit={handleSave} className="space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="slack-bot-token">{t("slackBotToken")}</Label>
+          <form onSubmit={handleSave} className="space-y-3">
+            <div className="space-y-1">
+              <Label htmlFor="slack-bot-token" className="text-xs">{t("slackBotToken")}</Label>
               <Input
                 id="slack-bot-token"
                 type="password"
@@ -312,11 +309,12 @@ function SlackChannelSetupCard({ onUpdated }: { onUpdated: () => void }) {
                 value={botToken}
                 onChange={(e) => setBotToken(e.target.value)}
                 required
+                className="h-8 text-xs"
                 data-testid="slack-bot-token-input"
               />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="slack-app-token">{t("slackAppToken")}</Label>
+            <div className="space-y-1">
+              <Label htmlFor="slack-app-token" className="text-xs">{t("slackAppToken")}</Label>
               <Input
                 id="slack-app-token"
                 type="password"
@@ -324,11 +322,12 @@ function SlackChannelSetupCard({ onUpdated }: { onUpdated: () => void }) {
                 value={appToken}
                 onChange={(e) => setAppToken(e.target.value)}
                 required
+                className="h-8 text-xs"
                 data-testid="slack-app-token-input"
               />
             </div>
-            <Button type="submit" disabled={saving || !botToken || !appToken} data-testid="slack-save-button">
-              {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+            <Button size="sm" type="submit" disabled={saving || !botToken || !appToken} data-testid="slack-save-button">
+              {saving ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : null}
               {t("connectSlack")}
             </Button>
           </form>
@@ -379,19 +378,19 @@ function TelegramChannelSetupCard({ onUpdated }: { onUpdated: () => void }) {
   const isConnected = config?.connected ?? false;
 
   return (
-    <Card data-testid="telegram-setup-card">
-      <CardHeader>
-        <CardTitle className="text-base font-semibold">{t("telegramSetupTitle")}</CardTitle>
-        <CardDescription>{t("telegramSetupSubtitle")}</CardDescription>
+    <Card className="gap-4 py-4 shadow-xs" data-testid="telegram-setup-card">
+      <CardHeader className="px-5 py-0">
+        <CardTitle className="text-sm font-semibold">{t("telegramSetupTitle")}</CardTitle>
+        <CardDescription className="text-xs">{t("telegramSetupSubtitle")}</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3 px-5 py-0">
         {isConnected ? (
-          <div className="flex items-center justify-between rounded-lg border border-border p-4">
-            <div className="flex items-center gap-3">
-              <CheckCircle className="size-5 text-green-500" />
-              <div>
-                <p className="text-sm font-medium">{t("telegramConnected")}</p>
-                <p className="text-xs text-muted-foreground">{config?.botUsername ? `@${config.botUsername}` : ""}</p>
+          <div className="flex items-center justify-between rounded-lg border border-border/70 bg-card p-3">
+            <div className="flex items-center gap-2.5">
+              <CheckCircle className="size-4 text-primary" />
+              <div className="leading-tight">
+                <p className="text-xs font-semibold text-foreground">{t("telegramConnected")}</p>
+                <p className="text-[11px] text-muted-foreground">{config?.botUsername ? `@${config.botUsername}` : ""}</p>
               </div>
             </div>
             <Button variant="destructive" size="sm" onClick={handleDisconnect} data-testid="telegram-disconnect-button">
@@ -399,9 +398,9 @@ function TelegramChannelSetupCard({ onUpdated }: { onUpdated: () => void }) {
             </Button>
           </div>
         ) : (
-          <form onSubmit={handleSave} className="space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="telegram-token">{t("botToken")}</Label>
+          <form onSubmit={handleSave} className="space-y-3">
+            <div className="space-y-1">
+              <Label htmlFor="telegram-token" className="text-xs">{t("botToken")}</Label>
               <Input
                 id="telegram-token"
                 type="password"
@@ -409,11 +408,12 @@ function TelegramChannelSetupCard({ onUpdated }: { onUpdated: () => void }) {
                 value={botToken}
                 onChange={(e) => setBotToken(e.target.value)}
                 required
+                className="h-8 text-xs"
                 data-testid="telegram-token-input"
               />
             </div>
-            <Button type="submit" disabled={saving || !botToken} data-testid="telegram-save-button">
-              {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+            <Button size="sm" type="submit" disabled={saving || !botToken} data-testid="telegram-save-button">
+              {saving ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : null}
               {t("connectTelegram")}
             </Button>
           </form>
@@ -464,20 +464,20 @@ function DiscordChannelSetupCard({ onUpdated }: { onUpdated: () => void }) {
   const isConnected = config?.connected ?? false;
 
   return (
-    <Card data-testid="discord-setup-card">
-      <CardHeader>
-        <CardTitle className="text-base font-semibold">{t("discordSetupTitle")}</CardTitle>
-        <CardDescription>{t("discordSetupSubtitle")}</CardDescription>
+    <Card className="gap-4 py-4 shadow-xs" data-testid="discord-setup-card">
+      <CardHeader className="px-5 py-0">
+        <CardTitle className="text-sm font-semibold">{t("discordSetupTitle")}</CardTitle>
+        <CardDescription className="text-xs">{t("discordSetupSubtitle")}</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3 px-5 py-0">
         {isConnected ? (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between rounded-lg border border-border p-4">
-              <div className="flex items-center gap-3">
-                <CheckCircle className="size-5 text-green-500" />
-                <div>
-                  <p className="text-sm font-medium">{t("discordConnected")}</p>
-                  <p className="text-xs text-muted-foreground">{config?.botUsername ? `@${config.botUsername}` : ""}</p>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between rounded-lg border border-border/70 bg-card p-3">
+              <div className="flex items-center gap-2.5">
+                <CheckCircle className="size-4 text-primary" />
+                <div className="leading-tight">
+                  <p className="text-xs font-semibold text-foreground">{t("discordConnected")}</p>
+                  <p className="text-[11px] text-muted-foreground">{config?.botUsername ? `@${config.botUsername}` : ""}</p>
                 </div>
               </div>
               <Button variant="destructive" size="sm" onClick={handleDisconnect} data-testid="discord-disconnect-button">
@@ -489,16 +489,16 @@ function DiscordChannelSetupCard({ onUpdated }: { onUpdated: () => void }) {
                 href={config.inviteUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
               >
-                {t("addBotToServer")} <ExternalLink className="size-3.5" />
+                {t("addBotToServer")} <ExternalLink className="size-3" />
               </a>
             ) : null}
           </div>
         ) : (
-          <form onSubmit={handleSave} className="space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="discord-token">{t("botToken")}</Label>
+          <form onSubmit={handleSave} className="space-y-3">
+            <div className="space-y-1">
+              <Label htmlFor="discord-token" className="text-xs">{t("botToken")}</Label>
               <Input
                 id="discord-token"
                 type="password"
@@ -506,11 +506,12 @@ function DiscordChannelSetupCard({ onUpdated }: { onUpdated: () => void }) {
                 value={botToken}
                 onChange={(e) => setBotToken(e.target.value)}
                 required
+                className="h-8 text-xs"
                 data-testid="discord-token-input"
               />
             </div>
-            <Button type="submit" disabled={saving || !botToken} data-testid="discord-save-button">
-              {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+            <Button size="sm" type="submit" disabled={saving || !botToken} data-testid="discord-save-button">
+              {saving ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : null}
               {t("connectDiscord")}
             </Button>
           </form>
@@ -565,19 +566,19 @@ function PhoneChannelSetupCard({ onUpdated }: { onUpdated: () => void }) {
   const isConnected = config?.hasCredentials ?? false;
 
   return (
-    <Card data-testid="twilio-setup-card">
-      <CardHeader>
-        <CardTitle className="text-base font-semibold">{t("phoneSetupTitle")}</CardTitle>
-        <CardDescription>{t("phoneSetupSubtitle")}</CardDescription>
+    <Card className="gap-4 py-4 shadow-xs" data-testid="twilio-setup-card">
+      <CardHeader className="px-5 py-0">
+        <CardTitle className="text-sm font-semibold">{t("phoneSetupTitle")}</CardTitle>
+        <CardDescription className="text-xs">{t("phoneSetupSubtitle")}</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3 px-5 py-0">
         {isConnected ? (
-          <div className="flex items-center justify-between rounded-lg border border-border p-4">
-            <div className="flex items-center gap-3">
-              <CheckCircle className="size-5 text-green-500" />
-              <div>
-                <p className="text-sm font-medium">{t("phoneConnected")}</p>
-                <p className="text-xs text-muted-foreground">{config?.phoneNumber || t("noPhoneAssigned")}</p>
+          <div className="flex items-center justify-between rounded-lg border border-border/70 bg-card p-3">
+            <div className="flex items-center gap-2.5">
+              <CheckCircle className="size-4 text-primary" />
+              <div className="leading-tight">
+                <p className="text-xs font-semibold text-foreground">{t("phoneConnected")}</p>
+                <p className="text-[11px] text-muted-foreground">{config?.phoneNumber || t("noPhoneAssigned")}</p>
               </div>
             </div>
             <Button variant="destructive" size="sm" onClick={handleDisconnect} data-testid="twilio-disconnect-button">
@@ -585,20 +586,21 @@ function PhoneChannelSetupCard({ onUpdated }: { onUpdated: () => void }) {
             </Button>
           </div>
         ) : (
-          <form onSubmit={handleSave} className="space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="twilio-sid">{t("twilioSid")}</Label>
+          <form onSubmit={handleSave} className="space-y-3">
+            <div className="space-y-1">
+              <Label htmlFor="twilio-sid" className="text-xs">{t("twilioSid")}</Label>
               <Input
                 id="twilio-sid"
                 placeholder="AC..."
                 value={accountSid}
                 onChange={(e) => setAccountSid(e.target.value)}
                 required
+                className="h-8 text-xs"
                 data-testid="twilio-sid-input"
               />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="twilio-token">{t("twilioToken")}</Label>
+            <div className="space-y-1">
+              <Label htmlFor="twilio-token" className="text-xs">{t("twilioToken")}</Label>
               <Input
                 id="twilio-token"
                 type="password"
@@ -606,21 +608,23 @@ function PhoneChannelSetupCard({ onUpdated }: { onUpdated: () => void }) {
                 value={authToken}
                 onChange={(e) => setAuthToken(e.target.value)}
                 required
+                className="h-8 text-xs"
                 data-testid="twilio-token-input"
               />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="twilio-phone">{t("phoneNumberOptional")}</Label>
+            <div className="space-y-1">
+              <Label htmlFor="twilio-phone" className="text-xs">{t("phoneNumberOptional")}</Label>
               <Input
                 id="twilio-phone"
                 placeholder="+15551234567"
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value)}
+                className="h-8 text-xs"
                 data-testid="twilio-phone-input"
               />
             </div>
-            <Button type="submit" disabled={saving || !accountSid || !authToken} data-testid="twilio-save-button">
-              {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+            <Button size="sm" type="submit" disabled={saving || !accountSid || !authToken} data-testid="twilio-save-button">
+              {saving ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : null}
               {t("saveCredentials")}
             </Button>
           </form>
@@ -637,13 +641,13 @@ function PhoneChannelSetupCard({ onUpdated }: { onUpdated: () => void }) {
 function EmailChannelSetupCard() {
   const t = useTranslations("Channels");
   return (
-    <Card data-testid="email-setup-card">
-      <CardHeader>
-        <CardTitle className="text-base font-semibold">{t("emailSetupTitle")}</CardTitle>
-        <CardDescription>{t("emailSetupSubtitle")}</CardDescription>
+    <Card className="gap-3 py-4 shadow-xs" data-testid="email-setup-card">
+      <CardHeader className="px-5 py-0">
+        <CardTitle className="text-sm font-semibold">{t("emailSetupTitle")}</CardTitle>
+        <CardDescription className="text-xs">{t("emailSetupSubtitle")}</CardDescription>
       </CardHeader>
-      <CardContent>
-        <p className="text-sm text-muted-foreground">{t("emailSetupInstructions")}</p>
+      <CardContent className="px-5 py-0">
+        <p className="text-xs leading-relaxed text-muted-foreground">{t("emailSetupInstructions")}</p>
       </CardContent>
     </Card>
   );
