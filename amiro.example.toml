@@ -53,6 +53,12 @@
 # openrouter_api_key = ""                                   OPENROUTER_API_KEY
 # gemini_api_key = ""                                           GEMINI_API_KEY
 
+[notify]
+# Model the notification decision engine runs on (provider:model). Unset
+# means the chat default (AMIRO_DEFAULT_MODEL), else the runtime default.
+# AMIRO_NOTIFY_DECISION_MODEL
+# decision_model = "openrouter:qwen3-8b"
+
 [composio]
 # Composio key for the Connectors page (also settable in Admin → Integrations).
 # api_key = ""

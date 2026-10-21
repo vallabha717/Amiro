@@ -36,6 +36,7 @@ pub const TOML_KEYS: &[(&str, &str, &str)] = &[
     ("agent", "avatar", "AMIRO_AGENT_AVATAR"),
     ("agent", "color", "AMIRO_AGENT_COLOR"),
     ("agent", "default_model", "AMIRO_DEFAULT_MODEL"),
+    ("notify", "decision_model", "AMIRO_NOTIFY_DECISION_MODEL"),
     ("providers", "anthropic_api_key", "ANTHROPIC_API_KEY"),
     ("providers", "openai_api_key", "OPENAI_API_KEY"),
     ("providers", "openrouter_api_key", "OPENROUTER_API_KEY"),

@@ -12,6 +12,6 @@ pub mod decision;
 pub mod signal;
 pub mod store;
 
-pub use broadcaster::{emit_signal, subscribe};
+pub use broadcaster::{emit_signal, emit_signal_with_caller, subscribe};
 pub use decision::Decision;
 pub use signal::NotificationSignal;

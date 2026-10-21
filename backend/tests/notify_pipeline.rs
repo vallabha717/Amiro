@@ -6,7 +6,12 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
-use backend::notify::{emit_signal, subscribe};
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use backend::notify::decision::{ModelCall, ModelCaller};
+use backend::notify::{emit_signal, emit_signal_with_caller, subscribe};
 use backend::state::AppState;
 
 fn state() -> (AppState, std::path::PathBuf) {
@@ -360,6 +365,135 @@ async fn bad_signals_are_rejected() {
 
     // Rejected signals leave no audit rows.
     assert!(rows(&state.home, "notification-events.json").is_empty());
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+// ---------------------------------------------------------------------------
+// Phase 01: the LLM decision engine with a stubbed bridge (no network, no
+// provider key) and the bridge-down fallback.
+// ---------------------------------------------------------------------------
+
+/// A stubbed bridge: answers with `response` and counts the calls, so the
+/// tests prove the one-call-per-signal budget and the up/down parity.
+fn stub_caller(
+    response: Result<String, String>,
+    calls: &Arc<AtomicUsize>,
+) -> impl ModelCaller + '_ {
+    let seen = calls.clone();
+    let response = response.clone();
+    move |_call: ModelCall| {
+        let seen = seen.clone();
+        let response = response.clone();
+        Box::pin(async move {
+            seen.fetch_add(1, Ordering::SeqCst);
+            response
+        }) as Pin<Box<dyn Future<Output = Result<String, String>> + Send>>
+    }
+}
+
+fn llm_response() -> String {
+    serde_json::json!({
+        "shouldNotify": true,
+        "selectedChannels": ["local"],
+        "copy": {"local": {"title": "Model title", "body": "Model body"}},
+        "silent": false,
+        "reasoning": "audible schedule result",
+    })
+    .to_string()
+}
+
+#[tokio::test]
+async fn model_path_renders_copy_when_the_bridge_answers() {
+    let (state, root) = state();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let stub = stub_caller(Ok(llm_response()), &calls);
+    let out = emit_signal_with_caller(&state, "u1", &signal(), &stub)
+        .await
+        .unwrap();
+
+    // One signal costs one model call.
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(out["duplicate"], json!(false));
+    assert_eq!(out["decision"]["shouldNotify"], json!(true));
+    assert_eq!(out["decision"]["channels"], json!(["local"]));
+    assert_eq!(out["decision"]["fallbackUsed"], json!(false));
+    // The rendered copy reaches the feed item, not the signal text.
+    assert_eq!(out["item"]["title"], json!("Model title"));
+    assert_eq!(out["item"]["body"], json!("Model body"));
+    assert_eq!(
+        rows(&state.home, "notification-decisions.json")[0]["fallbackUsed"],
+        json!(false)
+    );
+    let deliveries = rows(&state.home, "notification-deliveries.json");
+    assert_eq!(deliveries.len(), 1);
+    assert_eq!(deliveries[0]["status"], json!("sent"));
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn bridge_down_delivers_the_same_channels_without_rendered_copy() {
+    // The live path points at a socket nothing listens on (and a runtime
+    // binary that does not exist), so the bridge is down with no spawn, no
+    // network, and no provider key — the deterministic fallback must win.
+    let (state, root) = state();
+    let out = emit_signal(&state, "u1", &signal()).await.unwrap();
+
+    // Identical channel set to the model path above, minus the rendered copy.
+    assert_eq!(out["decision"]["channels"], json!(["local"]));
+    assert_eq!(out["decision"]["fallbackUsed"], json!(true));
+    assert_eq!(out["item"]["title"], json!("Nightly backup"));
+    let deliveries = rows(&state.home, "notification-deliveries.json");
+    assert_eq!(deliveries.len(), 1);
+    assert_eq!(deliveries[0]["channel"], json!("local"));
+    assert_eq!(deliveries[0]["status"], json!("sent"));
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn killed_bridge_still_delivers_with_fallback_used() {
+    // The bridge dies mid-run: the stub errors like a refused connection.
+    let (state, root) = state();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let stub = stub_caller(Err("connection refused".to_string()), &calls);
+    let out = emit_signal_with_caller(&state, "u1", &signal(), &stub)
+        .await
+        .unwrap();
+
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(out["decision"]["fallbackUsed"], json!(true));
+    assert_eq!(out["decision"]["channels"], json!(["local"]));
+    // Delivery still completes through the fallback copy.
+    assert_eq!(out["item"]["title"], json!("Nightly backup"));
+    let deliveries = rows(&state.home, "notification-deliveries.json");
+    assert_eq!(deliveries.len(), 1);
+    assert_eq!(deliveries[0]["status"], json!("sent"));
+    assert_eq!(
+        rows(&state.home, "notification-decisions.json")[0]["fallbackUsed"],
+        json!(true)
+    );
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn silent_signal_never_calls_the_model() {
+    let (state, root) = state();
+    let mut quiet = signal();
+    quiet["quiet"] = json!(true);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let stub = stub_caller(Ok(llm_response()), &calls);
+    let out = emit_signal_with_caller(&state, "u1", &quiet, &stub)
+        .await
+        .unwrap();
+
+    // Nothing else needs rendering, so the model call is skipped entirely.
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert_eq!(out["decision"]["fallbackUsed"], json!(true));
+    assert_eq!(out["decision"]["silent"], json!(true));
+    assert_eq!(rows(&state.home, "notification-deliveries.json").len(), 1);
 
     let _ = std::fs::remove_dir_all(root);
 }
