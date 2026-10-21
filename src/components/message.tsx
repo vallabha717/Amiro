@@ -67,7 +67,8 @@ import {
   parseWebFetchOutput,
   parseWebSearchOutput,
 } from "lib/web-search/parse-web-search";
-import { WorkLog, type WorkLogRow } from "./work-log";
+import type { WorkLogRow } from "./work-log";
+import { FoldedWork } from "./work-summary";
 
 interface Props {
   message: UIMessage;
@@ -794,18 +795,32 @@ const PurePreviewMessage = ({
                   )),
             );
 
+            const hasPendingTool = workParts.some(
+              (p) => isToolUIPart(p) && !p.state.startsWith("output"),
+            );
+            const turnSettled =
+              !isWorkLogRunning &&
+              !isReasoningActive &&
+              !hasPendingTool &&
+              mustShow.length === 0 &&
+              (!(isLastMessage && isLoading) ||
+                tailParts.some((p) => p.type === "text" && p.text?.trim()));
+
+            const reasoningNode =
+              reasoningTexts.length > 0 || isReasoningActive ? (
+                <ReasoningPart
+                  key={`${message.id}-turn-reasoning`}
+                  readonly={readonly}
+                  reasoningText={reasoningTexts.join("\n\n")}
+                  isThinking={isReasoningActive}
+                />
+              ) : null;
+
             return (
               <>
-                {reasoningTexts.length > 0 || isReasoningActive ? (
-                  <ReasoningPart
-                    key={`${message.id}-turn-reasoning`}
-                    readonly={readonly}
-                    reasoningText={reasoningTexts.join("\n\n")}
-                    isThinking={isReasoningActive}
-                  />
-                ) : null}
                 {hideAllTools ? (
                   <>
+                    {reasoningNode}
                     {/* With every tool hidden a long turn would otherwise
                         show nothing at all until its answer lands, which
                         reads as a hung chat. One quiet line says it is
@@ -822,11 +837,14 @@ const PurePreviewMessage = ({
                     ) : null}
                   </>
                 ) : (
-                  <WorkLog
+                  <FoldedWork
                     rows={rows}
+                    thought={reasoningTexts.length > 0 || isReasoningActive}
+                    reasoning={reasoningNode}
+                    turnSettled={turnSettled}
+                    isRunning={isWorkLogRunning}
                     images={turnImages}
                     hiddenCount={hiddenCount}
-                    isRunning={isWorkLogRunning}
                     stepCount={toolCount}
                     durationMs={
                       (message.metadata as ChatMetadata | undefined)?.durationMs

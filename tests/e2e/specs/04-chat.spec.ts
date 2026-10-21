@@ -332,6 +332,16 @@ test.describe("chat", () => {
 
     await step("Once complete, Thinking auto-minimizes to plain unboxed text with no left border line", async () => {
       await waitForReply(page, { timeoutMs: 240000 });
+      const summary = page.getByTestId("work-summary").first();
+      await expect(summary, "finished work folds into one summary row").toBeVisible();
+      await expect.soft(summary).toContainText(/Thought/);
+      await expect
+        .soft(page.getByTestId("work-summary").filter({ hasText: /ran \d+ command/i }).first(), "tool calls fold into 'Ran N commands'")
+        .toBeVisible();
+      const summaryToggle = summary.getByRole("button").first();
+      await expect.soft(summaryToggle).toHaveAttribute("aria-expanded", "false");
+      await expect.soft(page.getByTestId("reasoning-part"), "details stay hidden until the row is clicked").toHaveCount(0);
+      await summaryToggle.click();
       const reasoning = page.getByTestId("reasoning-part").first();
       await expect.soft(reasoning, "reasoning block is rendered on top").toBeVisible();
       if (await reasoning.isVisible().catch(() => false)) {
@@ -398,6 +408,9 @@ test.describe("chat", () => {
     await step("Reload the page → the thinking is still a collapsed light block, not dark answer text", async () => {
       await page.reload();
       await expect(page.getByTestId("chat-messages-container")).toBeVisible({ timeout: 30000 });
+      const reloadedSummary = page.getByTestId("work-summary").first();
+      await expect.soft(reloadedSummary, "reloaded chat shows the same folded summary").toBeVisible({ timeout: 30000 });
+      await reloadedSummary.getByRole("button").first().click();
       const reasoning = page.getByTestId("reasoning-part").first();
       await expect.soft(reasoning, "reloaded chat still shows the Thinking block").toBeVisible({ timeout: 30000 });
       await expect.soft(reasoning.getByTestId("message-reasoning-toggle")).toHaveAttribute("aria-expanded", "false");
