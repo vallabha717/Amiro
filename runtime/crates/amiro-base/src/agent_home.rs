@@ -2,10 +2,14 @@
 //!
 //! The directory comes from `$AMIRO_AGENT_HOME`. Files are re-read from disk
 //! on every call (no caching) so edits made by the agent show up next turn.
+//! A session whose working folder is inside `$AMIRO_AGENTS_ROOT` belongs to a
+//! team agent and loads that agent's folder instead.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub const AGENT_HOME_ENV: &str = "AMIRO_AGENT_HOME";
+/// Parent of the team agents' folders (`~/.amiro/agents`), set by the backend.
+pub const AGENTS_ROOT_ENV: &str = "AMIRO_AGENTS_ROOT";
 const AGENT_HOME_FILES: [&str; 5] = [
     "IDENTITY.md",
     "SOUL.md",
@@ -71,10 +75,34 @@ fn read_home_file(dir: &Path, canonical_dir: &Path, name: &str) -> Option<String
     Some(truncate_chars(&stripped, MAX_FILE_CHARS))
 }
 
-/// Load the agent-home block. Returns `(block, chars)` or `None` when the env
-/// var is unset/empty/missing or no files exist.
-pub fn load_agent_home_files() -> Option<(String, usize)> {
-    let dir = std::env::var(AGENT_HOME_ENV).ok()?;
+/// The home of the team agent whose folder contains `working_dir`: the first
+/// path component under `$AMIRO_AGENTS_ROOT`. `None` when the root is unset or
+/// the folder is outside it, so an arbitrary project folder that happens to
+/// hold an `IDENTITY.md` can never replace the persona.
+fn team_agent_home(working_dir: Option<&Path>) -> Option<PathBuf> {
+    let root = std::env::var(AGENTS_ROOT_ENV).ok()?;
+    let root = root.trim();
+    if root.is_empty() {
+        return None;
+    }
+    let root = std::fs::canonicalize(root).ok()?;
+    let dir = std::fs::canonicalize(working_dir?).ok()?;
+    let first = dir.strip_prefix(&root).ok()?.components().next()?;
+    match first {
+        std::path::Component::Normal(name) => Some(root.join(name)),
+        _ => None,
+    }
+}
+
+/// Load the agent-home block for a session working in `working_dir`. The home
+/// is that team agent's folder when the session runs inside
+/// `$AMIRO_AGENTS_ROOT`, else `$AMIRO_AGENT_HOME`. Returns `(block, chars)` or
+/// `None` when no home resolves or no files exist.
+pub fn load_agent_home_files(working_dir: Option<&Path>) -> Option<(String, usize)> {
+    let dir = match team_agent_home(working_dir) {
+        Some(home) => home.to_string_lossy().to_string(),
+        None => std::env::var(AGENT_HOME_ENV).ok()?,
+    };
     let dir = dir.trim();
     if dir.is_empty() {
         return None;
