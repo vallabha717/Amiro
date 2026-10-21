@@ -788,15 +788,69 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
     const isScrollAtBottom = scrollHeight - scrollTop - clientHeight < 50;
 
     setIsAtBottom(isScrollAtBottom);
+    if (isScrollAtBottom) stickToBottomRef.current = true;
     handleFocus();
   }, [handleFocus]);
 
+  // Follow the answer while it grows, until the reader scrolls away.
+  const stickToBottomRef = useRef(true);
+
   const scrollToBottom = useCallback(() => {
+    stickToBottomRef.current = true;
     containerRef.current?.scrollTo({
       top: containerRef.current.scrollHeight,
       behavior: "smooth",
     });
   }, []);
+
+  const isStreamingNow = isLoading || isPendingToolCall;
+  useEffect(() => {
+    if (!isStreamingNow) return;
+    // A new turn always starts pinned to the bottom.
+    stickToBottomRef.current = true;
+    const container = containerRef.current;
+    if (!container) return;
+    const release = () => {
+      stickToBottomRef.current = false;
+    };
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY < 0) release();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (["ArrowUp", "PageUp", "Home"].includes(e.key)) release();
+    };
+    let lastTouchY: number | null = null;
+    const onTouchStart = (e: TouchEvent) => {
+      lastTouchY = e.touches[0]?.clientY ?? null;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      const y = e.touches[0]?.clientY;
+      // Finger moving down drags content down, i.e. scrolls up.
+      if (y != null && lastTouchY != null && y > lastTouchY) release();
+      lastTouchY = y ?? null;
+    };
+    container.addEventListener("wheel", onWheel, { passive: true });
+    container.addEventListener("touchstart", onTouchStart, { passive: true });
+    container.addEventListener("touchmove", onTouchMove, { passive: true });
+    window.addEventListener("keydown", onKey);
+    let raf = 0;
+    const tick = () => {
+      if (stickToBottomRef.current) {
+        const gap =
+          container.scrollHeight - container.scrollTop - container.clientHeight;
+        if (gap > 1) container.scrollTop = container.scrollHeight;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      container.removeEventListener("wheel", onWheel);
+      container.removeEventListener("touchstart", onTouchStart);
+      container.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [isStreamingNow]);
 
   useEffect(() => {
     appStoreMutate({ currentThreadId: threadId });
@@ -973,7 +1027,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
                       isLoading || isPendingToolCall ? "streaming" : "ready"
                     }
                     className={
-                      "flex flex-col gap-2 overflow-y-auto pt-12 pb-48 z-10 [scrollbar-gutter:stable_both-edges]"
+                      "flex flex-col gap-2 overflow-y-auto pt-12 pb-32 z-10 [scrollbar-gutter:stable_both-edges]"
                     }
                     ref={containerRef}
                     onScroll={handleScroll}
@@ -1030,7 +1084,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
                     )}
 
                     {error && <ErrorMessage error={error} />}
-                    <div className="min-w-0 min-h-16" />
+                    <div className="min-w-0 min-h-2" />
                   </div>
                 </>
               )}

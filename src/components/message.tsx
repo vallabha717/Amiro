@@ -233,7 +233,7 @@ const PurePreviewMessage = ({
           className,
         )}
       >
-        <div className="flex flex-col gap-4 w-full">
+        <div className="flex flex-col gap-1.5 w-full">
           {(() => {
             const renderPart = (
               part: (typeof partsForDisplay)[number],

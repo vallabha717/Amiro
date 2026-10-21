@@ -202,12 +202,12 @@ export const WorkLog = memo(function WorkLog({
   // (work-status-dock.tsx); here the calls are simply listed inline, each a
   // description that opens its details on click.
   return (
-    <div className="flex flex-col w-full my-1">
+    <div className="flex flex-col w-full">
       {stripImages.length ? (
         <InlineImageStrip images={stripImages} size="sm" className="mb-1" />
       ) : null}
       <PresenterSurface value="chat">
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-0.5">
           {rows.map((row, i) =>
             row.type === "group" ? (
               <GroupRow
@@ -216,7 +216,7 @@ export const WorkLog = memo(function WorkLog({
                 running={isRunning && i === rows.length - 1}
               />
             ) : (
-              <div key={i} className="py-1">
+              <div key={i}>
                 {row.children}
               </div>
             ),

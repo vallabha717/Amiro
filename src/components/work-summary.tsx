@@ -76,7 +76,7 @@ function Fold({
         onClick={() => setUserOpen(!open)}
         aria-expanded={open}
         className={cn(
-          "flex items-center gap-1.5 self-start text-left text-sm py-1 rounded-sm",
+          "flex items-center gap-1.5 self-start text-left text-sm py-0.5 rounded-sm",
           "text-muted-foreground hover:text-foreground transition-colors",
         )}
       >

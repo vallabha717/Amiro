@@ -330,8 +330,35 @@ test.describe("chat", () => {
         .toBeVisible({ timeout: 30000 });
     });
 
+    await step("While the answer grows the chat follows it to the bottom, and stays put once you scroll up", async () => {
+      const box = page.getByTestId("chat-messages-container");
+      const gap = () =>
+        box.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
+      await expect
+        .soft(async () => expect(await gap()).toBeLessThan(40), "list follows new content")
+        .toPass({ timeout: 20000 });
+      await box.hover();
+      await page.mouse.wheel(0, -600);
+      await page.waitForTimeout(1500);
+      const top = await box.evaluate((el) => el.scrollTop);
+      await page.waitForTimeout(2500);
+      const later = await box.evaluate((el) => el.scrollTop);
+      expect.soft(Math.abs(later - top), "scrolling up stops the auto-follow").toBeLessThan(40);
+    });
+
     await step("Once complete, Thinking auto-minimizes to plain unboxed text with no left border line", async () => {
       await waitForReply(page, { timeoutMs: 240000 });
+      const dock = page.getByTestId("work-status-dock");
+      await expect.soft(dock, "Worked summary is docked above the composer").toBeVisible();
+      await expect.soft(dock).toContainText(/^Worked/);
+      const dockBox = await dock.boundingBox();
+      const composerBox = await composer(page).boundingBox();
+      if (dockBox && composerBox) {
+        expect.soft(dockBox.y, "dock sits above the composer, not at the top of the chat").toBeLessThan(composerBox.y);
+        expect.soft(composerBox.y - dockBox.y, "dock is right next to the composer").toBeLessThan(200);
+      }
+      await page.getByTestId("work-status-dock-close").click();
+      await expect.soft(dock, "Close dismisses the dock at once").toBeHidden({ timeout: 5000 });
       const summary = page.getByTestId("work-summary").first();
       await expect(summary, "finished work folds into one summary row").toBeVisible();
       await expect.soft(summary).toContainText(/Thought/);
@@ -373,17 +400,9 @@ test.describe("chat", () => {
     });
 
     await step("Tool calls show description only until clicked, then expand bash and file edit inline", async () => {
-      const dock = page.getByTestId("work-status-dock");
-      await expect.soft(dock, "Worked summary is docked above the composer").toBeVisible();
-      await expect.soft(dock).toContainText(/^Worked/);
-      const dockBox = await dock.boundingBox();
-      const composerBox = await composer(page).boundingBox();
-      if (dockBox && composerBox) {
-        expect.soft(dockBox.y, "dock sits above the composer, not at the top of the chat").toBeLessThan(composerBox.y);
-        expect.soft(composerBox.y - dockBox.y, "dock is right next to the composer").toBeLessThan(200);
-      }
-      await page.getByTestId("work-status-dock-close").click();
-      await expect.soft(dock, "Close dismisses the dock at once").toBeHidden({ timeout: 5000 });
+      // Finished runs are folded; open every fold to reach the tool rows.
+      const folds = page.locator('[data-testid="work-summary"] > button[aria-expanded="false"]');
+      while ((await folds.count()) > 0) await folds.first().click();
       const toggles = page.getByTestId("tool-call-toggle");
       const count = await toggles.count();
       expect.soft(count, "at least one inline tool call description toggle is visible").toBeGreaterThan(0);
