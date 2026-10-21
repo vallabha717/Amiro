@@ -1,6 +1,10 @@
 "use client";
 
-import { setAgentScope, useAgentScope } from "@/lib/backend/agent-scope";
+import {
+  getAgentScope,
+  setAgentScope,
+  useAgentScope,
+} from "@/lib/backend/agent-scope";
 import { useAgent } from "@/lib/backend/agents-api";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
@@ -39,7 +43,9 @@ function SpaceBar({ agentId }: { agentId: string }) {
   // always says whose space it is (and can be shared or reloaded as such).
   const shownAgent = searchParams.get("agent");
   useEffect(() => {
-    if (shownAgent === agentId) return;
+    // "Switch to Amiro" clears the scope before this bar unmounts; never put
+    // the agent back into the URL on the way out.
+    if (shownAgent === agentId || getAgentScope() !== agentId) return;
     const params = new URLSearchParams(searchParams.toString());
     params.set("agent", agentId);
     appliedQuery = agentId;
