@@ -1,5 +1,6 @@
 "use client";
 
+import { InlineCode, useFileLink } from "./file-preview/file-path-chip";
 import { Fragment, memo, PropsWithChildren, useMemo } from "react";
 import ReactMarkdown, { type Components, defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -56,6 +57,30 @@ export const InlineContent = memo(({ children }: PropsWithChildren) => {
   );
 });
 InlineContent.displayName = "InlineContent";
+function MarkdownLink({ children, href, ...props }: any) {
+  const openFile = useFileLink(href);
+  return (
+    <a
+      className="text-primary hover:underline flex gap-1.5 items-center"
+      target="_blank"
+      rel="noreferrer"
+      href={href}
+      {...props}
+      onClick={
+        openFile
+          ? (e) => {
+              e.preventDefault();
+              openFile();
+            }
+          : undefined
+      }
+    >
+      <LinkIcon className="size-3.5" />
+      <InlineContent>{children}</InlineContent>
+    </a>
+  );
+}
+
 const components: Partial<Components> = {
   table: ({ node, children, ...props }) => {
     return (
@@ -87,13 +112,7 @@ const components: Partial<Components> = {
       </TableCell>
     );
   },
-  code: ({ children }) => {
-    return (
-      <code className="text-sm rounded-md bg-accent text-primary py-0.5 px-1.5 mx-0.5">
-        {children}
-      </code>
-    );
-  },
+  code: ({ children }) => <InlineCode>{children}</InlineCode>,
   blockquote: ({ children }) => {
     return (
       <div className="px-2">
@@ -145,19 +164,7 @@ const components: Partial<Components> = {
       </span>
     );
   },
-  a: ({ node, children, ...props }) => {
-    return (
-      <a
-        className="text-primary hover:underline flex gap-1.5 items-center"
-        target="_blank"
-        rel="noreferrer"
-        {...toAny(props)}
-      >
-        <LinkIcon className="size-3.5" />
-        <InlineContent>{children}</InlineContent>
-      </a>
-    );
-  },
+  a: ({ node, children, ...props }) => <MarkdownLink {...toAny(props)}>{children}</MarkdownLink>,
   h1: ({ node, children, ...props }) => {
     return (
       <h1 className="text-2xl font-semibold mt-4 mb-1.5" {...props}>

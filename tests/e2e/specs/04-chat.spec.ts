@@ -8,6 +8,7 @@
  */
 import { ask, assistantMessages, composer, newChat, selectModel, send, toolCallsShown, waitForReply } from "../support/chat";
 import { expect, test } from "../support/fixtures";
+import * as fs from "node:fs";
 
 test.describe("chat", () => {
   test.beforeEach(async ({ page }) => {
@@ -442,8 +443,13 @@ test.describe("chat", () => {
       };
       await open();
       await menuItem("Web").click();
+      // The menu is still open: the chat must already have changed behind it.
+      await expect.soft(page.getByTestId("tool-call-toggle"), "filter applies while the menu is still open").toHaveCount(0, { timeout: 3000 });
+      const scroller = page.getByTestId("chat-messages-container");
+      await scroller.evaluate((el) => { el.scrollTop = 0; });
+      await page.mouse.move(400, 300);
+      await page.mouse.wheel(0, 300);
       await page.keyboard.press("Escape");
-      await expect.soft(page.getByTestId("tool-call-toggle"), "only Web is ticked, so terminal and file calls are hidden").toHaveCount(0);
       await open();
       await menuItem("Web").click();
       await menuItem("Terminal").click();
@@ -466,6 +472,122 @@ test.describe("chat", () => {
       const main = await page.locator("main").innerText();
       expect.soft(main, "no raw reasoning sentinel leaks into the page").not.toContain("\u2063");
       await expect.soft(page.getByTestId("work-status-dock"), "a reopened chat does not flash the Worked bar").toHaveCount(0);
+    });
+  });
+  test("file paths in chat open in the viewer for any kind of file", async ({ page, amiro, step }) => {
+    const P = "/home/shrivallabha_somayaji_tyson_com/Projects/Personal";
+    const T = "/home/shrivallabha_somayaji_tyson_com/Projects/3368-haystack-paap";
+    // Real files that already exist on this machine, one per kind.
+    const samples: { name: string; from: string; testId: string; expect?: RegExp }[] = [
+      { name: "spec.pdf", from: "/usr/share/doc/shared-mime-info/shared-mime-info-spec.pdf", testId: "file-preview-pdf" },
+      { name: "checklist.docx", from: `${P}/app.vegaai.dev.v2/tests/fixtures/knowledge-bases/onboarding-checklist.docx`, testId: "file-preview-docx" },
+      { name: "talk.pptx", from: `${T}/deployment-web-app/docs-service/public/haystack-tech-talk.pptx`, testId: "file-preview-pptx" },
+      { name: "limits.xlsx", from: `${P}/app.vegaai.dev.v2/tests/fixtures/knowledge-bases/refund-limits.xlsx`, testId: "file-preview-xlsx" },
+      { name: "oui.csv", from: "/usr/share/ieee-data/mam.csv", testId: "file-preview-csv" },
+      { name: "graph.jpg", from: "/usr/share/doc/sysstat/images/cpugraph.jpg", testId: "file-preview-image" },
+      { name: "demo.mp4", from: `${P}/OpenDots/docs/demos/computer-chat.mp4`, testId: "file-preview-video" },
+      { name: "sample.mp3", from: `${P}/app.vegaai.dev.v2/core/internal/llmtests/scenarios/media/sample.mp3`, testId: "file-preview-audio" },
+      { name: "bundle.zip", from: "/usr/local/go/src/archive/zip/testdata/utf8-7zip.zip", testId: "" },
+    ];
+    await step(`Copy ${samples.length} real files from this machine into the workspace`, async () => {
+      for (const f of samples) {
+        const content = fs.readFileSync(f.from).toString("base64");
+        const res = await amiro.api("/api/workspace/write", {
+          method: "POST",
+          body: JSON.stringify({ path: `e2e-viewer/${f.name}`, content, encoding: "base64" }),
+        });
+        expect(res.status, `uploaded ${f.name}`).toBe(200);
+      }
+    });
+
+    await step("Ask the agent to name the files → every path becomes a clickable chip", async () => {
+      await newChat(page);
+      await selectModel(page);
+      await send(
+        page,
+        `Reply with only these file paths, each in its own inline code span, nothing else: ${samples.map((f) => "`e2e-viewer/" + f.name + "`").join(" ")}`,
+      );
+      await waitForReply(page, { timeoutMs: 180000 });
+      await expect(page.getByTestId("chat-file-path")).toHaveCount(samples.length, { timeout: 15000 });
+    });
+
+    const open = async (name: string) => {
+      const tab = page.getByTestId("workspace-file-tab");
+      if (await tab.isVisible().catch(() => false)) await page.getByTestId("workspace-file-tab-back").click();
+      await page.locator(`[data-testid="chat-file-path"][data-path="e2e-viewer/${name}"]`).click();
+      await expect(tab, "the Files tab opens with the workspace viewer").toBeVisible();
+      await page.waitForTimeout(1200);
+    };
+
+    await step("PDF renders in the page viewer", async () => {
+      await open("spec.pdf");
+      const pages = page.getByTestId("file-preview-pdf-page");
+      await expect(pages.first(), "first PDF page is drawn").toBeVisible({ timeout: 30000 });
+      await expect.poll(() => pages.count(), { timeout: 30000 }).toBeGreaterThan(1);
+      // A drawn page has ink on it, not a blank white canvas.
+      const inked = await pages.first().evaluate((c: HTMLCanvasElement) => {
+        const d = c.getContext("2d")!.getImageData(0, 0, c.width, c.height).data;
+        let dark = 0;
+        for (let i = 0; i < d.length; i += 4) if (d[i] < 128) dark++;
+        return dark;
+      });
+      expect(inked, "page has visible text").toBeGreaterThan(200);
+      await page.waitForTimeout(1500);
+    });
+    await step("Word document renders as text", async () => {
+      await open("checklist.docx");
+      const doc = page.getByTestId("file-preview-docx");
+      await expect(doc).toBeVisible({ timeout: 20000 });
+      await expect.poll(async () => (await doc.innerText()).trim().length, { timeout: 20000 }).toBeGreaterThan(20);
+    });
+    await step("PowerPoint renders slide by slide", async () => {
+      await open("talk.pptx");
+      const deck = page.getByTestId("file-preview-pptx");
+      await expect(deck).toBeVisible({ timeout: 20000 });
+      expect(await deck.locator("li").count(), "several slides").toBeGreaterThan(2);
+    });
+    await step("Excel renders as a grid with sheet tabs", async () => {
+      await open("limits.xlsx");
+      const sheet = page.getByTestId("file-preview-xlsx");
+      await expect(sheet).toBeVisible({ timeout: 20000 });
+      expect(await sheet.locator("td").count(), "cells are shown").toBeGreaterThan(4);
+    });
+    await step("CSV renders as a grid", async () => {
+      await open("oui.csv");
+      const csv = page.getByTestId("file-preview-csv");
+      await expect(csv).toBeVisible({ timeout: 20000 });
+      await expect.poll(() => csv.locator("tr").count(), { timeout: 20000 }).toBeGreaterThan(10);
+      await expect(csv, "real cell text shows").toContainText(/[0-9A-F]{6}/);
+    });
+    await step("Image renders", async () => {
+      await open("graph.jpg");
+      const img = page.getByTestId("file-preview-image");
+      await expect(img).toBeVisible({ timeout: 20000 });
+      await expect.poll(() => img.evaluate((e: HTMLImageElement) => e.naturalWidth)).toBeGreaterThan(10);
+    });
+    await step("MP4 video plays", async () => {
+      await open("demo.mp4");
+      const video = page.getByTestId("file-preview-video");
+      await expect(video).toBeVisible({ timeout: 20000 });
+      await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.readyState), { timeout: 20000 }).toBeGreaterThan(1);
+      await video.evaluate((v: HTMLVideoElement) => { v.muted = true; return v.play(); });
+      await page.waitForTimeout(3000);
+      expect(await video.evaluate((v: HTMLVideoElement) => v.currentTime), "video advanced").toBeGreaterThan(0.5);
+    });
+    await step("MP3 audio has a player", async () => {
+      await open("sample.mp3");
+      const audio = page.getByTestId("file-preview-audio");
+      await expect(audio).toBeVisible({ timeout: 20000 });
+      await expect.poll(() => audio.evaluate((a: HTMLAudioElement) => a.readyState), { timeout: 20000 }).toBeGreaterThan(0);
+    });
+    await step("A type with no reader says so and offers a download", async () => {
+      await open("bundle.zip");
+      await expect(page.getByTestId("workspace-file-tab")).toContainText(/No preview/i);
+      await expect(page.getByTestId("workspace-file-tab").getByRole("button", { name: /Download/ }).first()).toBeVisible();
+    });
+    await step("Back returns to the artifact files list", async () => {
+      await page.getByTestId("workspace-file-tab-back").click();
+      await expect(page.getByTestId("artifacts-panel")).toBeVisible();
     });
   });
 });

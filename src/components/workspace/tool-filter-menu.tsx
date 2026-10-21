@@ -53,7 +53,9 @@ export function ToolFilterMenu({
   const activeFilters = hideAll ? 1 : only.length;
 
   return (
-    <DropdownMenu>
+    // Non-modal: the chat stays scrollable and visible behind the menu, so a
+    // tick is seen taking effect straight away instead of after closing it.
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
@@ -74,7 +76,11 @@ export function ToolFilterMenu({
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-64">
+      <DropdownMenuContent
+        align="end"
+        className="w-64"
+        onCloseAutoFocus={(e) => e.preventDefault()}
+      >
         <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
           Show only the ticked tools (none ticked shows all)
         </DropdownMenuLabel>

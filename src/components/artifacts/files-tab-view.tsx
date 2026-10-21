@@ -1,8 +1,10 @@
 "use client";
 
+import { appStore } from "@/app/store";
 import { FileArtifactsPanel } from "./file-artifacts";
 import { TodoPanel } from "./todo-panel";
 import type { TodoArtifact } from "./use-artifacts";
+import { WorkspaceFileTab } from "./workspace-file-tab";
 
 /**
  * The Files tab: file artifacts with the turn's task list on top.
@@ -20,6 +22,8 @@ export function FilesTabView({
   threadId?: string;
 }) {
   const showTasks = !!todos && todos.items.length > 0;
+  const workspacePath = appStore((s) => s.artifactView.workspacePath);
+  if (workspacePath) return <WorkspaceFileTab path={workspacePath} />;
   return (
     <div
       className="flex h-full min-h-0 flex-col"
