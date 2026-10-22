@@ -25,6 +25,7 @@ const JOURNEYS = [
   "ux-audit",
   "team",
   "notifications",
+  "channels-contacts",
 ] as const;
 
 const use = {

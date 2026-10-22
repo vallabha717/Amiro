@@ -47,12 +47,6 @@
     "apiKey": ""
   },
 
-  "notify": {
-    "$comment": "Real Telegram bot token + chat id for the guarded live-send step (13-notifications). Empty (default) skips it with a reason; the stubbed connect flow always runs.",
-    "liveTelegramToken": "",
-    "liveTelegramChatId": ""
-  },
-
   "mcp": {
     "fixturePort": 38970,
     "bearerToken": "e2e-bearer-token-123456",

@@ -73,6 +73,26 @@ export default async function globalSetup() {
     throw new Error(`MCP fixture did not start on port ${cfg.mcp.fixturePort}; see ${dir}/mcp-fixture.log`);
   }
 
+  // ---- Telegram / Slack / Discord stub ----------------------------------
+  // Channels, Contacts and notification delivery run against this offline
+  // stand-in for the three providers, so the journeys prove real bot checks,
+  // verification codes and deliveries without any real token. Specs read
+  // what it received from `${AMIRO_E2E_NOTIFY_STUB}/__calls`.
+  const notifyPort = Number(process.env.AMIRO_E2E_NOTIFY_STUB_PORT || 38971);
+  const notifyLog = fs.openSync(path.join(dir, "notify-stub.log"), "a");
+  const notifyStub = spawn(process.execPath, [path.join(__dirname, "../fixtures/notify-stub-server.mjs"), String(notifyPort)], {
+    env: { ...process.env },
+    stdio: ["ignore", notifyLog, notifyLog],
+    detached: true,
+  });
+  notifyStub.unref();
+  pids.push(notifyStub.pid!);
+  const notifyBase = `http://127.0.0.1:${notifyPort}`;
+  if (!(await waitFor(`${notifyBase}/health`, 15000))) {
+    throw new Error(`Notify stub did not start on port ${notifyPort}; see ${dir}/notify-stub.log`);
+  }
+  process.env.AMIRO_E2E_NOTIFY_STUB = notifyBase;
+
   if (cfg.target.mode === "external") {
     if (!cfg.target.baseUrl) throw new Error("target.mode=external needs target.baseUrl");
     const state: InstanceState = { baseUrl: cfg.target.baseUrl.replace(/\/$/, ""), mode: "external", pids };
@@ -122,6 +142,9 @@ export default async function globalSetup() {
     AMIRO_NO_TELEMETRY: "1",
     AMIRO_CONFIG: path.join(root, "amiro.toml"),
     AMIRO_ENV_FILE: path.join(root, "none.env"),
+    AMIRO_NOTIFY_TELEGRAM_BASE_URL: process.env.AMIRO_NOTIFY_TELEGRAM_BASE_URL || `${notifyBase}/tg`,
+    AMIRO_NOTIFY_SLACK_BASE_URL: process.env.AMIRO_NOTIFY_SLACK_BASE_URL || `${notifyBase}/slack`,
+    AMIRO_NOTIFY_DISCORD_BASE_URL: process.env.AMIRO_NOTIFY_DISCORD_BASE_URL || `${notifyBase}/dc`,
   };
   // Never let the user's own provider keys or owner settings leak into a "first run".
   for (const k of ["AMIRO_SANDBOX_TOKEN", "AMIRO_SANDBOX_MASTER", "AMIRO_SANDBOX_ENV_FILE"]) delete env[k];

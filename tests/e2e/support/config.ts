@@ -46,11 +46,6 @@ export interface E2EConfig {
   };
   search: { braveApiKey: string };
   composio: { apiKey: string };
-  notify: {
-    /** Real bot token for the guarded live-send step; empty skips it. */
-    liveTelegramToken: string;
-    liveTelegramChatId: string;
-  };
   mcp: {
     fixturePort: number;
     bearerToken: string;
@@ -97,8 +92,6 @@ const ENV: Record<string, string> = {
   AMIRO_E2E_STT_API_KEY: "voice.sttApiKey",
   AMIRO_E2E_BRAVE_API_KEY: "search.braveApiKey",
   AMIRO_E2E_COMPOSIO_API_KEY: "composio.apiKey",
-  AMIRO_E2E_NOTIFY_LIVE_TELEGRAM_TOKEN: "notify.liveTelegramToken",
-  AMIRO_E2E_NOTIFY_LIVE_TELEGRAM_CHAT_ID: "notify.liveTelegramChatId",
   AMIRO_E2E_HEADLESS: "recording.headless",
   AMIRO_E2E_SLOWMO: "recording.slowMoMs",
   AMIRO_E2E_VIDEO: "recording.video",

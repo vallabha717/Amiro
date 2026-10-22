@@ -118,7 +118,11 @@ test.describe.serial("team", () => {
       await expect(replyOf(page, "provider")).toHaveText(amiro.cfg.provider.label);
     });
 
-    await step("Web search: Bing for Scout; Amiro keeps DuckDuckGo", async () => {
+    await step("Web search: Bing for Scout; Amiro keeps its own engine", async () => {
+      // Whatever Amiro uses now (DuckDuckGo on a fresh instance, or what an
+      // earlier journey set) must not change when Scout picks Bing.
+      const before = await amiro.api<Array<{ provider: string; isActive: boolean }>>("/api/search/providers");
+      const amiroEngine = before.body.find((p) => p.isActive)?.provider;
       const turn = await openTurn(page, "search");
       await turn.getByTestId("setup-search-bing").click();
       await expect(replyOf(page, "search")).toHaveText("Bing Search");
@@ -127,7 +131,7 @@ test.describe.serial("team", () => {
       });
       expect(scout.body.find((p) => p.isActive)?.provider).toBe("bing");
       const main = await amiro.api<Array<{ provider: string; isActive: boolean }>>("/api/search/providers");
-      expect(main.body.find((p) => p.isActive)?.provider).toBe("duckduckgo");
+      expect(main.body.find((p) => p.isActive)?.provider).toBe(amiroEngine);
     });
 
     await step("Connectors: a team agent gets remote MCP servers only, no Composio", async () => {

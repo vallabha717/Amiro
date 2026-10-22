@@ -184,17 +184,19 @@ test.describe("agent-hub", () => {
       await expect(page.locator("[data-testid=contact-detail-card]")).toContainText("Bob Smith");
     });
 
-    await step("Add a Telegram channel to Bob Smith and verify it", async () => {
+    await step("Add a Telegram account to Bob Smith → Verify needs proof, never a free tick", async () => {
       await page.locator("[data-testid=add-channel-address-input]").fill("@bob_telegram");
       await page.locator("[data-testid=add-channel-button]").click();
       await expect(page.getByText("@bob_telegram")).toBeVisible();
 
-      // Click verify
-      const verifyBtn = page.getByRole("button", { name: /^Verify$/i }).first();
-      if (await verifyBtn.isVisible()) {
-        await verifyBtn.click();
-        await expect(page.getByText(/Verified/i).first()).toBeVisible();
-      }
+      // Verification sends a code through the channel's bot (journey 14
+      // walks the whole code flow). An @username cannot receive one, so
+      // Amiro says what is needed instead of marking it verified.
+      await page.getByTestId("verify-channel-telegram").click();
+      await expect(
+        page.getByText(/Connect the Telegram bot on the Channels page|numeric user id/).first(),
+      ).toBeVisible();
+      await expect(page.getByTestId("verify-channel-telegram")).toBeVisible();
     });
 
     await step("Agent hub reflects Channels and Contacts bottom strip tiles", async () => {
