@@ -59,6 +59,8 @@ import {
 } from "@/lib/backend/voice-api";
 import { FileUIPart, TextUIPart } from "ai";
 import { toast } from "sonner";
+import { runComposerCommand, type ComposerCommand } from "@/lib/backend/composer-api";
+import { CommandResultPanel, type CommandResult } from "./chat/command-result-panel";
 import {
   buildAttachmentParts,
   type ComposerAttachmentPart,
@@ -556,6 +558,25 @@ export default function PromptInput({
     [addMention],
   );
 
+  // A `/` command picked in the composer runs in the runtime itself; its
+  // answer shows above the composer and never enters the conversation.
+  const [commandResult, setCommandResult] = useState<CommandResult | null>(null);
+  const onRunCommand = useCallback(
+    (command: ComposerCommand) => {
+      setCommandResult({ command, status: "running", text: "" });
+      runComposerCommand({ command, threadId })
+        .then((result) => setCommandResult({ command, status: "done", text: result.message }))
+        .catch((error: unknown) =>
+          setCommandResult({
+            command,
+            status: "error",
+            text: error instanceof Error ? error.message : String(error),
+          }),
+        );
+    },
+    [threadId],
+  );
+
   const onChangeMention = useCallback(
     (mentions: ChatMention[]) => {
       mentions.forEach(addMention);
@@ -864,6 +885,11 @@ export default function PromptInput({
                 })}
               </div>
             )}
+            {commandResult && (
+              <div className="px-4 pt-3">
+                <CommandResultPanel result={commandResult} onClose={() => setCommandResult(null)} />
+              </div>
+            )}
             <div className="flex flex-col gap-3.5 px-5 pt-2 pb-3">
               {/* Attachment tray - on top of the input */}
               {uploadedFiles.length > 0 && (
@@ -895,7 +921,9 @@ export default function PromptInput({
                   disabledMention={disabledMention}
                   onFocus={onFocus}
                   onSelectSkill={onSelectSkill}
+                  onRunCommand={onRunCommand}
                   projectDirectory={projectDirectory}
+                  threadId={threadId}
                 />
               </div>
               <div className="flex w-full items-center z-30">

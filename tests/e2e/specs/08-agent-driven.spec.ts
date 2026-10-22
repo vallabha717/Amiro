@@ -220,20 +220,33 @@ test.describe("agent-driven", () => {
       );
       await expect(assistantMessages(page).last()).toContainText("E2E agent demo", { timeout: 240000 });
     });
-    await step("Open the work log → the row names the saved artifact", async () => {
-      await page.getByRole("button", { name: /^Worked for/ }).first().click();
-      await expect(page.getByText(/artifact · E2E agent demo/).first()).toBeVisible({ timeout: 15000 });
-    });
-    await step("Expand the row and click Open on the card → Files tab previews it", async () => {
-      const toggle = page.getByTestId("tool-call-toggle").first();
-      if (await toggle.isVisible().catch(() => false)) {
-        await toggle.click();
-      } else {
-        await page.getByTestId("worklog-row").first().click();
-      }
-      await page.locator('[data-testid^="artifact-open-"]').first().click();
-      await expect(page.getByTestId("artifacts-panel")).toBeVisible();
-      await expect(page.getByTestId("artifact-viewer")).toContainText("E2E agent demo", { timeout: 15000 });
-    });
+    // The agent may save it itself (a "Worked for…" work log with the
+    // artifact row) or hand the job to a sub-agent ("Delegated 1 task"),
+    // whose tool calls live in its own session. Either way the artifact must
+    // exist and open in the Files view.
+    const workLog = page.getByRole("button", { name: /^Worked for/ }).first();
+    if (await workLog.isVisible().catch(() => false)) {
+      await step("Open the work log → the row names the saved artifact → Open shows it", async () => {
+        await workLog.click();
+        await expect(page.getByText(/artifact · E2E agent demo/).first()).toBeVisible({ timeout: 15000 });
+        const toggle = page.getByTestId("tool-call-toggle").first();
+        if (await toggle.isVisible().catch(() => false)) {
+          await toggle.click();
+        } else {
+          await page.getByTestId("worklog-row").first().click();
+        }
+        await page.locator('[data-testid^="artifact-open-"]').first().click();
+        await expect(page.getByTestId("artifacts-panel")).toBeVisible();
+        await expect(page.getByTestId("artifact-viewer")).toContainText("E2E agent demo", { timeout: 15000 });
+      });
+    } else {
+      await step("Delegated to a sub-agent → the artifact is in Artifacts and opens in the Files view", async () => {
+        await page.getByTestId("sidebar-artifacts-link").click();
+        const panel = page.getByTestId("artifacts-panel");
+        await expect(panel).toBeVisible();
+        await panel.locator('[data-testid^="artifact-item-"]').filter({ hasText: "E2E agent demo" }).first().click();
+        await expect(page.getByTestId("artifact-viewer")).toContainText("E2E agent demo", { timeout: 15000 });
+      });
+    }
   });
 });

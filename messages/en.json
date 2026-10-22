@@ -81,7 +81,20 @@
       "userSkills": "User Skills",
       "noSkillsFound": "No skills found",
       "createOne": "create one",
-      "moreCount": "+{count} more"
+      "moreCount": "+{count} more",
+      "commandsTitle": "Commands",
+      "commands": {
+        "compact": "Summarize older messages now to free up context",
+        "context": "Show how much of the context window is in use",
+        "info": "Show this session's model, provider and usage",
+        "cache": "Show prompt cache stats for this session",
+        "memory": "Show what the agent remembers",
+        "skills": "List the skills the runtime has loaded",
+        "agents": "Show the models each agent role uses",
+        "swarm": "Show the status of sub-agents working on this chat",
+        "mcp": "Show every MCP server and whether it is connected",
+        "refresh-model-list": "Refresh every provider's model list"
+      }
     },
     "Error": "Chat Error",
     "thisMessageWasNotSavedPleaseTryTheChatAgain": "This message was not saved. Please try the chat again.",
@@ -327,7 +340,22 @@
     "sendHint": "Send (Enter)",
     "dictate": "Dictate with voice",
     "stopDictation": "Stop recording",
-    "transcribingDictation": "Transcribing audio…"
+    "transcribingDictation": "Transcribing audio…",
+    "Mentions": {
+      "files": "Files in {folder}",
+      "noMatch": "Nothing matches \"{query}\"",
+      "filesFailed": "Could not list files in this folder",
+      "searchPlaceholder": "Search files and folders…",
+      "emptyFolder": "This folder is empty",
+      "loading": "Looking…"
+    },
+    "Commands": {
+      "running": "Running…",
+      "failed": "Did not run",
+      "ranInRuntime": "Ran in the agent's runtime, not sent to the model",
+      "close": "Close",
+      "noOutput": "Done. Nothing to show."
+    }
   },
   "Layout": {
     "admin": "Admin",

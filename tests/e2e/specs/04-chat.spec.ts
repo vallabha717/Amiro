@@ -98,43 +98,99 @@ test.describe("chat", () => {
     });
   });
 
-  test("skills (/) and tools (@) palettes in the composer", async ({ page, step, note }) => {
-    await step("Type / in an empty composer → skill palette opens", async () => {
+  test("composer: / runs the runtime's commands and lists skills, @ finds files", async ({ page, step, amiro }) => {
+    await step("Type / in an empty composer → jcode's commands, then skills", async () => {
+      await newChat(page);
       await composer(page).click();
-      await page.keyboard.type("/weath", { delay: 40 });
-      await expect(page.getByTestId("skill-palette")).toBeVisible();
-    });
-    await step("Pick the Weather skill → chip in the composer", async () => {
+      await page.keyboard.type("/", { delay: 40 });
       const palette = page.getByTestId("skill-palette");
+      await expect(palette).toBeVisible();
+      await expect(palette.getByTestId("skill-palette-group-commands")).toBeVisible();
+      for (const command of ["compact", "context", "info", "memory", "mcp"]) {
+        await expect(palette.getByTestId(`skill-palette-command-${command}`)).toBeVisible();
+      }
       await expect(palette.getByTestId("skill-palette-loading")).toBeHidden({ timeout: 15000 });
-      const items = palette.locator('[data-testid^="skill-palette-item-"]');
-      if (!(await items.count())) {
-        note(`"/" skill palette finds nothing for "weath": ${(await palette.innerText()).replace(/\s+/g, " ").slice(0, 160)}`, "bug");
-      }
-      expect.soft(await items.count(), "the / palette should list the built-in weather skill").toBeGreaterThan(0);
-      if (await items.count()) {
-        await items.first().click();
-        await expect.soft(page.locator('[data-testid^="skill-chip-"]').first()).toBeVisible();
-      } else {
-        await page.keyboard.press("Escape");
-        await page.keyboard.press("Control+A");
-        await page.keyboard.press("Backspace");
-      }
+      await expect(palette.getByTestId("skill-palette-item-visualize")).toBeVisible();
     });
-    await step("Ask with the skill attached", async () => {
-      await page.keyboard.type(" what's the weather in Paris right now?", { delay: 10 });
-      const before = await assistantMessages(page).count();
+
+    await step("Narrow to /vis → pick the visualize skill → chip in the composer", async () => {
+      await page.keyboard.type("vis", { delay: 40 });
+      const palette = page.getByTestId("skill-palette");
+      await expect(palette.locator('[data-testid^="skill-palette-command-"]')).toHaveCount(0);
+      await palette.getByTestId("skill-palette-item-visualize").click();
+      await expect(page.locator('[data-testid^="skill-chip-"]').first()).toBeVisible();
+    });
+
+    await step("A command on a chat that has not started says so, without sending anything", async () => {
+      await page.keyboard.press("Control+A");
+      await page.keyboard.press("Backspace");
+      await page.keyboard.type("/context", { delay: 30 });
       await page.keyboard.press("Enter");
-      const reply = await waitForReply(page, { before });
-      expect.soft(reply).toMatch(/Paris|°|weather/i);
+      const result = page.getByTestId("command-result");
+      await expect(result).toHaveAttribute("data-status", "error", { timeout: 15000 });
+      await expect(result).toContainText("Send a message first");
+      await expect(assistantMessages(page)).toHaveCount(0);
+      await page.getByTestId("command-result-close").click();
     });
-    await step("Type @ → tools/MCP palette lists built-in tools", async () => {
+
+    await step("Ask something, then /context → the runtime's own answer, not a chat message", async () => {
+      await ask(page, "Reply with one short sentence about lighthouses.");
+      const before = await assistantMessages(page).count();
+      await composer(page).click();
+      await page.keyboard.type("/con", { delay: 30 });
+      await page.getByTestId("skill-palette-command-context").click();
+      const result = page.getByTestId("command-result");
+      await expect(result).toHaveAttribute("data-status", "done", { timeout: 30000 });
+      // A short readable summary, not the runtime's raw JSON.
+      await expect(page.getByTestId("command-result-text")).toContainText("Context window:");
+      await expect(page.getByTestId("command-result-text")).not.toContainText("{");
+      expect(await assistantMessages(page).count()).toBe(before);
+      await expect(composer(page)).toHaveText("");
+    });
+
+    await step("/compact → the runtime compacts, or says why it cannot yet", async () => {
+      await composer(page).click();
+      await page.keyboard.type("/compact", { delay: 30 });
+      await page.keyboard.press("Enter");
+      const result = page.getByTestId("command-result");
+      await expect(result).not.toHaveAttribute("data-status", "running", { timeout: 30000 });
+      // A short chat is below the runtime's threshold; its own reason shows,
+      // without the wire code in front of it.
+      if ((await result.getAttribute("data-status")) === "error") {
+        await expect(page.getByTestId("command-result-text")).toContainText(/Cannot compact/);
+        await expect(page.getByTestId("command-result-text")).not.toContainText("invalid_request");
+      }
+      await page.getByTestId("command-result-close").click();
+    });
+
+    await step("Type @ → only files and folders in the chat's folder, no tools", async () => {
+      const { status } = await amiro.api("/api/workspace/write", {
+        method: "POST",
+        body: JSON.stringify({ path: "e2e-mentions/launch-plan.md", content: "# Launch plan\n" }),
+      });
+      expect(status).toBeLessThan(300);
       await composer(page).click();
       await page.keyboard.type("@", { delay: 40 });
-      const palette = page.getByRole("dialog").filter({ has: page.getByRole("textbox", { name: "Search..." }) });
-      await expect.soft(palette).toBeVisible();
-      await page.waitForTimeout(800);
-      await page.keyboard.press("Escape");
+      const mentions = page.getByTestId("chat-mention-suggestion");
+      await expect(mentions).toBeVisible();
+      await expect(mentions.getByTestId("chat-mention-group-files")).toBeVisible({ timeout: 15000 });
+      await expect(mentions).not.toContainText(/MCP tools|App tools/);
+      await expect(mentions.locator('[data-testid^="chat-mention-item-"]')).toHaveCount(0);
+    });
+
+    await step("Search e2e-men → the folder is offered → picking it inserts @folder/", async () => {
+      await page.keyboard.type("e2e-men", { delay: 40 });
+      const mentions = page.getByTestId("chat-mention-suggestion");
+      await mentions.getByTestId("chat-mention-folder-e2e-mentions").click();
+      await expect(composer(page)).toContainText("@e2e-mentions/");
+    });
+
+    await step("@ again → search launch → picking the file inserts its path", async () => {
+      await page.keyboard.type("@", { delay: 40 });
+      await page.keyboard.type("launch", { delay: 40 });
+      const mentions = page.getByTestId("chat-mention-suggestion");
+      await mentions.getByTestId("chat-mention-file-e2e-mentions/launch-plan.md").click();
+      await expect(composer(page)).toContainText("@e2e-mentions/launch-plan.md");
     });
   });
 

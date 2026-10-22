@@ -123,9 +123,11 @@ test("keyboard: shortcuts dialog and new-chat shortcut", async ({ page, step }) 
     await expect.soft(page.getByRole("dialog").first(), "Ctrl+/ (documented 'openShortcutsPopup') should open the shortcuts dialog").toBeVisible();
     await page.keyboard.press("Escape");
   });
-  await step("Toggle the sidebar with its button", async () => {
-    await page.getByRole("button", { name: "Toggle Sidebar" }).first().click();
-    await page.waitForTimeout(500);
-    await page.getByRole("button", { name: "Toggle Sidebar" }).first().click();
+  await step("Collapse the sidebar with its button, then expand it again", async () => {
+    // On desktop the control sits beside the logo and names what it will do.
+    await page.getByRole("button", { name: "Collapse sidebar" }).click();
+    await expect(page.getByRole("button", { name: "Expand sidebar" })).toBeVisible();
+    await page.getByRole("button", { name: "Expand sidebar" }).click();
+    await expect(page.getByRole("button", { name: "Collapse sidebar" })).toBeVisible();
   });
 });

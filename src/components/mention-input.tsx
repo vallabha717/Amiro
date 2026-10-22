@@ -25,6 +25,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
+import type { ComposerCommand } from "@/lib/backend/composer-api";
 
 export interface SkillSuggestionProps {
   top: number;
@@ -33,6 +34,7 @@ export interface SkillSuggestionProps {
   query: string;
   projectDirectory?: string;
   onSelect: (skill: { name: string; description?: string }) => void;
+  onCommand?: (command: ComposerCommand) => void;
   onClose: () => void;
   bindKeyDown?: (
     handler: ((props: SuggestionKeyDownProps) => boolean) | null,
@@ -60,7 +62,11 @@ interface MentionInputProps {
   fullWidthSuggestion?: boolean;
   enableSkillSuggestion?: boolean;
   onSelectSkill?: (skill: { name: string; description?: string }) => void;
+  /** Run a runtime command picked from the `/` menu. */
+  onRunCommand?: (command: ComposerCommand) => void;
   projectDirectory?: string;
+  /** The chat this composer belongs to, for `@` file search. */
+  threadId?: string;
   MentionItem?: FC<{
     label: string;
     id: string;
@@ -70,6 +76,10 @@ interface MentionInputProps {
     left: number;
     onClose: () => void;
     onSelectMention: (item: { label: string; id: string }) => void;
+    /** Replace the typed `@query` with plain text (a file path). */
+    onInsertText?: (text: string) => void;
+    threadId?: string;
+    projectDirectory?: string;
     style?: React.CSSProperties;
   }>;
   SkillSuggestion?: FC<SkillSuggestionProps>;
@@ -94,7 +104,9 @@ export default function MentionInput({
   fullWidthSuggestion = false,
   enableSkillSuggestion = false,
   onSelectSkill,
+  onRunCommand,
   projectDirectory,
+  threadId,
 }: MentionInputProps) {
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
@@ -360,6 +372,18 @@ export default function MentionInput({
     [editor, onEnter, open, skillOpen, isMobile],
   );
 
+  const handleCommand = useCallback(
+    (command: ComposerCommand) => {
+      // The typed "/query" goes; the command runs instead of being sent.
+      if (skillPosition.current?.range && editor) {
+        editor.chain().focus().deleteRange(skillPosition.current.range).run();
+      }
+      setSkillOpen(false);
+      onRunCommand?.(command);
+    },
+    [editor, onRunCommand],
+  );
+
   const handleSelectSkill = useCallback(
     (skill: { name: string; description?: string }) => {
       if (skillPosition.current?.range && editor) {
@@ -380,6 +404,14 @@ export default function MentionInput({
         top={position.current?.top ?? 0}
         left={position.current?.left ?? 0}
         onClose={() => {
+          setOpen(false);
+        }}
+        threadId={threadId}
+        projectDirectory={projectDirectory}
+        onInsertText={(text) => {
+          if (position.current?.range) {
+            editor?.chain().focus().insertContentAt(position.current.range, text).run();
+          }
           setOpen(false);
         }}
         onSelectMention={(item) => {
@@ -406,7 +438,7 @@ export default function MentionInput({
       />,
       document.body,
     );
-  }, [open, disabledMention, Suggestion, containerWidth, fullWidthSuggestion, editor]);
+  }, [open, disabledMention, Suggestion, containerWidth, fullWidthSuggestion, editor, threadId, projectDirectory]);
 
   const skillSuggestion = useMemo(() => {
     if (!skillOpen || disabledMention || !SkillSuggestion) return null;
@@ -418,6 +450,7 @@ export default function MentionInput({
         query={skillQuery}
         projectDirectory={projectDirectory}
         onSelect={handleSelectSkill}
+        onCommand={onRunCommand ? handleCommand : undefined}
         onClose={() => setSkillOpen(false)}
         bindKeyDown={(handler) => {
           skillKeyDownHandler.current = handler;
@@ -434,6 +467,8 @@ export default function MentionInput({
     skillQuery,
     projectDirectory,
     handleSelectSkill,
+    handleCommand,
+    onRunCommand,
   ]);
 
   const placeholderElement = useMemo(() => {
