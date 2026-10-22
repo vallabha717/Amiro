@@ -343,11 +343,11 @@
     "transcribingDictation": "ऑडियो लिखा जा रहा है…",
     "Mentions": {
       "files": "{folder} की फ़ाइलें",
-      "mcpTools": "MCP टूल्स",
-      "appTools": "ऐप टूल्स",
       "noMatch": "\"{query}\" से कुछ मेल नहीं खाता",
       "filesFailed": "इस फ़ोल्डर की फ़ाइलें नहीं दिख सकीं",
-      "empty": "फ़ाइल, MCP टूल या ऐप टूल खोजने के लिए टाइप करें"
+      "searchPlaceholder": "फ़ाइलें और फ़ोल्डर खोजें…",
+      "emptyFolder": "यह फ़ोल्डर खाली है",
+      "loading": "खोज रहे हैं…"
     },
     "Commands": {
       "running": "चल रहा है…",

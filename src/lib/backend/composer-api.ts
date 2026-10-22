@@ -48,11 +48,17 @@ export async function runComposerCommand(input: {
   });
 }
 
+/** A file or folder `@` can insert, relative to the chat's folder. */
+export interface ComposerEntry {
+  path: string;
+  kind: "file" | "folder";
+}
+
 export interface ComposerFiles {
   /** The folder searched (the chat's working folder). */
   root: string;
-  /** Paths relative to `root`, best match first. */
-  files: string[];
+  /** Best match first; folders before files at the same rank. */
+  entries: ComposerEntry[];
   source: "runtime" | "walk";
 }
 

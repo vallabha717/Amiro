@@ -343,11 +343,11 @@
     "transcribingDictation": "Transcribing audio…",
     "Mentions": {
       "files": "Files in {folder}",
-      "mcpTools": "MCP tools",
-      "appTools": "App tools",
       "noMatch": "Nothing matches \"{query}\"",
       "filesFailed": "Could not list files in this folder",
-      "empty": "Type to find a file, an MCP tool or an app tool"
+      "searchPlaceholder": "Search files and folders…",
+      "emptyFolder": "This folder is empty",
+      "loading": "Looking…"
     },
     "Commands": {
       "running": "Running…",

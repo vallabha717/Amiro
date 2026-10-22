@@ -103,18 +103,28 @@ async fn unknown_commands_are_refused_and_conversation_commands_need_a_conversat
 }
 
 #[tokio::test]
-async fn at_lists_workspace_files_best_match_first_without_build_folders() {
+async fn at_lists_workspace_files_and_folders_best_match_first_without_build_folders() {
     let (app, root, _) = app();
     let (status, body) = request(&app, "GET", "/api/composer/files?q=readme", None, true).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["source"], json!("walk"));
-    assert_eq!(body["files"], json!(["README.md", "src/components/readme-card.tsx"]));
+    assert_eq!(
+        body["entries"],
+        json!([
+            {"path": "README.md", "kind": "file"},
+            {"path": "src/components/readme-card.tsx", "kind": "file"},
+        ])
+    );
+
+    // Folders are offered too, before files at the same rank.
+    let (_, body) = request(&app, "GET", "/api/composer/files?q=comp", None, true).await;
+    assert_eq!(body["entries"][0], json!({"path": "src/components", "kind": "folder"}));
 
     let (_, body) = request(&app, "GET", "/api/composer/files?q=&limit=1", None, true).await;
-    assert_eq!(body["files"].as_array().unwrap().len(), 1);
+    assert_eq!(body["entries"].as_array().unwrap().len(), 1);
 
     let (_, body) = request(&app, "GET", "/api/composer/files?q=config", None, true).await;
-    assert_eq!(body["files"], json!([]), ".git must never be listed");
+    assert_eq!(body["entries"], json!([]), ".git must never be listed");
     let _ = std::fs::remove_dir_all(root);
 }
 

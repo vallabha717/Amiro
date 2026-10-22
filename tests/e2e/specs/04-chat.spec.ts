@@ -141,7 +141,9 @@ test.describe("chat", () => {
       await page.getByTestId("skill-palette-command-context").click();
       const result = page.getByTestId("command-result");
       await expect(result).toHaveAttribute("data-status", "done", { timeout: 30000 });
-      await expect(page.getByTestId("command-result-text")).not.toBeEmpty();
+      // A short readable summary, not the runtime's raw JSON.
+      await expect(page.getByTestId("command-result-text")).toContainText("Context window:");
+      await expect(page.getByTestId("command-result-text")).not.toContainText("{");
       expect(await assistantMessages(page).count()).toBe(before);
       await expect(composer(page)).toHaveText("");
     });
@@ -161,7 +163,7 @@ test.describe("chat", () => {
       await page.getByTestId("command-result-close").click();
     });
 
-    await step("Type @ → files in the chat's folder → picking one inserts its path", async () => {
+    await step("Type @ → only files and folders in the chat's folder, no tools", async () => {
       const { status } = await amiro.api("/api/workspace/write", {
         method: "POST",
         body: JSON.stringify({ path: "e2e-mentions/launch-plan.md", content: "# Launch plan\n" }),
@@ -171,10 +173,23 @@ test.describe("chat", () => {
       await page.keyboard.type("@", { delay: 40 });
       const mentions = page.getByTestId("chat-mention-suggestion");
       await expect(mentions).toBeVisible();
+      await expect(mentions.getByTestId("chat-mention-group-files")).toBeVisible({ timeout: 15000 });
+      await expect(mentions).not.toContainText(/MCP tools|App tools/);
+      await expect(mentions.locator('[data-testid^="chat-mention-item-"]')).toHaveCount(0);
+    });
+
+    await step("Search e2e-men → the folder is offered → picking it inserts @folder/", async () => {
+      await page.keyboard.type("e2e-men", { delay: 40 });
+      const mentions = page.getByTestId("chat-mention-suggestion");
+      await mentions.getByTestId("chat-mention-folder-e2e-mentions").click();
+      await expect(composer(page)).toContainText("@e2e-mentions/");
+    });
+
+    await step("@ again → search launch → picking the file inserts its path", async () => {
+      await page.keyboard.type("@", { delay: 40 });
       await page.keyboard.type("launch", { delay: 40 });
-      const files = mentions.getByTestId("chat-mention-group-files");
-      await expect(files).toBeVisible({ timeout: 15000 });
-      await files.getByTestId("chat-mention-item-e2e-mentions/launch-plan.md").click();
+      const mentions = page.getByTestId("chat-mention-suggestion");
+      await mentions.getByTestId("chat-mention-file-e2e-mentions/launch-plan.md").click();
       await expect(composer(page)).toContainText("@e2e-mentions/launch-plan.md");
     });
   });

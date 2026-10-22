@@ -45,9 +45,10 @@ metadata (`backend/src/chat.rs`, `metadata["context"]`).
 - **Commands**: the embedded runtime's own commands, run in the runtime
   and never sent to the model: `/compact` (summarize older messages now),
   `/context`, `/info`, `/cache`, `/memory`, `/skills`, `/agents`, `/swarm`,
-  `/mcp` and `/refresh-model-list`. The answer is the runtime's own
-  rendering, shown in a panel above the composer; nothing enters the
-  conversation. Commands about this conversation (`/compact`, `/context`,
+  `/mcp` and `/refresh-model-list`. The answer shows in a panel above the
+  composer as a short summary (most commands answer with structured data,
+  which the backend turns into lines like "Context window: 1,048,576
+  tokens"); nothing enters the conversation. Commands about this conversation (`/compact`, `/context`,
   `/info`, `/cache`, `/swarm`) need it to have started; the others answer
   from any idle session. When the runtime refuses (a chat too short to
   compact, say), its reason is shown as is. Commands that need a terminal or
@@ -56,13 +57,14 @@ metadata (`backend/src/chat.rs`, `metadata["context"]`).
 - **Skills**: project skills, then user and bundled ones; picking one adds
   it as a chip.
 
-**`@`** opens a menu whose first group is **Files** in the chat's working
-folder (a team agent's own folder, the folder picked in the composer, or the
-workspace), searched as you type, file-name matches first. Picking one
-inserts `@path/to/file` into the message, as jcode's TUI does. The search is
-the runtime's `find_files` once the chat has a session, and the same walk
-(same skipped `.git`, `node_modules`, `target`, `.next`) before it does. MCP
-tools and app tools follow in the same list.
+**`@`** lists only **files and folders** in the chat's working folder (a
+team agent's own folder, the folder picked in the composer, or the
+workspace), searched as you type: name matches first, folders before files
+at the same rank. Picking a file inserts `@path/to/file`, a folder
+`@path/to/folder/`, as jcode's TUI does. The search is the runtime's
+`find_files` once the chat has a session (folders are the parents of the
+files it finds), and the same walk (same skipped `.git`, `node_modules`,
+`target`, `.next`) before it does.
 
 Backend: `POST /api/composer/command` and `GET /api/composer/files`
 (`backend/src/routes/composer.rs`).
