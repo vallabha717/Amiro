@@ -18,6 +18,8 @@ import { AppSidebarSkills } from "./app-sidebar-skills";
 import { AppSidebarThreads } from "./app-sidebar-threads";
 import { AppSidebarUser } from "./app-sidebar-user";
 import { VrndaLogo } from "./vrnda-logo";
+import { agentScopedPath } from "@/components/team/team-paths";
+import { useAgentScope } from "@/lib/backend/agent-scope";
 
 import { SetupChecklist } from "@/components/onboarding/setup-checklist";
 import { BasicUser } from "app-types/user";
@@ -35,12 +37,13 @@ export function AppSidebar({ user }: { user?: BasicUser }) {
   const t = useTranslations("SidebarFrame");
   const { toggleSidebar, state, isMobile, setOpenMobile } = useSidebar();
   const isCollapsed = state === "collapsed" && !isMobile;
+  const agentScope = useAgentScope();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isShortcutEvent(e, Shortcuts.openNewChat)) {
         e.preventDefault();
-        router.push("/");
+        router.push(agentScopedPath(agentScope, "/"));
         router.refresh();
       } else if (isShortcutEvent(e, Shortcuts.toggleSidebar)) {
         e.preventDefault();
@@ -49,7 +52,7 @@ export function AppSidebar({ user }: { user?: BasicUser }) {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [router, toggleSidebar]);
+  }, [router, toggleSidebar, agentScope]);
 
   return (
     <Sidebar
@@ -66,7 +69,7 @@ export function AppSidebar({ user }: { user?: BasicUser }) {
         >
           {!isCollapsed && (
             <Link
-              href="/"
+              href={agentScopedPath(agentScope, "/")}
               onClick={() => {
                 if (isMobile) setOpenMobile(false);
               }}

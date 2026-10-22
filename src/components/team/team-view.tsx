@@ -12,7 +12,6 @@ import { cn } from "@/lib/utils";
 import {
   ArrowUpRightIcon,
   MessagesSquareIcon,
-  PlusIcon,
   Trash2Icon,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -164,7 +163,7 @@ export function TeamView() {
   return (
     <div className="flex h-full min-h-0 flex-col md:flex-row">
       <aside
-        className="flex shrink-0 flex-col border-b md:w-80 md:border-b-0 md:border-r"
+        className="flex shrink-0 flex-col border-b md:w-64 md:border-b-0 md:border-r"
         aria-label={t("listLabel")}
       >
         <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-2">
@@ -174,16 +173,8 @@ export function TeamView() {
             </h1>
             <p className="hidden text-xs text-muted-foreground md:block">{t("subtitle")}</p>
           </div>
-          {isOwner && (
-            <Button asChild size="sm" data-testid="team-new-agent">
-              <Link href="/team/new">
-                <PlusIcon className="size-4" />
-                {t("newAgent")}
-              </Link>
-            </Button>
-          )}
         </div>
-        <nav className="custom-scrollbar flex gap-1 overflow-x-auto px-2 pb-2 md:flex-col md:overflow-y-auto md:overflow-x-hidden">
+        <nav className="custom-scrollbar flex flex-1 gap-1 overflow-x-auto px-2 pb-2 md:flex-col md:overflow-y-auto md:overflow-x-hidden">
           {isLoading &&
             [0, 1].map((i) => <Skeleton key={i} className="h-12 w-40 rounded-xl md:w-full" />)}
           {error && (

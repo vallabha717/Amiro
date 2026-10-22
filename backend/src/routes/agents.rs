@@ -815,6 +815,239 @@ async fn agent_files(
     Ok(Json(json!({ "files": files })))
 }
 
+async fn team_usage(
+    State(state): State<AppState>,
+    user: AuthUser,
+) -> Result<Json<Value>, ApiError> {
+    let uid = user_id(&user);
+    let mut agents_list = vec![main_agent(&state, &uid).await?];
+    let registry = read_registry(&state).await?;
+    let mut records = registry["agents"].as_array().cloned().unwrap_or_default();
+    records.sort_by(|a, b| a["createdAt"].as_str().cmp(&b["createdAt"].as_str()));
+    for record in records {
+        agents_list.push(team_agent(&state, &record, &uid).await?);
+    }
+
+    let threads_file = state.home.join("threads.json");
+    let threads_doc = read_json(&threads_file, json!({})).await.unwrap_or(json!({}));
+
+    #[derive(Default)]
+    struct ModelStats {
+        tokens: u64,
+        prompt_tokens: u64,
+        completion_tokens: u64,
+        cost: f64,
+        count: u64,
+    }
+
+    #[derive(Default)]
+    struct AgentAgg {
+        total_tokens: u64,
+        prompt_tokens: u64,
+        completion_tokens: u64,
+        total_cost: f64,
+        message_count: u64,
+        thread_count: u64,
+        models: std::collections::BTreeMap<String, ModelStats>,
+    }
+
+    let mut agent_map: std::collections::BTreeMap<String, AgentAgg> = std::collections::BTreeMap::new();
+    for agent in &agents_list {
+        if let Some(id) = agent.get("id").and_then(Value::as_str) {
+            agent_map.entry(id.to_string()).or_default();
+        }
+    }
+
+    let mut team_total_tokens: u64 = 0;
+    let mut team_prompt_tokens: u64 = 0;
+    let mut team_completion_tokens: u64 = 0;
+    let mut team_total_cost: f64 = 0.0;
+    let mut team_message_count: u64 = 0;
+    let mut team_thread_count: u64 = 0;
+
+    if let Some(threads_obj) = threads_doc.as_object() {
+        for entry in threads_obj.values() {
+            let agent_id = entry
+                .get("agentId")
+                .and_then(Value::as_str)
+                .unwrap_or(MAIN_AGENT_ID);
+            let agg = agent_map.entry(agent_id.to_string()).or_default();
+            agg.thread_count += 1;
+            team_thread_count += 1;
+
+            if let Some(messages) = entry.get("localMessages").and_then(Value::as_array) {
+                for msg in messages {
+                    let role = msg.get("role").and_then(Value::as_str).unwrap_or("");
+                    if role == "assistant" {
+                        agg.message_count += 1;
+                        team_message_count += 1;
+
+                        let meta = msg.get("metadata");
+                        let model_name = meta
+                            .and_then(|m| m.get("model").or_else(|| m.get("chatModel")))
+                            .and_then(Value::as_str)
+                            .unwrap_or("default");
+
+                        let (inp, out, total, cost) = if let Some(u) = meta.and_then(|m| m.get("usage")) {
+                            let inp = u.get("prompt_tokens").and_then(Value::as_u64).unwrap_or(0);
+                            let out = u.get("completion_tokens").and_then(Value::as_u64).unwrap_or(0);
+                            let total = u.get("total_tokens").and_then(Value::as_u64).unwrap_or(inp + out);
+                            let cost = u.get("estimated_usd").and_then(Value::as_f64).unwrap_or_else(|| {
+                                estimate_cost(model_name, inp, out)
+                            });
+                            (inp, out, total, cost)
+                        } else {
+                            (0, 0, 0, 0.0)
+                        };
+
+                        agg.prompt_tokens += inp;
+                        agg.completion_tokens += out;
+                        agg.total_tokens += total;
+                        agg.total_cost += cost;
+
+                        team_prompt_tokens += inp;
+                        team_completion_tokens += out;
+                        team_total_tokens += total;
+                        team_total_cost += cost;
+
+                        let mstats = agg.models.entry(model_name.to_string()).or_default();
+                        mstats.tokens += total;
+                        mstats.prompt_tokens += inp;
+                        mstats.completion_tokens += out;
+                        mstats.cost += cost;
+                        mstats.count += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    let mut limits = Vec::new();
+    let runtime_bin = state.runtime_bin.to_string_lossy();
+    if let Ok(output) = tokio::process::Command::new(runtime_bin.as_ref())
+        .args(["usage", "--json"])
+        .output()
+        .await
+    {
+        if output.status.success() {
+            if let Ok(parsed) = serde_json::from_slice::<Value>(&output.stdout) {
+                if let Some(providers) = parsed.get("providers").and_then(|p| p.as_array()) {
+                    for prov in providers {
+                        let prov_name = prov.get("provider_name").and_then(|s| s.as_str()).unwrap_or("");
+                        if let Some(lim_arr) = prov.get("limits").and_then(|l| l.as_array()) {
+                            for lim in lim_arr {
+                                limits.push(json!({
+                                    "name": lim.get("name").cloned().unwrap_or(json!("")),
+                                    "usage_percent": lim.get("usage_percent").cloned().unwrap_or(json!(0)),
+                                    "resets_at": lim.get("resets_at").cloned().unwrap_or(Value::Null),
+                                    "reset_in": lim.get("reset_in").cloned().unwrap_or(Value::Null),
+                                    "provider": prov_name,
+                                }));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let mut agents_json = Vec::new();
+    for meta in &agents_list {
+        let aid = meta.get("id").and_then(Value::as_str).unwrap_or("");
+        let agg = agent_map.get(aid);
+        let total_tok = agg.map(|a| a.total_tokens).unwrap_or(0);
+        let prompt_tok = agg.map(|a| a.prompt_tokens).unwrap_or(0);
+        let comp_tok = agg.map(|a| a.completion_tokens).unwrap_or(0);
+        let cost = agg.map(|a| a.total_cost).unwrap_or(0.0);
+        let msg_cnt = agg.map(|a| a.message_count).unwrap_or(0);
+        let th_cnt = agg.map(|a| a.thread_count).unwrap_or(0);
+
+        let pct = if team_total_tokens > 0 {
+            (total_tok as f64 / team_total_tokens as f64) * 100.0
+        } else {
+            0.0
+        };
+
+        let mut models_json = Vec::new();
+        if let Some(a) = agg {
+            for (mname, mstats) in &a.models {
+                let mpct = if total_tok > 0 {
+                    (mstats.tokens as f64 / total_tok as f64) * 100.0
+                } else {
+                    0.0
+                };
+                models_json.push(json!({
+                    "model": mname,
+                    "tokens": mstats.tokens,
+                    "promptTokens": mstats.prompt_tokens,
+                    "completionTokens": mstats.completion_tokens,
+                    "cost": (mstats.cost * 10000.0).round() / 10000.0,
+                    "messageCount": mstats.count,
+                    "percentage": (mpct * 10.0).round() / 10.0,
+                }));
+            }
+        }
+
+        agents_json.push(json!({
+            "agentId": aid,
+            "agentName": meta.get("name").cloned().unwrap_or(json!("")),
+            "role": meta.get("role").cloned().unwrap_or(Value::Null),
+            "instructions": meta.get("instructions").cloned().unwrap_or(Value::Null),
+            "traits": meta.get("traits").cloned().unwrap_or(Value::Null),
+            "accentHex": meta.get("accentHex").cloned().unwrap_or(Value::Null),
+            "customImageUrl": meta.get("customImageUrl").cloned().unwrap_or(Value::Null),
+            "isMain": meta.get("isMain").and_then(Value::as_bool).unwrap_or(false),
+            "channelThreadId": meta.get("channelThreadId").cloned().unwrap_or(Value::Null),
+            "totalTokens": total_tok,
+            "promptTokens": prompt_tok,
+            "completionTokens": comp_tok,
+            "totalCost": (cost * 10000.0).round() / 10000.0,
+            "messageCount": msg_cnt,
+            "threadCount": th_cnt,
+            "percentageOfTotal": (pct * 10.0).round() / 10.0,
+            "models": models_json,
+        }));
+    }
+
+    Ok(Json(json!({
+        "summary": {
+            "totalTokens": team_total_tokens,
+            "promptTokens": team_prompt_tokens,
+            "completionTokens": team_completion_tokens,
+            "totalCost": (team_total_cost * 10000.0).round() / 10000.0,
+            "messageCount": team_message_count,
+            "threadCount": team_thread_count,
+            "agentCount": agents_list.len(),
+        },
+        "agents": agents_json,
+        "subscriptionLimits": limits,
+    })))
+}
+
+fn estimate_cost(model: &str, prompt: u64, completion: u64) -> f64 {
+    let lower = model.to_lowercase();
+    let (p_price, c_price) = if lower.contains("opus") {
+        (15.0, 75.0)
+    } else if lower.contains("sonnet") {
+        (3.0, 15.0)
+    } else if lower.contains("haiku") {
+        (0.25, 1.25)
+    } else if lower.contains("gpt-4o-mini") {
+        (0.15, 0.60)
+    } else if lower.contains("gpt-4o") || lower.contains("gpt-4") {
+        (2.50, 10.00)
+    } else if lower.contains("o1") || lower.contains("o3") {
+        (15.0, 60.0)
+    } else if lower.contains("flash") {
+        (0.075, 0.30)
+    } else if lower.contains("pro") {
+        (1.25, 5.00)
+    } else {
+        (1.0, 3.0)
+    };
+    (prompt as f64 * p_price + completion as f64 * c_price) / 1_000_000.0
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/agents", get(list_agents).post(create_agent))
@@ -824,6 +1057,8 @@ pub fn routes() -> Router<AppState> {
         )
         .route("/api/agents/{id}/threads", get(agent_threads))
         .route("/api/agents/{id}/files", get(agent_files))
+        .route("/api/team/usage", get(team_usage))
+        .route("/api/agents/usage", get(team_usage))
 }
 
 #[cfg(test)]

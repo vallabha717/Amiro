@@ -13,6 +13,8 @@ import { SidebarGroup } from "ui/sidebar";
 import { ThreadDropdown } from "../thread-dropdown";
 import { ChevronDown, ChevronUp, MoreHorizontal, Trash } from "lucide-react";
 import { useMounted } from "@/hooks/use-mounted";
+import { agentScopedPath } from "@/components/team/team-paths";
+import { useAgentScope } from "@/lib/backend/agent-scope";
 import { appStore } from "@/app/store";
 import { Button } from "ui/button";
 import {
@@ -49,6 +51,7 @@ const MAX_THREADS_COUNT = 40;
 export function AppSidebarThreads() {
   const mounted = useMounted();
   const router = useRouter();
+  const agentScope = useAgentScope();
   const t = useTranslations("Layout");
   const tCommon = useTranslations("Common");
   const [storeMutate, currentThreadId, generatingTitleThreadIds] = appStore(
@@ -152,7 +155,7 @@ export function AppSidebarThreads() {
       loading: t("deletingAllChats"),
       success: () => {
         mutate("/api/thread");
-        router.push("/");
+        router.push(agentScopedPath(agentScope, "/"));
         return t("allChatsDeleted");
       },
       error: t("failedToDeleteAllChats"),
@@ -164,7 +167,7 @@ export function AppSidebarThreads() {
       loading: t("deletingUnarchivedChats"),
       success: () => {
         mutate("/api/thread");
-        router.push("/");
+        router.push(agentScopedPath(agentScope, "/"));
         return t("unarchivedChatsDeleted");
       },
       error: t("failedToDeleteUnarchivedChats"),
@@ -266,7 +269,7 @@ export function AppSidebarThreads() {
                                   isActive={currentThreadId === thread.id}
                                 >
                                   <Link
-                                    href={`/?thread=${thread.id}`}
+                                    href={`${agentScopedPath(agentScope, "/")}?thread=${thread.id}`}
                                     data-testid="sidebar-thread-link"
                                     className="flex items-center"
                                   >
