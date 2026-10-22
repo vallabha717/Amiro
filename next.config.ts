@@ -49,7 +49,9 @@ export default () => {
         }
       : {}),
     cleanDistDir: true,
-    devIndicators: false,
+    devIndicators: {
+      position: "bottom-right",
+    },
     // desktop/ is a sibling pnpm workspace to the repo root (its own
     // package.json + pnpm-lock.yaml), not a member of the root's workspace.
     // Without pinning this, Next's root-inference sees both lockfiles and
