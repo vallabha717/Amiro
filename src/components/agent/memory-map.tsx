@@ -101,15 +101,11 @@ interface Colors {
 
 function resolveColors(el: HTMLElement): Colors {
   const s = getComputedStyle(el);
+  const fg = s.color?.trim() || s.getPropertyValue("--foreground").trim();
+  const muted = s.getPropertyValue("--muted-foreground").trim();
   return {
-    content:
-      s.getPropertyValue("--foreground").trim() ||
-      s.getPropertyValue("--content-default").trim() ||
-      "#e5e7eb",
-    tertiary:
-      s.getPropertyValue("--muted-foreground").trim() ||
-      s.getPropertyValue("--content-tertiary").trim() ||
-      "#8792a0",
+    content: fg || "#18181b",
+    tertiary: muted || "#71717a",
   };
 }
 
@@ -837,7 +833,7 @@ export function MemoryMap({
 
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
-      ctx.font = "11px var(--font-sans), ui-sans-serif, system-ui, sans-serif";
+      ctx.font = '11px "DM Sans", ui-sans-serif, system-ui, sans-serif';
       for (const idx of order) {
         const p = proj[idx];
         const node = p.node;
@@ -1133,105 +1129,108 @@ export function MemoryMap({
     <section
       data-testid="memory-map"
       aria-label="Memory map"
-      className={`@container flex select-none flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/40 shadow-sm ${className ?? ""}`}
+      className={`@container flex select-none flex-col overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm ${className ?? ""}`}
     >
       {/* Vellum Header Bar */}
-      <div className="flex h-12 flex-none items-center gap-2 border-b border-border/60 px-4">
-        {showSearch ? (
-          <>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={`size-8 ${searchOpen ? "hidden" : "@2xl:hidden"}`}
-              onClick={() => setSearchOpen(true)}
-              aria-label="Search concepts"
-            >
-              <Search className="size-4" />
-            </Button>
-            <div
-              className={`relative ${searchOpen ? "" : "hidden @2xl:block"}`}
-            >
-              <div className="flex items-center gap-1.5 rounded-full border border-border/70 bg-card/85 px-2.5 py-1">
-                <Search
-                  size={14}
-                  aria-hidden
-                  className="text-muted-foreground"
-                />
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape") {
-                      if (search || searchOpen) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setSearch("");
-                        setSearchOpen(false);
-                      }
-                    } else if (e.key === "Enter" && searchResults.length > 0) {
-                      e.preventDefault();
-                      focusOn(searchResults[0].id);
-                      onSelect(searchResults[0].id);
-                    }
-                  }}
-                  placeholder="Search concepts…"
-                  aria-label="Search concepts"
-                  className="w-36 bg-transparent text-[12px] text-foreground outline-none placeholder:text-muted-foreground"
-                />
-                {search ? (
-                  <span className="text-[11px] tabular-nums text-muted-foreground">
-                    {matchIds?.size ?? 0}
-                  </span>
-                ) : null}
-                {search || searchOpen ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSearch("");
-                      setSearchOpen(false);
-                    }}
-                    aria-label="Clear search"
-                    className="flex cursor-pointer items-center text-muted-foreground hover:text-foreground"
-                  >
-                    <X size={13} />
-                  </button>
-                ) : null}
-              </div>
-
-              {search && searchResults.length > 0 ? (
-                <ul className="absolute top-full left-0 z-30 mt-1.5 flex max-h-56 w-52 list-none flex-col overflow-y-auto rounded-xl border border-border/70 bg-card/95 py-1 shadow-lg backdrop-blur-md">
-                  {searchResults.map((node) => (
-                    <li key={node.id}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onSelect(node.id);
-                          focusOn(node.id);
+      <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border/60 bg-card/60 px-4">
+        {/* Left slot: Search */}
+        <div className="flex min-w-0 items-center gap-2">
+          {showSearch ? (
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={`size-8 ${searchOpen ? "hidden" : "@2xl:hidden"}`}
+                onClick={() => setSearchOpen(true)}
+                aria-label="Search concepts"
+              >
+                <Search className="size-4" />
+              </Button>
+              <div
+                className={`relative ${searchOpen ? "" : "hidden @2xl:block"}`}
+              >
+                <div className="flex items-center gap-1.5 rounded-full border border-border/70 bg-background/80 px-2.5 py-1">
+                  <Search
+                    size={14}
+                    aria-hidden
+                    className="text-muted-foreground"
+                  />
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        if (search || searchOpen) {
+                          e.preventDefault();
+                          e.stopPropagation();
                           setSearch("");
                           setSearchOpen(false);
-                        }}
-                        className="block w-full cursor-pointer truncate px-3 py-1.5 text-left text-[12px] text-foreground hover:bg-muted/70"
-                      >
-                        {node.label}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-          </>
-        ) : null}
+                        }
+                      } else if (e.key === "Enter" && searchResults.length > 0) {
+                        e.preventDefault();
+                        focusOn(searchResults[0].id);
+                        onSelect(searchResults[0].id);
+                      }
+                    }}
+                    placeholder="Search concepts…"
+                    aria-label="Search concepts"
+                    className="w-40 bg-transparent text-[12px] text-foreground outline-none placeholder:text-muted-foreground"
+                  />
+                  {search ? (
+                    <span className="text-[11px] tabular-nums text-muted-foreground">
+                      {matchIds?.size ?? 0}
+                    </span>
+                  ) : null}
+                  {search || searchOpen ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearch("");
+                        setSearchOpen(false);
+                      }}
+                      aria-label="Clear search"
+                      className="flex cursor-pointer items-center text-muted-foreground hover:text-foreground"
+                    >
+                      <X size={13} />
+                    </button>
+                  ) : null}
+                </div>
+
+                {search && searchResults.length > 0 ? (
+                  <ul className="absolute top-full left-0 z-30 mt-1.5 flex max-h-56 w-56 list-none flex-col overflow-y-auto rounded-xl border border-border/70 bg-card/95 py-1 shadow-lg backdrop-blur-md">
+                    {searchResults.map((node) => (
+                      <li key={node.id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onSelect(node.id);
+                            focusOn(node.id);
+                            setSearch("");
+                            setSearchOpen(false);
+                          }}
+                          className="block w-full cursor-pointer truncate px-3 py-1.5 text-left text-[12px] text-foreground hover:bg-muted/70"
+                        >
+                          {node.label}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            </>
+          ) : null}
+        </div>
 
         {/* Center slot: hover pill or neuron/synapse/lobe stats */}
         <div className="pointer-events-none mx-auto min-w-0">
           {hoverLabel ? (
-            <div className="truncate rounded-full border border-border/70 bg-card/90 px-3 py-1 text-[12px] font-medium text-foreground shadow-2xs">
+            <div className="truncate rounded-full border border-border/70 bg-background/90 px-3 py-1 text-[12px] font-medium text-foreground shadow-2xs">
               {hoverLabel}
             </div>
           ) : (
-            <div className="rounded-full border border-border/70 bg-card/80 px-3 py-1 text-[11px] tabular-nums text-muted-foreground">
+            <div className="rounded-full border border-border/70 bg-background/80 px-3 py-1 text-[11px] tabular-nums text-muted-foreground">
               <span className="@max-md:hidden">
                 {plural(neurons, "neuron")} · {plural(synapses, "synapse")} ·{" "}
                 {plural(lobes, "lobe")}
@@ -1244,7 +1243,7 @@ export function MemoryMap({
         </div>
 
         {/* Right slot: Focus button / headerAction */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1.5">
           <Button
             type="button"
             variant={focusOnSelected && selectedId ? "secondary" : "outline"}
@@ -1287,10 +1286,10 @@ export function MemoryMap({
         ref={containerRef}
         role="region"
         aria-label="Memory concept graph"
-        className="relative h-[520px] min-h-0 flex-1 lg:h-[640px]"
+        className="relative h-[560px] w-full shrink-0 overflow-hidden lg:h-[640px]"
         style={{
           backgroundImage:
-            "radial-gradient(circle at center, color-mix(in srgb, var(--muted-foreground) 10%, transparent), transparent 64%)",
+            "radial-gradient(circle at center, color-mix(in srgb, var(--muted-foreground) 12%, transparent), transparent 64%)",
           touchAction: "none",
           cursor: ready ? "grab" : "default",
         }}
