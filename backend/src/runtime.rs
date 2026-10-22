@@ -351,7 +351,11 @@ fn remove_stale_socket(path: &Path) {
 /// Start the runtime bridge synchronously, for the supervisor thread.
 fn ensure_bridge_blocking(state: &AppState) -> Result<(), ApiError> {
     if socket_ready(&state.runtime_socket) {
-        return Ok(());
+        if runtime_healthy(state) {
+            return Ok(());
+        }
+        stop_spawned_bridge(&state.runtime_socket);
+        remove_stale_socket(&state.runtime_socket);
     }
     if std::env::var("AMIRO_NO_RUNTIME_SPAWN").as_deref() == Ok("1") {
         return Err(ApiError(
@@ -974,8 +978,27 @@ pub async fn get_history(state: &AppState, session_id: &str) -> Result<Vec<Value
     let state = state.clone();
     let session_id = session_id.to_string();
     blocking("get_history", move || {
-        let client = connect_client(&state, false)?;
-        client.attach_session(&session_id).map_err(runtime_error)?;
+        let client = match connect_client(&state, false) {
+            Ok(c) => c,
+            Err(_) => {
+                restart_bridge_blocking(&state)?;
+                connect_client(&state, false)?
+            }
+        };
+        if let Err(err) = client.attach_session(&session_id) {
+            let msg = err.to_string();
+            if msg.contains("closed") || msg.contains("disconnected") {
+                restart_bridge_blocking(&state)?;
+                let client2 = connect_client(&state, false)?;
+                client2.attach_session(&session_id).map_err(runtime_error)?;
+                let messages = client2.get_history(&session_id).map_err(runtime_error)?;
+                return Ok(messages
+                    .into_iter()
+                    .map(|message| serde_json::to_value(message).unwrap_or(Value::Null))
+                    .collect());
+            }
+            return Err(runtime_error(err));
+        }
         let messages = client.get_history(&session_id).map_err(runtime_error)?;
         Ok(messages
             .into_iter()

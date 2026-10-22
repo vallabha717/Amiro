@@ -14,6 +14,7 @@ const RESERVED_PREFIXES = new Set([
   "storage",
   "health",
   "favicon.ico",
+  "agent",
 ]);
 
 /**

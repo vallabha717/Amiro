@@ -332,6 +332,11 @@ async fn resolve_static_route(
             let out_dir = state.out_dir();
             let trimmed = path.trim_start_matches('/').trim_end_matches('/');
             if !trimmed.is_empty() && !trimmed.contains("..") {
+                // If it is an existing static asset file (like an image, font, etc.), let ServeDir handle it directly!
+                if out_dir.join(trimmed).is_file() {
+                    return next.run(req).await;
+                }
+
                 let candidates = [format!("/{trimmed}.html"), format!("/{trimmed}/index.html")];
                 let mut matched_target = candidates
                     .into_iter()
@@ -341,7 +346,7 @@ async fn resolve_static_route(
                     let segments: Vec<&str> = trimmed.split('/').collect();
                     const RESERVED: &[&str] = &[
                         "api", "team", "setup", "sign-in", "onboarding", "export", "_next",
-                        "storage", "health", "favicon.ico",
+                        "storage", "health", "favicon.ico", "agent",
                     ];
                     if !segments.is_empty() && !RESERVED.contains(&segments[0]) {
                         let sub_path = segments[1..].join("/");

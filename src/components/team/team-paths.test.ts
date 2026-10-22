@@ -57,6 +57,7 @@ describe("team paths", () => {
     expect(resolveAgentFromPathname("/amiro/connectors")).toBeNull();
     expect(resolveAgentFromPathname("/team")).toBeNull();
     expect(resolveAgentFromPathname("/setup")).toBeNull();
+    expect(resolveAgentFromPathname("/agent")).toBeNull();
     expect(resolveAgentFromPathname("/coder-1")).toBe("coder-1");
     expect(resolveAgentFromPathname("/coder-1/connectors")).toBe("coder-1");
   });

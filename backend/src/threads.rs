@@ -436,14 +436,13 @@ async fn get_thread(State(state): State<AppState>, user: AuthUser, Path(id): Pat
     let history = if session_id.is_empty() {
         Vec::new()
     } else {
-        crate::runtime::get_history(&runtime, session_id)
-            .await
-            .map_err(|error| {
-                ApiError(
-                    StatusCode::BAD_GATEWAY,
-                    format!("unable to read thread history: {}", error.1),
-                )
-            })?
+        match crate::runtime::get_history(&runtime, session_id).await {
+            Ok(h) => h,
+            Err(error) => {
+                tracing::warn!(thread_id=%id, session_id=%session_id, error=%error.1, "unable to read runtime history, using local messages");
+                Vec::new()
+            }
+        }
     };
     let messages = thread_messages(&entry, &id, session_id, &history);
     // Opening a thread reads it.
