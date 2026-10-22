@@ -2,7 +2,7 @@
 
 import { VrndaLogo } from "@/components/layouts/vrnda-logo";
 import { SetupChat, type SetupResult } from "@/components/setup-chat/setup-chat";
-import { VoiceMascot } from "@/components/voice-room/voice-mascot";
+import { teamThreadPath } from "@/components/team/team-paths";
 import { useAuthStatus } from "@/hooks/queries/use-auth-status";
 import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
 import {
@@ -19,7 +19,6 @@ import {
   useOnboarding,
 } from "@/lib/onboarding/onboarding-api";
 import { cn } from "@/lib/utils";
-import type { VoicePhase } from "@/lib/voice/voice-store";
 import { AnimatePresence, motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -59,7 +58,6 @@ export function OnboardingWizard() {
   const { data: onboarding, mutate: refresh } = useOnboarding(signedIn);
 
   const [step, setStep] = useState<Step | null>(null);
-  const [phase, setPhase] = useState<VoicePhase>("listening");
   const [ownerName, setOwnerName] = useState("");
 
   // Not signed in and the instance already has an owner (for example one
@@ -94,7 +92,6 @@ export function OnboardingWizard() {
     password: string;
     timezone: string;
   }) => {
-    setPhase("thinking");
     try {
       await setupOwner(
         input.login,
@@ -106,14 +103,13 @@ export function OnboardingWizard() {
       await refresh();
       setStep("chat");
     } catch (error) {
-      setPhase("error");
       throw error instanceof ApiError || error instanceof Error
         ? error
         : new Error("Could not create the account.");
     }
   };
 
-  const finish = async ({ skipped }: SetupResult) => {
+  const finish = async ({ skipped, agentId }: SetupResult) => {
     // Of the chat's steps, only the provider is an onboarding step the
     // sidebar checklist tracks.
     const later: OnboardingStepId[] = skipped.includes("provider")
@@ -121,7 +117,7 @@ export function OnboardingWizard() {
       : [];
     await completeOnboarding(later);
     // Land on the Team view with the onboarded agent's channel open.
-    router.replace("/team");
+    router.replace(agentId ? teamThreadPath(agentId) : "/team");
   };
 
   const agent = onboarding?.steps.agent;
@@ -216,7 +212,7 @@ export function OnboardingWizard() {
               {step === "account" && (
                 <AccountStep
                   defaultTimezone={detectTimezone()}
-                  onTyping={(typing) => setPhase(typing ? "hearing" : "listening")}
+                  onTyping={() => {}}
                   onSubmit={createAccount}
                 />
               )}
@@ -231,12 +227,24 @@ export function OnboardingWizard() {
           )}
           aria-hidden
         >
-          <VoiceMascot
-            phase={phase}
-            traits={DEFAULT_TRAITS}
-            accent={accent}
-            size={step === "welcome" ? 300 : 240}
-          />
+          <div className="relative flex flex-col items-center justify-center p-8">
+            <div
+              className="absolute -inset-8 rounded-full blur-3xl opacity-20"
+              style={{
+                background:
+                  "radial-gradient(circle, var(--onb-accent, var(--primary)), transparent 70%)",
+              }}
+            />
+            <VrndaLogo
+              className={cn(
+                step === "welcome" ? "size-56" : "size-44",
+                "text-foreground drop-shadow-md relative z-10 transition-all duration-300",
+              )}
+            />
+            <span className="relative z-10 mt-6 font-brand font-bold text-5xl tracking-tight text-foreground">
+              Amiro
+            </span>
+          </div>
         </aside>
       </main>
 

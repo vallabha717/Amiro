@@ -29,11 +29,13 @@ export function LookCard({
   traits,
   onTraits,
   onSubmit,
+  onDraftChange,
 }: {
   mode: "onboarding" | "team";
   traits: CharacterTraits;
   onTraits: (traits: CharacterTraits) => void;
   onSubmit: (team: TeamAgentDraft | null) => Promise<void>;
+  onDraftChange?: (draft: TeamAgentDraft) => void;
 }) {
   const t = useTranslations("SetupChat");
   const [draft, setDraft] = useState<TeamAgentDraft>({
@@ -42,6 +44,11 @@ export function LookCard({
     instructions: "",
     brain: "copy",
   });
+
+  const updateDraft = (next: TeamAgentDraft) => {
+    setDraft(next);
+    onDraftChange?.(next);
+  };
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const team = mode === "team";
@@ -72,7 +79,7 @@ export function LookCard({
                 value={draft.name}
                 maxLength={NAME_MAX}
                 placeholder={t("agentNamePlaceholder")}
-                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                onChange={(e) => updateDraft({ ...draft, name: e.target.value })}
                 data-testid="setup-agent-name"
               />
             </div>
@@ -83,7 +90,7 @@ export function LookCard({
                 value={draft.role}
                 maxLength={80}
                 placeholder={t("agentRolePlaceholder")}
-                onChange={(e) => setDraft({ ...draft, role: e.target.value })}
+                onChange={(e) => updateDraft({ ...draft, role: e.target.value })}
                 data-testid="setup-agent-role"
               />
             </div>
@@ -98,7 +105,7 @@ export function LookCard({
                 rows={3}
                 placeholder={t("agentInstructionsPlaceholder")}
                 onChange={(e) =>
-                  setDraft({ ...draft, instructions: e.target.value })
+                  updateDraft({ ...draft, instructions: e.target.value })
                 }
                 data-testid="setup-agent-instructions"
               />

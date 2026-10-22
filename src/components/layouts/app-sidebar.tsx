@@ -60,7 +60,7 @@ export function AppSidebar({ user }: { user?: BasicUser }) {
       variant="floating"
       className="md:py-4 md:pl-4 [&_[data-slot=sidebar-inner]]:rounded-2xl motion-reduce:transition-none"
     >
-      <SidebarHeader className="h-16 shrink-0 justify-center border-b border-sidebar-border/60 px-3 group-data-[collapsible=icon]:px-0">
+      <SidebarHeader className="shrink-0 pt-3.5 pb-2 border-b border-sidebar-border/60 px-3 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-2">
         <div
           className={cn(
             "flex items-center gap-2",

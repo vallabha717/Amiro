@@ -2,6 +2,7 @@
 
 import useSWR, { useSWRConfig } from "swr";
 import { apiJson } from "@/lib/backend/client";
+import { useAgentScope } from "@/lib/backend/agent-scope";
 import type { CharacterTraits } from "@/lib/agent/character-catalog";
 
 export interface AgentMemoryStats {
@@ -31,9 +32,13 @@ export interface AgentIdentity {
 export const AGENT_IDENTITY_KEY = "/api/agent/identity";
 
 export function useAgentIdentity() {
+  const scope = useAgentScope();
+  const key = scope
+    ? `${AGENT_IDENTITY_KEY}?scope=${encodeURIComponent(scope)}`
+    : AGENT_IDENTITY_KEY;
   return useSWR<AgentIdentity>(
-    AGENT_IDENTITY_KEY,
-    (url: string) => apiJson<AgentIdentity>(url),
+    key,
+    () => apiJson<AgentIdentity>(AGENT_IDENTITY_KEY),
     {
       revalidateOnFocus: false,
       dedupingInterval: 5000,
@@ -43,7 +48,14 @@ export function useAgentIdentity() {
 
 export function useInvalidateAgentIdentity() {
   const { mutate } = useSWRConfig();
-  return () => mutate(AGENT_IDENTITY_KEY);
+  const scope = useAgentScope();
+  const key = scope
+    ? `${AGENT_IDENTITY_KEY}?scope=${encodeURIComponent(scope)}`
+    : AGENT_IDENTITY_KEY;
+  return () => {
+    mutate(AGENT_IDENTITY_KEY);
+    if (scope) mutate(key);
+  };
 }
 
 export async function updateAgentIdentity(

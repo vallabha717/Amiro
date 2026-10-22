@@ -17,6 +17,7 @@ import {
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect } from "react";
 import { toast } from "sonner";
 import { mutate } from "swr";
 import {
@@ -154,11 +155,19 @@ export function TeamView() {
   const selectedId = useSearchParams().get("agent");
   const { data: session } = useSession();
   const isOwner = session?.user.role === "admin";
-  // Team itself acts on no particular agent's settings.
-  setAgentScope(null);
   const { data, error, isLoading } = useAgents();
   const agents = data?.agents ?? [];
-  const selected = agents.find((agent) => agent.id === selectedId) ?? null;
+  const selected =
+    agents.find((agent) => agent.id === selectedId) ??
+    (!selectedId && agents.length > 0 ? (agents.find((a) => a.isMain) || agents[0]) : null);
+
+  useEffect(() => {
+    if (selected) {
+      setAgentScope(selected.id);
+    } else {
+      setAgentScope(null);
+    }
+  }, [selected]);
 
   return (
     <div className="flex h-full min-h-0 flex-col md:flex-row">
