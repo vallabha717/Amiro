@@ -60,10 +60,10 @@ export function AppSidebar({ user }: { user?: BasicUser }) {
       variant="floating"
       className="md:py-4 md:pl-4 [&_[data-slot=sidebar-inner]]:rounded-2xl motion-reduce:transition-none"
     >
-      <SidebarHeader className="shrink-0 pt-3.5 pb-2 border-b border-sidebar-border/60 px-3 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-2">
+      <SidebarHeader className="shrink-0 pt-2 pb-1.5 border-b border-sidebar-border/60 px-2.5 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-1.5">
         <div
           className={cn(
-            "flex items-center gap-2",
+            "flex items-center gap-1.5",
             isCollapsed ? "justify-center" : "justify-between",
           )}
         >
@@ -76,7 +76,7 @@ export function AppSidebar({ user }: { user?: BasicUser }) {
               className="flex min-w-0 items-center"
               aria-label={t("home")}
             >
-              <span className="flex items-center gap-2">
+              <span className="flex items-center gap-1.5">
                 <VrndaLogo className="size-6 shrink-0" />
                 <span className="font-brand font-bold text-[26px] tracking-tight text-foreground">
                   Amiro
