@@ -122,7 +122,7 @@ test.describe("notifications", () => {
       await page.waitForTimeout(1500);
       expect(await repliesFor(threadId)).toEqual([]);
       await expect(
-        page.locator(`a[href="/?thread=${threadId}"] [data-testid="sidebar-thread-status"]`),
+        page.locator(`a[href$="?thread=${threadId}"] [data-testid="sidebar-thread-status"]`),
       ).toHaveCount(0);
     });
 
@@ -131,7 +131,7 @@ test.describe("notifications", () => {
         page,
         "Write a 250-word story about a lighthouse keeper, in plain paragraphs.",
       );
-      const mark = page.locator(`a[href="/?thread=${threadId}"] [data-testid="sidebar-thread-status"]`);
+      const mark = page.locator(`a[href$="?thread=${threadId}"] [data-testid="sidebar-thread-status"]`);
       await expect
         .soft(mark, "the chat should show as working while the reply streams")
         .toHaveAttribute("data-status", "running", { timeout: 15000 });
@@ -140,7 +140,7 @@ test.describe("notifications", () => {
     });
 
     await step("The reply lands while you are away → green dot in the chat list + a Bell notification", async () => {
-      const mark = page.locator(`a[href="/?thread=${threadId}"] [data-testid="sidebar-thread-status"]`);
+      const mark = page.locator(`a[href$="?thread=${threadId}"] [data-testid="sidebar-thread-status"]`);
       await expect(mark).toHaveAttribute("data-status", "unseen", {
         timeout: loadConfig().timeouts.agentReplyMs,
       });
@@ -156,10 +156,10 @@ test.describe("notifications", () => {
     });
 
     await step("Open the chat from the list → the dot clears and its notification is read", async () => {
-      await page.locator(`a[href="/?thread=${threadId}"]`).click();
+      await page.locator(`a[href$="?thread=${threadId}"]`).click();
       await expect(composer(page)).toBeVisible();
       await expect(
-        page.locator(`a[href="/?thread=${threadId}"] [data-testid="sidebar-thread-status"]`),
+        page.locator(`a[href$="?thread=${threadId}"] [data-testid="sidebar-thread-status"]`),
       ).toHaveCount(0, { timeout: 15000 });
       await expect
         .poll(async () => (await repliesFor(threadId))[0]?.status, { timeout: 15000 })

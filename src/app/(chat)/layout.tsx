@@ -4,7 +4,7 @@ import { SidebarProvider } from "ui/sidebar";
 import { AppSidebar } from "@/components/layouts/app-sidebar";
 import { AppHeader } from "@/components/layouts/app-header";
 import { AgentScopeBanner } from "@/components/team/agent-scope-banner";
-import { agentScopedPath } from "@/components/team/team-paths";
+import { legacyAgentRedirect } from "@/components/team/team-paths";
 import { useAgentScope } from "@/lib/backend/agent-scope";
 
 import { COOKIE_KEY_SIDEBAR_STATE } from "lib/const";
@@ -13,7 +13,7 @@ import { SWRConfigProvider } from "./swr-config";
 import { UserDetailContent } from "@/components/user/user-detail/user-detail-content";
 import { UserDetailContentSkeleton } from "@/components/user/user-detail/user-detail-content-skeleton";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo } from "react";
 import { RequireAuth } from "@/lib/backend/auth-gate";
 import { useSession } from "@/lib/backend/session-context";
@@ -35,46 +35,30 @@ function readSidebarCollapsedCookie(): boolean {
   return match.split("=")[1] === "false";
 }
 
+/**
+ * Moves `/` and legacy chat-area paths (/admin/..., /connectors, ...) onto the
+ * agent-scoped URL (`legacyAgentRedirect`). Both render the same page, so this
+ * only rewrites the address bar with `history.replaceState` (which Next's
+ * router picks up) instead of navigating: a `router.replace` here had to
+ * fetch the prefixed route, fell back to a slow full-page load, and that load
+ * could land after the user had already left, dragging them back.
+ */
 function EnsureAgentRoute() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const router = useRouter();
   const agentScope = useAgentScope();
 
   useEffect(() => {
-    if (pathname === "/") {
-      const q = searchParams.toString();
-      const target = agentScopedPath(agentScope, "/");
-      router.replace(q ? `${target}?${q}` : target);
-      return;
-    }
-
-    const segments = pathname.split("/").filter(Boolean);
-    if (segments.length > 0) {
-      const first = segments[0];
-      const legacyChatRoots = [
-        "connectors",
-        "agent",
-        "schedules",
-        "skills",
-        "skill",
-        "channels",
-        "contacts",
-        "archive",
-        "admin",
-        "mcp",
-      ];
-      if (legacyChatRoots.includes(first)) {
-        const queryAgent = searchParams.get("agent");
-        const effectiveScope = queryAgent || agentScope;
-        const target = agentScopedPath(effectiveScope, pathname);
-        const params = new URLSearchParams(searchParams.toString());
-        params.delete("agent");
-        const q = params.toString();
-        router.replace(q ? `${target}?${q}` : target);
-      }
-    }
-  }, [pathname, searchParams, agentScope, router]);
+    // The router has moved on (or a navigation is mid-flight): leave it be.
+    if (window.location.pathname !== pathname) return;
+    const target = legacyAgentRedirect(
+      pathname,
+      searchParams.toString(),
+      agentScope,
+    );
+    if (!target) return;
+    window.history.replaceState(null, "", `${target}${window.location.hash}`);
+  }, [pathname, searchParams, agentScope]);
 
   return null;
 }

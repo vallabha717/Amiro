@@ -3,6 +3,8 @@
 import { Globe, Loader2, Plus, Search } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
+import { agentScopedPath } from "@/components/team/team-paths";
+import { useAgentScope } from "@/lib/backend/agent-scope";
 import { useMemo } from "react";
 import useSWR from "swr";
 
@@ -31,6 +33,7 @@ const LightRays = dynamic(() => import("@/components/ui/light-rays"), {
 
 export default function AdminSearchProvidersPage() {
   const router = useRouter();
+  const agentScope = useAgentScope();
 
   const {
     data: providers,
@@ -57,7 +60,10 @@ export default function AdminSearchProvidersPage() {
 
   const handleCreateNew = (templateId: string) =>
     router.push(
-      `/admin/search/create?template=${encodeURIComponent(templateId)}`,
+      agentScopedPath(
+        agentScope,
+        `/admin/search/create?template=${encodeURIComponent(templateId)}`,
+      ),
     );
 
   const configuredProviders = providers?.filter((p) => p.configured) ?? [];

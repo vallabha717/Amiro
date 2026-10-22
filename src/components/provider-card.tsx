@@ -22,6 +22,8 @@ import { handleErrorWithToast } from "ui/shared-toast";
 import { memo, useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { agentScopedPath } from "@/components/team/team-paths";
+import { useAgentScope } from "@/lib/backend/agent-scope";
 import { useSWRConfig } from "swr";
 import { safe } from "ts-safe";
 import { toast } from "sonner";
@@ -50,6 +52,7 @@ export const ProviderCard = memo(function ProviderCard({
 }: ProviderConfig) {
   const t = useTranslations("Providers");
   const router = useRouter();
+  const agentScope = useAgentScope();
   const { mutate } = useSWRConfig();
 
   const [isProcessing, setIsProcessing] = useState(false);
@@ -143,7 +146,10 @@ export const ProviderCard = memo(function ProviderCard({
               </div>
             ) : (
               <Link
-                href={`/admin/providers/test?id=${encodeURIComponent(id)}`}
+                href={agentScopedPath(
+                  agentScope,
+                  `/admin/providers/test?id=${encodeURIComponent(id)}`,
+                )}
                 className="cursor-pointer"
                 data-testid="provider-test-link"
               >
@@ -170,7 +176,14 @@ export const ProviderCard = memo(function ProviderCard({
               size="icon"
               className="text-muted-foreground hover:text-foreground"
               disabled={isLoading}
-              onClick={() => router.push(`/admin/providers/modify?id=${id}`)}
+              onClick={() =>
+                router.push(
+                  agentScopedPath(
+                    agentScope,
+                    `/admin/providers/modify?id=${id}`,
+                  ),
+                )
+              }
               data-testid="provider-edit-button"
               aria-label={t("edit")}
             >
@@ -262,6 +275,7 @@ export const ProviderCard = memo(function ProviderCard({
                   providerId={id}
                   models={modelList}
                   selectedModel={selectedModel}
+                  agentScope={agentScope}
                 />
               ) : (
                 <div className="bg-secondary/30 rounded-md p-3 text-center">
@@ -287,10 +301,12 @@ const ModelsList = memo(
     providerId,
     models,
     selectedModel,
+    agentScope,
   }: {
     providerId: string;
     models: string[];
     selectedModel?: string;
+    agentScope: string | null;
   }) => (
     <div className="space-y-2 pr-2">
       {models.map((model) => {
@@ -298,9 +314,12 @@ const ModelsList = memo(
         return (
           <Link
             key={model}
-            href={`/admin/providers/test?id=${encodeURIComponent(
-              providerId,
-            )}&model=${encodeURIComponent(model)}`}
+            href={agentScopedPath(
+              agentScope,
+              `/admin/providers/test?id=${encodeURIComponent(
+                providerId,
+              )}&model=${encodeURIComponent(model)}`,
+            )}
             className={`flex items-center gap-2 rounded-md p-2 transition-colors ${
               isDefault
                 ? "bg-primary/15 border border-primary/40 text-foreground font-semibold hover:bg-primary/20"

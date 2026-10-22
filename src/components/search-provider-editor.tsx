@@ -20,6 +20,8 @@ import {
   X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { agentScopedPath } from "@/components/team/team-paths";
+import { useAgentScope } from "@/lib/backend/agent-scope";
 import { useState } from "react";
 import { toast } from "sonner";
 import useSWR, { mutate } from "swr";
@@ -158,6 +160,7 @@ export default function SearchProviderEditor({
   templateProvider,
 }: SearchProviderEditorProps) {
   const router = useRouter();
+  const agentScope = useAgentScope();
   const isNew = !initialConfig?.id;
 
   const {
@@ -337,7 +340,7 @@ export default function SearchProviderEditor({
       await mutate(SEARCH_PROVIDERS_KEY);
       await mutate(SEARCH_ACTIVE_KEY);
       toast.success("Search provider saved");
-      router.push("/admin/search");
+      router.push(agentScopedPath(agentScope, "/admin/search"));
     } catch (e) {
       handleErrorWithToast(e as Error);
     } finally {
@@ -1029,7 +1032,9 @@ export default function SearchProviderEditor({
       <div className="flex justify-end gap-3 border-t pt-6">
         <Button
           variant="ghost"
-          onClick={() => router.push("/admin/search")}
+          onClick={() =>
+            router.push(agentScopedPath(agentScope, "/admin/search"))
+          }
           className="font-semibold cursor-pointer"
         >
           Cancel
