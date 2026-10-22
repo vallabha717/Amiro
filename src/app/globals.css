@@ -46,6 +46,7 @@
  * which come later and therefore win for the root tokens.
  * ========================================================================== */
 :root {
+  --font-serif: var(--font-instrument-serif), "Instrument Serif", serif;
   --agent-default-primary: var(--sidebar-primary);
   --radius: 0.75rem;
   --background: oklch(1 0 0);
@@ -1786,11 +1787,13 @@
 }
 
 @theme inline {
-  --font-sans: var(--font-fraunces);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-fraunces);
-
-  --font-brand: var(--font-fraunces);
+  --font-sans: var(--font-dm-sans), "DM Sans", system-ui, sans-serif;
+  --font-mono: var(--font-dm-mono), "DM Mono", monospace;
+  --font-serif: var(--font-instrument-serif), "Instrument Serif", serif;
+  --font-display: var(--font-dm-sans), "DM Sans", system-ui, sans-serif;
+  --font-body: var(--font-dm-sans), "DM Sans", system-ui, sans-serif;
+  --font-heading: var(--font-dm-sans), "DM Sans", system-ui, sans-serif;
+  --font-brand: var(--font-instrument-serif), "Instrument Serif", serif;
   /* Surfaces & text */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
