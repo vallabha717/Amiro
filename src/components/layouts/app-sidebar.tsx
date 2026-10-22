@@ -76,9 +76,9 @@ export function AppSidebar({ user }: { user?: BasicUser }) {
               className="flex min-w-0 items-center"
               aria-label={t("home")}
             >
-              <span className="flex items-center gap-1.5">
-                <VrndaLogo className="size-6" />
-                <span className="font-brand font-bold text-xl tracking-tight text-foreground">
+              <span className="flex items-center gap-2">
+                <VrndaLogo className="size-6 shrink-0" />
+                <span className="font-brand font-bold text-2xl tracking-tight text-foreground">
                   Amiro
                 </span>
               </span>

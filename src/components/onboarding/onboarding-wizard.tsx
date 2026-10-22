@@ -148,9 +148,9 @@ export function OnboardingWizard() {
         data-step="chat"
       >
         {/* Floats over the chat's own background: one seamless surface. */}
-        <header className="pointer-events-none absolute left-0 top-0 z-10 hidden h-14 items-center gap-2 px-5 text-[15px] font-semibold sm:px-8 xl:flex">
-          <VrndaLogo className="size-5" />
-          <span className="font-brand">Amiro</span>
+        <header className="pointer-events-none absolute left-0 top-0 z-10 hidden h-14 items-center gap-2 px-5 sm:px-8 xl:flex">
+          <VrndaLogo className="size-6 shrink-0" />
+          <span className="font-brand font-bold text-2xl tracking-tight">Amiro</span>
         </header>
         <main className="min-h-0 flex-1">
           <h1 className="sr-only">{`Set up ${agentName}`}</h1>
@@ -194,9 +194,9 @@ export function OnboardingWizard() {
       </div>
 
       <header className="relative z-10 flex h-16 items-center px-5 sm:px-8">
-        <div className="flex items-center gap-2 text-[15px] font-semibold">
-          <VrndaLogo className="size-5" />
-          <span className="font-brand">Amiro</span>
+        <div className="flex items-center gap-2">
+          <VrndaLogo className="size-6 shrink-0" />
+          <span className="font-brand font-bold text-2xl tracking-tight">Amiro</span>
         </div>
       </header>
 
