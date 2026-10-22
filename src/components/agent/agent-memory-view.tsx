@@ -136,11 +136,11 @@ export const LIST_PAGE_SIZE = 24;
 /* -------------------------------------------------------------------------- */
 
 const CATEGORY_META: Record<string, { label: string; color: string }> = {
-  fact: { label: "Fact", color: "#007AFF" },
-  preference: { label: "Preference", color: "#A665C9" },
-  correction: { label: "Correction", color: "#E9642F" },
+  fact: { label: "Fact", color: "#467CC8" },
+  preference: { label: "Preference", color: "#7A5AF5" },
+  correction: { label: "Correction", color: "#E86B40" },
   entity: { label: "Entity", color: "#0E9B8B" },
-  other: { label: "Other", color: "#8A8F98" },
+  other: { label: "Other", color: "#8D99A5" },
 };
 
 const CLUSTER_ORDER = ["fact", "preference", "entity", "correction", "other"];
@@ -731,10 +731,10 @@ export function AgentMemoryView({ className }: { className?: string }) {
                   <Brain className="size-4.5 text-primary" />
                 </span>
                 <div className="leading-tight">
-                  <h1 className="font-brand text-xl font-semibold tracking-tight">
+                  <h1 className="font-brand text-2xl font-bold tracking-tight sm:text-[28px]">
                     Memory
                   </h1>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     What Amiro remembers · From runtime memory
                   </p>
                 </div>
