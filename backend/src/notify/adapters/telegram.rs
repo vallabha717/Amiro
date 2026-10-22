@@ -1,7 +1,7 @@
 //! Telegram adapter: Bot API `getMe` (verify) + `sendMessage` (deliver).
 //!
-//! The bot token lives in the vault (`notify.telegram/bot_token`) and is
-//! passed to `send`/`verify` already decrypted — this module never touches
+//! The bot token is the one Channels saved (vault `telegram/bot_token`) and
+//! is passed to `send`/`verify` already decrypted — this module never touches
 //! the vault itself, so it stays unit-testable against a stub server.
 
 use serde_json::json;
@@ -74,7 +74,7 @@ pub async fn send(
     if chat_id.trim().is_empty() {
         return Err(ApiError(
             StatusCode::BAD_REQUEST,
-            "telegram chat id is required (bind the channel first)".to_string(),
+            "telegram chat id is required (add your account in Contacts)".to_string(),
         ));
     }
     let text = if title.trim().is_empty() {

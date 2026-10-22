@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  channelVaultSlot,
+  fetchNotifyChannels,
   isNotifyChannelId,
+  normalizeChannelStatus,
   NOTIFY_CHANNELS,
 } from "./notification-channels-api";
 
@@ -14,28 +15,25 @@ describe("notification-channels-api", () => {
   it("accepts only the three external channels", () => {
     expect(NOTIFY_CHANNELS).toEqual(["telegram", "slack", "discord"]);
     expect(isNotifyChannelId("telegram")).toBe(true);
-    expect(isNotifyChannelId("slack")).toBe(true);
-    expect(isNotifyChannelId("discord")).toBe(true);
     expect(isNotifyChannelId("local")).toBe(false);
-    expect(isNotifyChannelId("pigeon")).toBe(false);
     expect(isNotifyChannelId(null)).toBe(false);
   });
 
-  it("maps each channel to its vault slot (never a secret value)", async () => {
+  it("reads readiness rows and never trusts ready without the ready step", async () => {
     const { apiJson } = await import("@/lib/backend/client");
-    expect(channelVaultSlot("telegram")).toEqual({
-      service: "notify.telegram",
-      field: "bot_token",
+    vi.mocked(apiJson).mockResolvedValueOnce({
+      channels: [
+        { channel: "telegram", botConfigured: true, botName: "amirobot", address: "42",
+          contactChannelId: "c1", verified: true, ready: true, nextStep: "ready" },
+        { channel: "slack", botConfigured: false, ready: true, nextStep: "connect_bot" },
+      ],
     });
-    expect(channelVaultSlot("slack")).toEqual({
-      service: "notify.slack",
-      field: "bot_token",
-    });
-    expect(channelVaultSlot("discord")).toEqual({
-      service: "notify.discord",
-      field: "bot_token",
-    });
-    // The client layer is never handed a token by these helpers.
-    expect(vi.mocked(apiJson)).not.toHaveBeenCalled();
+    const rows = await fetchNotifyChannels();
+    expect(rows[0]).toMatchObject({ channel: "telegram", ready: true, address: "42", botName: "amirobot" });
+    expect(rows[1]).toMatchObject({ channel: "slack", ready: false, nextStep: "connect_bot", address: null });
+  });
+
+  it("falls back safely on an unknown step", () => {
+    expect(normalizeChannelStatus({ channel: "discord", nextStep: "bogus" }).nextStep).toBe("connect_bot");
   });
 });

@@ -204,8 +204,12 @@ async fn test_contacts_crud_and_merge() {
     let f = fixture();
     let a = app(&f);
 
+    // Contacts are the owner's: a regular member is refused.
+    let (status, _) = call_json(&a, Some(NORMAL_TOKEN), Method::GET, "/api/contacts", None).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
     // 1. Initial contacts has the guardian "You"
-    let (status, val) = call_json(&a, Some(NORMAL_TOKEN), Method::GET, "/api/contacts", None).await;
+    let (status, val) = call_json(&a, Some(ADMIN_TOKEN), Method::GET, "/api/contacts", None).await;
     assert_eq!(status, StatusCode::OK);
     let contacts = val["contacts"].as_array().unwrap();
     assert_eq!(contacts.len(), 1);
@@ -215,7 +219,7 @@ async fn test_contacts_crud_and_merge() {
     // 2. Create contact "Alice" with telegram channel
     let (status, val) = call_json(
         &a,
-        Some(NORMAL_TOKEN),
+        Some(ADMIN_TOKEN),
         Method::POST,
         "/api/contacts",
         Some(json!({
@@ -235,7 +239,7 @@ async fn test_contacts_crud_and_merge() {
     // 3. Search contacts
     let (status, val) = call_json(
         &a,
-        Some(NORMAL_TOKEN),
+        Some(ADMIN_TOKEN),
         Method::POST,
         "/api/contacts/search",
         Some(json!({ "query": "alice" })),
@@ -249,7 +253,7 @@ async fn test_contacts_crud_and_merge() {
     // 4. Create second contact "Alice Work" with slack channel
     let (status, val) = call_json(
         &a,
-        Some(NORMAL_TOKEN),
+        Some(ADMIN_TOKEN),
         Method::POST,
         "/api/contacts",
         Some(json!({
@@ -266,7 +270,7 @@ async fn test_contacts_crud_and_merge() {
     // 5. Merge "Alice Work" into "Alice"
     let (status, val) = call_json(
         &a,
-        Some(NORMAL_TOKEN),
+        Some(ADMIN_TOKEN),
         Method::POST,
         "/api/contacts/merge",
         Some(json!({
@@ -286,7 +290,7 @@ async fn test_contacts_crud_and_merge() {
     // 6. Merged donor contact is gone
     let (status, _) = call_json(
         &a,
-        Some(NORMAL_TOKEN),
+        Some(ADMIN_TOKEN),
         Method::GET,
         &format!("/api/contacts/{alice_work_id}"),
         None,
@@ -294,22 +298,25 @@ async fn test_contacts_crud_and_merge() {
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 
-    // 7. Verify channel
+    // 7. Verifying needs proof through the channel: with no bot connected in
+    // Channels there is no way to send the code, so it is refused (the code
+    // flow itself is covered in tests/notify_channels.rs).
     let channel_id = chs[0]["id"].as_str().unwrap();
-    let (status, _) = call_json(
+    let (status, val) = call_json(
         &a,
-        Some(NORMAL_TOKEN),
+        Some(ADMIN_TOKEN),
         Method::POST,
         &format!("/api/contact-channels/{channel_id}/verify"),
         None,
     )
     .await;
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(val["error"].as_str().unwrap_or("").contains("Channels page"), "{val}");
 
     // 8. Delete contact "Alice"
     let (status, _) = call_json(
         &a,
-        Some(NORMAL_TOKEN),
+        Some(ADMIN_TOKEN),
         Method::DELETE,
         &format!("/api/contacts/{alice_id}"),
         None,
@@ -320,7 +327,7 @@ async fn test_contacts_crud_and_merge() {
     // Guardian cannot be deleted
     let (status, _) = call_json(
         &a,
-        Some(NORMAL_TOKEN),
+        Some(ADMIN_TOKEN),
         Method::DELETE,
         &format!("/api/contacts/{guardian_id}"),
         None,

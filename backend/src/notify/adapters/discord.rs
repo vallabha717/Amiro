@@ -1,9 +1,9 @@
 //! Discord adapter: `GET /users/@me` (verify) + DM channel create +
 //! message create (deliver), all `Bot`-authenticated.
 //!
-//! The token lives in the vault (`notify.discord/bot_token`); the DM
-//! recipient (a user id) lives in the binding, and the created DM channel
-//! id is the pairing layer's thread value.
+//! The token is the one Channels saved (vault `discord_channel/bot_token`);
+//! the DM recipient is the guardian's Discord user id from Contacts, and the
+//! created DM channel id is the pairing layer's thread value.
 
 use serde_json::json;
 
@@ -74,7 +74,7 @@ pub async fn send(
     if recipient_id.trim().is_empty() {
         return Err(ApiError(
             StatusCode::BAD_REQUEST,
-            "discord recipient id is required (bind the channel first)".to_string(),
+            "discord recipient id is required (add your account in Contacts)".to_string(),
         ));
     }
     let content = if title.trim().is_empty() {

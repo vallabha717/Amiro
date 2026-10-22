@@ -16,7 +16,7 @@ import {
   NOTIFICATION_SETTINGS_KEY,
   type NotificationSettings,
 } from "@/lib/notifications/notification-types";
-import { ChannelConnectCards } from "./channel-connect-cards";
+import { ChannelDeliveryStatus } from "./channel-delivery-status";
 
 type ToggleKey =
   | "enabled"
@@ -193,7 +193,7 @@ export function NotificationsSettings() {
           </div>
         </div>
 
-        <ChannelConnectCards />
+        <ChannelDeliveryStatus />
       </div>
     </ScrollArea>
   );

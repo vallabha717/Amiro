@@ -9,11 +9,28 @@ use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
+
+use axum::body::Bytes;
 use uuid::Uuid;
 
 use crate::state::{read_json, write_json, ApiError, AppState, AuthUser};
 
 const CONTACTS_STORE: &str = "contacts.json";
+
+/// Contacts are the owner's address book and trust list (Vellum's guardian
+/// data), so only the owner reads or changes them.
+fn require_owner(user: &AuthUser) -> Result<(), ApiError> {
+    if user.0.get("role").and_then(Value::as_str) != Some("admin") {
+        return Err(ApiError(
+            StatusCode::FORBIDDEN,
+            "Only the owner can manage contacts".into(),
+        ));
+    }
+    Ok(())
+}
 
 fn contacts_path(state: &AppState) -> std::path::PathBuf {
     state.home.join("store").join(CONTACTS_STORE)
@@ -152,9 +169,10 @@ async fn load_contacts_doc(state: &AppState) -> Value {
 
 pub async fn list_contacts(
     State(state): State<AppState>,
-    _user: AuthUser,
+    user: AuthUser,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<Value>, ApiError> {
+    require_owner(&user)?;
     let doc = load_contacts_doc(&state).await;
     let mut contacts: Vec<Value> = doc
         .get("contacts")
@@ -183,9 +201,10 @@ pub async fn list_contacts(
 
 pub async fn get_contact(
     State(state): State<AppState>,
-    _user: AuthUser,
+    user: AuthUser,
     Path(contact_id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
+    require_owner(&user)?;
     let doc = load_contacts_doc(&state).await;
     let contacts: Vec<Value> = doc
         .get("contacts")
@@ -202,9 +221,10 @@ pub async fn get_contact(
 
 pub async fn search_contacts(
     State(state): State<AppState>,
-    _user: AuthUser,
+    user: AuthUser,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
+    require_owner(&user)?;
     let doc = load_contacts_doc(&state).await;
     let mut contacts: Vec<Value> = doc
         .get("contacts")
@@ -261,9 +281,10 @@ pub async fn search_contacts(
 
 pub async fn upsert_contact(
     State(state): State<AppState>,
-    _user: AuthUser,
+    user: AuthUser,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
+    require_owner(&user)?;
     let _guard = state.store.lock().await;
     let path = contacts_path(&state);
     let mut doc = load_contacts_doc(&state).await;
@@ -315,7 +336,9 @@ pub async fn upsert_contact(
                                 "type": ch_type,
                                 "address": ch_addr,
                                 "isPrimary": ch.get("isPrimary").and_then(Value::as_bool).unwrap_or(false),
-                                "status": ch.get("status").and_then(Value::as_str).unwrap_or("unverified"),
+                                // Verification is earned through the channel
+                                // (see `verify_contact_channel`), never sent.
+                                "status": "unverified",
                                 "policy": ch.get("policy").and_then(Value::as_str).unwrap_or("allow"),
                                 "verifiedAt": null,
                                 "interactionCount": 0,
@@ -394,9 +417,10 @@ pub async fn upsert_contact(
 
 pub async fn delete_contact(
     State(state): State<AppState>,
-    _user: AuthUser,
+    user: AuthUser,
     Path(contact_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
+    require_owner(&user)?;
     let _guard = state.store.lock().await;
     let path = contacts_path(&state);
     let mut doc = load_contacts_doc(&state).await;
@@ -424,9 +448,10 @@ pub async fn delete_contact(
 
 pub async fn merge_contacts(
     State(state): State<AppState>,
-    _user: AuthUser,
+    user: AuthUser,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
+    require_owner(&user)?;
     let keep_id = body.get("keepId").and_then(Value::as_str).ok_or_else(|| {
         ApiError(StatusCode::BAD_REQUEST, "keepId is required".into())
     })?;
@@ -507,10 +532,11 @@ pub async fn merge_contacts(
 
 pub async fn patch_contact_channel(
     State(state): State<AppState>,
-    _user: AuthUser,
+    user: AuthUser,
     Path(channel_id): Path<String>,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
+    require_owner(&user)?;
     let _guard = state.store.lock().await;
     let path = contacts_path(&state);
     let mut doc = load_contacts_doc(&state).await;
@@ -531,7 +557,19 @@ pub async fn patch_contact_channel(
                     found = true;
                     if let Some(ch_map) = ch.as_object_mut() {
                         if let Some(status) = body.get("status").and_then(Value::as_str) {
+                            // Revoke, block, or reset to unverified. Becoming
+                            // verified only happens through a code.
+                            if !matches!(status, "revoked" | "blocked" | "unverified") {
+                                return Err(ApiError(
+                                    StatusCode::BAD_REQUEST,
+                                    "status must be revoked, blocked or unverified; verify a channel with its code".into(),
+                                ));
+                            }
                             ch_map.insert("status".into(), json!(status));
+                            if status == "unverified" {
+                                ch_map.insert("verifiedAt".into(), Value::Null);
+                                ch_map.insert("verifiedVia".into(), Value::Null);
+                            }
                             if status == "revoked" {
                                 ch_map.insert("revokedReason".into(), json!(body.get("reason").and_then(Value::as_str)));
                                 ch_map.insert("blockedReason".into(), Value::Null);
@@ -568,36 +606,73 @@ pub async fn patch_contact_channel(
     Ok(Json(json!({ "ok": true, "contact": updated_contact })))
 }
 
-pub async fn verify_contact_channel(
-    State(state): State<AppState>,
-    _user: AuthUser,
-    Path(channel_id): Path<String>,
-) -> Result<Json<Value>, ApiError> {
+/// A verification code waiting to be typed back.
+struct PendingCode {
+    code: String,
+    expires: Instant,
+    attempts: u8,
+}
+
+const CODE_TTL: Duration = Duration::from_secs(10 * 60);
+const MAX_CODE_ATTEMPTS: u8 = 5;
+
+/// Codes by contact-channel id. In memory: a restart simply means sending a
+/// new code.
+static PENDING_CODES: OnceLock<Mutex<HashMap<String, PendingCode>>> = OnceLock::new();
+
+fn pending_codes() -> &'static Mutex<HashMap<String, PendingCode>> {
+    PENDING_CODES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Channel types Amiro can message, so they verify by code.
+fn verifies_by_code(channel_type: &str) -> bool {
+    matches!(channel_type, "telegram" | "slack" | "discord")
+}
+
+fn channel_label(channel_type: &str) -> &str {
+    match channel_type {
+        "telegram" => "Telegram",
+        "slack" => "Slack",
+        "discord" => "Discord",
+        other => other,
+    }
+}
+
+fn find_channel(doc: &Value, channel_id: &str) -> Option<Value> {
+    doc.get("contacts")?
+        .as_array()?
+        .iter()
+        .flat_map(|c| c.get("channels").and_then(Value::as_array).cloned().unwrap_or_default())
+        .find(|ch| ch.get("id").and_then(Value::as_str) == Some(channel_id))
+}
+
+/// Mark a channel verified (`via` is `"code"` or `"manual"`).
+async fn mark_verified(state: &AppState, channel_id: &str, via: &str) -> Result<(), ApiError> {
     let _guard = state.store.lock().await;
-    let path = contacts_path(&state);
-    let mut doc = load_contacts_doc(&state).await;
+    let path = contacts_path(state);
+    let mut doc = load_contacts_doc(state).await;
     let mut contacts: Vec<Value> = doc
         .get("contacts")
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
-
     let now = chrono::Utc::now().timestamp_millis() as u64;
     let mut found = false;
-
     for contact in &mut contacts {
         if let Some(chs) = contact.get_mut("channels").and_then(Value::as_array_mut) {
-            for ch in chs.iter_mut() {
-                if ch.get("id").and_then(Value::as_str) == Some(&channel_id) {
-                    found = true;
-                    if let Some(ch_map) = ch.as_object_mut() {
-                        ch_map.insert("status".into(), json!("active"));
-                        ch_map.insert("verifiedAt".into(), json!(now));
-                        ch_map.insert("verifiedVia".into(), json!("manual"));
-                        ch_map.insert("updatedAt".into(), json!(now));
-                    }
-                    break;
+            if let Some(ch) = chs
+                .iter_mut()
+                .find(|ch| ch.get("id").and_then(Value::as_str) == Some(channel_id))
+            {
+                if let Some(ch_map) = ch.as_object_mut() {
+                    ch_map.insert("status".into(), json!("active"));
+                    ch_map.insert("verifiedAt".into(), json!(now));
+                    ch_map.insert("verifiedVia".into(), json!(via));
+                    ch_map.insert("revokedReason".into(), Value::Null);
+                    ch_map.insert("blockedReason".into(), Value::Null);
+                    ch_map.insert("updatedAt".into(), json!(now));
                 }
+                found = true;
             }
         }
         if found {
@@ -607,15 +682,126 @@ pub async fn verify_contact_channel(
             break;
         }
     }
-
     if !found {
         return Err(ApiError(StatusCode::NOT_FOUND, "Channel not found".into()));
     }
-
     doc["contacts"] = Value::Array(contacts);
-    write_json(&path, &doc).await?;
+    write_json(&path, &doc).await
+}
 
-    Ok(Json(json!({ "ok": true })))
+/// POST /api/contact-channels/{id}/verify
+///
+/// Vellum's verification: proof comes through the channel itself. Without a
+/// body, Amiro sends a six-digit code to the account with the bot set up in
+/// Channels (`{"status":"code_sent"}`); posting `{"code":"123456"}` back
+/// marks the channel verified. A code lasts ten minutes and allows five
+/// tries. Channel types Amiro cannot message (email, phone) are confirmed by
+/// the owner directly and recorded as `verifiedVia: "manual"`.
+pub async fn verify_contact_channel(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(channel_id): Path<String>,
+    body: Bytes,
+) -> Result<Json<Value>, ApiError> {
+    require_owner(&user)?;
+    let body: Value = if body.is_empty() {
+        json!({})
+    } else {
+        serde_json::from_slice(&body)
+            .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "body must be JSON".into()))?
+    };
+    let doc = load_contacts_doc(&state).await;
+    let record = find_channel(&doc, &channel_id)
+        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "Channel not found".into()))?;
+    let channel_type = record.get("type").and_then(Value::as_str).unwrap_or("").to_string();
+    if matches!(record.get("status").and_then(Value::as_str), Some("blocked")) {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "This account is blocked. Unblock it first.".into()));
+    }
+
+    if !verifies_by_code(&channel_type) {
+        mark_verified(&state, &channel_id, "manual").await?;
+        return Ok(Json(json!({ "ok": true, "status": "verified", "via": "manual" })));
+    }
+
+    let label = channel_label(&channel_type).to_string();
+    if let Some(code) = body.get("code").and_then(Value::as_str).map(str::trim) {
+        let outcome = {
+            let mut codes = pending_codes().lock().map_err(|_| {
+                ApiError(StatusCode::INTERNAL_SERVER_ERROR, "verification codes unavailable".into())
+            })?;
+            match codes.get_mut(&channel_id) {
+                None => Err("No code is waiting for this account. Send a new code."),
+                Some(pending) if pending.expires < Instant::now() => {
+                    codes.remove(&channel_id);
+                    Err("That code has expired. Send a new code.")
+                }
+                Some(pending) if pending.code == code => {
+                    codes.remove(&channel_id);
+                    Ok(())
+                }
+                Some(pending) => {
+                    pending.attempts += 1;
+                    if pending.attempts >= MAX_CODE_ATTEMPTS {
+                        codes.remove(&channel_id);
+                        Err("Too many wrong codes. Send a new code.")
+                    } else {
+                        Err("That code is not right. Check the message and try again.")
+                    }
+                }
+            }
+        };
+        return match outcome {
+            Ok(()) => {
+                mark_verified(&state, &channel_id, "code").await?;
+                Ok(Json(json!({ "ok": true, "status": "verified", "via": "code" })))
+            }
+            Err(message) => Err(ApiError(StatusCode::BAD_REQUEST, message.into())),
+        };
+    }
+
+    // No code yet: send one through the channel.
+    let token = crate::notify::destinations::bot_token(&state, &channel_type)
+        .await?
+        .ok_or_else(|| {
+            ApiError(
+                StatusCode::BAD_REQUEST,
+                format!("Connect the {label} bot on the Channels page first, so Amiro can send you a code."),
+            )
+        })?;
+    let endpoint = crate::notify::destinations::endpoint_for(&channel_type, &record).ok_or_else(|| {
+        ApiError(
+            StatusCode::BAD_REQUEST,
+            if channel_type == "telegram" {
+                "A bot can only message a Telegram account by its numeric user id, not an @username. Add the number instead (message @userinfobot on Telegram to see yours).".to_string()
+            } else {
+                format!("Amiro cannot message this {label} account directly. Use your {label} user id.")
+            },
+        )
+    })?;
+    let code = format!("{:06}", rand::random::<u32>() % 1_000_000);
+    crate::routes::notify_channels::send_raw(
+        &channel_type,
+        &token,
+        &endpoint,
+        "Amiro verification",
+        &format!("Your code is {code}. Enter it in Amiro → Contacts to confirm this account is yours. It expires in 10 minutes."),
+        None,
+    )
+    .await
+    .map_err(|error| {
+        ApiError(
+            StatusCode::BAD_GATEWAY,
+            format!("{label} did not deliver the code: {}. Message the bot once first, then try again.", error.1),
+        )
+    })?;
+    if let Ok(mut codes) = pending_codes().lock() {
+        codes.retain(|_, pending| pending.expires > Instant::now());
+        codes.insert(
+            channel_id.clone(),
+            PendingCode { code, expires: Instant::now() + CODE_TTL, attempts: 0 },
+        );
+    }
+    Ok(Json(json!({ "ok": true, "status": "code_sent", "channel": channel_type })))
 }
 
 // ---------------------------------------------------------------------------
@@ -624,9 +810,10 @@ pub async fn verify_contact_channel(
 
 pub async fn create_invite(
     State(state): State<AppState>,
-    _user: AuthUser,
+    user: AuthUser,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
+    require_owner(&user)?;
     let contact_id = body.get("contactId").and_then(Value::as_str).ok_or_else(|| {
         ApiError(StatusCode::BAD_REQUEST, "contactId is required".into())
     })?;
@@ -668,9 +855,10 @@ pub async fn create_invite(
 
 pub async fn revoke_invite(
     State(state): State<AppState>,
-    _user: AuthUser,
+    user: AuthUser,
     Path(invite_id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
+    require_owner(&user)?;
     let _guard = state.store.lock().await;
     let path = contacts_path(&state);
     let mut doc = load_contacts_doc(&state).await;

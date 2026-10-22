@@ -1,10 +1,11 @@
 //! Slack adapter: `auth.test` (verify) + `conversations.open` +
 //! `chat.postMessage` (deliver), all bearer-authenticated.
 //!
-//! The token lives in the vault (`notify.slack/bot_token`); the destination
-//! (a channel id like `C…` or a user id like `U…` to DM) lives in the
-//! binding. Thread pairing reuses `thread_ts`: follow-ups for the same
-//! source post as threaded replies.
+//! The token is the one Channels saved (vault `slack_channel/bot_token`);
+//! the destination is the guardian's DM (`D…`) or user id (`U…`, opened as a
+//! DM) from Contacts, resolved in `notify/destinations.rs`. Thread pairing
+//! reuses `thread_ts`: follow-ups for the same source post as threaded
+//! replies.
 
 use serde_json::{json, Value};
 
@@ -109,7 +110,7 @@ pub async fn send(
     if destination.trim().is_empty() {
         return Err(ApiError(
             StatusCode::BAD_REQUEST,
-            "slack destination is required (bind the channel first)".to_string(),
+            "slack destination is required (add your account in Contacts)".to_string(),
         ));
     }
     let text = if title.trim().is_empty() {

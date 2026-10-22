@@ -9,6 +9,7 @@
 pub mod adapters;
 pub mod broadcaster;
 pub mod decision;
+pub mod destinations;
 pub mod presence;
 pub mod signal;
 pub mod store;

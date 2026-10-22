@@ -1500,7 +1500,7 @@
     "deleteFailed": "Failed to delete contact",
     "channelAdded": "Channel address added",
     "channelAddFailed": "Failed to add channel address",
-    "channelVerified": "Channel marked verified",
+    "channelVerified": "Account verified",
     "channelVerifyFailed": "Failed to verify channel",
     "channelRevoked": "Channel revoked",
     "channelRevokeFailed": "Failed to revoke channel",
@@ -1538,25 +1538,33 @@
     "mergeWarning": "This action cannot be undone. Donor contact will be permanently deleted.",
     "mergeButton": "Merge and Delete Donor",
     "mergeSuccess": "Contacts merged successfully",
-    "mergeFailed": "Failed to merge contacts"
+    "mergeFailed": "Failed to merge contacts",
+    "verifyMe": "Verify me",
+    "codeSent": "We sent you a code. Enter it below.",
+    "codePrompt": "Enter the 6-digit code Amiro sent to your {channel}",
+    "confirmCode": "Confirm",
+    "sendNewCode": "Send a new code"
   },
   "Notifications": {
     "Channels": {
-      "title": "External channels",
-      "description": "Deliver notifications to Telegram, Slack, or Discord through vault-backed bot tokens.",
-      "bound": "Bound",
-      "unbound": "Not bound",
-      "bindChannel": "Bind channel",
-      "updateBinding": "Update binding",
-      "unbind": "Unbind",
-      "bindSuccess": "{channel} is bound and verified.",
-      "unbindSuccess": "{channel} is unbound.",
-      "bindFailed": "Binding failed. Save the bot token first, then try again.",
-      "unbindFailed": "Unbinding failed. Please try again.",
-      "tokenLabel": "{channel} bot token",
-      "tokenDescription": "Enter the {channel} bot token. It is saved to the encrypted vault and never shown in chat.",
-      "tokenPurpose": "External notification delivery",
-      "tokenPlaceholder": "Paste the bot token"
+      "title": "Outside Amiro",
+      "description": "Important notifications can also reach you on Telegram, Slack or Discord. Amiro sends them with the bot you connected in Channels, to your own account on your contact card in Contacts, once you verify it with a code.",
+      "ready": "Sends to {address}",
+      "readyVia": "Sends to {address} with {bot}",
+      "step": {
+        "connect_bot": "Connect the {channel} bot on the Channels page",
+        "add_address": "Add your {channel} account to your contact card",
+        "verify_address": "Verify your {channel} account with a code",
+        "fix_address": "Use your {channel} user id, so Amiro can message you directly",
+        "owner_only": "Only the owner's notifications go outside Amiro",
+        "ready": "Ready"
+      },
+      "openChannels": "Open Channels",
+      "openContacts": "Open Contacts",
+      "statusReady": "Ready",
+      "statusNotReady": "Not set up",
+      "loadFailed": "Could not load channel status.",
+      "whatGoes": "Routine updates stay in Amiro. Urgent things that need you, and test notifications, go to every ready channel. Chat replies always stay in Amiro."
     },
     "Bell": {
       "label": "Notifications",

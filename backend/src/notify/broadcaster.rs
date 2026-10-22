@@ -9,7 +9,6 @@ use serde_json::{json, Value};
 use tokio::sync::broadcast;
 
 use crate::notify::adapters::local::LocalAdapter;
-use crate::notify::adapters::pairing;
 use crate::notify::adapters::{ChannelAdapter, ChannelCopy};
 use crate::notify::{decision, signal, store};
 use crate::routes::notifications as feed;
@@ -217,73 +216,52 @@ async fn emit_inner(
         }
     }
 
-    // Phase 03: fan out to every bound external channel. One channel failing
-    // (bad token, provider outage) never blocks the others: each attempt is
-    // independent and lands in its own delivery row as sent/failed/skipped.
-    // The decision row still records ["local"] (the deterministic routing);
-    // externals are delivery-time bindings, recorded per channel below.
-    // Nothing goes out when the decision said not to notify, and chat replies
-    // stay in the app: the user started that conversation here, and pinging
-    // Telegram for every answer is noise (Vellum keeps completions to its own
-    // app and mobile push).
-    let external_allowed = decided.should_notify && category != "chat_reply";
-    let bindings = if external_allowed {
-        pairing::list_bindings(state, user_id).await
-    } else {
-        Ok(Vec::new())
-    };
-    if let Ok(bindings) = bindings {
-        for binding in bindings {
-            let channel = binding.channel.clone();
-            // Prefer the model's per-channel copy; fall back to the
-            // decision copy when the engine did not render one.
-            let external_copy = decided
-                .copies
-                .get(&channel)
-                .cloned()
-                .unwrap_or_else(|| fallback_copy.clone());
-            match crate::routes::notify_channels::deliver(
-                state,
-                user_id,
-                &channel,
-                &external_copy.title,
-                &external_copy.body,
-                &parsed.source_context_id,
-            )
+    // External delivery, the Vellum way: the guardian's verified addresses
+    // in Contacts, sent with the bots set up in Channels (both resolved by
+    // `destinations::resolve`; empty for anyone but the owner), on the
+    // channels the decision routes to (`decision::external_channels`). One
+    // channel failing never blocks the others: each attempt lands in its own
+    // delivery row as sent or failed.
+    let ready = if decided.should_notify {
+        crate::notify::destinations::resolve(state, user_id)
             .await
-            {
-                Ok(()) => {
-                    store::record_delivery(
-                        state,
-                        user_id,
-                        &delivery_id,
-                        &parsed.signal_id,
-                        &channel,
-                        "sent",
-                        None,
-                    )
-                    .await?;
-                }
-                Err(error) => {
-                    let status =
-                        if error.0 == StatusCode::BAD_REQUEST && error.1.contains("no bot token") {
-                            "skipped"
-                        } else {
-                            "failed"
-                        };
-                    store::record_delivery(
-                        state,
-                        user_id,
-                        &delivery_id,
-                        &parsed.signal_id,
-                        &channel,
-                        status,
-                        Some(error.1.clone()),
-                    )
-                    .await?;
-                }
-            }
-        }
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    let available: Vec<&str> = ready.iter().map(|d| d.channel).collect();
+    let routed = decision::external_channels(&decided, &parsed, &available);
+    for destination in ready.iter().filter(|d| routed.iter().any(|c| c == d.channel)) {
+        let channel = destination.channel;
+        // Prefer the model's per-channel copy; fall back to the decision copy.
+        let external_copy = decided
+            .copies
+            .get(channel)
+            .cloned()
+            .unwrap_or_else(|| fallback_copy.clone());
+        let outcome = crate::routes::notify_channels::deliver_to(
+            state,
+            user_id,
+            destination,
+            &external_copy.title,
+            &external_copy.body,
+            &parsed.source_context_id,
+        )
+        .await;
+        let (status, error) = match outcome {
+            Ok(()) => ("sent", None),
+            Err(error) => ("failed", Some(error.1)),
+        };
+        store::record_delivery(
+            state,
+            user_id,
+            &delivery_id,
+            &parsed.signal_id,
+            channel,
+            status,
+            error,
+        )
+        .await?;
     }
 
     Ok(json!({

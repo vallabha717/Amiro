@@ -330,15 +330,8 @@ pub fn tool_definitions() -> Vec<Value> {
             "threadId":{"type":"string","description":"Chat thread to link to, if any"},
             "scheduleId":{"type":"string","description":"Schedule to link to, if any"}
         },"required":["title","body"],"additionalProperties":false}}),
-        json!({"name":"notify_channel_list","description":"List the owner's external notification channel bindings (Telegram, Slack, Discord): which are bound, where they deliver, and whether a bot token is stored. Metadata only, never secret values.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}}),
-        json!({"name":"notify_channel_bind","description":"Bind an external notification channel (telegram, slack or discord) to a destination chat/user id. The bot token is read from the encrypted vault (notify.<channel>/bot_token); if it is missing, returns a SECRET_PROMPT card so the user can enter it securely. Verifies the token before saving.","inputSchema":{"type":"object","properties":{
-            "channel":{"type":"string","description":"telegram, slack or discord"},
-            "chatId":{"type":"string","description":"Destination: Telegram chat id, Slack channel/user id, Discord recipient user id"}
-        },"required":["channel","chatId"],"additionalProperties":false}}),
-        json!({"name":"notify_channel_unbind","description":"Remove an external notification channel binding (the vault token is kept for a future rebind).","inputSchema":{"type":"object","properties":{
-            "channel":{"type":"string","description":"telegram, slack or discord"}
-        },"required":["channel"],"additionalProperties":false}}),
-        json!({"name":"notify_channel_resend","description":"Re-send a recorded notification delivery to an external channel (uses the stored copy and binding, records a new delivery row).","inputSchema":{"type":"object","properties":{
+        json!({"name":"notify_channel_list","description":"Show where the owner's notifications can go outside Amiro (Telegram, Slack, Discord) and what is missing for each: the channel's bot is connected on the Channels page, and the owner's own account on that app is added and verified on their contact card in Contacts. Metadata only, never secret values.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}}),
+        json!({"name":"notify_channel_resend","description":"Re-send a recorded notification delivery to an external channel (uses the stored copy and the owner's verified address, records a new delivery row).","inputSchema":{"type":"object","properties":{
             "deliveryId":{"type":"string","description":"Delivery id from the Bell feed or a delivery row"},
             "channel":{"type":"string","description":"telegram, slack or discord"}
         },"required":["deliveryId","channel"],"additionalProperties":false}}),
@@ -848,66 +841,28 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<(String
             let listed = crate::routes::notify_channels::list_channels(state, &uid)
                 .await
                 .map_err(err_text)?;
-            let bound: Vec<String> = listed
+            let lines: Vec<String> = listed
                 .get("channels")
                 .and_then(|c| c.as_array())
                 .map(|channels| {
                     channels
                         .iter()
-                        .filter(|c| c.get("bound").and_then(|b| b.as_bool()).unwrap_or(false))
-                        .filter_map(|c| c.get("channel").and_then(|v| v.as_str()))
-                        .map(str::to_string)
+                        .map(|c| {
+                            let channel = c.get("channel").and_then(Value::as_str).unwrap_or("?");
+                            let step = match c.get("nextStep").and_then(Value::as_str).unwrap_or("") {
+                                "ready" => "ready: notifications go to your verified account",
+                                "connect_bot" => "connect its bot on the Channels page",
+                                "add_address" => "add your account to your contact card in Contacts",
+                                "verify_address" => "verify your account on your contact card in Contacts",
+                                "fix_address" => "your saved account cannot receive direct messages; add your user id in Contacts",
+                                _ => "only the owner's notifications go outside Amiro",
+                            };
+                            format!("{channel}: {step}")
+                        })
                         .collect()
                 })
                 .unwrap_or_default();
-            let text = if bound.is_empty() {
-                "No external notification channels are bound. Bind telegram, slack or discord with notify_channel_bind.".to_string()
-            } else {
-                format!("Bound external channels: {}.", bound.join(", "))
-            };
-            Ok((text, listed))
-        }
-        "notify_channel_bind" => {
-            let channel = require_str(args, "channel")?.to_lowercase();
-            let chat_id = require_str(args, "chatId")?;
-            match crate::routes::notify_channels::bind_channel(state, &uid, &channel, chat_id, None).await {
-                Ok(bound) => {
-                    let name = bound.get("chatName").and_then(Value::as_str).unwrap_or(chat_id);
-                    Ok((
-                        format!("{channel} is bound to {name}. Verified and ready to deliver."),
-                        json!({"binding": bound}),
-                    ))
-                }
-                Err(error) if error.1.contains("no bot token") => {
-                    let service = crate::notify::adapters::pairing::vault_service(&channel);
-                    let prompt_json = json!({
-                        "service": service,
-                        "field": crate::notify::adapters::pairing::vault_field(),
-                        "label": format!("{channel} bot token"),
-                        "description": format!("Enter the {channel} bot token. It is saved directly to Amiro's encrypted vault and never shown in chat."),
-                        "purpose": "External notification delivery",
-                        "placeholder": "bot token"
-                    });
-                    let text = format!(
-                        "No bot token for \"{channel}\" is in the vault yet. \
-                        Please enter it in the secure card below, then I will bind the channel.\n\n\
-                        SECRET_PROMPT {}",
-                        prompt_json
-                    );
-                    Ok((text, json!({"status": "needs_secret", "prompt": prompt_json})))
-                }
-                Err(error) => Err(err_text(error)),
-            }
-        }
-        "notify_channel_unbind" => {
-            let channel = require_str(args, "channel")?.to_lowercase();
-            let unbound = crate::routes::notify_channels::unbind_channel(state, &uid, &channel)
-                .await
-                .map_err(err_text)?;
-            Ok((
-                format!("{channel} is unbound. The vault token was kept for a future rebind."),
-                unbound,
-            ))
+            Ok((format!("External notification channels:\n{}", lines.join("\n")), listed))
         }
         "notify_channel_resend" => {
             let delivery_id = require_str(args, "deliveryId")?;
@@ -2370,7 +2325,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn notify_channel_tools_list_bind_needs_secret_and_unbind() {
+    async fn notify_channel_list_says_what_each_channel_still_needs() {
         let state = state();
         write_json(
             &state.home.join("users.json"),
@@ -2378,48 +2333,13 @@ mod tests {
         )
         .await
         .unwrap();
-
-        // Nothing bound yet.
         let (text, data) = call_tool(&state, "notify_channel_list", &json!({}))
             .await
             .unwrap();
-        assert!(text.contains("No external"), "unexpected text: {text}");
         assert_eq!(data["channels"].as_array().unwrap().len(), 3);
-
-        // Binding without a vault token asks for the secret card, never raw text.
-        let (text, data) = call_tool(
-            &state,
-            "notify_channel_bind",
-            &json!({"channel": "telegram", "chatId": "chat-1"}),
-        )
-        .await
-        .unwrap();
-        assert!(text.contains("SECRET_PROMPT"), "unexpected text: {text}");
-        assert_eq!(data["status"], json!("needs_secret"));
-        assert_eq!(data["prompt"]["service"], json!("notify.telegram"));
-        assert_eq!(data["prompt"]["field"], json!("bot_token"));
-
-        // Unknown channels are rejected, not passed to a provider.
-        assert!(call_tool(
-            &state,
-            "notify_channel_bind",
-            &json!({"channel": "pigeon", "chatId": "1"}),
-        )
-        .await
-        .is_err());
-        assert!(call_tool(&state, "notify_channel_unbind", &json!({"channel": "pigeon"}))
+        assert!(text.contains("telegram: connect its bot on the Channels page"), "{text}");
+        assert!(call_tool(&state, "notify_channel_bind", &json!({"channel": "telegram"}))
             .await
             .is_err());
-
-        // Unbinding an unbound channel is a no-op success.
-        let (text, data) = call_tool(
-            &state,
-            "notify_channel_unbind",
-            &json!({"channel": "slack"}),
-        )
-        .await
-        .unwrap();
-        assert!(text.contains("unbound"), "unexpected text: {text}");
-        assert_eq!(data["bound"], json!(false));
     }
 }

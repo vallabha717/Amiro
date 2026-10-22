@@ -29,8 +29,15 @@
 ## Decisions already made
 
 - **External channels in scope now.** Telegram, Slack, and Discord delivery
-  adapters ship in this initiative (Phase 03), not later. Tokens live in the
-  credential vault; chat bindings in the JSON store. (Owner answer, 2026-10-21.)
+  adapters ship in this initiative (Phase 03), not later. (Owner answer,
+  2026-10-21.)
+- **Channels and Contacts own delivery, as in Vellum.** Bots are connected
+  once on the Channels page; the owner's own account on each app lives on
+  their contact card in Contacts, verified with a code sent through the
+  channel. Notifications resolve destinations from those two and keep no
+  tokens or chat ids of their own (see [03-channels](03-channels.md)).
+  (Owner answer, 2026-10-22: "same architecture and implementation as
+  Vellum".)
 - **LLM routing like Vellum.** The decision engine calls a model through the
   runtime bridge and renders per-channel copy; deterministic rules are the
   fallback, not the engine. (Owner answer, 2026-10-21.)

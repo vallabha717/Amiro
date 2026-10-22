@@ -2,25 +2,19 @@
 
 import { apiJson } from "@/lib/backend/client";
 import {
-  bindNotifyChannel,
   fetchNotifyChannels,
-  unbindNotifyChannel,
   NOTIFICATION_CHANNELS_KEY,
   NOTIFY_CHANNELS,
-  channelVaultSlot,
-  type NotifyChannelBinding,
   type NotifyChannelId,
+  type NotifyChannelStatus,
 } from "@/lib/notifications/notification-channels-api";
 
 export {
-  bindNotifyChannel,
   fetchNotifyChannels,
-  unbindNotifyChannel,
   NOTIFICATION_CHANNELS_KEY,
   NOTIFY_CHANNELS,
-  channelVaultSlot,
-  type NotifyChannelBinding,
   type NotifyChannelId,
+  type NotifyChannelStatus,
 };
 
 export type DeliveryAttemptStatus = "sent" | "failed" | "skipped";

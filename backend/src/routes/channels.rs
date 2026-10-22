@@ -20,6 +20,27 @@ fn channels_path(state: &AppState) -> std::path::PathBuf {
     state.home.join("store").join(CHANNELS_STORE)
 }
 
+/// Check a bot token with its provider before it is saved, as Vellum's
+/// channel setup does, and return the bot's name as the provider reports it.
+/// A rejected token is a 400 the form can show, never a saved credential.
+async fn verified_bot_name(channel: &str, label: &str, token: &str) -> Result<String, ApiError> {
+    crate::routes::notify_channels::verify_bot(channel, token)
+        .await
+        .map_err(|error| {
+            if error.0 == StatusCode::UNAUTHORIZED || error.0 == StatusCode::FORBIDDEN {
+                ApiError(
+                    StatusCode::BAD_REQUEST,
+                    format!("{label} rejected that bot token. Check it and try again."),
+                )
+            } else {
+                ApiError(
+                    StatusCode::BAD_GATEWAY,
+                    format!("Could not reach {label} to check the bot token: {}", error.1),
+                )
+            }
+        })
+}
+
 fn require_admin(user: &AuthUser) -> Result<(), ApiError> {
     if user.0.get("role").and_then(|r| r.as_str()) != Some("admin") {
         return Err(ApiError(StatusCode::FORBIDDEN, "Forbidden".to_string()));
@@ -588,7 +609,9 @@ pub async fn set_slack_config(
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
     require_admin(&user)?;
-    if let Some(bot_token) = body.get("botToken").and_then(Value::as_str).filter(|s| !s.is_empty()) {
+    let mut bot_name = None;
+    if let Some(bot_token) = body.get("botToken").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()) {
+        bot_name = Some(verified_bot_name("slack", "Slack", bot_token).await?);
         credentials::set(&state, "slack_channel", "bot_token", bot_token, Some("Slack Bot Token")).await?;
     }
     if let Some(app_token) = body.get("appToken").and_then(Value::as_str).filter(|s| !s.is_empty()) {
@@ -608,8 +631,8 @@ pub async fn set_slack_config(
     if let Some(thread_mode) = body.get("threadMode").and_then(Value::as_str) {
         slack["threadMode"] = json!(thread_mode);
     }
-    if let Some(username) = body.get("botUsername").and_then(Value::as_str) {
-        slack["botUsername"] = json!(username);
+    if let Some(name) = bot_name {
+        slack["botUsername"] = json!(name);
     }
     doc["slack"] = slack;
     write_json(&path, &doc).await?;
@@ -708,7 +731,9 @@ pub async fn set_telegram_config(
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
     require_admin(&user)?;
-    if let Some(bot_token) = body.get("botToken").and_then(Value::as_str).filter(|s| !s.is_empty()) {
+    let mut bot_name = None;
+    if let Some(bot_token) = body.get("botToken").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()) {
+        bot_name = Some(verified_bot_name("telegram", "Telegram", bot_token).await?);
         credentials::set(&state, "telegram", "bot_token", bot_token, Some("Telegram Bot Token")).await?;
     }
 
@@ -719,8 +744,8 @@ pub async fn set_telegram_config(
     if !tg.is_object() {
         tg = json!({});
     }
-    if let Some(username) = body.get("botUsername").and_then(Value::as_str) {
-        tg["botUsername"] = json!(username);
+    if let Some(name) = bot_name {
+        tg["botUsername"] = json!(name);
     }
     doc["telegram"] = tg;
     write_json(&path, &doc).await?;
@@ -782,7 +807,9 @@ pub async fn set_discord_config(
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
     require_admin(&user)?;
-    if let Some(bot_token) = body.get("botToken").and_then(Value::as_str).filter(|s| !s.is_empty()) {
+    let mut bot_name = None;
+    if let Some(bot_token) = body.get("botToken").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()) {
+        bot_name = Some(verified_bot_name("discord", "Discord", bot_token).await?);
         credentials::set(&state, "discord_channel", "bot_token", bot_token, Some("Discord Bot Token")).await?;
     }
 
@@ -796,8 +823,8 @@ pub async fn set_discord_config(
     if let Some(app_id) = body.get("applicationId").and_then(Value::as_str) {
         dc["applicationId"] = json!(app_id);
     }
-    if let Some(username) = body.get("botUsername").and_then(Value::as_str) {
-        dc["botUsername"] = json!(username);
+    if let Some(name) = bot_name {
+        dc["botUsername"] = json!(name);
     }
     doc["discord"] = dc;
     write_json(&path, &doc).await?;

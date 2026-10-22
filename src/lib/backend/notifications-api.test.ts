@@ -5,7 +5,6 @@ import {
   resendNotificationDelivery,
   NOTIFICATION_CHANNELS_KEY,
   NOTIFY_CHANNELS,
-  channelVaultSlot,
 } from "./notifications-api";
 
 vi.mock("@/lib/backend/client", () => ({
@@ -20,13 +19,9 @@ async function lastCall() {
 }
 
 describe("notifications-api", () => {
-  it("re-exports the channel binding clients from a single surface", () => {
+  it("re-exports the channel readiness client from a single surface", () => {
     expect(NOTIFY_CHANNELS).toEqual(["telegram", "slack", "discord"]);
     expect(NOTIFICATION_CHANNELS_KEY).toBe("/api/notifications/channels");
-    expect(channelVaultSlot("telegram")).toEqual({
-      service: "notify.telegram",
-      field: "bot_token",
-    });
   });
 
   it("fetches per-notification deliveries and normalizes rows", async () => {

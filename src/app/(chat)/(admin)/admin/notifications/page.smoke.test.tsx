@@ -40,8 +40,6 @@ vi.mock("@/lib/notifications/notification-channels-api", async (importOriginal) 
   return {
     ...actual,
     fetchNotifyChannels: vi.fn().mockResolvedValue([]),
-    bindNotifyChannel: vi.fn(),
-    unbindNotifyChannel: vi.fn(),
   };
 });
 
@@ -49,17 +47,26 @@ vi.mock("@/lib/notifications/notification-channels-api", async (importOriginal) 
 // and swaps in server data via useEffect (client-only), so SSR shows the
 // loading spinner. Prove the wiring instead: the page module composes the
 // preferences UI and the Phase 03 channel section from the same tree.
+const CHANNELS = [
+  { channel: "telegram", botConfigured: true, botName: "amirobot", address: "4242",
+    contactChannelId: "c1", verified: true, ready: true, nextStep: "ready" },
+  { channel: "slack", botConfigured: false, botName: null, address: null,
+    contactChannelId: null, verified: false, ready: false, nextStep: "connect_bot" },
+  { channel: "discord", botConfigured: true, botName: "dbot", address: "999",
+    contactChannelId: "c2", verified: false, ready: false, nextStep: "verify_address" },
+];
+
 vi.mock("swr", () => ({
   __esModule: true,
   default: (key: string) =>
     key === "/api/notifications/channels"
-      ? { data: [], mutate: vi.fn() }
+      ? { data: CHANNELS, mutate: vi.fn() }
       : { data: undefined, mutate: vi.fn() },
   useSWRConfig: () => ({ mutate: vi.fn() }),
 }));
 
 import AdminNotificationsPage from "./page";
-import { ChannelConnectCards } from "@/components/notifications/channel-connect-cards";
+import { ChannelDeliveryStatus } from "@/components/notifications/channel-delivery-status";
 
 describe("AdminNotificationsPage", () => {
   it("renders without throwing (loading state on SSR)", () => {
@@ -68,12 +75,15 @@ describe("AdminNotificationsPage", () => {
     expect(html.length).toBeGreaterThan(0);
   });
 
-  it("composes the channel connect section into the settings page", () => {
-    const html = renderToStaticMarkup(createElement(ChannelConnectCards));
-    expect(html).toContain('data-testid="channel-connect-section"');
-    for (const channel of ["telegram", "slack", "discord"]) {
-      expect(html).toContain(`data-testid="channel-connect-${channel}"`);
-      expect(html).toContain(`data-testid="secret-prompt-card"`);
-    }
+  it("shows where notifications go outside Amiro, with the place to fix each gap", () => {
+    const html = renderToStaticMarkup(createElement(ChannelDeliveryStatus));
+    expect(html).toContain('data-testid="channel-delivery-section"');
+    expect(html).toContain('data-testid="channel-delivery-telegram"');
+    expect(html).toContain('data-ready="true"');
+    // No token or chat-id fields: setup lives in Channels and Contacts.
+    expect(html).not.toContain("secret-prompt-card");
+    expect(html).toContain('href="/channels"');
+    expect(html).toContain('href="/contacts"');
+    expect(html).toContain('data-step="verify_address"');
   });
 });

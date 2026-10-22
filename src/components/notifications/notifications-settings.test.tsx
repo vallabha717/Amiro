@@ -52,7 +52,7 @@ vi.mock("@/components/credentials/secret-prompt-card", () => ({
 import { NotificationsSettings } from "./notifications-settings";
 
 describe("NotificationsSettings", () => {
-  it("renders toggles, quiet-hours switch, and reused channel connect cards", () => {
+  it("renders toggles, quiet-hours switch, and where notifications go outside Amiro", () => {
     const html = renderToStaticMarkup(createElement(NotificationsSettings));
     expect(html).toContain('data-testid="notifications-settings"');
     for (const key of [
@@ -68,9 +68,9 @@ describe("NotificationsSettings", () => {
       expect(html).toContain(`data-testid="notifications-settings-${key}"`);
     }
     // Phase 03 connect cards are reused, not rebuilt: one card per channel.
-    expect(html).toContain('data-testid="channel-connect-section"');
-    expect(html).toContain('data-testid="channel-connect-telegram"');
-    expect(html).toContain('data-testid="channel-connect-slack"');
-    expect(html).toContain('data-testid="channel-connect-discord"');
+    expect(html).toContain('data-testid="channel-delivery-section"');
+    expect(html).toContain('data-testid="channel-delivery-telegram"');
+    expect(html).toContain('data-testid="channel-delivery-slack"');
+    expect(html).toContain('data-testid="channel-delivery-discord"');
   });
 });

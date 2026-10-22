@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ApiError } from "@/lib/backend/client";
 import { Label } from "@/components/ui/label";
 import { DetailCard } from "@/components/ui/detail-card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -114,8 +115,9 @@ function TelegramChannelPanel({ onUpdated }: { onUpdated: () => void }) {
       await mutate();
       onUpdated();
       toast.success(t("telegramSaved"));
-    } catch {
-      toast.error(t("telegramSaveFailed"));
+    } catch (error) {
+      // Show why: a rejected token says so, rather than a generic failure.
+      toast.error(error instanceof ApiError && error.message ? error.message : t("telegramSaveFailed"));
     } finally {
       setSaving(false);
     }
@@ -237,8 +239,9 @@ function DiscordChannelPanel({ onUpdated }: { onUpdated: () => void }) {
       await mutate();
       onUpdated();
       toast.success(t("discordSaved"));
-    } catch {
-      toast.error(t("discordSaveFailed"));
+    } catch (error) {
+      // Show why: a rejected token says so, rather than a generic failure.
+      toast.error(error instanceof ApiError && error.message ? error.message : t("discordSaveFailed"));
     } finally {
       setSaving(false);
     }

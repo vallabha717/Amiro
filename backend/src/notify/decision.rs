@@ -47,6 +47,10 @@ pub struct Decision {
     /// Rendered copy per selected channel. The deterministic fallback fills
     /// only `local` (see [`fallback_copy`]).
     pub copies: HashMap<String, ChannelCopy>,
+    /// True when the model chose the channels; false for the fallback rules,
+    /// a pass-through, or a suppression. Decides how external channels are
+    /// picked (see [`external_channels`]).
+    pub from_model: bool,
 }
 
 fn bool_setting(settings: &Value, key: &str, fallback: bool) -> bool {
@@ -121,6 +125,7 @@ pub fn decide_deterministic(signal: &NotificationSignal, settings: &Value) -> De
             signal.urgency
         ),
         copies: HashMap::from([("local".to_string(), copy)]),
+        from_model: false,
     }
 }
 
@@ -138,6 +143,7 @@ pub fn suppressed_source_active(signal: &NotificationSignal) -> Decision {
         fallback_used: false,
         reasoning: "suppressed: the user is viewing the source right now".to_string(),
         copies: HashMap::new(),
+        from_model: false,
     }
 }
 
@@ -292,10 +298,14 @@ no markdown fences, no commentary, matching this schema exactly:\n\
 \"silent\": boolean, \"dedupeKey\": string (optional), \
 \"reasoning\": string}}\n\
 \n\
-Deliverable channels in this deployment: [\"local\"]. You may also select \
-\"telegram\", \"slack\", or \"discord\" when the signal warrants an external \
-ping; those selections are recorded and delivered by a later phase, so always \
-include copy for \"local\" whenever it is selected.\n\
+Channels: \"local\" is the Amiro inbox and is always available. \
+\"telegram\", \"slack\" and \"discord\" ping the owner on their phone; they \
+are delivered only when the owner has connected them, so select them only \
+when the signal deserves an external ping. Only notify when the signal \
+genuinely warrants attention. Prefer fewer channels unless it is urgent; for \
+high-urgency signals that require action, select every channel. Write copy \
+for every selected channel: a title of at most 8 words and a body of at most \
+2 sentences, addressed to the owner, never naming the transport.\n\
 Known source channels: {:?}.\n\
 Known source event names: {:?}.\n\
 Channel policy: \"local\" is the in-app feed inbox and is always available. \
@@ -368,6 +378,7 @@ pub fn parse_llm_response(text: &str, signal: &NotificationSignal) -> Option<Dec
         fallback_used: false,
         reasoning: format!("llm: {reasoning}"),
         copies,
+        from_model: true,
     })
 }
 
@@ -384,6 +395,38 @@ fn strip_fences(text: &str) -> &str {
         out = rest;
     }
     out.trim()
+}
+
+/// Which external channels a decision goes out on, among the ones that are
+/// ready (`available`, from `notify::destinations::resolve`). Vellum's rules:
+/// a model decision goes where the model chose; otherwise (the fallback, a
+/// pass-through) the inbox only, except a test (every ready channel) and a
+/// high or critical signal that needs action or that the agent sent itself
+/// (every ready channel). Chat replies never leave the app, and a decision
+/// not to notify reaches nothing.
+pub fn external_channels(
+    decision: &Decision,
+    signal: &NotificationSignal,
+    available: &[&str],
+) -> Vec<String> {
+    if !decision.should_notify || signal.source_event_name == "chat.assistant_reply" {
+        return Vec::new();
+    }
+    let urgent = matches!(signal.urgency.as_str(), "high" | "critical");
+    let everywhere = signal.source_event_name == "system.test"
+        || (urgent && signal.requires_action)
+        || (urgent && signal.source_channel == "assistant_tool");
+    available
+        .iter()
+        .filter(|channel| {
+            if decision.from_model {
+                decision.channels.iter().any(|c| c == *channel)
+            } else {
+                everywhere
+            }
+        })
+        .map(|channel| channel.to_string())
+        .collect()
 }
 
 /// Route one signal through the model, falling back to the deterministic
@@ -474,6 +517,36 @@ mod tests {
             "urgency": urgency,
         }))
         .unwrap()
+    }
+
+    #[test]
+    fn external_channels_follow_vellums_routing_rules() {
+        let ready = ["telegram", "slack"];
+        let routine = signal_for("schedule.result", "normal");
+        let fallback = decide_deterministic(&routine, &settings());
+        assert!(external_channels(&fallback, &routine, &ready).is_empty());
+
+        let mut urgent = signal_for("schedule.result", "high");
+        urgent.requires_action = true;
+        let fallback = decide_deterministic(&urgent, &settings());
+        assert_eq!(external_channels(&fallback, &urgent, &ready), ["telegram", "slack"]);
+
+        let test = signal_for("system.test", "normal");
+        let fallback = decide_deterministic(&test, &settings());
+        assert_eq!(external_channels(&fallback, &test, &ready), ["telegram", "slack"]);
+
+        let mut reply = signal_for("chat.assistant_reply", "critical");
+        reply.requires_action = true;
+        let fallback = decide_deterministic(&reply, &settings());
+        assert!(external_channels(&fallback, &reply, &ready).is_empty());
+
+        // A model decision goes only where the model chose, among ready ones.
+        let mut chosen = decide_deterministic(&routine, &settings());
+        chosen.from_model = true;
+        chosen.channels = vec!["local".into(), "slack".into(), "discord".into()];
+        assert_eq!(external_channels(&chosen, &routine, &ready), ["slack"]);
+        chosen.should_notify = false;
+        assert!(external_channels(&chosen, &routine, &ready).is_empty());
     }
 
     /// Audible signal: high urgency with allAlertsEnabled off still banners,
