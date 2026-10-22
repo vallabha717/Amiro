@@ -58,8 +58,8 @@ export function TeamSidebar({ user }: { user?: BasicUser }) {
               className="flex min-w-0 items-center gap-2"
               aria-label="Teams"
             >
-              <VrndaLogo className="size-6 shrink-0" />
-              <span className="font-brand font-bold text-2xl tracking-tight text-foreground">
+              <VrndaLogo className="size-7 shrink-0" />
+              <span className="font-brand font-bold text-3xl tracking-tight text-foreground">
                 Amiro
               </span>
               <span className="rounded-full border bg-background/70 px-2 py-0.5 text-xs font-medium text-muted-foreground">

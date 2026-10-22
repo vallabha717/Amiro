@@ -32,9 +32,9 @@ export default function AuthLayout({
           <div className="pointer-events-auto absolute inset-x-8 top-[8%] bottom-[12%] text-foreground/75">
             <AnimatedAuthTree />
           </div>
-          <h1 className="relative z-10 text-2xl font-semibold flex items-center gap-2 animate-in fade-in duration-1000">
-            <VrndaLogo className="size-6 shrink-0" />
-            <span className="font-brand font-bold text-2xl tracking-tight">Amiro</span>
+          <h1 className="relative z-10 text-3xl font-semibold flex items-center gap-2 animate-in fade-in duration-1000">
+            <VrndaLogo className="size-7 shrink-0" />
+            <span className="font-brand font-bold text-3xl tracking-tight">Amiro</span>
           </h1>
           <div className="flex-1" />
           <p className="relative z-10 mb-4 max-w-sm text-muted-foreground px-2">

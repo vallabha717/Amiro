@@ -149,8 +149,8 @@ export function OnboardingWizard() {
       >
         {/* Floats over the chat's own background: one seamless surface. */}
         <header className="pointer-events-none absolute left-0 top-0 z-10 hidden h-14 items-center gap-2 px-5 sm:px-8 xl:flex">
-          <VrndaLogo className="size-6 shrink-0" />
-          <span className="font-brand font-bold text-2xl tracking-tight">Amiro</span>
+          <VrndaLogo className="size-7 shrink-0" />
+          <span className="font-brand font-bold text-3xl tracking-tight">Amiro</span>
         </header>
         <main className="min-h-0 flex-1">
           <h1 className="sr-only">{`Set up ${agentName}`}</h1>
@@ -195,8 +195,8 @@ export function OnboardingWizard() {
 
       <header className="relative z-10 flex h-16 items-center px-5 sm:px-8">
         <div className="flex items-center gap-2">
-          <VrndaLogo className="size-6 shrink-0" />
-          <span className="font-brand font-bold text-2xl tracking-tight">Amiro</span>
+          <VrndaLogo className="size-7 shrink-0" />
+          <span className="font-brand font-bold text-3xl tracking-tight">Amiro</span>
         </div>
       </header>
 

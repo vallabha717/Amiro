@@ -230,8 +230,8 @@ export const CodeExecutor = memo(function CodeExecutor({
           ) : (
             <div className="w-1 h-1 mr-1 ring ring-border rounded-full" />
           )}
-          <VrndaLogo className="size-4 shrink-0" />
-          <span className="font-brand font-semibold text-xs tracking-tight">Amiro</span>
+          <VrndaLogo className="size-4.5 shrink-0" />
+          <span className="font-brand font-semibold text-sm tracking-tight">Amiro</span>
           <Percent className="size-2" />
         </div>
         {logs}
