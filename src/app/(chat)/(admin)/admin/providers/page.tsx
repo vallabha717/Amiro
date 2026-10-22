@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
+import { agentScopedPath } from "@/components/team/team-paths";
+import { useAgentScope } from "@/lib/backend/agent-scope";
 import useSWR from "swr";
 import { Loader2, Plus, Box, Cpu } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -47,6 +49,7 @@ const LightRays = dynamic(() => import("@/components/ui/light-rays"), {
 export default function AdminProvidersPage() {
   const t = useTranslations("Providers");
   const router = useRouter();
+  const agentScope = useAgentScope();
 
   const [loginProviderId, setLoginProviderId] = useState<string | null>(null);
   const [isLoginPanelOpen, setIsLoginPanelOpen] = useState(false);
@@ -98,7 +101,9 @@ export default function AdminProvidersPage() {
     setOpenHeaderMenu(false);
     setOpenEmptyMenu(false);
     if (providerId === "custom" || providerId === "openai-compatible") {
-      router.push(`/admin/providers/create?template=${providerId}`);
+      router.push(
+        agentScopedPath(agentScope, `/admin/providers/create?template=${providerId}`),
+      );
       return;
     }
     setLoginProviderId(providerId);

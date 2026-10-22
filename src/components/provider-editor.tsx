@@ -2,6 +2,8 @@
 
 import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { agentScopedPath } from "@/components/team/team-paths";
+import { useAgentScope } from "@/lib/backend/agent-scope";
 import { mutate } from "swr";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
@@ -74,6 +76,7 @@ export default function ProviderEditor({
 }: ProviderEditorProps) {
   const t = useTranslations("Providers");
   const router = useRouter();
+  const agentScope = useAgentScope();
   const isNew = !initialConfig?.id;
 
   const [isCustom, setIsCustom] = useState(
@@ -202,7 +205,7 @@ export default function ProviderEditor({
       // Both the admin list and the chat model selector read from this.
       await Promise.all([mutate(PROVIDERS_KEY), mutate("/api/chat/models")]);
       toast.success(t("providerSaved"));
-      router.push("/admin/providers");
+      router.push(agentScopedPath(agentScope, "/admin/providers"));
     } catch (e) {
       handleErrorWithToast(e as Error);
     } finally {
@@ -701,7 +704,7 @@ export default function ProviderEditor({
       <div className="pt-4 flex justify-end gap-3">
         <Button
           variant="ghost"
-          onClick={() => router.push("/admin/providers")}
+          onClick={() => router.push(agentScopedPath(agentScope, "/admin/providers"))}
           className="font-semibold cursor-pointer"
         >
           {t("cancel")}

@@ -224,12 +224,12 @@ test.describe("chat", () => {
       }
     });
     await step("The conversation appears in Recent Chats with a generated title", async () => {
-      const thread = page.locator('a[href^="/?thread="]').first();
+      const thread = page.locator('a[href*="?thread="]').first();
       await expect.soft(thread, "a sidebar link to the conversation").toBeVisible({ timeout: 30000 });
     });
     await step("Start a new chat with the keyboard shortcut", async () => {
       await page.keyboard.press("Control+Shift+O");
-      await expect(page).toHaveURL(/\/$|\/\?$/);
+      await expect(page).toHaveURL(/\/amiro\/?\??$/);
     });
   });
 

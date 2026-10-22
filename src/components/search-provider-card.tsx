@@ -13,6 +13,8 @@ import {
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { agentScopedPath } from "@/components/team/team-paths";
+import { useAgentScope } from "@/lib/backend/agent-scope";
 import { memo, useCallback, useState } from "react";
 import { toast } from "sonner";
 import { useSWRConfig } from "swr";
@@ -55,6 +57,7 @@ export const SearchProviderCard = memo(function SearchProviderCard({
 }: SearchProviderConfig & { spec?: SearchProviderSpec }) {
   const t = useTranslations("Providers");
   const router = useRouter();
+  const agentScope = useAgentScope();
   const { mutate } = useSWRConfig();
 
   const [isProcessing, setIsProcessing] = useState(false);
@@ -164,7 +167,10 @@ export const SearchProviderCard = memo(function SearchProviderCard({
               </div>
             ) : (
               <Link
-                href={`/admin/search/test?id=${encodeURIComponent(id)}`}
+                href={agentScopedPath(
+                  agentScope,
+                  `/admin/search/test?id=${encodeURIComponent(id)}`,
+                )}
                 className="cursor-pointer hidden sm:block"
                 data-testid="search-provider-test-link"
                 aria-label="Test Connection"
@@ -191,7 +197,7 @@ export const SearchProviderCard = memo(function SearchProviderCard({
               size="icon"
               className="text-muted-foreground hover:text-foreground"
               disabled={isLoading}
-              onClick={() => router.push(`/admin/search/modify?id=${id}`)}
+              onClick={() => router.push(agentScopedPath(agentScope, `/admin/search/modify?id=${id}`))}
               data-testid="search-provider-edit-button"
               aria-label={t("edit")}
             >

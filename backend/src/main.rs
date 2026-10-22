@@ -329,65 +329,69 @@ async fn resolve_static_route(
     if matches!(*req.method(), Method::GET | Method::HEAD) {
         let path = req.uri().path().to_string();
         if !path.starts_with("/api") && path != "/health" {
-            let out_dir = state.out_dir();
-            let trimmed = path.trim_start_matches('/').trim_end_matches('/');
-            if !trimmed.is_empty() && !trimmed.contains("..") {
-                // If it is an existing static asset file (like an image, font, etc.), let ServeDir handle it directly!
-                if out_dir.join(trimmed).is_file() {
-                    return next.run(req).await;
+            if let Some(target) = static_route_target(&state.out_dir(), &path) {
+                let (mut parts, body) = req.into_parts();
+                let rewritten = match parts.uri.query() {
+                    Some(query) => format!("{target}?{query}"),
+                    None => target,
+                };
+                if let Ok(uri) = rewritten.parse() {
+                    parts.uri = uri;
                 }
-
-                let candidates = [format!("/{trimmed}.html"), format!("/{trimmed}/index.html")];
-                let mut matched_target = candidates
-                    .into_iter()
-                    .find(|candidate| out_dir.join(candidate.trim_start_matches('/')).is_file());
-
-                if matched_target.is_none() {
-                    let segments: Vec<&str> = trimmed.split('/').collect();
-                    const RESERVED: &[&str] = &[
-                        "api", "team", "setup", "sign-in", "onboarding", "export", "_next",
-                        "storage", "health", "favicon.ico", "agent",
-                    ];
-                    if !segments.is_empty() && !RESERVED.contains(&segments[0]) {
-                        let sub_path = segments[1..].join("/");
-                        if sub_path.is_empty() {
-                            if out_dir.join("index.html").is_file() {
-                                matched_target = Some("/index.html".to_string());
-                            }
-                        } else {
-                            let sub_candidates = [
-                                format!("/{sub_path}.html"),
-                                format!("/{sub_path}/index.html"),
-                            ];
-                            matched_target = sub_candidates
-                                .into_iter()
-                                .find(|c| out_dir.join(c.trim_start_matches('/')).is_file())
-                                .or_else(|| {
-                                    if out_dir.join("index.html").is_file() {
-                                        Some("/index.html".to_string())
-                                    } else {
-                                        None
-                                    }
-                                });
-                        }
-                    }
-                }
-
-                if let Some(target) = matched_target {
-                    let (mut parts, body) = req.into_parts();
-                    let rewritten = match parts.uri.query() {
-                        Some(query) => format!("{target}?{query}"),
-                        None => target,
-                    };
-                    if let Ok(uri) = rewritten.parse() {
-                        parts.uri = uri;
-                    }
-                    req = Request::from_parts(parts, body);
-                }
+                req = Request::from_parts(parts, body);
             }
         }
     }
     next.run(req).await
+}
+
+/// The exported file to serve for `path`, or `None` to let `ServeDir` handle it
+/// as is. An agent-scoped path (`/amiro/...`, `/<agentId>/...`) serves the
+/// export of the bare route, and that includes its RSC payloads (`.txt`):
+/// Next's client router fetches `/amiro/admin/providers.txt` when navigating
+/// there, and answering that with HTML turns every in-app navigation inside an
+/// agent's space into a full page load.
+fn static_route_target(out_dir: &std::path::Path, path: &str) -> Option<String> {
+    const RESERVED: &[&str] = &[
+        "api", "team", "setup", "sign-in", "onboarding", "export", "_next", "storage", "health",
+        "favicon.ico", "agent",
+    ];
+    let trimmed = path.trim_start_matches('/').trim_end_matches('/');
+    if trimmed.is_empty() || trimmed.contains("..") {
+        return None;
+    }
+    // An existing static asset (image, font, RSC payload...): ServeDir has it.
+    if out_dir.join(trimmed).is_file() {
+        return None;
+    }
+    let exported = |route: &str| {
+        [
+            route.to_string(),
+            format!("{route}.html"),
+            format!("{route}/index.html"),
+        ]
+        .into_iter()
+        .find(|candidate| out_dir.join(candidate).is_file())
+        .map(|candidate| format!("/{candidate}"))
+    };
+    let index_html = || out_dir.join("index.html").is_file().then(|| "/index.html".to_string());
+
+    if let Some(target) = exported(trimmed) {
+        return Some(target);
+    }
+    let segments: Vec<&str> = trimmed.split('/').collect();
+    if RESERVED.contains(&segments[0]) {
+        return None;
+    }
+    let sub_path = segments[1..].join("/");
+    if sub_path.is_empty() {
+        // `/amiro.txt` is the agent space root's RSC payload: the root's is `index.txt`.
+        if segments[0].ends_with(".txt") && out_dir.join("index.txt").is_file() {
+            return Some("/index.txt".to_string());
+        }
+        return index_html();
+    }
+    exported(&sub_path).or_else(index_html)
 }
 
 const USAGE: &str = "\
@@ -654,4 +658,42 @@ async fn serve() -> anyhow::Result<()> {
     scheduler.abort();
     heartbeat.abort();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::static_route_target;
+
+    #[test]
+    fn agent_scoped_routes_serve_the_bare_routes_export() {
+        let out = std::env::temp_dir().join(format!("amiro-static-{}", uuid::Uuid::new_v4()));
+        for file in [
+            "index.html",
+            "index.txt",
+            "__next._tree.txt",
+            "admin/providers.html",
+            "admin/providers.txt",
+            "admin/providers/__next._tree.txt",
+        ] {
+            let path = out.join(file);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, "x").unwrap();
+        }
+        let at = |path: &str| static_route_target(&out, path);
+
+        assert_eq!(at("/admin/providers").as_deref(), Some("/admin/providers.html"));
+        assert_eq!(at("/admin/providers.txt"), None);
+        assert_eq!(at("/amiro/admin/providers").as_deref(), Some("/admin/providers.html"));
+        assert_eq!(at("/abc/admin/providers.txt").as_deref(), Some("/admin/providers.txt"));
+        assert_eq!(
+            at("/amiro/admin/providers/__next._tree.txt").as_deref(),
+            Some("/admin/providers/__next._tree.txt")
+        );
+        assert_eq!(at("/amiro/__next._tree.txt").as_deref(), Some("/__next._tree.txt"));
+        assert_eq!(at("/amiro").as_deref(), Some("/index.html"));
+        assert_eq!(at("/amiro.txt").as_deref(), Some("/index.txt"));
+        assert_eq!(at("/amiro/nowhere").as_deref(), Some("/index.html"));
+        assert_eq!(at("/team/x"), None);
+        std::fs::remove_dir_all(&out).ok();
+    }
 }

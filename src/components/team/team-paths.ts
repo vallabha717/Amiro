@@ -45,6 +45,47 @@ export function agentScopedPath(
   return `${prefix}${clean}`;
 }
 
+/** Pre-#19 chat-area roots that now live under an agent's space. */
+const LEGACY_CHAT_ROOTS = new Set([
+  "connectors",
+  "agent",
+  "schedules",
+  "skills",
+  "skill",
+  "channels",
+  "contacts",
+  "archive",
+  "admin",
+  "mcp",
+]);
+
+/**
+ * Where a bare `/` or legacy chat-area path (e.g. /admin/providers) belongs in
+ * the agent-scoped URL scheme, as `path?query`. A legacy path's `?agent=` picks
+ * the agent and is dropped from the query. Returns null when the path is
+ * already agent-scoped (or not a chat-area path), so callers never rewrite a
+ * URL onto itself.
+ */
+export function legacyAgentRedirect(
+  pathname: string,
+  search: string,
+  agentScope: string | null | undefined,
+): string | null {
+  const params = new URLSearchParams(search);
+  let target: string;
+  if (pathname === "/") {
+    target = agentScopedPath(agentScope, "/");
+  } else {
+    const first = pathname.split("/").filter(Boolean)[0];
+    if (!first || !LEGACY_CHAT_ROOTS.has(first)) return null;
+    target = agentScopedPath(params.get("agent") || agentScope, pathname);
+    params.delete("agent");
+  }
+  if (target === pathname) return null;
+  const q = params.toString();
+  return q ? `${target}?${q}` : target;
+}
+
 /**
  * Strips the leading agent slug (e.g. /amiro or /<agent-id>) from a pathname,
  * leaving the bare sub-path (e.g. /connectors, /agent/workspace).
@@ -53,7 +94,9 @@ export function stripAgentPrefix(pathname: string): string {
   const segments = pathname.split("/").filter(Boolean);
   if (segments.length === 0) return "/";
   const first = segments[0];
-  if (RESERVED_PREFIXES.has(first)) return pathname;
+  if (RESERVED_PREFIXES.has(first) || LEGACY_CHAT_ROOTS.has(first)) {
+    return pathname;
+  }
   const rest = segments.slice(1).join("/");
   return rest ? `/${rest}` : "/";
 }
@@ -76,7 +119,9 @@ export function resolveAgentFromPathname(pathname: string): string | null {
   const segments = pathname.split("/").filter(Boolean);
   if (segments.length === 0) return null;
   const first = segments[0];
-  if (RESERVED_PREFIXES.has(first)) return null;
+  if (RESERVED_PREFIXES.has(first) || LEGACY_CHAT_ROOTS.has(first)) {
+    return null;
+  }
   if (first === "amiro" || first === "main") return null;
   return decodeURIComponent(first);
 }
