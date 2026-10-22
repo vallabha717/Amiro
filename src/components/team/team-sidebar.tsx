@@ -4,9 +4,17 @@ import { AppSidebarUser } from "@/components/layouts/app-sidebar-user";
 import { VrndaLogo } from "@/components/layouts/vrnda-logo";
 import { BasicUser } from "app-types/user";
 import { cn } from "lib/utils";
-import { PanelLeftClose, PanelLeftOpen, UserPlusIcon } from "lucide-react";
+import {
+  ArrowUpRightIcon,
+  BarChart3,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PlusIcon,
+  UsersRoundIcon,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   Sidebar,
   SidebarContent,
@@ -22,6 +30,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
 
 export function TeamSidebar({ user }: { user?: BasicUser }) {
+  const pathname = usePathname();
   const t = useTranslations("Team");
   const tFrame = useTranslations("SidebarFrame");
   const { toggleSidebar, state, isMobile, setOpenMobile } = useSidebar();
@@ -47,14 +56,14 @@ export function TeamSidebar({ user }: { user?: BasicUser }) {
                 if (isMobile) setOpenMobile(false);
               }}
               className="flex min-w-0 items-center gap-2"
-              aria-label={t("homeLabel")}
+              aria-label="Teams"
             >
               <VrndaLogo className="size-6" />
               <span className="font-brand font-bold text-xl tracking-tight text-foreground">
                 Amiro
               </span>
               <span className="rounded-full border bg-background/70 px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                {t("title")}
+                Teams
               </span>
             </Link>
           )}
@@ -78,29 +87,106 @@ export function TeamSidebar({ user }: { user?: BasicUser }) {
       <SidebarContent className="custom-scrollbar relative">
         <SidebarGroup>
           <SidebarGroupContent>
-            <SidebarMenu>
+            {/* Create Agent Action */}
+            <SidebarMenu className="mb-2">
               <SidebarMenuItem>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Link
                       href="/team/new"
-                      data-testid="team-sidebar-new-agent"
+                      data-testid="team-new-agent"
                       onClick={() => {
                         if (isMobile) setOpenMobile(false);
                       }}
                       className="w-full"
                     >
-                      <SidebarMenuButton
-                        size="lg"
-                        className="font-semibold bg-input/20 border border-border/40 hover:bg-accent hover:text-accent-foreground group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:p-0"
-                      >
-                        <UserPlusIcon className="size-4 shrink-0" />
+                      <SidebarMenuButton className="flex font-semibold group/new-agent bg-input/20 border border-border/40 hover:bg-sidebar-accent hover:text-sidebar-foreground">
+                        <PlusIcon className="size-4 shrink-0" />
                         <span className="truncate">{t("newAgent")}</span>
                       </SidebarMenuButton>
                     </Link>
                   </TooltipTrigger>
                   <TooltipContent side="right" align="center">
                     {t("newAgent")}
+                  </TooltipContent>
+                </Tooltip>
+              </SidebarMenuItem>
+            </SidebarMenu>
+
+            {/* Teams Navigation items matching main sidebar styling */}
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Link
+                      href="/team"
+                      data-testid="team-sidebar-agents-link"
+                      onClick={() => {
+                        if (isMobile) setOpenMobile(false);
+                      }}
+                    >
+                      <SidebarMenuButton
+                        className="font-semibold"
+                        isActive={pathname === "/team"}
+                      >
+                        <UsersRoundIcon className="size-4" />
+                        <span>Agents</span>
+                      </SidebarMenuButton>
+                    </Link>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" align="center">
+                    Agents
+                  </TooltipContent>
+                </Tooltip>
+              </SidebarMenuItem>
+            </SidebarMenu>
+
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Link
+                      href="/team/usage"
+                      data-testid="team-sidebar-usage-link"
+                      onClick={() => {
+                        if (isMobile) setOpenMobile(false);
+                      }}
+                    >
+                      <SidebarMenuButton
+                        className="font-semibold"
+                        isActive={pathname.startsWith("/team/usage")}
+                      >
+                        <BarChart3 className="size-4" />
+                        <span>Usage</span>
+                      </SidebarMenuButton>
+                    </Link>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" align="center">
+                    Usage
+                  </TooltipContent>
+                </Tooltip>
+              </SidebarMenuItem>
+            </SidebarMenu>
+
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Link
+                      href="/amiro"
+                      data-testid="team-open-amiro"
+                      onClick={() => {
+                        if (isMobile) setOpenMobile(false);
+                      }}
+                    >
+                      <SidebarMenuButton className="font-semibold">
+                        <ArrowUpRightIcon className="size-4" />
+                        <span>{t("openAmiro")}</span>
+                      </SidebarMenuButton>
+                    </Link>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" align="center">
+                    {t("openAmiro")}
                   </TooltipContent>
                 </Tooltip>
               </SidebarMenuItem>

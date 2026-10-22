@@ -12,7 +12,6 @@ import { cn } from "@/lib/utils";
 import {
   ArrowUpRightIcon,
   MessagesSquareIcon,
-  PlusIcon,
   Trash2Icon,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -174,14 +173,6 @@ export function TeamView() {
             </h1>
             <p className="hidden text-xs text-muted-foreground md:block">{t("subtitle")}</p>
           </div>
-          {isOwner && (
-            <Button asChild size="sm" data-testid="team-new-agent">
-              <Link href="/team/new">
-                <PlusIcon className="size-4" />
-                {t("newAgent")}
-              </Link>
-            </Button>
-          )}
         </div>
         <nav className="custom-scrollbar flex flex-1 gap-1 overflow-x-auto px-2 pb-2 md:flex-col md:overflow-y-auto md:overflow-x-hidden">
           {isLoading &&
