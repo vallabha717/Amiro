@@ -29,8 +29,9 @@ test.describe.serial("team", () => {
       await page.goto("/team");
       await expect(page.getByTestId("team-heading")).toHaveText("Team");
       await expect(page.getByTestId("team-window")).toBeVisible();
-      await expect(page.getByTestId("sidebar-team-link")).toBeVisible();
+      await expect(page.getByTestId("sidebar-team-link")).toHaveCount(0);
       await expect(page.getByTestId("sidebar-user-button")).toBeVisible();
+      await expect(page.getByTestId("team-sidebar-new-agent")).toBeVisible();
       await expect(page.getByTestId("team-agent-main")).toContainText(agent.name);
       await expect(page.getByTestId("team-pick-agent")).toBeVisible();
     });
