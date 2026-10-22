@@ -843,6 +843,93 @@ fn mcp_status_blocking(state: &AppState, command: RuntimeCommand) -> Option<Valu
     None
 }
 
+/// Run one of the runtime's own commands (`/context`, `/info`, `/memory`…)
+/// for a session: the human-readable rendering and the structured data.
+/// Attaching reads state; it never starts a model turn.
+pub async fn run_command(
+    state: &AppState,
+    session_id: &str,
+    command: RuntimeCommand,
+) -> Result<(String, Value), ApiError> {
+    ensure_bridge(state).await?;
+    let state = state.clone();
+    let session_id = session_id.to_string();
+    blocking("runtime_command", move || {
+        let client = connect_client(&state, false)?;
+        client.attach_session(&session_id).map_err(runtime_error)?;
+        let out = client
+            .runtime_command(&session_id, command, Vec::new())
+            .map_err(runtime_error)?;
+        Ok((out.message, out.data))
+    })
+    .await
+}
+
+/// Run a runtime command that is not about one conversation (skills, MCP,
+/// agents) on the most recently active idle session. `None` when no session
+/// can answer.
+pub async fn run_command_any(
+    state: &AppState,
+    command: RuntimeCommand,
+) -> Result<Option<(String, Value)>, ApiError> {
+    ensure_bridge(state).await?;
+    let state = state.clone();
+    blocking("runtime_command_any", move || {
+        let client = connect_client(&state, false)?;
+        let mut sessions = client.list_sessions().map_err(runtime_error)?;
+        sessions.sort_by_key(|s| std::cmp::Reverse(s.last_active_at_ms.or(s.updated_at_ms).unwrap_or(0)));
+        for session in sessions
+            .iter()
+            .filter(|s| !s.archived && !session_is_busy(&s.status))
+        {
+            if client.attach_session(&session.session_id).is_err() {
+                continue;
+            }
+            if let Ok(out) = client.runtime_command(&session.session_id, command, Vec::new()) {
+                return Ok(Some((out.message, out.data)));
+            }
+        }
+        Ok(None)
+    })
+    .await
+}
+
+/// Start compacting a session's context now (the runtime's `/compact`). The
+/// summary is applied in the background; returning means it was accepted.
+pub async fn compact(state: &AppState, session_id: &str) -> Result<String, ApiError> {
+    ensure_bridge(state).await?;
+    let state = state.clone();
+    let session_id = session_id.to_string();
+    blocking("compact", move || {
+        let client = connect_client(&state, false)?;
+        client.attach_session(&session_id).map_err(runtime_error)?;
+        client.compact(&session_id).map_err(runtime_error)
+    })
+    .await
+}
+
+/// The runtime's own file search under a session's working folder
+/// (case-insensitive path substring), as `@` mentions use it.
+pub async fn find_files(
+    state: &AppState,
+    session_id: &str,
+    query: &str,
+    limit: u32,
+) -> Result<Vec<String>, ApiError> {
+    ensure_bridge(state).await?;
+    let state = state.clone();
+    let session_id = session_id.to_string();
+    let query = query.to_string();
+    blocking("find_files", move || {
+        let client = connect_client(&state, false)?;
+        client.attach_session(&session_id).map_err(runtime_error)?;
+        client
+            .find_files(&session_id, &query, Some(limit))
+            .map_err(runtime_error)
+    })
+    .await
+}
+
 /// The session's real context window and how much of it is in use, as the
 /// runtime itself sees them (the same figures its compaction decisions use).
 ///

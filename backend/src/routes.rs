@@ -5,6 +5,7 @@ pub mod agent_workspace;
 pub mod artifacts;
 pub mod archive;
 pub mod channels;
+pub mod composer;
 pub mod checkpoint;
 pub mod composio;
 pub mod connectors;
@@ -40,6 +41,7 @@ pub fn router() -> Router<AppState> {
         .merge(agent_workspace::routes())
         .merge(archive::routes())
         .merge(channels::routes())
+        .merge(composer::routes())
         .merge(contacts::routes())
         .merge(workspace_trust::routes())
         .merge(checkpoint::routes())

@@ -8,7 +8,8 @@ import React, {
   useEffect,
 } from "react";
 
-import { CheckIcon, HammerIcon, SearchIcon } from "lucide-react";
+import { CheckIcon, FileIcon, HammerIcon, SearchIcon } from "lucide-react";
+import { findComposerFiles, type ComposerCommand } from "@/lib/backend/composer-api";
 import { MCPIcon } from "ui/mcp-icon";
 
 import { ChatMention } from "app-types/chat";
@@ -48,7 +49,9 @@ interface ChatMentionInputProps {
   onFocus?: () => void;
   onBlur?: () => void;
   onSelectSkill?: (skill: { name: string; description?: string }) => void;
+  onRunCommand?: (command: ComposerCommand) => void;
   projectDirectory?: string;
+  threadId?: string;
 }
 
 export default function ChatMentionInput({
@@ -62,7 +65,9 @@ export default function ChatMentionInput({
   onFocus,
   onBlur,
   onSelectSkill,
+  onRunCommand,
   projectDirectory,
+  threadId,
 }: ChatMentionInputProps) {
   const latestMentions = useRef<string[]>([]);
 
@@ -100,7 +105,9 @@ export default function ChatMentionInput({
       fullWidthSuggestion={true}
       enableSkillSuggestion={true}
       onSelectSkill={onSelectSkill}
+      onRunCommand={onRunCommand}
       projectDirectory={projectDirectory}
+      threadId={threadId}
     />
   );
 }
@@ -139,6 +146,9 @@ export function ChatMentionInputMentionItem({
 
 export function ChatMentionInputSuggestion({
   onSelectMention,
+  onInsertText,
+  threadId,
+  projectDirectory,
   onClose,
   top,
   left,
@@ -152,6 +162,9 @@ export function ChatMentionInputSuggestion({
 }: {
   onClose: () => void;
   onSelectMention: (item: { label: string; id: string }) => void;
+  onInsertText?: (text: string) => void;
+  threadId?: string;
+  projectDirectory?: string;
   top: number;
   left: number;
   className?: string;
@@ -164,8 +177,52 @@ export function ChatMentionInputSuggestion({
 }) {
   const t = useTranslations("Common");
   const mcpList = appStore(useShallow((state) => state.mcpList));
+  const tc = useTranslations("Chat.Mentions");
   const [searchValue, setSearchValue] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [files, setFiles] = useState<{ root: string; paths: string[] } | null>(null);
+  const [filesError, setFilesError] = useState(false);
+
+  // Files under the chat's working folder, searched as the user types
+  // (debounced). Only when the composer can insert plain text.
+  useEffect(() => {
+    if (!onInsertText) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      findComposerFiles({ q: searchValue, threadId, projectDirectory, limit: 20 })
+        .then((result) => {
+          if (cancelled) return;
+          setFiles({ root: result.root, paths: result.files });
+          setFilesError(false);
+        })
+        .catch(() => {
+          if (!cancelled) setFilesError(true);
+        });
+    }, 120);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [searchValue, threadId, projectDirectory, onInsertText]);
+
+  const fileMentions = useMemo<MentionItemType[]>(
+    () =>
+      (files?.paths ?? []).map((path) => {
+        const slash = path.lastIndexOf("/");
+        return {
+          id: `file-${path}`,
+          type: "file",
+          label: path,
+          onSelect: () => onInsertText?.(`@${path} `),
+          icon: <FileIcon className="size-3.5 text-muted-foreground" />,
+          suffix:
+            slash > 0 ? (
+              <span className="ml-auto truncate pl-2 text-xs text-muted-foreground">{path.slice(0, slash)}</span>
+            ) : undefined,
+        };
+      }),
+    [files, onInsertText],
+  );
   const itemRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({});
   const isMobile = useIsMobile();
 
@@ -350,8 +407,8 @@ export function ChatMentionInputSuggestion({
 
   // Combine all mentions
   const allMentions = useMemo(() => {
-    return [...defaultToolMentions, ...mcpMentions];
-  }, [defaultToolMentions, mcpMentions]);
+    return [...fileMentions, ...mcpMentions, ...defaultToolMentions];
+  }, [fileMentions, defaultToolMentions, mcpMentions]);
 
   // Reset selected index when mentions change
   useEffect(() => {
@@ -437,181 +494,64 @@ export function ChatMentionInputSuggestion({
                     prev > 0 ? prev - 1 : allMentions.length - 1,
                   );
                 }
-                if (
-                  !isMobile &&
-                  (e.key === "ArrowLeft" || e.key === "ArrowRight")
-                ) {
-                  e.preventDefault();
-                  // Calculate column navigation
-                  const currentItem = allMentions[selectedIndex];
-                  const currentType =
-                    currentItem.type === "mcpTool" ? "mcp" : currentItem.type;
-                  const typeOrder = ["mcp", "defaultTool"];
-                  const currentTypeIndex = typeOrder.indexOf(currentType);
-
-                  if (e.key === "ArrowLeft" && currentTypeIndex > 0) {
-                    const prevType = typeOrder[currentTypeIndex - 1];
-                    const prevTypeItems = allMentions.filter(
-                      (item) =>
-                        item.type === prevType ||
-                        (prevType === "mcp" && item.type === "mcpTool"),
-                    );
-                    if (prevTypeItems.length > 0) {
-                      setSelectedIndex(allMentions.indexOf(prevTypeItems[0]));
-                    }
-                  } else if (
-                    e.key === "ArrowRight" &&
-                    currentTypeIndex < typeOrder.length - 1
-                  ) {
-                    const nextType = typeOrder[currentTypeIndex + 1];
-                    const nextTypeItems = allMentions.filter(
-                      (item) =>
-                        item.type === nextType ||
-                        (nextType === "mcp" && item.type === "mcpTool"),
-                    );
-                    if (nextTypeItems.length > 0) {
-                      setSelectedIndex(allMentions.indexOf(nextTypeItems[0]));
-                    }
-                  }
-                }
               }}
               autoFocus
             />
           </div>
 
           <div
-            className={cn(
-              "overflow-hidden",
-              isMobile ? "max-h-[50vh]" : "h-[300px]",
-            )}
+            data-testid="chat-mention-list"
+            className={cn("overflow-y-auto", isMobile ? "max-h-[50vh]" : "max-h-[340px]")}
           >
             {allMentions.length === 0 ? (
-              <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground p-8">
-                <div className="text-center">
-                  <div className="mb-2">
-                    {searchValue
-                      ? t("noResults")
-                      : "Type @ to see available mentions"}
-                  </div>
-                  {searchValue && (
-                    <div className="text-xs opacity-60">
-                      No results found for &quot;{searchValue}&quot;
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : isMobile ? (
-              // Mobile vertical layout
-              <div className="overflow-y-auto max-h-[50vh]">
-                {groupedMentions.defaultTool.items.length > 0 && (
-                  <div className="p-2 border-t">
-                    <div className="text-xs font-medium text-muted-foreground px-2 py-1.5">
-                      {groupedMentions.defaultTool.title}
-                    </div>
-                    <div className="space-y-1">
-                      {groupedMentions.defaultTool.items.map((item) => (
-                        <MentionItem
-                          key={item.id}
-                          item={item}
-                          isSelected={
-                            allMentions[selectedIndex]?.id === item.id
-                          }
-                          ref={(el) => {
-                            itemRefs.current[item.id] = el;
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {groupedMentions.mcp.items.length > 0 && (
-                  <div className="p-2 border-t">
-                    <div className="text-xs font-medium text-muted-foreground px-2 py-1.5">
-                      {groupedMentions.mcp.title}
-                    </div>
-                    <div className="space-y-1">
-                      {groupedMentions.mcp.items.map((item) => (
-                        <MentionItem
-                          key={item.id}
-                          item={item}
-                          isSelected={
-                            allMentions[selectedIndex]?.id === item.id
-                          }
-                          ref={(el) => {
-                            itemRefs.current[item.id] = el;
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
+              <div className="flex items-center justify-center p-8 text-center text-sm text-muted-foreground">
+                {searchValue ? tc("noMatch", { query: searchValue }) : filesError ? tc("filesFailed") : tc("empty")}
               </div>
             ) : (
-              // Desktop horizontal layout
-              <div className="flex flex-1 h-[300px]">
-                {/* MCP Tools Column */}
-                <div className="flex-1 border-r overflow-y-auto">
-                  <div className="p-2">
-                    <div className="text-xs font-medium text-muted-foreground px-2 py-1.5">
-                      {groupedMentions.mcp.title}
-                    </div>
-                    <div className="space-y-1">
-                      {groupedMentions.mcp.items.length > 0 ? (
-                        groupedMentions.mcp.items.map((item) => (
-                          <MentionItem
-                            key={item.id}
-                            item={item}
-                            isSelected={
-                              allMentions[selectedIndex]?.id === item.id
-                            }
-                            ref={(el) => {
-                              itemRefs.current[item.id] = el;
-                            }}
-                          />
-                        ))
-                      ) : (
-                        <div className="px-2 py-3 text-xs text-muted-foreground text-center">
-                          No MCP tools found
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Default Tools Column */}
-                <div className="flex-1 overflow-y-auto">
-                  <div className="p-2">
-                    <div className="text-xs font-medium text-muted-foreground px-2 py-1.5">
-                      {groupedMentions.defaultTool.title}
-                    </div>
-                    <div className="space-y-1">
-                      {groupedMentions.defaultTool.items.length > 0 ? (
-                        groupedMentions.defaultTool.items.map((item) => (
-                          <MentionItem
-                            key={item.id}
-                            item={item}
-                            isSelected={
-                              allMentions[selectedIndex]?.id === item.id
-                            }
-                            ref={(el) => {
-                              itemRefs.current[item.id] = el;
-                            }}
-                          />
-                        ))
-                      ) : (
-                        <div className="px-2 py-3 text-xs text-muted-foreground text-center">
-                          No app tools found
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <>
+                {fileMentions.length > 0 && (
+                  <MentionGroup testId="chat-mention-group-files"
+                    title={tc("files", { folder: files?.root.split("/").filter(Boolean).pop() ?? "" })}>
+                    {fileMentions.map((item) => (
+                      <MentionItem key={item.id} item={item}
+                        isSelected={allMentions[selectedIndex]?.id === item.id}
+                        ref={(el) => { itemRefs.current[item.id] = el; }} />
+                    ))}
+                  </MentionGroup>
+                )}
+                {groupedMentions.mcp.items.length > 0 && (
+                  <MentionGroup testId="chat-mention-group-mcp" title={tc("mcpTools")}>
+                    {groupedMentions.mcp.items.map((item) => (
+                      <MentionItem key={item.id} item={item}
+                        isSelected={allMentions[selectedIndex]?.id === item.id}
+                        ref={(el) => { itemRefs.current[item.id] = el; }} />
+                    ))}
+                  </MentionGroup>
+                )}
+                {groupedMentions.defaultTool.items.length > 0 && (
+                  <MentionGroup testId="chat-mention-group-tools" title={tc("appTools")}>
+                    {groupedMentions.defaultTool.items.map((item) => (
+                      <MentionItem key={item.id} item={item}
+                        isSelected={allMentions[selectedIndex]?.id === item.id}
+                        ref={(el) => { itemRefs.current[item.id] = el; }} />
+                    ))}
+                  </MentionGroup>
+                )}
+              </>
             )}
           </div>
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+function MentionGroup({ title, testId, children }: { title: string; testId: string; children: React.ReactNode }) {
+  return (
+    <div data-testid={testId} className="border-b p-2 last:border-b-0">
+      <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{title}</div>
+      <div className="space-y-0.5">{children}</div>
+    </div>
   );
 }
 
@@ -630,7 +570,9 @@ const MentionItem = React.forwardRef<
       onClick={() => item.onSelect()}
     >
       {item.icon}
-      <span className="truncate min-w-0">{item.label}</span>
+      <span className={cn("truncate min-w-0", item.type === "file" && "font-mono text-xs")}>
+        {item.type === "file" ? item.label.split("/").pop() : item.label}
+      </span>
       {item.suffix}
     </button>
   );

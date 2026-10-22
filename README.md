@@ -124,7 +124,9 @@ diagrams inline in its answer. A session panel shows the context window, the
 connectors in use, todos, edited files and swarm agents. A tool filter can
 hide tool-call noise, down to "answers only". Threads can be archived and
 exported, and titles come from the runtime (a title you edit by hand is never
-overwritten). See [docs/CHAT-UX-AND-SWARM.md](docs/CHAT-UX-AND-SWARM.md).
+overwritten). In the composer, `/` lists the runtime's commands (`/compact`,
+`/context`, `/memory`, `/mcp`…) and your skills, and `@` finds files in the
+chat's folder. See [docs/CHAT-UX-AND-SWARM.md](docs/CHAT-UX-AND-SWARM.md).
 
 ### Voice mode with your mascot
 

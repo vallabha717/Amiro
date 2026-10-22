@@ -151,7 +151,7 @@ fn split_attachments(attachments: Option<&Value>) -> (Vec<(String, String)>, Vec
 ///
 /// Fail-closed: an absolute path inside the configured browse roots, not on the
 /// deny list, and an existing directory. No silent fallback to another folder.
-fn validate_working_dir(raw: &str) -> Result<String, ApiError> {
+pub(crate) fn validate_working_dir(raw: &str) -> Result<String, ApiError> {
     let path = FsPath::new(raw);
     if !path.is_absolute() {
         return Err(ApiError(

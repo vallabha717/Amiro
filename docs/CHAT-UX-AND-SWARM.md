@@ -38,6 +38,35 @@ and writes are added. Other providers already include cached tokens in
 `input_tokens`. The chat stream also copies the same snapshot into the finish
 metadata (`backend/src/chat.rs`, `metadata["context"]`).
 
+## Composer: `/` commands and `@` files
+
+**`/`** at the start of an empty composer opens one menu with two groups:
+
+- **Commands**: the embedded runtime's own commands, run in the runtime
+  and never sent to the model: `/compact` (summarize older messages now),
+  `/context`, `/info`, `/cache`, `/memory`, `/skills`, `/agents`, `/swarm`,
+  `/mcp` and `/refresh-model-list`. The answer is the runtime's own
+  rendering, shown in a panel above the composer; nothing enters the
+  conversation. Commands about this conversation (`/compact`, `/context`,
+  `/info`, `/cache`, `/swarm`) need it to have started; the others answer
+  from any idle session. When the runtime refuses (a chat too short to
+  compact, say), its reason is shown as is. Commands that need a terminal or
+  a developer repository (`/commit`, `/merge`, auth, server reloads) stay in
+  jcode's TUI.
+- **Skills**: project skills, then user and bundled ones; picking one adds
+  it as a chip.
+
+**`@`** opens a menu whose first group is **Files** in the chat's working
+folder (a team agent's own folder, the folder picked in the composer, or the
+workspace), searched as you type, file-name matches first. Picking one
+inserts `@path/to/file` into the message, as jcode's TUI does. The search is
+the runtime's `find_files` once the chat has a session, and the same walk
+(same skipped `.git`, `node_modules`, `target`, `.next`) before it does. MCP
+tools and app tools follow in the same list.
+
+Backend: `POST /api/composer/command` and `GET /api/composer/files`
+(`backend/src/routes/composer.rs`).
+
 ## Tool-call filter
 
 Source: `src/components/workspace/tool-filter-menu.tsx`,
