@@ -45,6 +45,7 @@ import {
   notificationToDeliveryPayload,
   useNotificationStream,
 } from "@/lib/notifications/notification-runtime";
+import { ChannelDeliveryStatus } from "@/components/notifications/channel-delivery-status";
 
 function StatusBadge({
   active,
@@ -488,6 +489,10 @@ export default function AdminNotificationsPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Where notifications go outside Amiro: bots from Channels, the
+            owner's verified accounts from Contacts. */}
+        <ChannelDeliveryStatus />
       </div>
     </ScrollArea>
   );

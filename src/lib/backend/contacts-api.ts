@@ -86,10 +86,28 @@ export async function mergeContacts(keepId: string, mergeId: string) {
   });
 }
 
-export async function verifyContactChannel(channelId: string) {
-  return apiJson<{ ok: boolean }>(`/api/contact-channels/${encodeURIComponent(channelId)}/verify`, {
-    method: "POST",
-  });
+/** Result of a verify step: a code went out, or the channel is now verified. */
+export interface ContactChannelVerifyResult {
+  ok: boolean;
+  status: "code_sent" | "verified";
+  via?: "code" | "manual";
+  channel?: string;
+}
+
+/**
+ * Verify a contact channel. Without `code`, Amiro sends a six-digit code to
+ * the account through the channel's bot (`status: "code_sent"`); call again
+ * with the code to finish. Channels Amiro cannot message are confirmed
+ * directly (`via: "manual"`).
+ */
+export async function verifyContactChannel(channelId: string, code?: string) {
+  return apiJson<ContactChannelVerifyResult>(
+    `/api/contact-channels/${encodeURIComponent(channelId)}/verify`,
+    {
+      method: "POST",
+      ...(code ? { body: JSON.stringify({ code }) } : {}),
+    },
+  );
 }
 
 export async function updateContactChannelStatus(

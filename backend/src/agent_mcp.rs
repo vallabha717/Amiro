@@ -322,6 +322,19 @@ pub fn tool_definitions() -> Vec<Value> {
         json!({"name":"schedule_delete","description":"Delete a schedule (run history is kept).","inputSchema":{"type":"object","properties":{"id":id},"required":["id"],"additionalProperties":false}}),
         json!({"name":"schedule_run_now","description":"Run a schedule immediately and return the run result.","inputSchema":{"type":"object","properties":{"id":id},"required":["id"],"additionalProperties":false}}),
         json!({"name":"schedule_runs","description":"Recent runs of a schedule (status, times, output or error, result thread). Use this to read logs.","inputSchema":{"type":"object","properties":{"id":id,"limit":{"type":"integer","minimum":1,"maximum":50,"default":5}},"required":["id"],"additionalProperties":false}}),
+        json!({"name":"notify_send","description":"Send the owner a notification (Bell feed, desktop banner, web push). Use when something the owner asked to be told about happens.","inputSchema":{"type":"object","properties":{
+            "title":{"type":"string","description":"Short notification title"},
+            "body":{"type":"string","description":"Notification text"},
+            "urgency":{"type":"string","enum":["low","normal","medium","high","critical"],"description":"How urgent it is (medium is treated as normal)"},
+            "sourceEventName":{"type":"string","description":"Event name, e.g. assistant.share"},
+            "threadId":{"type":"string","description":"Chat thread to link to, if any"},
+            "scheduleId":{"type":"string","description":"Schedule to link to, if any"}
+        },"required":["title","body"],"additionalProperties":false}}),
+        json!({"name":"notify_channel_list","description":"Show where the owner's notifications can go outside Amiro (Telegram, Slack, Discord) and what is missing for each: the channel's bot is connected on the Channels page, and the owner's own account on that app is added and verified on their contact card in Contacts. Metadata only, never secret values.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}}),
+        json!({"name":"notify_channel_resend","description":"Re-send a recorded notification delivery to an external channel (uses the stored copy and the owner's verified address, records a new delivery row).","inputSchema":{"type":"object","properties":{
+            "deliveryId":{"type":"string","description":"Delivery id from the Bell feed or a delivery row"},
+            "channel":{"type":"string","description":"telegram, slack or discord"}
+        },"required":["deliveryId","channel"],"additionalProperties":false}}),
         // --- Models & Providers configuration ---
         json!({"name":"provider_catalog","description":"List all supported LLM providers, their auth mechanism (oauth, device-code, api-key, local-endpoint), connection status, and available models.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}}),
         json!({"name":"provider_models","description":"List available models for a specific LLM provider or all connected providers.","inputSchema":{"type":"object","properties":{
@@ -800,6 +813,68 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<(String
                 )
             };
             Ok((text, json!({"runs": views})))
+        }
+        "notify_send" => {
+            let body = json!({
+                "sourceChannel": "assistant_tool",
+                "sourceEventName": arg_str(args, "sourceEventName")?.filter(|s| !s.trim().is_empty()).unwrap_or("assistant.share"),
+                "title": require_str(args, "title")?,
+                "body": require_str(args, "body")?,
+                "urgency": arg_str(args, "urgency")?.filter(|s| !s.trim().is_empty()).unwrap_or("normal"),
+                "threadId": arg_str(args, "threadId")?.filter(|s| !s.trim().is_empty()),
+                "scheduleId": arg_str(args, "scheduleId")?.filter(|s| !s.trim().is_empty()),
+            });
+            let emitted = crate::notify::emit_signal(state, &uid, &body)
+                .await
+                .map_err(err_text)?;
+            let title = emitted
+                .get("item")
+                .and_then(|item| item.get("title"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            Ok((
+                format!("Notification sent: {title}. It appears in the owner's Bell feed."),
+                json!({"notification": emitted.get("item").cloned().unwrap_or(Value::Null)}),
+            ))
+        }
+        "notify_channel_list" => {
+            let listed = crate::routes::notify_channels::list_channels(state, &uid)
+                .await
+                .map_err(err_text)?;
+            let lines: Vec<String> = listed
+                .get("channels")
+                .and_then(|c| c.as_array())
+                .map(|channels| {
+                    channels
+                        .iter()
+                        .map(|c| {
+                            let channel = c.get("channel").and_then(Value::as_str).unwrap_or("?");
+                            let step = match c.get("nextStep").and_then(Value::as_str).unwrap_or("") {
+                                "ready" => "ready: notifications go to your verified account",
+                                "connect_bot" => "connect its bot on the Channels page",
+                                "add_address" => "add your account to your contact card in Contacts",
+                                "verify_address" => "verify your account on your contact card in Contacts",
+                                "fix_address" => "your saved account cannot receive direct messages; add your user id in Contacts",
+                                _ => "only the owner's notifications go outside Amiro",
+                            };
+                            format!("{channel}: {step}")
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            Ok((format!("External notification channels:\n{}", lines.join("\n")), listed))
+        }
+        "notify_channel_resend" => {
+            let delivery_id = require_str(args, "deliveryId")?;
+            let channel = require_str(args, "channel")?.to_lowercase();
+            let resent = crate::routes::notify_channels::resend_to_channel(state, &uid, delivery_id, &channel)
+                .await
+                .map_err(err_text)?;
+            let status = resent.get("status").and_then(Value::as_str).unwrap_or("failed");
+            Ok((
+                format!("Resend to {channel}: {status}."),
+                json!({"resend": resent}),
+            ))
         }
 
         // ===================================================================
@@ -2223,5 +2298,48 @@ mod tests {
         assert_eq!(env["AMIRO_AGENT_MCP_TOKEN"], token);
         // A new port rewrites the entry.
         assert!(wire(&state, 9999).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn notify_send_emits_through_the_pipeline() {
+        let state = state();
+        write_json(
+            &state.home.join("users.json"),
+            &json!({"users":[{"id":"owner","role":"admin"}]}),
+        )
+        .await
+        .unwrap();
+        let (text, data) = call_tool(
+            &state,
+            "notify_send",
+            &json!({"title":"Hello","body":"World","urgency":"medium"}),
+        )
+        .await
+        .unwrap();
+        assert!(text.contains("Hello"), "unexpected text: {text}");
+        let item = &data["notification"];
+        assert_eq!(item["title"], json!("Hello"));
+        // The tool accepts Vellum's `medium`; the feed persists `normal`.
+        assert_eq!(item["urgency"], json!("normal"));
+        assert_eq!(item["category"], json!("system"));
+    }
+
+    #[tokio::test]
+    async fn notify_channel_list_says_what_each_channel_still_needs() {
+        let state = state();
+        write_json(
+            &state.home.join("users.json"),
+            &json!({"users":[{"id":"owner","role":"admin"}]}),
+        )
+        .await
+        .unwrap();
+        let (text, data) = call_tool(&state, "notify_channel_list", &json!({}))
+            .await
+            .unwrap();
+        assert_eq!(data["channels"].as_array().unwrap().len(), 3);
+        assert!(text.contains("telegram: connect its bot on the Channels page"), "{text}");
+        assert!(call_tool(&state, "notify_channel_bind", &json!({"channel": "telegram"}))
+            .await
+            .is_err());
     }
 }

@@ -40,6 +40,11 @@ import { TextShimmer } from "ui/text-shimmer";
 import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
 import { deduplicateByKey, groupBy } from "lib/utils";
 import { ChatThread } from "app-types/chat";
+import {
+  threadStatusOf,
+  useThreadActivity,
+} from "@/lib/notifications/thread-activity";
+import { ThreadStatusMark } from "./thread-status-mark";
 
 type ThreadGroup = {
   label: string;
@@ -61,6 +66,7 @@ export function AppSidebarThreads() {
       state.generatingTitleThreadIds,
     ]),
   );
+  const threadActivity = useThreadActivity();
   // State to track if expanded view is active
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -271,7 +277,7 @@ export function AppSidebarThreads() {
                                   <Link
                                     href={`${agentScopedPath(agentScope, "/")}?thread=${thread.id}`}
                                     data-testid="sidebar-thread-link"
-                                    className="flex items-center"
+                                    className="flex items-center gap-2"
                                   >
                                     {generatingTitleThreadIds.includes(
                                       thread.id,
@@ -284,6 +290,14 @@ export function AppSidebarThreads() {
                                         {thread.title || "New Chat"}
                                       </p>
                                     )}
+                                    <ThreadStatusMark
+                                      status={threadStatusOf(
+                                        threadActivity,
+                                        thread.id,
+                                        currentThreadId,
+                                      )}
+                                      className="ml-auto transition-opacity group-hover/thread:opacity-0"
+                                    />
                                   </Link>
                                 </SidebarMenuButton>
                               </TooltipTrigger>

@@ -632,6 +632,8 @@ async fn chat_handler(
         let turn_started = std::time::Instant::now();
         let mut tool_count: u64 = 0;
         let mut guard = CancelGuard::new(state_for_stream.clone(), session.session_id.clone());
+        // The chat list shows this thread as working until the turn ends.
+        let activity = crate::thread_activity::RunningGuard::start(&uid, &thread_id);
         let mut updates = turn.updates;
         let mut text_id = uuid::Uuid::new_v4().to_string();
         let mut reasoning_id = uuid::Uuid::new_v4().to_string();
@@ -818,21 +820,34 @@ async fn chat_handler(
                 yield frame(json!({"type":"data-thread-title","data":{"threadId":thread_id,"title":title},"transient":true}));
             }
         }
+        // Whether the user is watching this chat right now, read once so the
+        // notification and the chat list agree.
+        let watching = crate::notify::presence::is_thread_focused(&uid, &thread_id);
         if !failed && !assistant_preview.trim().is_empty() {
-            let _ = crate::routes::notifications::emit_notification(
+            // Chat replies go through the signal pipeline. A reply the user
+            // is watching is suppressed there; one they left is notified.
+            let _ = crate::notify::emit_signal(
                 &state_for_stream,
                 &uid,
-                &resolved_title,
-                assistant_preview.trim(),
-                "chat_reply",
-                "normal",
-                Some(thread_id.clone()),
-                None,
-                "chat.assistant_reply",
+                &serde_json::json!({
+                    "sourceChannel": "assistant_tool",
+                    "sourceContextId": thread_id.clone(),
+                    "sourceEventName": "chat.assistant_reply",
+                    "title": &resolved_title,
+                    "body": assistant_preview.trim(),
+                    "urgency": "normal",
+                    "threadId": thread_id,
+                    "attentionHints": {
+                        "requiresAction": false,
+                        "isAsyncBackground": false,
+                        "visibleInSourceNow": watching,
+                    },
+                    "routingIntent": "single_channel",
+                }),
             )
             .await;
         }
-        let _ = failed;
+        activity.finish(&state_for_stream, failed).await;
         let mut metadata = json!({
             "chatModel": chat_model,
             "model": requested_model,

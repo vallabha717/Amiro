@@ -3,6 +3,7 @@ import useSWR, { mutate as globalMutate } from "swr";
 import { toast } from "sonner";
 import { getSessionToken, getBackendSharedSecret, backendUrl } from "@/lib/backend/config";
 import { appStore } from "@/app/store";
+import { THREAD_ACTIVITY_KEY } from "@/lib/backend/notifications-api";
 import {
   NOTIFICATIONS_LIST_KEY,
   NOTIFICATIONS_STREAM_PATH,
@@ -10,10 +11,13 @@ import {
   ackNotificationDelivery,
   buildThreadUrl,
   buildScheduleUrl,
+  parseDeepLinkTarget,
   parseNotification,
+  resolveDeepLinkTarget,
   getCachedNotificationSettings,
   type AmiroNotification,
   type NotificationCategory,
+  type NotificationDeepLinkTarget,
   type NotificationDeliveryPayload,
   type NotificationReceiptClass,
   type NotificationSettings,
@@ -423,6 +427,20 @@ export function focusWindow(): void {
   }
 }
 
+export function navigateToDeepLinkTarget(
+  target: NotificationDeepLinkTarget | null | undefined,
+): void {
+  const resolved = resolveDeepLinkTarget({
+    deepLinkTarget: target ?? null,
+    threadId: null,
+    scheduleId: null,
+  });
+  navigateToThreadOrSchedule(
+    resolved?.threadId,
+    resolved?.scheduleId,
+  );
+}
+
 export function navigateToThreadOrSchedule(
   threadId: string | null | undefined,
   scheduleId: string | null | undefined,
@@ -454,14 +472,28 @@ export function setupNotificationClickListeners(): void {
   window.addEventListener("amiro:notification-click", (event: Event) => {
     const custom = event as CustomEvent;
     const detail = custom.detail || {};
-    navigateToThreadOrSchedule(detail.threadId, detail.scheduleId);
+    // Phase 02: clicks route via the intent's deepLinkTarget, falling back
+    // to the legacy flat thread/schedule ids.
+    navigateToDeepLinkTarget(
+      resolveDeepLinkTarget({
+        deepLinkTarget: parseDeepLinkTarget(detail.deepLinkTarget),
+        threadId: detail.threadId,
+        scheduleId: detail.scheduleId,
+      }),
+    );
   });
 
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.addEventListener("message", (event) => {
       const data = event.data;
       if (data?.type === "amiro:notification-click") {
-        navigateToThreadOrSchedule(data.threadId, data.scheduleId);
+        navigateToDeepLinkTarget(
+          resolveDeepLinkTarget({
+            deepLinkTarget: parseDeepLinkTarget(data.deepLinkTarget),
+            threadId: data.threadId,
+            scheduleId: data.scheduleId,
+          }),
+        );
       }
     });
   }
@@ -592,6 +624,11 @@ export function showBrowserNotification(
   if (checkBrowserPermission() !== "granted") return false;
 
   const title = payload.title;
+  const deepLinkTarget = resolveDeepLinkTarget({
+    deepLinkTarget: payload.deepLinkTarget ?? null,
+    threadId: payload.threadId,
+    scheduleId: payload.scheduleId,
+  });
   const options: NotificationOptions = {
     body: payload.preview || payload.body,
     tag: payload.deliveryId,
@@ -599,6 +636,7 @@ export function showBrowserNotification(
     data: {
       threadId: payload.threadId,
       scheduleId: payload.scheduleId,
+      deepLinkTarget,
       notificationId: payload.notificationId,
     },
   };
@@ -618,7 +656,7 @@ export function showBrowserNotification(
       const notification = new window.Notification(title, options);
       notification.onclick = () => {
         focusWindow();
-        navigateToThreadOrSchedule(payload.threadId, payload.scheduleId);
+        navigateToDeepLinkTarget(deepLinkTarget);
         notification.close();
       };
       return true;
@@ -645,7 +683,13 @@ export function showInAppToast(
       label: "View",
       onClick: () => {
         onClick?.();
-        navigateToThreadOrSchedule(payload.threadId, payload.scheduleId);
+        navigateToDeepLinkTarget(
+          resolveDeepLinkTarget({
+            deepLinkTarget: payload.deepLinkTarget ?? null,
+            threadId: payload.threadId,
+            scheduleId: payload.scheduleId,
+          }),
+        );
       },
     },
     icon: "🔔",
@@ -807,6 +851,7 @@ export function notificationToDeliveryPayload(
     silent: notification.silent,
     threadId: notification.threadId,
     scheduleId: notification.scheduleId,
+    deepLinkTarget: notification.deepLinkTarget ?? null,
     icon: "/favicon.ico",
     data: notification.data,
   };
@@ -963,6 +1008,19 @@ export function useNotificationStream(): void {
         if (obj.type === "notification_intent" || obj.notification) {
           const notification = parseNotification(obj.notification ?? obj);
           if (notification) {
+            // Phase 02: the intent envelope carries the canonical deliveryId
+            // and deepLinkTarget; the item already has them, but the envelope
+            // wins when both are present.
+            if (
+              typeof obj.deliveryId === "string" &&
+              obj.deliveryId.length > 0
+            ) {
+              notification.deliveryId = obj.deliveryId;
+            }
+            const target = parseDeepLinkTarget(obj.deepLinkTarget);
+            if (target) {
+              notification.deepLinkTarget = target;
+            }
             emitNotificationReceived(notification);
             const currentThreadId = appStore.getState().currentThreadId;
             const settings = getCachedNotificationSettings();
@@ -974,6 +1032,10 @@ export function useNotificationStream(): void {
           }
         } else if (obj.type === "notifications_updated") {
           void globalMutate(NOTIFICATIONS_LIST_KEY);
+        } else if (obj.type === "thread_activity") {
+          // A chat started, finished or was opened: refresh the chat list's
+          // status marks.
+          void globalMutate(THREAD_ACTIVITY_KEY);
         } else if (obj.type === "snapshot") {
           void globalMutate(NOTIFICATIONS_LIST_KEY);
         }

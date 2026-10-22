@@ -13,12 +13,17 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const data = event.notification.data || {};
+  // Phase 02: clicks route via the intent's deepLinkTarget, falling back to
+  // the legacy flat thread/schedule ids.
+  const link = data.deepLinkTarget || {};
+  const threadId = link.threadId || data.threadId || null;
+  const scheduleId = link.scheduleId || data.scheduleId || null;
   const targetUrl =
     data.url ||
-    (data.threadId
-      ? `/?thread=${encodeURIComponent(data.threadId)}`
-      : data.scheduleId
-        ? `/schedules`
+    (threadId
+      ? `/?thread=${encodeURIComponent(threadId)}`
+      : scheduleId
+        ? `/schedules?id=${encodeURIComponent(scheduleId)}`
         : "/");
 
   event.waitUntil(
@@ -29,8 +34,9 @@ self.addEventListener("notificationclick", (event) => {
           if ("focus" in client) {
             client.postMessage({
               type: "amiro:notification-click",
-              threadId: data.threadId || null,
-              scheduleId: data.scheduleId || null,
+              threadId,
+              scheduleId,
+              deepLinkTarget: { threadId, scheduleId },
               notificationId: data.notificationId || null,
               actionId: event.action || "view",
               targetUrl,

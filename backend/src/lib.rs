@@ -8,12 +8,14 @@ pub mod config;
 pub mod credentials;
 pub mod heartbeat;
 pub mod models;
+pub mod notify;
 pub mod onboarding;
 pub mod runtime;
 pub mod sandbox;
 pub mod schedules;
 pub mod state;
 pub mod swarm;
+pub mod thread_activity;
 pub mod threads;
 
 pub mod routes;

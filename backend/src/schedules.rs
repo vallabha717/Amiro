@@ -1608,17 +1608,29 @@ async fn finalize(
     };
     if let Some((uid, name, status, preview, thread_id)) = notif_info {
         if status == "ok" || status == "failed" {
+            // Phase 02: schedule results go through the signal pipeline. The
+            // run id is the dedupe key, so a retried finalize emits once.
             let urgency = if status == "failed" { "high" } else { "normal" };
-            let _ = crate::routes::notifications::emit_notification(
+            let _ = crate::notify::emit_signal(
                 state,
                 &uid,
-                &name,
-                &preview,
-                "schedule_result",
-                urgency,
-                thread_id,
-                Some(schedule_id.to_string()),
-                "schedule.result",
+                &serde_json::json!({
+                    "sourceChannel": "scheduler",
+                    "sourceContextId": schedule_id,
+                    "sourceEventName": "schedule.result",
+                    "title": name,
+                    "body": preview,
+                    "urgency": urgency,
+                    "threadId": thread_id,
+                    "scheduleId": schedule_id,
+                    "dedupeKey": format!("schedule-run-{run_id}"),
+                    "attentionHints": {
+                        "requiresAction": status == "failed",
+                        "isAsyncBackground": true,
+                        "visibleInSourceNow": false,
+                    },
+                    "routingIntent": "single_channel",
+                }),
             )
             .await;
         }

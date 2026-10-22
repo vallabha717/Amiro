@@ -17,7 +17,6 @@
 //! high/critical urgencies stay audible.
 
 use std::convert::Infallible;
-use std::sync::OnceLock;
 use std::time::Duration;
 
 use axum::extract::{Path, Query, State};
@@ -32,7 +31,6 @@ use tokio::sync::broadcast;
 use crate::state::{now_iso, read_json, write_json, ApiError, AppState, AuthUser};
 
 const KEEPALIVE: Duration = Duration::from_secs(15);
-const CHANNEL_CAPACITY: usize = 256;
 
 const CATEGORIES: [&str; 5] = [
     "chat_reply",
@@ -50,18 +48,11 @@ const RECEIPT_CLASSES: [&str; 4] = [
     "in_app_toast",
 ];
 
-/// Process-wide fan-out channel. Created on first use so any route or helper
-/// can publish without threading a sender through `AppState`.
-static NOTIFY_TX: OnceLock<broadcast::Sender<Value>> = OnceLock::new();
-
-fn sender() -> &'static broadcast::Sender<Value> {
-    NOTIFY_TX.get_or_init(|| broadcast::channel(CHANNEL_CAPACITY).0)
-}
-
-/// Push an already-built event onto the fan-out channel. A send with no
-/// subscribers is not an error here (a client simply was not connected).
-fn publish(event: Value) {
-    let _ = sender().send(event);
+/// Push an already-built event onto the pipeline fan-out channel (owned by
+/// `crate::notify::broadcaster`). A send with no subscribers is not an error
+/// here (a client simply was not connected).
+pub(crate) fn publish(event: Value) {
+    crate::notify::broadcaster::publish(event);
 }
 
 fn user_id_of(user: &AuthUser) -> String {
@@ -135,11 +126,11 @@ pub fn resolve_silent(settings: &Value, category: &str, urgency: &str) -> bool {
     !(audible_category || audible_urgency)
 }
 
-async fn load_settings_doc(state: &AppState) -> Result<Value, ApiError> {
+pub(crate) async fn load_settings_doc(state: &AppState) -> Result<Value, ApiError> {
     read_json(&settings_path(state), json!({})).await
 }
 
-fn settings_for(doc: &Value, uid: &str) -> Value {
+pub(crate) fn settings_for(doc: &Value, uid: &str) -> Value {
     let mut settings = default_settings();
     if let Some(stored) = doc.get(uid) {
         if let Some(map) = stored.as_object() {
@@ -224,7 +215,7 @@ fn default_actions(category: &str, thread_id: Option<&str>) -> Vec<Value> {
 
 /// Build a normalized notification item from caller input. Validation rejects
 /// unknown enums so a bad category can never be persisted.
-fn build_item(
+pub(crate) fn build_item(
     uid: &str,
     body: &Value,
     settings: &Value,
@@ -319,8 +310,18 @@ fn build_item(
         .unwrap_or(&timestamp)
         .to_string();
 
+    // Compat (migration 05-migration): inbound payloads without a delivery id
+    // get one generated, so old emitters keep working.
+    let delivery_id = body
+        .get("deliveryId")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
     let mut item = Map::new();
     item.insert("id".into(), json!(id));
+    item.insert("deliveryId".into(), json!(delivery_id));
     item.insert("userId".into(), json!(uid));
     item.insert("title".into(), json!(title));
     item.insert("body".into(), json!(text));
@@ -342,7 +343,11 @@ fn build_item(
 
 /// Persist an item for `uid`: replace in place when the id already exists,
 /// otherwise insert at the front so the feed stays newest-first.
-async fn persist_item(state: &AppState, uid: &str, item: Value) -> Result<u64, ApiError> {
+pub(crate) async fn persist_item(
+    state: &AppState,
+    uid: &str,
+    item: Value,
+) -> Result<u64, ApiError> {
     let _lock = state.store.lock().await;
     let path = notifications_path(state);
     let mut doc = read_json(&path, json!({ "version": 2, "items": {} })).await?;
@@ -362,47 +367,21 @@ async fn persist_item(state: &AppState, uid: &str, item: Value) -> Result<u64, A
     Ok(unread)
 }
 
-/// Public helper for schedules, heartbeat, and chat turns to raise a real
-/// notification without going through HTTP. Persists, then broadcasts
-/// `notification_intent` so every connected client updates immediately.
-pub async fn emit_notification(
-    state: &AppState,
-    user_id: &str,
-    title: &str,
-    body: &str,
-    category: &str,
-    urgency: &str,
-    thread_id: Option<String>,
-    schedule_id: Option<String>,
-    source_event_name: &str,
-) -> Result<Value, ApiError> {
-    if user_id.trim().is_empty() {
-        return Err(ApiError(
-            StatusCode::BAD_REQUEST,
-            "notification requires a user id".to_string(),
-        ));
-    }
-    let settings_doc = load_settings_doc(state).await?;
-    let settings = settings_for(&settings_doc, user_id);
-
-    let mut input = Map::new();
-    input.insert("title".into(), json!(title));
-    input.insert("body".into(), json!(body));
-    input.insert("category".into(), json!(category));
-    input.insert("urgency".into(), json!(urgency));
-    input.insert("threadId".into(), json!(thread_id));
-    input.insert("scheduleId".into(), json!(schedule_id));
-    input.insert("sourceEventName".into(), json!(source_event_name));
-    let item = build_item(user_id, &Value::Object(input), &settings, None)?;
-
-    let unread = persist_item(state, user_id, item.clone()).await?;
-    publish(json!({
+/// Build the `notification_intent` SSE event (Phase 02 shape): the current
+/// fields plus `deliveryId` and a `deepLinkTarget` so clients can route
+/// clicks without guessing URLs from the item.
+pub(crate) fn intent_event(user_id: &str, delivery_id: &str, item: &Value, unread: u64) -> Value {
+    json!({
         "type": "notification_intent",
         "userId": user_id,
+        "deliveryId": delivery_id,
+        "deepLinkTarget": {
+            "threadId": item.get("threadId").cloned().unwrap_or(Value::Null),
+            "scheduleId": item.get("scheduleId").cloned().unwrap_or(Value::Null),
+        },
         "notification": item,
         "unreadCount": unread,
-    }));
-    Ok(item)
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -483,13 +462,13 @@ async fn create_notification(
     let settings_doc = load_settings_doc(&state).await?;
     let settings = settings_for(&settings_doc, &uid);
     let item = build_item(&uid, &body, &settings, None)?;
+    let delivery_id = item
+        .get("deliveryId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     let unread = persist_item(&state, &uid, item.clone()).await?;
-    publish(json!({
-        "type": "notification_intent",
-        "userId": uid,
-        "notification": item,
-        "unreadCount": unread,
-    }));
+    publish(intent_event(&uid, &delivery_id, &item, unread));
     Ok((
         StatusCode::CREATED,
         Json(json!({ "item": item, "unreadCount": unread })),
@@ -502,27 +481,28 @@ async fn test_notification(
     user: AuthUser,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
     let uid = user_id_of(&user);
-    let settings_doc = load_settings_doc(&state).await?;
-    let settings = settings_for(&settings_doc, &uid);
-    let input = json!({
-        "title": "Amiro Test Notification",
-        "body": "Notifications are working across Web UI and Desktop.",
-        "category": "system",
-        "urgency": "high",
-        "sourceEventName": "system.test",
-        "actions": [{"id": "dismiss", "label": "Dismiss"}],
-    });
-    let item = build_item(&uid, &input, &settings, None)?;
-    let unread = persist_item(&state, &uid, item.clone()).await?;
-    publish(json!({
-        "type": "notification_intent",
-        "userId": uid,
-        "notification": item,
-        "unreadCount": unread,
-    }));
+    // Through the real pipeline, so a test proves what a real notification
+    // does: a decision, a delivery row per channel, and every bound external
+    // channel tried.
+    let out = crate::notify::emit_signal(
+        &state,
+        &uid,
+        &json!({
+            "sourceChannel": "vellum",
+            "sourceContextId": "notifications.test",
+            "sourceEventName": "system.test",
+            "title": "Amiro Test Notification",
+            "body": "Notifications are working across Web UI and Desktop.",
+            "urgency": "high",
+        }),
+    )
+    .await?;
     Ok((
         StatusCode::CREATED,
-        Json(json!({ "item": item, "unreadCount": unread })),
+        Json(json!({
+            "item": out.get("item").cloned().unwrap_or(Value::Null),
+            "unreadCount": out.get("unreadCount").cloned().unwrap_or(json!(0)),
+        })),
     ))
 }
 
@@ -595,6 +575,82 @@ async fn patch_notification(
         "notification": result.get("item").cloned().unwrap_or(Value::Null),
     }));
     Ok(Json(result))
+}
+
+/// Mark the unread chat-reply notifications of one thread as seen: the user
+/// has the chat open, so the reply is read. Returns how many changed.
+pub(crate) async fn mark_thread_read(
+    state: &AppState,
+    uid: &str,
+    thread_id: &str,
+) -> Result<u64, ApiError> {
+    let _lock = state.store.lock().await;
+    let path = notifications_path(state);
+    let mut doc = read_json(&path, json!({ "version": 2, "items": {} })).await?;
+    let mut items = items_for(&doc, uid);
+    let mut updated = 0u64;
+    for item in items.iter_mut() {
+        let matches = item.get("status").and_then(|s| s.as_str()) == Some("new")
+            && item.get("category").and_then(|s| s.as_str()) == Some("chat_reply")
+            && item.get("threadId").and_then(|s| s.as_str()) == Some(thread_id);
+        if !matches {
+            continue;
+        }
+        if let Some(map) = item.as_object_mut() {
+            map.insert("status".into(), json!("seen"));
+            map.insert("seenAt".into(), json!(now_iso()));
+            map.insert("updatedAt".into(), json!(now_iso()));
+            updated += 1;
+        }
+    }
+    if updated == 0 {
+        return Ok(0);
+    }
+    let unread = count_unread(items.clone());
+    set_items(&mut doc, uid, items);
+    write_json(&path, &doc).await?;
+    drop(_lock);
+    publish(json!({
+        "type": "notifications_updated",
+        "userId": uid,
+        "unreadCount": unread,
+    }));
+    Ok(updated)
+}
+
+/// POST /api/notifications/presence -- which chat this browser tab has on
+/// screen. A reply to a chat the user is watching is not notified, and
+/// opening a chat clears its reply notifications and its unseen mark.
+async fn report_presence(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    let uid = user_id_of(&user);
+    let client_id = body
+        .get("clientId")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|id| !id.is_empty() && id.len() <= 128)
+        .ok_or_else(|| {
+            ApiError(
+                StatusCode::BAD_REQUEST,
+                "clientId is required (up to 128 characters)".to_string(),
+            )
+        })?;
+    let visible = body.get("visible").and_then(|v| v.as_bool()).unwrap_or(false);
+    let thread_id = body
+        .get("threadId")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|id| !id.is_empty());
+    crate::notify::presence::report(&uid, client_id, visible, thread_id);
+    let mut marked_read = 0;
+    if let (true, Some(thread_id)) = (visible, thread_id) {
+        crate::thread_activity::mark_seen(&state, &uid, thread_id).await?;
+        marked_read = mark_thread_read(&state, &uid, thread_id).await?;
+    }
+    Ok(Json(json!({ "ok": true, "markedRead": marked_read })))
 }
 
 /// POST /api/notifications/mark-all-read
@@ -698,10 +754,13 @@ async fn ack_notification(
                 "stored notification is not an object".to_string(),
             )
         })?;
+        // Phase 02: `ack` keeps the four receipt classes and appends to
+        // `receipts[]`, so every surface's delivery leaves a permanent row.
+        let acked_at = now_iso();
         item.insert(
             "ackedAt".into(),
             if delivered {
-                json!(now_iso())
+                json!(acked_at)
             } else {
                 Value::Null
             },
@@ -714,6 +773,15 @@ async fn ack_notification(
                 Value::Null
             },
         );
+        if delivered {
+            let receipts = item.entry("receipts").or_insert_with(|| json!([]));
+            if let Some(list) = receipts.as_array_mut() {
+                list.push(json!({
+                    "receiptClass": receipt_class,
+                    "deliveredAt": acked_at,
+                }));
+            }
+        }
         item.insert("updatedAt".into(), json!(now_iso()));
     }
     let updated = items[index].clone();
@@ -767,6 +835,63 @@ async fn put_settings(
     Ok(Json(merged_value))
 }
 
+/// GET /api/notifications/{id}/deliveries -- per-channel delivery rows for one
+/// feed item. Rows share the item's `deliveryId`; resends mint a new delivery
+/// id under the same `signalId`, so rows are collected by signal and merged.
+/// Only metadata is returned (channel, status, error, timestamps) — never a
+/// token.
+async fn notification_deliveries(
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+    user: AuthUser,
+) -> Result<Json<Value>, ApiError> {
+    let uid = user_id_of(&user);
+    let doc = read_json(
+        &notifications_path(&state),
+        json!({ "version": 2, "items": {} }),
+    )
+    .await?;
+    let item = items_for(&doc, &uid)
+        .into_iter()
+        .find(|item| item.get("id").and_then(|v| v.as_str()) == Some(id.as_str()))
+        .ok_or_else(|| {
+            ApiError(
+                StatusCode::NOT_FOUND,
+                "notification not found".to_string(),
+            )
+        })?;
+    let delivery_id = item
+        .get("deliveryId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let rows = crate::notify::store::all_deliveries(&state).await?;
+    let mut signal_ids = std::collections::HashSet::new();
+    for row in &rows {
+        if row.get("userId").and_then(|v| v.as_str()) != Some(uid.as_str()) {
+            continue;
+        }
+        if row.get("deliveryId").and_then(|v| v.as_str()) == Some(delivery_id.as_str()) {
+            if let Some(signal_id) = row.get("signalId").and_then(|v| v.as_str()) {
+                signal_ids.insert(signal_id.to_string());
+            }
+        }
+    }
+    let deliveries: Vec<Value> = rows
+        .into_iter()
+        .filter(|row| {
+            row.get("userId").and_then(|v| v.as_str()) == Some(uid.as_str())
+                && (row.get("deliveryId").and_then(|v| v.as_str()) == Some(delivery_id.as_str())
+                    || row
+                        .get("signalId")
+                        .and_then(|v| v.as_str())
+                        .is_some_and(|s| signal_ids.contains(s)))
+        })
+        .collect();
+    Ok(Json(json!({ "deliveries": deliveries })))
+}
+
 /// GET /api/notifications/stream -- SSE snapshot + live fan-out.
 async fn stream_notifications(
     State(state): State<AppState>,
@@ -774,7 +899,7 @@ async fn stream_notifications(
 ) -> Result<impl IntoResponse, ApiError> {
     let uid = user_id_of(&user);
     let unread = unread_count_of(&state, &uid).await?;
-    let mut receiver = sender().subscribe();
+    let mut receiver = crate::notify::subscribe();
 
     let stream = async_stream::stream! {
         yield Ok::<Event, Infallible>(
@@ -823,6 +948,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/notifications/test", post(test_notification))
         .route("/api/notifications/mark-all-read", post(mark_all_read))
         .route("/api/notifications/clear-all", post(clear_all))
+        .route("/api/notifications/presence", post(report_presence))
         .route(
             "/api/notifications/settings",
             get(get_settings).put(put_settings),
@@ -835,6 +961,10 @@ pub fn routes() -> Router<AppState> {
                 .delete(delete_notification),
         )
         .route("/api/notifications/{id}/ack", post(ack_notification))
+        .route(
+            "/api/notifications/{id}/deliveries",
+            get(notification_deliveries),
+        )
 }
 
 /// DELETE /api/notifications/{id} -- dismiss a single notification.

@@ -2,7 +2,6 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-// Minimal browser environment polyfill for Node-based Vitest runs.
 const mockStorage: Record<string, string> = {};
 (globalThis as any).window = {
   localStorage: {
@@ -30,6 +29,75 @@ const mockStorage: Record<string, string> = {};
   addEventListener: vi.fn(),
   removeEventListener: vi.fn(),
 };
+
+vi.mock("next-intl", () => ({
+  useTranslations:
+    () => (key: string, vars?: Record<string, string | number>) => {
+      if (!vars) return key;
+      return Object.entries(vars).reduce(
+        (s, [k, v]) => s.replace(`{${k}}`, String(v)),
+        key,
+      );
+    },
+}));
+
+let swrData: unknown[] | undefined = [];
+let swrLoading = false;
+
+vi.mock("swr", () => ({
+  default: vi.fn(() => ({
+    data: swrData,
+    error: undefined,
+    isLoading: swrLoading,
+    mutate: vi.fn(),
+  })),
+  SWRConfig: ({ children }: { children: React.ReactNode }) => children,
+}));
+
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}));
+
+vi.mock("@/components/ui/popover", () => ({
+  Popover: ({ children }: any) => <div data-slot="popover">{children}</div>,
+  PopoverTrigger: ({ children }: any) => <>{children}</>,
+  PopoverContent: ({ children, sideOffset, ...props }: any) => <div {...props}>{children}</div>,
+  PopoverAnchor: ({ children }: any) => <>{children}</>,
+}));
+
+vi.mock("ui/popover", () => ({
+  Popover: ({ children }: any) => <div data-slot="popover">{children}</div>,
+  PopoverTrigger: ({ children }: any) => <>{children}</>,
+  PopoverContent: ({ children, sideOffset, ...props }: any) => <div {...props}>{children}</div>,
+  PopoverAnchor: ({ children }: any) => <>{children}</>,
+}));
+
+// The overflow menu renders open, so its items can be asserted statically.
+vi.mock("@/components/ui/dropdown-menu", () => ({
+  DropdownMenu: ({ children }: any) => <div data-slot="menu">{children}</div>,
+  DropdownMenuTrigger: ({ children }: any) => <>{children}</>,
+  DropdownMenuContent: ({ children }: any) => <div role="menu">{children}</div>,
+  DropdownMenuItem: ({ children, onSelect, variant, ...props }: any) => (
+    <div role="menuitem" {...props}>{children}</div>
+  ),
+  DropdownMenuSeparator: () => <hr />,
+}));
+
+vi.mock("@/lib/backend/client", () => ({
+  apiJson: vi.fn().mockResolvedValue({}),
+  apiFetch: vi.fn().mockResolvedValue(new Response()),
+}));
+
+vi.mock("@/lib/backend/config", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/backend/config")>(
+    "@/lib/backend/config",
+  );
+  return {
+    ...actual,
+    getSessionToken: vi.fn().mockReturnValue("test-token"),
+    backendUrl: (path: string) => `http://localhost:8787${path}`,
+  };
+});
 
 import { NotificationsBell } from "./notifications-bell";
 
@@ -59,54 +127,6 @@ const notifications = [
   },
 ];
 
-let swrData: unknown[] | undefined = [];
-let swrLoading = false;
-
-vi.mock("swr", () => ({
-  default: vi.fn(() => ({
-    data: swrData,
-    error: undefined,
-    isLoading: swrLoading,
-    mutate: vi.fn(),
-  })),
-  SWRConfig: ({ children }: { children: React.ReactNode }) => children,
-}));
-
-vi.mock("sonner", () => ({
-  toast: vi.fn().mockReturnValue("toast-1"),
-  Toaster: () => null,
-}));
-
-vi.mock("@/components/ui/popover", () => ({
-  Popover: ({ children }: any) => <div data-slot="popover">{children}</div>,
-  PopoverTrigger: ({ children }: any) => <>{children}</>,
-  PopoverContent: ({ children, sideOffset, ...props }: any) => <div {...props}>{children}</div>,
-  PopoverAnchor: ({ children }: any) => <>{children}</>,
-}));
-
-vi.mock("ui/popover", () => ({
-  Popover: ({ children }: any) => <div data-slot="popover">{children}</div>,
-  PopoverTrigger: ({ children }: any) => <>{children}</>,
-  PopoverContent: ({ children, sideOffset, ...props }: any) => <div {...props}>{children}</div>,
-  PopoverAnchor: ({ children }: any) => <>{children}</>,
-}));
-
-vi.mock("@/lib/backend/client", () => ({
-  apiJson: vi.fn().mockResolvedValue({}),
-  apiFetch: vi.fn().mockResolvedValue(new Response()),
-}));
-
-vi.mock("@/lib/backend/config", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/backend/config")>(
-    "@/lib/backend/config",
-  );
-  return {
-    ...actual,
-    getSessionToken: vi.fn().mockReturnValue("test-token"),
-    backendUrl: (path: string) => `http://localhost:8787${path}`,
-  };
-});
-
 beforeEach(() => {
   swrData = notifications;
   swrLoading = false;
@@ -118,54 +138,55 @@ beforeEach(() => {
 });
 
 describe("NotificationsBell", () => {
-  it("renders the bell button with unread badge", () => {
+  it("renders the bell button with unread badge and shell testids", () => {
     const html = renderToStaticMarkup(createElement(NotificationsBell));
-    expect(html).toContain('data-testid="notifications-bell-button"');
+    expect(html).toContain('data-testid="notifications-bell"');
     expect(html).toContain('data-testid="notifications-unread-badge"');
-    expect(html).toContain("1");
-  });
-
-  it("renders the popover panel with controls", () => {
-    const html = renderToStaticMarkup(createElement(NotificationsBell));
     expect(html).toContain('data-testid="notifications-bell-popover"');
     expect(html).toContain('data-testid="notifications-bell-count"');
-    expect(html).toContain('data-testid="notifications-unread-toggle"');
-    expect(html).toContain('data-testid="notifications-mark-all-read"');
-    expect(html).toContain('data-testid="notifications-clear-all"');
-    expect(html).toContain('data-testid="notifications-settings-link"');
+    // Opens on unread only, like Vellum: the read row waits behind the switch.
+    expect(html).toContain('data-testid="notification-row-n1"');
+    expect(html).not.toContain('data-testid="notification-row-n2"');
   });
 
-  it("renders notification rows for each item", () => {
+  it("renders the unread switch and one overflow menu instead of filter chips", () => {
     const html = renderToStaticMarkup(createElement(NotificationsBell));
-    expect(html).toContain('data-testid="notifications-bell-list"');
-    expect(html).toContain('data-testid="notification-row"');
-    expect(html).toContain('data-notification-id="n1"');
-    expect(html).toContain('data-notification-id="n2"');
+    expect(html).toContain('data-testid="notifications-feed"');
+    expect(html).toContain('data-testid="notifications-filter-unread"');
+    expect(html).toContain('aria-checked="true"');
+    expect(html).toContain('data-testid="notifications-actions"');
+    expect(html).not.toContain('data-testid="notifications-filter-all"');
+    expect(html).not.toContain('data-testid="notifications-filter-chat_reply"');
   });
 
-  it("shows category badges for chat and schedule", () => {
+  it("names the unread count on the bell for screen readers", () => {
     const html = renderToStaticMarkup(createElement(NotificationsBell));
-    expect(html).toContain('data-testid="notification-category-chat_reply"');
-    expect(html).toContain('data-testid="notification-category-schedule_result"');
+    expect(html).toContain('aria-label="labelUnread"');
   });
 
-  it("renders empty state when there are no notifications", () => {
+  it("shows the empty state and keeps send-test in the menu", () => {
     swrData = [];
     const html = renderToStaticMarkup(createElement(NotificationsBell));
     expect(html).toContain('data-testid="notifications-empty-state"');
     expect(html).toContain('data-testid="notifications-send-test"');
   });
 
-  it("shows a browser permission banner when permission is prompt", () => {
+  it("offers browser notifications in the menu when permission is prompt", () => {
     (window.Notification as any).permission = "default";
     const html = renderToStaticMarkup(createElement(NotificationsBell));
     expect(html).toContain('data-testid="notifications-enable-browser"');
   });
 
-  it("shows Desktop Native Active pill when in Amiro Desktop", () => {
+  it("never asks for browser permission inside Amiro Desktop", () => {
     (window as any).__AMIRO_DESKTOP__ = true;
     const html = renderToStaticMarkup(createElement(NotificationsBell));
-    expect(html).toContain("Desktop Native Active");
+    expect(html).not.toContain('data-testid="notifications-enable-browser"');
     delete (window as any).__AMIRO_DESKTOP__;
+  });
+
+  it("hides the badge when everything is read", () => {
+    swrData = notifications.map((n) => ({ ...n, read: true, status: "seen" }));
+    const html = renderToStaticMarkup(createElement(NotificationsBell));
+    expect(html).not.toContain('data-testid="notifications-unread-badge"');
   });
 });

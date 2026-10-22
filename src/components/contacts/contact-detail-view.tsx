@@ -15,6 +15,8 @@ import {
   verifyContactChannel,
 } from "@/lib/backend/contacts-api";
 import { toast } from "sonner";
+import { ApiError } from "@/lib/backend/client";
+import { getChannelLabel } from "@/components/channels/channel-presentation";
 import { useTranslations } from "next-intl";
 
 export interface ContactDetailViewProps {
@@ -103,13 +105,48 @@ export function ContactDetailView({
     }
   };
 
+  // Vellum's verification: a code goes out through the channel's bot and is
+  // typed back here. Channels Amiro cannot message are confirmed directly.
+  const [codeFor, setCodeFor] = useState<string | null>(null);
+  const [code, setCode] = useState("");
+  const [verifying, setVerifying] = useState(false);
+  const errorText = (error: unknown) =>
+    error instanceof ApiError && error.message ? error.message : t("channelVerifyFailed");
+
   const handleVerifyChannel = async (channelId: string) => {
+    setVerifying(true);
     try {
-      await verifyContactChannel(channelId);
+      const result = await verifyContactChannel(channelId);
+      if (result.status === "code_sent") {
+        setCodeFor(channelId);
+        setCode("");
+        toast.success(t("codeSent"));
+      } else {
+        setCodeFor(null);
+        await onUpdated();
+        toast.success(t("channelVerified"));
+      }
+    } catch (error) {
+      toast.error(errorText(error));
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const handleSubmitCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!codeFor || code.trim().length === 0) return;
+    setVerifying(true);
+    try {
+      await verifyContactChannel(codeFor, code.trim());
+      setCodeFor(null);
+      setCode("");
       await onUpdated();
       toast.success(t("channelVerified"));
-    } catch {
-      toast.error(t("channelVerifyFailed"));
+    } catch (error) {
+      toast.error(errorText(error));
+    } finally {
+      setVerifying(false);
     }
   };
 
@@ -233,8 +270,37 @@ export function ContactDetailView({
             unverifiedLabel={t("unverified")}
             revokedLabel={t("revoked")}
             verifyActionLabel={t("verify")}
+            verifyMeLabel={t("verifyMe")}
             revokeActionLabel={t("revoke")}
+            emptyLabel={t("noChannelsLinked")}
+            busy={verifying}
           />
+
+          {codeFor && (
+            <form onSubmit={handleSubmitCode} data-testid="verify-code-form"
+              className="flex flex-col gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
+              <Label htmlFor="verify-code-input" className="text-xs font-medium">
+                {t("codePrompt", {
+                  channel: getChannelLabel(contact.channels.find((c) => c.id === codeFor)?.type ?? ""),
+                })}
+              </Label>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input id="verify-code-input" data-testid="verify-code-input" inputMode="numeric"
+                  autoComplete="one-time-code" maxLength={6} value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                  placeholder="123456" className="h-8 w-32 font-mono text-sm tracking-widest" />
+                <Button type="submit" size="sm" disabled={verifying || code.length !== 6}
+                  data-testid="verify-code-submit">
+                  {verifying ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : null}
+                  {t("confirmCode")}
+                </Button>
+                <Button type="button" size="sm" variant="ghost" disabled={verifying}
+                  onClick={() => void handleVerifyChannel(codeFor)} data-testid="verify-code-resend">
+                  {t("sendNewCode")}
+                </Button>
+              </div>
+            </form>
+          )}
 
           {/* Add channel inline form */}
           <form

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ApiError } from "@/lib/backend/client";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { DetailCard } from "@/components/ui/detail-card";
@@ -36,8 +37,9 @@ export function SlackConnectionCard({ onUpdated }: { onUpdated: () => void }) {
       await mutate();
       onUpdated();
       toast.success(t("slackSaved"));
-    } catch {
-      toast.error(t("slackSaveFailed"));
+    } catch (error) {
+      // Show why: a rejected token says so, rather than a generic failure.
+      toast.error(error instanceof ApiError && error.message ? error.message : t("slackSaveFailed"));
     } finally {
       setSaving(false);
     }

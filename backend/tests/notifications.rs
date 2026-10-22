@@ -296,6 +296,27 @@ async fn ack_records_delivery_receipt() {
     assert_eq!(acked["receiptClass"], json!("desktop_native"));
     assert_eq!(acked["item"]["deliveryReceipt"], json!("desktop_native"));
     assert!(acked["item"]["ackedAt"].is_string());
+    // Phase 02: the ack appends to `receipts[]`, one row per surface.
+    assert_eq!(acked["item"]["receipts"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        acked["item"]["receipts"][0]["receiptClass"],
+        json!("desktop_native")
+    );
+    assert!(acked["item"]["receipts"][0]["deliveredAt"].is_string());
+
+    let (_, acked_again) = request(
+        &app,
+        "POST",
+        "/api/notifications/n1/ack",
+        Some(json!({ "delivered": true, "receiptClass": "in_app_toast" })),
+        true,
+    )
+    .await;
+    assert_eq!(acked_again["item"]["receipts"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        acked_again["item"]["receipts"][1]["receiptClass"],
+        json!("in_app_toast")
+    );
 
     let (status, _) = request(
         &app,
@@ -373,16 +394,32 @@ async fn test_endpoint_emits_real_notification() {
 
     let (_, feed) = request(&app, "GET", "/api/notifications", None, true).await;
     assert_eq!(feed["unreadCount"], json!(1));
+
+    // It went through the pipeline, so the detail can show where it went.
+    let id = item["id"].as_str().unwrap();
+    let (status, deliveries) = request(
+        &app,
+        "GET",
+        &format!("/api/notifications/{id}/deliveries"),
+        None,
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = deliveries["deliveries"].as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["channel"], json!("local"));
+    assert_eq!(rows[0]["status"], json!("sent"));
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[tokio::test]
-async fn emit_notification_helper_persists_without_http() {
+async fn pipeline_emit_persists_without_http() {
     let (app, root) = app();
     let (_, _) = request(&app, "GET", "/api/notifications", None, true).await;
-    // Reach into the same home the router was built with by constructing state
-    // from the env the harness wrote. Instead, drive it through a fresh state
-    // pointing at that home.
+    // Drive the pipeline through a fresh state pointing at the same home the
+    // router was built with (the deprecated direct-persist helper is gone;
+    // signals are the only path).
     let home = root.join("home");
     let state = AppState {
         home: home.clone(),
@@ -393,19 +430,22 @@ async fn emit_notification_helper_persists_without_http() {
         token: "sidecar".into(),
         store: Arc::new(tokio::sync::Mutex::new(())),
     };
-    let item = backend::routes::notifications::emit_notification(
+    let out = backend::notify::emit_signal(
         &state,
         "u1",
-        "Schedule finished",
-        "Your morning briefing completed.",
-        "schedule_result",
-        "normal",
-        None,
-        Some("sched-9".to_string()),
-        "schedule.result",
+        &json!({
+            "sourceChannel": "scheduler",
+            "sourceContextId": "sched-9",
+            "sourceEventName": "schedule.result",
+            "title": "Schedule finished",
+            "body": "Your morning briefing completed.",
+            "urgency": "normal",
+            "scheduleId": "sched-9",
+        }),
     )
     .await
     .unwrap();
+    let item = &out["item"];
     assert_eq!(item["category"], json!("schedule_result"));
     assert_eq!(item["scheduleId"], json!("sched-9"));
 
@@ -497,5 +537,193 @@ async fn stream_sends_snapshot_then_live_events() {
     }
     assert!(saw_live, "live notification_intent was not streamed");
 
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn deliveries_endpoint_returns_per_channel_rows() {
+    let (app, root) = app();
+    // Unknown id is a clean 404, never an exception; auth runs first.
+    let (status, _) = request(
+        &app,
+        "GET",
+        "/api/notifications/nope/deliveries",
+        None,
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = request(
+        &app,
+        "GET",
+        "/api/notifications/nope/deliveries",
+        None,
+        false,
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    let (status, created) = request(
+        &app,
+        "POST",
+        "/api/notifications",
+        Some(json!({ "id": "n-del", "title": "T", "body": "B", "category": "system" })),
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let delivery_id = created["item"]["deliveryId"].as_str().unwrap().to_string();
+
+    // Seed rows the way the broadcaster + resend path write them: same
+    // delivery id per broadcast, a new delivery id under the same signal
+    // for resends, plus rows that must not leak in (other item, other user).
+    let row = |delivery_id: &str, signal_id: &str, user_id: &str, channel: &str, status: &str| {
+        json!({
+            "deliveryId": delivery_id,
+            "signalId": signal_id,
+            "userId": user_id,
+            "channel": channel,
+            "status": status,
+            "error": null,
+            "recordedAt": "2026-10-21T00:00:00Z",
+        })
+    };
+    std::fs::create_dir_all(root.join("home").join("store")).unwrap();
+    std::fs::write(
+        root.join("home").join("store").join("notification-deliveries.json"),
+        json!({ "version": 1, "rows": [
+            row(&delivery_id, "sig-1", "u1", "local", "sent"),
+            row(&delivery_id, "sig-1", "u1", "telegram", "failed"),
+            row("d-resend", "sig-1", "u1", "telegram", "sent"),
+            row("d-other", "sig-9", "u1", "local", "sent"),
+            row(&delivery_id, "sig-1", "u2", "local", "sent"),
+        ]})
+        .to_string(),
+    )
+    .unwrap();
+
+    let (status, body) = request(
+        &app,
+        "GET",
+        "/api/notifications/n-del/deliveries",
+        None,
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let deliveries = body["deliveries"].as_array().unwrap();
+    // local + failed telegram + the resend row (same signal). Nothing else.
+    assert_eq!(deliveries.len(), 3, "unexpected rows: {deliveries:?}");
+    assert!(deliveries.iter().all(|d| d["signalId"] == json!("sig-1")));
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn presence_requires_auth_and_a_client_id() {
+    let (app, root) = app();
+    let (status, _) = request(
+        &app,
+        "POST",
+        "/api/notifications/presence",
+        Some(json!({ "clientId": "tab", "visible": true })),
+        false,
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, body) = request(
+        &app,
+        "POST",
+        "/api/notifications/presence",
+        Some(json!({ "visible": true })),
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap_or("").contains("clientId"));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn opening_a_chat_reads_its_reply_notifications_and_clears_its_mark() {
+    let (app, root) = app();
+    let store = root.join("home").join("store");
+    std::fs::create_dir_all(&store).unwrap();
+    std::fs::write(
+        store.join("thread-attention.json"),
+        json!({ "version": 1, "users": { "u1": {
+            "presence-open": { "endedAt": "2026-10-21T00:00:00Z", "failed": false },
+            "presence-other": { "endedAt": "2026-10-21T00:00:00Z", "failed": false },
+            "presence-broken": { "endedAt": "2026-10-21T00:00:00Z", "failed": true },
+        }}})
+        .to_string(),
+    )
+    .unwrap();
+    for (id, thread) in [("reply-open", "presence-open"), ("reply-other", "presence-other")] {
+        let (status, _) = request(
+            &app,
+            "POST",
+            "/api/notifications",
+            Some(json!({
+                "id": id,
+                "title": "Reply ready",
+                "body": "Answered.",
+                "category": "chat_reply",
+                "threadId": thread,
+                "sourceEventName": "chat.assistant_reply",
+            })),
+            true,
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+    }
+
+    let (_, before) = request(&app, "GET", "/api/thread-activity", None, true).await;
+    assert_eq!(before["unseen"], json!(["presence-open", "presence-other"]));
+    assert_eq!(before["failed"], json!(["presence-broken"]));
+
+    // A hidden tab on the chat changes nothing.
+    let (status, hidden) = request(
+        &app,
+        "POST",
+        "/api/notifications/presence",
+        Some(json!({ "clientId": "tab-1", "visible": false, "threadId": "presence-open" })),
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(hidden["markedRead"], json!(0));
+
+    let (status, shown) = request(
+        &app,
+        "POST",
+        "/api/notifications/presence",
+        Some(json!({ "clientId": "tab-1", "visible": true, "threadId": "presence-open" })),
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(shown["markedRead"], json!(1));
+
+    let (_, list) = request(&app, "GET", "/api/notifications", None, true).await;
+    let status_of = |id: &str| {
+        list["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["id"] == json!(id))
+            .map(|item| item["status"].clone())
+            .unwrap()
+    };
+    assert_eq!(status_of("reply-open"), json!("seen"));
+    assert_eq!(status_of("reply-other"), json!("new"));
+
+    let (_, after) = request(&app, "GET", "/api/thread-activity", None, true).await;
+    assert_eq!(after["unseen"], json!(["presence-other"]));
+    assert_eq!(after["failed"], json!(["presence-broken"]));
+    assert_eq!(after["running"], json!([]));
+
+    let (status, _) = request(&app, "GET", "/api/thread-activity", None, false).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
     let _ = std::fs::remove_dir_all(root);
 }

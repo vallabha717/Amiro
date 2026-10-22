@@ -17,6 +17,7 @@
     "e2e:voice-live": "playwright test --project voice-live",
     "e2e:schedules": "playwright test --project schedules",
     "e2e:ux-audit": "playwright test --project ux-audit",
+    "e2e:notifications": "playwright test --project notifications",
     "test": "playwright test",
     "install-browsers": "playwright install --with-deps chromium",
     "show-report": "playwright show-report",

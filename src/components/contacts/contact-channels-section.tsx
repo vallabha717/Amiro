@@ -13,7 +13,11 @@ export interface ContactChannelsSectionProps {
   unverifiedLabel?: string;
   revokedLabel?: string;
   verifyActionLabel?: string;
+  verifyMeLabel?: string;
   revokeActionLabel?: string;
+  emptyLabel?: string;
+  /** A verification is in flight: hold the verify buttons. */
+  busy?: boolean;
 }
 
 /**
@@ -29,12 +33,15 @@ export function ContactChannelsSection({
   unverifiedLabel: _unverifiedLabel = "Unverified",
   revokedLabel = "Revoked",
   verifyActionLabel = "Verify",
+  verifyMeLabel = "Verify me",
   revokeActionLabel = "Revoke",
+  emptyLabel = "No accounts linked to this contact yet.",
+  busy = false,
 }: ContactChannelsSectionProps) {
   if (channels.length === 0) {
     return (
       <div className="py-4 text-center text-xs text-muted-foreground">
-        No accounts linked to this contact yet.
+        {emptyLabel}
       </div>
     );
   }
@@ -80,10 +87,12 @@ export function ContactChannelsSection({
                   size="sm"
                   variant="outline"
                   onClick={() => onVerify(ch.id)}
+                  disabled={busy}
+                  data-testid={`verify-channel-${ch.type}`}
                   className="h-7 px-2.5 text-xs"
                 >
                   <UserCheck className="mr-1 size-3" />
-                  {isGuardian ? "Verify me" : verifyActionLabel}
+                  {isGuardian ? verifyMeLabel : verifyActionLabel}
                 </Button>
               )}
 
