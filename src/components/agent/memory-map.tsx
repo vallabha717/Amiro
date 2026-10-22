@@ -1105,8 +1105,7 @@ export function MemoryMap({
     `${n} ${word}${n === 1 ? "" : "s"}`;
 
   const hoverLabel = !showIntro ? (focusLabel ?? edgeLabel) : null;
-  const showSearch =
-    ready && (layout.nodes.length > SEARCH_MIN_NODES || Boolean(search));
+  const showSearch = ready;
 
   if (memories.length === 0) {
     return (
@@ -1136,90 +1135,78 @@ export function MemoryMap({
         {/* Left slot: Search */}
         <div className="flex min-w-0 items-center gap-2">
           {showSearch ? (
-            <>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={`size-8 ${searchOpen ? "hidden" : "@2xl:hidden"}`}
-                onClick={() => setSearchOpen(true)}
-                aria-label="Search concepts"
-              >
-                <Search className="size-4" />
-              </Button>
-              <div
-                className={`relative ${searchOpen ? "" : "hidden @2xl:block"}`}
-              >
-                <div className="flex items-center gap-1.5 rounded-full border border-border/70 bg-background/80 px-2.5 py-1">
-                  <Search
-                    size={14}
-                    aria-hidden
-                    className="text-muted-foreground"
-                  />
-                  <input
-                    ref={searchInputRef}
-                    type="text"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Escape") {
-                        if (search || searchOpen) {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setSearch("");
-                          setSearchOpen(false);
-                        }
-                      } else if (e.key === "Enter" && searchResults.length > 0) {
+            <div className="relative">
+              <div className="flex items-center gap-1.5 rounded-full border border-border/70 bg-background/80 px-2.5 py-1">
+                <Search
+                  size={14}
+                  aria-hidden
+                  className="text-muted-foreground"
+                />
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  data-testid="memory-map-search-input"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                      if (search || searchOpen) {
                         e.preventDefault();
-                        focusOn(searchResults[0].id);
-                        onSelect(searchResults[0].id);
-                      }
-                    }}
-                    placeholder="Search concepts…"
-                    aria-label="Search concepts"
-                    className="w-40 bg-transparent text-[12px] text-foreground outline-none placeholder:text-muted-foreground"
-                  />
-                  {search ? (
-                    <span className="text-[11px] tabular-nums text-muted-foreground">
-                      {matchIds?.size ?? 0}
-                    </span>
-                  ) : null}
-                  {search || searchOpen ? (
-                    <button
-                      type="button"
-                      onClick={() => {
+                        e.stopPropagation();
                         setSearch("");
                         setSearchOpen(false);
-                      }}
-                      aria-label="Clear search"
-                      className="flex cursor-pointer items-center text-muted-foreground hover:text-foreground"
-                    >
-                      <X size={13} />
-                    </button>
-                  ) : null}
-                </div>
-
-                {search && searchResults.length > 0 ? (
-                  <ul className="absolute top-full left-0 z-30 mt-1.5 flex max-h-56 w-56 list-none flex-col overflow-y-auto rounded-xl border border-border/70 bg-card/95 py-1 shadow-lg backdrop-blur-md">
-                    {searchResults.map((node) => (
-                      <li key={node.id}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onSelect(node.id);
-                            focusOn(node.id);
-                            setSearch("");
-                            setSearchOpen(false);
-                          }}
-                          className="block w-full cursor-pointer truncate px-3 py-1.5 text-left text-[12px] text-foreground hover:bg-muted/70"
-                        >
-                          {node.label}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+                      }
+                    } else if (e.key === "Enter" && searchResults.length > 0) {
+                      e.preventDefault();
+                      focusOn(searchResults[0].id);
+                      onSelect(searchResults[0].id);
+                    }
+                  }}
+                  placeholder="Search concepts…"
+                  aria-label="Search concepts"
+                  className="w-40 bg-transparent text-[12px] text-foreground outline-none placeholder:text-muted-foreground sm:w-48"
+                />
+                {search ? (
+                  <span className="text-[11px] tabular-nums text-muted-foreground">
+                    {matchIds?.size ?? 0}
+                  </span>
+                ) : null}
+                {search ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearch("");
+                      setSearchOpen(false);
+                    }}
+                    aria-label="Clear search"
+                    className="flex cursor-pointer items-center text-muted-foreground hover:text-foreground"
+                  >
+                    <X size={13} />
+                  </button>
                 ) : null}
               </div>
-            </>
+
+              {search && searchResults.length > 0 ? (
+                <ul className="absolute top-full left-0 z-30 mt-1.5 flex max-h-56 w-56 list-none flex-col overflow-y-auto rounded-xl border border-border/70 bg-card/95 py-1 shadow-lg backdrop-blur-md">
+                  {searchResults.map((node) => (
+                    <li key={node.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onSelect(node.id);
+                          focusOn(node.id);
+                          setSearch("");
+                          setSearchOpen(false);
+                        }}
+                        className="block w-full cursor-pointer truncate px-3 py-1.5 text-left text-[12px] text-foreground hover:bg-muted/70"
+                      >
+                        {node.label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
           ) : null}
         </div>
 

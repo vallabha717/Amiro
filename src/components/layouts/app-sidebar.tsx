@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
@@ -18,7 +18,7 @@ import { AppSidebarSkills } from "./app-sidebar-skills";
 import { AppSidebarThreads } from "./app-sidebar-threads";
 import { AppSidebarUser } from "./app-sidebar-user";
 import { VrndaLogo } from "./vrnda-logo";
-import { agentScopedPath, matchSubPath } from "@/components/team/team-paths";
+import { agentScopedPath } from "@/components/team/team-paths";
 import { useAgentScope } from "@/lib/backend/agent-scope";
 
 import { SetupChecklist } from "@/components/onboarding/setup-checklist";
@@ -34,27 +34,18 @@ import { cn } from "lib/utils";
  */
 export function AppSidebar({ user }: { user?: BasicUser }) {
   const router = useRouter();
-  const pathname = usePathname();
   const t = useTranslations("SidebarFrame");
   const { toggleSidebar, state, isMobile, setOpenMobile } = useSidebar();
   const isCollapsed = state === "collapsed" && !isMobile;
   const agentScope = useAgentScope();
 
-  const [activityMode, setActivityMode] = useState<SidebarActivityMode>(() =>
-    matchSubPath(pathname, "/admin") ? "admin" : "conversations",
-  );
-
-  useEffect(() => {
-    if (matchSubPath(pathname, "/admin")) {
-      setActivityMode("admin");
-    }
-  }, [pathname]);
+  const [activityMode, setActivityMode] =
+    useState<SidebarActivityMode>("admin");
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isShortcutEvent(e, Shortcuts.openNewChat)) {
         e.preventDefault();
-        setActivityMode("conversations");
         router.push(agentScopedPath(agentScope, "/"));
         router.refresh();
       } else if (isShortcutEvent(e, Shortcuts.toggleSidebar)) {
@@ -120,8 +111,11 @@ export function AppSidebar({ user }: { user?: BasicUser }) {
             mode={activityMode}
             onModeChange={setActivityMode}
           />
-          {activityMode === "conversations" && <AppSidebarThreads />}
-          <AppSidebarSkills />
+          {activityMode === "admin" ? (
+            <AppSidebarSkills />
+          ) : (
+            <AppSidebarThreads />
+          )}
         </div>
       </SidebarContent>
 

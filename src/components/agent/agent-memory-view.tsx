@@ -518,18 +518,6 @@ export function AgentMemoryView({ className }: { className?: string }) {
     return counts;
   }, [edges]);
 
-  const categoryCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const memory of filteredMemories) {
-      const key = normalizeCategory(memory.category);
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-    return CLUSTER_ORDER.filter((key) => counts.has(key)).map((key) => ({
-      key,
-      count: counts.get(key) ?? 0,
-    }));
-  }, [filteredMemories]);
-
   const selectedMemory = useMemo(
     () => allMemories.find((m) => m.id === selectedId) ?? null,
     [allMemories, selectedId],
@@ -766,112 +754,114 @@ export function AgentMemoryView({ className }: { className?: string }) {
             </div>
           </div>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <div className="relative min-w-[200px] flex-1">
-              <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                data-testid="memory-search-input"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search memories, tags, sessions"
-                aria-label="Search memories"
-                className="h-9 w-full rounded-full pl-8 text-sm"
-              />
-              {search ? (
-                <button
-                  type="button"
-                  aria-label="Clear search"
-                  onClick={() => setSearch("")}
-                  className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground transition hover:text-foreground"
+            {viewMode === "cards" && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <div className="relative min-w-[200px] flex-1">
+                  <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    data-testid="memory-search-input"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Search memories, tags, sessions"
+                    aria-label="Search memories"
+                    className="h-9 w-full rounded-full pl-8 text-sm"
+                  />
+                  {search ? (
+                    <button
+                      type="button"
+                      aria-label="Clear search"
+                      onClick={() => setSearch("")}
+                      className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground transition hover:text-foreground"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  ) : null}
+                </div>
+
+                <Select value={scopeFilter} onValueChange={setScopeFilter}>
+                  <SelectTrigger
+                    size="sm"
+                    aria-label="Filter by scope"
+                    className="min-w-[150px] rounded-full"
+                  >
+                    <Compass className="size-3.5 text-muted-foreground" />
+                    <SelectValue placeholder="All scopes" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All scopes</SelectItem>
+                    <SelectItem value="global">Global</SelectItem>
+                    {scopes
+                      .filter((scope) => scope.kind !== "global")
+                      .map((scope) => (
+                        <SelectItem key={scope.id} value={scope.id}>
+                          {scope.label || scope.id}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+
+                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                  <SelectTrigger
+                    size="sm"
+                    aria-label="Filter by category"
+                    className="min-w-[140px] rounded-full"
+                  >
+                    <Tag className="size-3.5 text-muted-foreground" />
+                    <SelectValue placeholder="All categories" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All categories</SelectItem>
+                    {CLUSTER_ORDER.map((category) => (
+                      <SelectItem key={category} value={category}>
+                        {categoryMeta(category).label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  value={recency}
+                  onValueChange={(value) => setRecency(value as RecencyLens)}
                 >
-                  <X className="size-3.5" />
-                </button>
-              ) : null}
-            </div>
+                  <SelectTrigger
+                    size="sm"
+                    aria-label="Filter by recency"
+                    className="min-w-[140px] rounded-full"
+                  >
+                    <SelectValue placeholder="Any time" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {RECENCY_LENSES.map((lens) => (
+                      <SelectItem key={lens.value} value={lens.value}>
+                        {lens.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
 
-            <Select value={scopeFilter} onValueChange={setScopeFilter}>
-              <SelectTrigger
-                size="sm"
-                aria-label="Filter by scope"
-                className="min-w-[150px] rounded-full"
-              >
-                <Compass className="size-3.5 text-muted-foreground" />
-                <SelectValue placeholder="All scopes" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All scopes</SelectItem>
-                <SelectItem value="global">Global</SelectItem>
-                {scopes
-                  .filter((scope) => scope.kind !== "global")
-                  .map((scope) => (
-                    <SelectItem key={scope.id} value={scope.id}>
-                      {scope.label || scope.id}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
+                {hasActiveFilters ? (
+                  <button
+                    type="button"
+                    aria-label="Reset all search and filter options"
+                    onClick={resetFilters}
+                    className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs text-muted-foreground transition hover:text-foreground"
+                  >
+                    <RefreshCw className="size-3" />
+                    Reset
+                  </button>
+                ) : null}
 
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger
-                size="sm"
-                aria-label="Filter by category"
-                className="min-w-[140px] rounded-full"
-              >
-                <Tag className="size-3.5 text-muted-foreground" />
-                <SelectValue placeholder="All categories" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All categories</SelectItem>
-                {CLUSTER_ORDER.map((category) => (
-                  <SelectItem key={category} value={category}>
-                    {categoryMeta(category).label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select
-              value={recency}
-              onValueChange={(value) => setRecency(value as RecencyLens)}
-            >
-              <SelectTrigger
-                size="sm"
-                aria-label="Filter by recency"
-                className="min-w-[140px] rounded-full"
-              >
-                <SelectValue placeholder="Any time" />
-              </SelectTrigger>
-              <SelectContent>
-                {RECENCY_LENSES.map((lens) => (
-                  <SelectItem key={lens.value} value={lens.value}>
-                    {lens.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {hasActiveFilters ? (
-              <button
-                type="button"
-                aria-label="Reset all search and filter options"
-                onClick={resetFilters}
-                className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs text-muted-foreground transition hover:text-foreground"
-              >
-                <RefreshCw className="size-3" />
-                Reset
-              </button>
-            ) : null}
-
-            <span
-              className="ml-auto inline-flex items-center gap-1.5 text-[11px] text-muted-foreground"
-              aria-live="polite"
-            >
-              {isValidating && !isLoading ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : null}
-              {filteredMemories.length} of {allMemories.length} memories
-            </span>
-          </div>
+                <span
+                  className="ml-auto inline-flex items-center gap-1.5 text-[11px] text-muted-foreground"
+                  aria-live="polite"
+                >
+                  {isValidating && !isLoading ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : null}
+                  {filteredMemories.length} of {allMemories.length} memories
+                </span>
+              </div>
+            )}
         </div>
       </header>
 
@@ -911,69 +901,19 @@ export function AgentMemoryView({ className }: { className?: string }) {
         ) : isLoading && !data ? (
           <MemoryListSkeleton />
         ) : viewMode === "map" ? (
-          filteredMemories.length === 0 ? (
+          allMemories.length === 0 ? (
             <EmptyState
               icon={<Compass className="size-5" />}
-              title={
-                hasActiveFilters
-                  ? "No memories match this map"
-                  : "No memories to map yet"
-              }
-              detail={
-                hasActiveFilters
-                  ? "Try clearing the search or filters to bring memories back into view."
-                  : "Memories appear here grouped by category as Amiro remembers them."
-              }
-              action={
-                hasActiveFilters ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    type="button"
-                    onClick={resetFilters}
-                  >
-                    <RefreshCw className="size-4" />
-                    Clear search and filters
-                  </Button>
-                ) : undefined
-              }
+              title="No memories to map yet"
+              detail="Memories appear here grouped by category as Amiro remembers them."
             />
           ) : (
-            <div className="space-y-3">
-              <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div className="max-w-xl">
-                  <h2 className="font-brand text-lg tracking-tight">
-                    Memory map
-                  </h2>
-                  <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                    Explore what Amiro remembers. Pick a memory to read it, or a
-                    category to explore that part of the map.
-                  </p>
-                </div>
-                <div className="hidden flex-wrap items-center gap-x-3.5 gap-y-1.5 text-[11px] text-muted-foreground sm:flex sm:justify-end">
-                  {categoryCounts.map(({ key, count }) => (
-                    <span
-                      key={key}
-                      className="inline-flex items-center gap-1.5"
-                    >
-                      <span
-                        aria-hidden="true"
-                        className="size-1.5 rounded-full"
-                        style={{ backgroundColor: categoryMeta(key).color }}
-                      />
-                      {categoryMeta(key).label}
-                      <span className="tabular-nums">{count}</span>
-                    </span>
-                  ))}
-                </div>
-              </header>
-              <MemoryMap
-                memories={filteredMemories}
-                edges={edges}
-                selectedId={mapSelectionId}
-                onSelect={handleSelect}
-              />
-            </div>
+            <MemoryMap
+              memories={allMemories}
+              edges={edges}
+              selectedId={mapSelectionId}
+              onSelect={handleSelect}
+            />
           )
         ) : (
           <MemoryList

@@ -16,25 +16,16 @@ import { BasicUser } from "app-types/user";
 import { Shortcuts, getShortcutKeyList } from "lib/keyboard-shortcuts";
 import { cn } from "lib/utils";
 import {
-  BarChart3,
-  Bell,
   CalendarClockIcon,
   ChevronRight,
-  Cpu,
   FilesIcon,
   FolderOpenIcon,
   FolderSearchIcon,
-  KeyRound,
   MessageSquare,
   PlugZapIcon,
   PlusIcon,
-  Puzzle,
-  Search,
   Shield,
-  SlidersHorizontal,
   UsersRoundIcon,
-  Volume2,
-  type LucideIcon,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
@@ -49,78 +40,11 @@ import { AppSidebarAdmin } from "./app-sidebar-menu-admin";
 import { agentScopedPath, matchSubPath } from "@/components/team/team-paths";
 import { useAgentScope } from "@/lib/backend/agent-scope";
 
-export type SidebarActivityMode = "conversations" | "admin";
-
-type AdminNavItem = {
-  id: string;
-  title: string;
-  href: string;
-  icon: LucideIcon;
-  testId: string;
-};
-
-const ADMIN_NAV_ITEMS: AdminNavItem[] = [
-  {
-    id: "providers",
-    title: "Models & Providers",
-    href: "/admin/providers",
-    icon: Cpu,
-    testId: "sidebar-admin-nav-providers",
-  },
-  {
-    id: "credentials",
-    title: "Credentials",
-    href: "/admin/credentials",
-    icon: KeyRound,
-    testId: "sidebar-admin-nav-credentials",
-  },
-  {
-    id: "integrations",
-    title: "Integrations & MCP",
-    href: "/admin/integrations",
-    icon: Puzzle,
-    testId: "sidebar-admin-nav-integrations",
-  },
-  {
-    id: "search",
-    title: "Search Providers",
-    href: "/admin/search",
-    icon: Search,
-    testId: "sidebar-admin-nav-search",
-  },
-  {
-    id: "voice",
-    title: "Voice & Speech",
-    href: "/admin/voice",
-    icon: Volume2,
-    testId: "sidebar-admin-nav-voice",
-  },
-  {
-    id: "notifications",
-    title: "Notifications",
-    href: "/admin/notifications",
-    icon: Bell,
-    testId: "sidebar-admin-nav-notifications",
-  },
-  {
-    id: "usage",
-    title: "Usage & Users",
-    href: "/admin/usage",
-    icon: BarChart3,
-    testId: "sidebar-admin-nav-usage",
-  },
-  {
-    id: "general",
-    title: "General",
-    href: "/admin/general",
-    icon: SlidersHorizontal,
-    testId: "sidebar-admin-nav-general",
-  },
-];
+export type SidebarActivityMode = "admin" | "conversations";
 
 export function AppSidebarMenus({
   user,
-  mode = "conversations",
+  mode = "admin",
   onModeChange,
 }: {
   user?: BasicUser;
@@ -163,28 +87,13 @@ export function AppSidebarMenus({
   return (
     <SidebarGroup>
       <SidebarGroupContent>
-        {/* Theme-switch style Segmented Toggle: Conversations vs Admin (above New Chat) */}
+        {/* Theme-switch style Segmented Toggle: Admin first (default), then Conversations */}
         <div
           role="group"
           aria-label="Sidebar view mode"
           data-testid="sidebar-activity-switch"
           className="mb-2 flex items-center rounded-full border border-sidebar-border/80 bg-input/25 p-0.5 group-data-[collapsible=icon]:hidden"
         >
-          <button
-            type="button"
-            data-testid="sidebar-switch-conversations"
-            aria-pressed={!isAdminMode}
-            onClick={() => onModeChange?.("conversations")}
-            className={cn(
-              "flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-              !isAdminMode
-                ? "bg-accent text-foreground ring-1 ring-muted-foreground/30 shadow-2xs font-semibold"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            <MessageSquare className="size-3.5 shrink-0" aria-hidden="true" />
-            <span className="truncate">Conversations</span>
-          </button>
           <button
             type="button"
             data-testid="sidebar-switch-admin"
@@ -200,6 +109,21 @@ export function AppSidebarMenus({
             <Shield className="size-3.5 shrink-0" aria-hidden="true" />
             <span className="truncate">Admin</span>
           </button>
+          <button
+            type="button"
+            data-testid="sidebar-switch-conversations"
+            aria-pressed={!isAdminMode}
+            onClick={() => onModeChange?.("conversations")}
+            className={cn(
+              "flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+              !isAdminMode
+                ? "bg-accent text-foreground ring-1 ring-muted-foreground/30 shadow-2xs font-semibold"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <MessageSquare className="size-3.5 shrink-0" aria-hidden="true" />
+            <span className="truncate">Conversations</span>
+          </button>
         </div>
 
         <SidebarMenu>
@@ -211,7 +135,6 @@ export function AppSidebarMenus({
                 onClick={(e) => {
                   e.preventDefault();
                   setOpenMobile(false);
-                  onModeChange?.("conversations");
                   router.push(agentScopedPath(agentScope, "/"));
                   router.refresh();
                 }}
@@ -307,138 +230,105 @@ export function AppSidebarMenus({
               </SidebarMenuItem>
             </SidebarMenu>
             {user && <AppSidebarAdmin />}
-
-            {/* Dedicated Admin Activity Links */}
-            <div className="mt-2 border-t border-sidebar-border/50 pt-2 group-data-[collapsible=icon]:hidden">
-              <p className="mb-1 px-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-                Admin Controls
-              </p>
-              <SidebarMenu>
-                {ADMIN_NAV_ITEMS.map((item) => {
-                  const Icon = item.icon;
-                  const active =
-                    matchSubPath(pathname, item.href) ||
-                    (item.id === "usage" && matchSubPath(pathname, "/admin/users"));
-                  return (
-                    <SidebarMenuItem key={item.id}>
-                      <Link
-                        href={agentScopedPath(agentScope, item.href)}
-                        data-testid={item.testId}
-                        onClick={() => setOpenMobile(false)}
-                      >
-                        <SidebarMenuButton
-                          className="font-medium text-xs"
-                          isActive={active}
-                        >
-                          <Icon className="size-3.5" />
-                          <span>{item.title}</span>
-                        </SidebarMenuButton>
-                      </Link>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </div>
-          </>
-        ) : (
-          <SidebarMenu className="group/archive">
-            <Tooltip>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  data-testid="sidebar-archive-link"
-                  onClick={toggleArchive}
-                  className="font-semibold cursor-pointer pr-14"
-                  isActive={matchSubPath(pathname, "/archive")}
-                >
-                  {expandedArchive ? (
-                    <FolderOpenIcon className="size-4" />
-                  ) : (
-                    <FolderSearchIcon className="size-4" />
-                  )}
-                  <span>{t("Archive.title")}</span>
-                </SidebarMenuButton>
-                <button
-                  type="button"
-                  aria-label={t("Archive.addArchive")}
-                  className="text-sidebar-foreground ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground absolute top-1.5 right-7 flex aspect-square w-5 cursor-pointer items-center justify-center rounded-md p-0 outline-hidden transition-all duration-150 focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0 group-hover/archive:opacity-100 opacity-0"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setAddArchiveDialogOpen(true);
-                  }}
-                >
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <PlusIcon className="size-4" />
-                    </TooltipTrigger>
-                    <TooltipContent side="right" align="center">
-                      {t("Archive.addArchive")}
-                    </TooltipContent>
-                  </Tooltip>
-                </button>
-                <SidebarMenuAction
-                  aria-label="Toggle Archive Submenu"
-                  data-testid="archive-sidebar-dropdown-button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    toggleArchive();
-                  }}
-                >
-                  <ChevronRight
-                    className={cn(
-                      "size-4 transition-transform duration-200 text-muted-foreground",
-                      expandedArchive && "rotate-90",
+            <SidebarMenu className="group/archive">
+              <Tooltip>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    data-testid="sidebar-archive-link"
+                    onClick={toggleArchive}
+                    className="font-semibold cursor-pointer pr-14"
+                    isActive={matchSubPath(pathname, "/archive")}
+                  >
+                    {expandedArchive ? (
+                      <FolderOpenIcon className="size-4" />
+                    ) : (
+                      <FolderSearchIcon className="size-4" />
                     )}
-                  />
-                </SidebarMenuAction>
-              </SidebarMenuItem>
-            </Tooltip>
-            {expandedArchive && (
-              <div className="animate-in fade-in-0 slide-in-from-top-1 duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]">
-                <SidebarMenuSub>
-                  {isLoadingArchives ? (
-                    <div className="gap-2 flex flex-col">
-                      {Array.from({ length: 2 }).map((_, index) => (
-                        <Skeleton key={index} className="h-6 w-full" />
-                      ))}
-                    </div>
-                  ) : archives!.length === 0 ? (
-                    <SidebarMenuSubItem>
-                      <SidebarMenuSubButton className="text-muted-foreground">
-                        {t("Archive.noArchives")}
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
-                  ) : (
-                    archives!.map((archive) => (
-                      <SidebarMenuSubItem
-                        onClick={() => {
-                          router.push(
-                            agentScopedPath(
-                              agentScope,
-                              `/archive?id=${archive.id}`,
-                            ),
-                          );
-                        }}
-                        key={archive.id}
-                        className="cursor-pointer"
-                      >
-                        <SidebarMenuSubButton
-                          isActive={
-                            matchSubPath(pathname, "/archive") &&
-                            currentArchiveId === archive.id
-                          }
-                        >
-                          {archive.name}
+                    <span>{t("Archive.title")}</span>
+                  </SidebarMenuButton>
+                  <button
+                    type="button"
+                    aria-label={t("Archive.addArchive")}
+                    className="text-sidebar-foreground ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground absolute top-1.5 right-7 flex aspect-square w-5 cursor-pointer items-center justify-center rounded-md p-0 outline-hidden transition-all duration-150 focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0 group-hover/archive:opacity-100 opacity-0"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setAddArchiveDialogOpen(true);
+                    }}
+                  >
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <PlusIcon className="size-4" />
+                      </TooltipTrigger>
+                      <TooltipContent side="right" align="center">
+                        {t("Archive.addArchive")}
+                      </TooltipContent>
+                    </Tooltip>
+                  </button>
+                  <SidebarMenuAction
+                    aria-label="Toggle Archive Submenu"
+                    data-testid="archive-sidebar-dropdown-button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      toggleArchive();
+                    }}
+                  >
+                    <ChevronRight
+                      className={cn(
+                        "size-4 transition-transform duration-200 text-muted-foreground",
+                        expandedArchive && "rotate-90",
+                      )}
+                    />
+                  </SidebarMenuAction>
+                </SidebarMenuItem>
+              </Tooltip>
+              {expandedArchive && (
+                <div className="animate-in fade-in-0 slide-in-from-top-1 duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]">
+                  <SidebarMenuSub>
+                    {isLoadingArchives ? (
+                      <div className="gap-2 flex flex-col">
+                        {Array.from({ length: 2 }).map((_, index) => (
+                          <Skeleton key={index} className="h-6 w-full" />
+                        ))}
+                      </div>
+                    ) : archives!.length === 0 ? (
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton className="text-muted-foreground">
+                          {t("Archive.noArchives")}
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>
-                    ))
-                  )}
-                </SidebarMenuSub>
-              </div>
-            )}
-          </SidebarMenu>
-        )}
+                    ) : (
+                      archives!.map((archive) => (
+                        <SidebarMenuSubItem
+                          onClick={() => {
+                            router.push(
+                              agentScopedPath(
+                                agentScope,
+                                `/archive?id=${archive.id}`,
+                              ),
+                            );
+                          }}
+                          key={archive.id}
+                          className="cursor-pointer"
+                        >
+                          <SidebarMenuSubButton
+                            isActive={
+                              matchSubPath(pathname, "/archive") &&
+                              currentArchiveId === archive.id
+                            }
+                          >
+                            {archive.name}
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                      ))
+                    )}
+                  </SidebarMenuSub>
+                </div>
+              )}
+            </SidebarMenu>
+          </>
+        ) : null}
       </SidebarGroupContent>
       <ArchiveDialog
         open={addArchiveDialogOpen}
