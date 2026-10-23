@@ -105,12 +105,12 @@ fn disk(path: &std::path::Path) -> Option<Value> {
 /// The bind host this backend is listening on (`AMIRO_HOST`, default
 /// `127.0.0.1`). `0.0.0.0` / `::` mean "every interface", i.e. a VM/remote
 /// server install.
-fn bind_host() -> String {
+pub(crate) fn bind_host() -> String {
     std::env::var("AMIRO_HOST").unwrap_or_else(|_| "127.0.0.1".into())
 }
 
 /// The port this backend is listening on (`AMIRO_PORT`, default 8787).
-fn bind_port() -> u16 {
+pub(crate) fn bind_port() -> u16 {
     std::env::var("AMIRO_PORT")
         .ok()
         .and_then(|value| value.parse().ok())
@@ -119,7 +119,7 @@ fn bind_port() -> u16 {
 
 /// `true` when the bind host accepts connections from off-box clients:
 /// `0.0.0.0`, `::`, or any non-loopback IP the operator named.
-fn is_remote_bind(host: &str) -> bool {
+pub(crate) fn is_remote_bind(host: &str) -> bool {
     if host.eq_ignore_ascii_case("localhost") {
         return false;
     }
@@ -136,7 +136,7 @@ fn is_remote_bind(host: &str) -> bool {
 /// can print the exact `http://<ip>:<port>` URL to open from a phone/laptop.
 /// `hostname -I` on Linux, the `getifaddrs` interface list on macOS, and a
 /// best-effort UDP-connect trick elsewhere; empty when none can be found.
-fn lan_ipv4_addresses() -> Vec<String> {
+pub(crate) fn lan_ipv4_addresses() -> Vec<String> {
     let mut found: Vec<String> = Vec::new();
     // Linux: `hostname -I` prints every interface address, space-separated.
     if let Ok(output) = std::process::Command::new("hostname").arg("-I").output() {

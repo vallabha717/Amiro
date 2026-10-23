@@ -56,3 +56,6 @@ amiro-sandboxd = { path = "sandboxd" }
 aes-gcm = { version = "0.10", features = ["aes", "alloc", "getrandom", "zeroize"] }
 zeroize = { version = "1", features = ["alloc"] }
 base64 = { version = "0.22", features = ["std"] }
+# Pairing QR codes for Settings → Devices (rendered to SVG by hand, so no
+# image features). Already in the runtime lockfile.
+qrcode = { version = "0.14.1", default-features = false }
