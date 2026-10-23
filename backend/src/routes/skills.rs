@@ -32,6 +32,18 @@ pub const BUNDLED_AGENT_SKILLS: &[(&str, &str)] = &[
         "schedules",
         include_str!("../../../agent-skills/schedules/SKILL.md"),
     ),
+    (
+        "frontend-design",
+        include_str!("../../../agent-skills/frontend-design/SKILL.md"),
+    ),
+    (
+        "geo-writing",
+        include_str!("../../../agent-skills/geo-writing/SKILL.md"),
+    ),
+    (
+        "cli-discover",
+        include_str!("../../../agent-skills/cli-discover/SKILL.md"),
+    ),
 ];
 
 fn bundled_skill(name: &str) -> Option<&'static str> {
@@ -1172,6 +1184,49 @@ mod bundled_skill_tests {
         assert!(parsed.allowed_tools.contains(&"mcp".to_string()));
         let visualize = parse_skill_markdown(bundled_skill("visualize").unwrap(), "visualize");
         assert_eq!(visualize.meta.display_name.as_deref(), Some("Visualize"));
+    }
+
+    #[test]
+    fn superpower_skill_frontmatter_is_parsed() {
+        // Phase 1 superpower ports (Vellum -> Amiro): emoji, display name and
+        // category must surface in the Superpowers page.
+        let design =
+            parse_skill_markdown(bundled_skill("frontend-design").unwrap(), "frontend-design");
+        assert_eq!(design.name, "frontend-design");
+        assert_eq!(design.meta.emoji.as_deref(), Some("🎨"));
+        assert_eq!(
+            design.meta.display_name.as_deref(),
+            Some("Frontend Design")
+        );
+        assert_eq!(design.meta.category.as_deref(), Some("development"));
+
+        let geo = parse_skill_markdown(bundled_skill("geo-writing").unwrap(), "geo-writing");
+        assert_eq!(geo.meta.emoji.as_deref(), Some("✍️"));
+        assert_eq!(
+            geo.meta.display_name.as_deref(),
+            Some("GEO Article Writer")
+        );
+        assert_eq!(geo.meta.category.as_deref(), Some("content"));
+
+        let cli = parse_skill_markdown(bundled_skill("cli-discover").unwrap(), "cli-discover");
+        assert_eq!(cli.meta.emoji.as_deref(), Some("🔍"));
+        assert_eq!(
+            cli.meta.display_name.as_deref(),
+            Some("CLI Discovery")
+        );
+        assert_eq!(cli.meta.category.as_deref(), Some("development"));
+        // The Amiro port must not reference Vellum-only tooling.
+        for (name, markdown) in BUNDLED_AGENT_SKILLS {
+            if ["frontend-design", "geo-writing", "cli-discover"].contains(name) {
+                assert!(
+                    !markdown.contains("host_bash")
+                        && !markdown.contains("assistant browser")
+                        && !markdown.contains("assistant credentials")
+                        && !markdown.contains("assistant inference"),
+                    "{name} still references Vellum-only tooling"
+                );
+            }
+        }
     }
 
     #[test]
