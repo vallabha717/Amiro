@@ -82,7 +82,7 @@ jobs:
           workspaces: |
             backend
             runtime
-            src-tauri
+            clients/desktop
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -128,7 +128,7 @@ jobs:
       - name: Collect installers
         shell: bash
         run: |
-          bundle="src-tauri/target/${{ matrix.target }}/release/bundle"
+          bundle="clients/desktop/target/${{ matrix.target }}/release/bundle"
           arch="${{ matrix.target }}"; arch="${arch%%-*}"
           mkdir -p dist
           case "${{ matrix.family }}" in

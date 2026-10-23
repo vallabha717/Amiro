@@ -1,49 +1,23 @@
+// Type-checks the web app (clients/web) together with the E2E specs and the
+// repo's scripts. The web app's own settings and path aliases live in
+// clients/web/tsconfig.json, which Next.js reads.
 {
-  "compilerOptions": {
-    "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "react-jsx",
-    "incremental": true,
-    "emitDecoratorMetadata": true,
-    "experimentalDecorators": true,
-    "noUnusedLocals": true,
-    "strictPropertyInitialization": false,
-    "noUnusedParameters": false,
-    "noImplicitAny": false,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
-    "paths": {
-      "ui/*": ["./src/components/ui/*"],
-      "auth/*": ["./src/lib/auth/*"],
-      "app-types/*": ["./src/types/*"],
-      "logger": ["./src/lib/logger.ts"],
-      "lib/*": ["./src/lib/*"],
-      "load-env": ["./src/lib/load-env.ts"],
-      "@/*": ["./src/*"]
-    }
-  },
+  "extends": "./clients/web/tsconfig.json",
   "include": [
-    "next-env.d.ts",
+    "clients/web/next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
-    ".next/types/**/*.ts",
-    "src/types/global.d.ts",
-    "vitest.setup.ts",
-    "vitest.config.ts",
-    "tests/**/*.ts",
-    ".next/dev/types/**/*.ts"
+    "clients/web/.next/types/**/*.ts",
+    "clients/web/src/types/global.d.ts",
+    "clients/web/.next/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "out", "src-tauri"]
+  "exclude": [
+    "node_modules",
+    "**/node_modules",
+    "clients/web/out",
+    "clients/desktop",
+    "clients/mobile",
+    "runtime",
+    "backend"
+  ]
 }

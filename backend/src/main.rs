@@ -1,7 +1,7 @@
 //! Native Amiro backend entry point.
 //!
 //! Serves the JSON API, the built UI (for browser and development use), and the
-//! sidecar boundary in front of both. The desktop webview loads `out/` itself
+//! sidecar boundary in front of both. The desktop webview loads `clients/web/out/` itself
 //! and is given `__BACKEND_PORT__`/`__BACKEND_TOKEN__` by Tauri; when the
 //! backend serves the page instead, it injects the same two globals.
 

@@ -14,11 +14,11 @@ const memorySource = readFileSync(
   "utf8",
 );
 const adapterAgentSource = readFileSync(
-  path.join(import.meta.dirname, "../../../adapter/src/routes/agent.mjs"),
+  path.join(import.meta.dirname, "../../../../../adapter/src/routes/agent.mjs"),
   "utf8",
 );
 const backendAgentSource = readFileSync(
-  path.join(import.meta.dirname, "../../../backend/src/agent.rs"),
+  path.join(import.meta.dirname, "../../../../../backend/src/agent.rs"),
   "utf8",
 );
 

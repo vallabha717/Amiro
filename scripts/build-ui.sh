@@ -5,7 +5,7 @@
 # `go build -tags embedui` binary could serve the dashboard from one listener.
 # backend-go is gone; the Amiro adapter (adapter/src/server.mjs) serves out/
 # directly from the repo root, so the staging step is no longer needed and out/
-# is the single source of truth for both the adapter and src-tauri's
+# is the single source of truth for both the adapter and clients/desktop's
 # frontendDist.
 #
 # Usage:
@@ -14,7 +14,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OUT="$ROOT/out"
+OUT="$ROOT/clients/web/out"
 
 if [[ "${1:-}" != "--check" ]]; then
   echo "==> building the dashboard (next build)"

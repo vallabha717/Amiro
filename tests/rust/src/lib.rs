@@ -52,7 +52,7 @@ pub fn find_repo_root() -> PathBuf {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut current = manifest_dir;
     while let Some(parent) = current.parent() {
-        if parent.join("package.json").exists() && parent.join("src-tauri").exists() {
+        if parent.join("package.json").exists() && parent.join("clients/desktop").exists() {
             return parent.to_path_buf();
         }
         current = parent;
@@ -148,10 +148,10 @@ pub struct TauriContractSummary {
     pub main_calls_lib: bool,
 }
 
-/// Inspect the real `src-tauri` files on disk.
+/// Inspect the real `clients/desktop` files on disk.
 pub fn inspect_tauri_contract(repo_root: &Path) -> Result<TauriContractSummary, std::io::Error> {
-    let cargo_path = repo_root.join("src-tauri/Cargo.toml");
-    let main_path = repo_root.join("src-tauri/src/main.rs");
+    let cargo_path = repo_root.join("clients/desktop/Cargo.toml");
+    let main_path = repo_root.join("clients/desktop/src/main.rs");
 
     let cargo_content = if cargo_path.is_file() {
         Some(fs::read_to_string(&cargo_path)?)
@@ -252,7 +252,7 @@ mod tests {
         let root = find_repo_root();
         assert!(root.is_dir());
         assert!(root.join("package.json").exists());
-        assert!(root.join("src-tauri").exists());
+        assert!(root.join("clients/desktop").exists());
     }
 
     #[test]
@@ -270,7 +270,7 @@ mod tests {
     fn test_inspect_real_tauri_contract() {
         let root = find_repo_root();
         let summary = inspect_tauri_contract(&root).expect("failed to inspect tauri contract");
-        assert!(summary.cargo_toml_exists, "src-tauri/Cargo.toml must exist");
+        assert!(summary.cargo_toml_exists, "clients/desktop/Cargo.toml must exist");
         assert_eq!(summary.lib_name.as_deref(), Some("amiro_desktop"), "Tauri lib must be amiro_desktop");
         assert_eq!(summary.package_license.as_deref(), Some("MIT"), "Tauri Cargo.toml must have license MIT");
         assert!(summary.main_calls_lib, "main.rs must invoke amiro_desktop::run()");

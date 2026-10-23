@@ -41,11 +41,11 @@ if [[ -n "$STAGE" ]]; then
   install -m 755 "$ROOT/backend/target/$SEGMENT/amiro-backend$SUFFIX" "$STAGE/amiro-backend$SUFFIX"
   install -m 755 "$ROOT/runtime/target/$SEGMENT/amiro-runtime$SUFFIX" "$STAGE/amiro$SUFFIX"
   install -m 644 "$ROOT/runtime/LICENSE" "$STAGE/RUNTIME-LICENSE"
-  if [[ -d "$ROOT/out" ]]; then
+  if [[ -d "$ROOT/clients/web/out" ]]; then
     mkdir -p "$STAGE/ui"
-    cp -R "$ROOT/out/." "$STAGE/ui/"
+    cp -R "$ROOT/clients/web/out/." "$STAGE/ui/"
   else
-    printf '%s\n' 'No out/ export found. Run pnpm build before staging the standalone web UI.' >&2
+    printf '%s\n' 'No clients/web/out/ export found. Run pnpm build before staging the standalone web UI.' >&2
   fi
   printf 'Native Amiro executables staged in %s\n' "$STAGE"
 fi

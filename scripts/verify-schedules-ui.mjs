@@ -73,7 +73,7 @@ const child = spawn(binary, [], {
     AMIRO_TOKEN: "",
     AMIRO_OWNER_EMAIL: "owner@amiro.test",
     AMIRO_OWNER_PASSWORD: "schedules-ui-owner-1",
-    AMIRO_OUT_DIR: path.join(ROOT, "out"),
+    AMIRO_OUT_DIR: path.join(ROOT, "clients", "web", "out"),
   },
   stdio: ["ignore", log.fd, log.fd],
 });

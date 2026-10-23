@@ -19,7 +19,7 @@ OUT="${3:-$ROOT/dist}"
 if [ "$TARGET" = "$HOST" ]; then rel=release; else rel="$TARGET/release"; fi
 backend="${AMIRO_PKG_BACKEND:-$ROOT/backend/target/$rel/amiro-backend}"
 runtime="${AMIRO_PKG_RUNTIME:-$ROOT/runtime/target/$rel/amiro-runtime}"
-for f in "$backend" "$runtime" "$ROOT/out/index.html"; do
+for f in "$backend" "$runtime" "$ROOT/clients/web/out/index.html"; do
   [ -f "$f" ] || { echo "missing $f" >&2; exit 1; }
 done
 
@@ -28,7 +28,7 @@ pkg="$stage/amiro"
 mkdir -p "$pkg"
 cp "$backend" "$pkg/amiro-backend"
 cp "$runtime" "$pkg/amiro-runtime"
-cp -R "$ROOT/out" "$pkg/ui"
+cp -R "$ROOT/clients/web/out" "$pkg/ui"
 cp "$ROOT/packaging/amiro" "$pkg/amiro"
 cp "$ROOT/amiro.example.toml" "$pkg/amiro.example.toml"
 cp "$ROOT/LICENSE" "$pkg/LICENSE" 2>/dev/null || true

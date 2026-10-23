@@ -11,6 +11,9 @@ import {
   openDotVariantForTraits,
 } from "./opendots-catalog";
 
+// clients/web, wherever the tests are run from.
+const WEB_ROOT = path.resolve(import.meta.dirname, "../../..");
+
 describe("OpenDots catalog and assets", () => {
   it("defines exactly four plush character variants", () => {
     expect(OPENDOTS_VARIANTS.length).toBe(4);
@@ -23,7 +26,7 @@ describe("OpenDots catalog and assets", () => {
     for (const variant of OPENDOTS_VARIANTS) {
       expect(variant.src).toMatch(/^\/agent\/opendots\/[a-z]+\.png$/);
       const diskPath = path.join(
-        process.cwd(),
+        WEB_ROOT,
         "public",
         variant.src.replace(/^\//, ""),
       );
@@ -91,7 +94,7 @@ describe("Theme synchronization contract", () => {
   });
 
   it("defines --sidebar-primary in globals.css for light and dark themes", () => {
-    const cssPath = path.join(process.cwd(), "src/app/globals.css");
+    const cssPath = path.join(WEB_ROOT, "src/app/globals.css");
     const css = readFileSync(cssPath, "utf8");
 
     // Every theme in BASE_THEMES should have styling in globals.css

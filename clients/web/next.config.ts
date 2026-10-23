@@ -1,8 +1,11 @@
+import path from "node:path";
 import type { NextConfig } from "next";
 
 // package.json's "type": "module" means this file has no CommonJS
 // __dirname -- import.meta.dirname is its ESM equivalent (Node 20.11+).
-const PROJECT_ROOT = import.meta.dirname;
+// The web app lives in clients/web, but its dependencies (node_modules) and
+// lockfile are at the repo root, so that is the root Turbopack must see.
+const PROJECT_ROOT = path.join(import.meta.dirname, "../..");
 
 export default () => {
   const isDev = process.env.NODE_ENV === "development";
@@ -52,13 +55,9 @@ export default () => {
     devIndicators: {
       position: "bottom-right",
     },
-    // desktop/ is a sibling pnpm workspace to the repo root (its own
-    // package.json + pnpm-lock.yaml), not a member of the root's workspace.
-    // Without pinning this, Next's root-inference sees both lockfiles and
-    // sometimes picks the repo root instead of desktop/ itself, which
-    // resolves modules (e.g. instrumentation.ts) against the wrong src/
-    // tree entirely -- confirmed live via a real "Cannot find module" dev
-    // server crash caused by exactly this.
+    // Pinned rather than inferred: tests/ has its own lockfile, and
+    // root-inference must not settle on clients/web, which has no
+    // node_modules of its own.
     turbopack: {
       root: PROJECT_ROOT,
     },

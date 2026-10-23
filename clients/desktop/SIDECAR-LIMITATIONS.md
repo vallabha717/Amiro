@@ -9,8 +9,8 @@ binary `amiro-runtime`). Both are real executables, so Tauri's
 "externalBin": ["binaries/backend", "binaries/runtime"]
 ```
 
-`src-tauri/build-sidecar.sh` (Linux/macOS) and `build-sidecar.ps1` (Windows)
-stage both binaries for the host target triple. `src-tauri/src/lib.rs` spawns
+`clients/desktop/build-sidecar.sh` (Linux/macOS) and `build-sidecar.ps1` (Windows)
+stage both binaries for the host target triple. `clients/desktop/src/lib.rs` spawns
 the backend sidecar, sets `AMIRO_PORT` to an ephemeral `127.0.0.1:0` reservation
 and `AMIRO_TOKEN` to a per-launch random secret, injects the same port/token
 into the webview (`__BACKEND_PORT__` / `__BACKEND_TOKEN__`), and passes

@@ -26,7 +26,7 @@ const catalog = getCharacterComponents();
  * copy so the alias cannot reappear unnoticed on either side.
  */
 const backendSource = readFileSync(
-  path.join(import.meta.dirname, "../../../backend/src/agent.rs"),
+  path.join(import.meta.dirname, "../../../../../backend/src/agent.rs"),
   "utf8",
 );
 const customizerSource = readFileSync(

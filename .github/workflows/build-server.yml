@@ -62,7 +62,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: ui
-          path: out
+          path: clients/web/out
       - name: Build the server and the agent runtime
         run: |
           cargo build --release --manifest-path backend/Cargo.toml --bin amiro-backend

@@ -7,9 +7,9 @@ use std::process::Command;
 fn test_build_sidecar_script_execution() {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let repo_root = Path::new(manifest_dir).join("../..");
-    let script_path = repo_root.join("src-tauri/build-sidecar.sh");
+    let script_path = repo_root.join("clients/desktop/build-sidecar.sh");
 
-    assert!(script_path.is_file(), "src-tauri/build-sidecar.sh must exist");
+    assert!(script_path.is_file(), "clients/desktop/build-sidecar.sh must exist");
 
     // Execute build-sidecar.sh with explicit triple
     let test_triple = "x86_64-unknown-linux-gnu";
@@ -18,7 +18,7 @@ fn test_build_sidecar_script_execution() {
         .arg(test_triple)
         .current_dir(&repo_root)
         .output()
-        .expect("failed to run src-tauri/build-sidecar.sh");
+        .expect("failed to run clients/desktop/build-sidecar.sh");
 
     assert!(
         output.status.success(),
@@ -28,7 +28,7 @@ fn test_build_sidecar_script_execution() {
     );
 
     // Verify generated launcher
-    let launcher_path = repo_root.join(format!("src-tauri/binaries/backend-{}", test_triple));
+    let launcher_path = repo_root.join(format!("clients/desktop/binaries/backend-{}", test_triple));
     assert!(
         launcher_path.is_file(),
         "expected sidecar launcher at {:?}",

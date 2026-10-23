@@ -3,11 +3,11 @@
 //
 //   node scripts/build-sidecar.mjs [--build] [--target <rust-triple>]
 //
-// Tauri's bundle.externalBin needs `src-tauri/binaries/<name>-<triple>[.exe]`
+// Tauri's bundle.externalBin needs `clients/desktop/binaries/<name>-<triple>[.exe]`
 // for both sidecars: `backend` (amiro-backend) and `runtime` (amiro-runtime).
 // With --build, missing release binaries are compiled first. Respects
 // AMIRO_NATIVE_BACKEND_BIN / AMIRO_NATIVE_RUNTIME_BIN to use prebuilt ones.
-// (The old Node-adapter launcher lives on in src-tauri/build-sidecar.sh with
+// (The old Node-adapter launcher lives on in clients/desktop/build-sidecar.sh with
 // AMIRO_SIDECAR_MODE=adapter, for local development only.)
 import { execFileSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdirSync } from "node:fs";
@@ -52,7 +52,7 @@ const sidecars = [
   },
 ];
 
-const outDir = join(root, "src-tauri", "binaries");
+const outDir = join(root, "clients/desktop", "binaries");
 mkdirSync(outDir, { recursive: true });
 
 for (const s of sidecars) {

@@ -17,7 +17,7 @@ const worker = join(
   "build",
   "pdf.worker.min.mjs",
 );
-const dest = join(root, "public", "pdf.worker.min.mjs");
+const dest = join(root, "clients", "web", "public", "pdf.worker.min.mjs");
 
 if (!existsSync(worker)) {
   console.error(`[sync-pdf-worker] worker not found at ${worker}`);

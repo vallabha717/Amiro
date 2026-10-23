@@ -297,8 +297,8 @@ if [ "$SKIP_FRONTEND" = "1" ]; then
 else
   step "Building the frontend (pnpm build -> out/)"
   pnpm build
-  [ -f "$REPO_ROOT/out/index.html" ] || die "pnpm build finished but out/index.html is missing."
-  ok "frontend export ready at $REPO_ROOT/out"
+  [ -f "$REPO_ROOT/clients/web/out/index.html" ] || die "pnpm build finished but clients/web/out/index.html is missing."
+  ok "frontend export ready at $REPO_ROOT/clients/web/out"
 fi
 
 # ---------------------------------------------------------------------------
@@ -337,10 +337,10 @@ if [ -x "$RUNTIME_BIN" ]; then
 else
   printf '  runtime:      %s (not built, see --skip-native)%s\n' "$RUNTIME_BIN" ""
 fi
-if [ -f "$REPO_ROOT/out/index.html" ]; then
-  printf '  frontend:     %s\n' "$REPO_ROOT/out"
+if [ -f "$REPO_ROOT/clients/web/out/index.html" ]; then
+  printf '  frontend:     %s\n' "$REPO_ROOT/clients/web/out"
 else
-  printf '  frontend:     %s (not built, see --skip-frontend)\n' "$REPO_ROOT/out"
+  printf '  frontend:     %s (not built, see --skip-frontend)\n' "$REPO_ROOT/clients/web/out"
 fi
 
 printf '\n%sVM Server & Web UI (Remote Access):%s\n' "$BOLD" "$RESET"

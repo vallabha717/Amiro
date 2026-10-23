@@ -52,19 +52,19 @@ fn test_real_tauri_configuration_and_license() {
     let repo_root = find_repo_root();
     let summary = inspect_tauri_contract(&repo_root).expect("failed to inspect tauri contract");
 
-    assert!(summary.cargo_toml_exists, "src-tauri/Cargo.toml must exist");
+    assert!(summary.cargo_toml_exists, "clients/desktop/Cargo.toml must exist");
     assert_eq!(
         summary.lib_name.as_deref(),
         Some("amiro_desktop"),
-        "src-tauri lib name must be amiro_desktop"
+        "clients/desktop lib name must be amiro_desktop"
     );
     assert_eq!(
         summary.package_license.as_deref(),
         Some("MIT"),
-        "src-tauri package license must be MIT"
+        "clients/desktop package license must be MIT"
     );
     assert!(
         summary.main_calls_lib,
-        "src-tauri/src/main.rs must call amiro_desktop::run()"
+        "clients/desktop/src/main.rs must call amiro_desktop::run()"
     );
 }

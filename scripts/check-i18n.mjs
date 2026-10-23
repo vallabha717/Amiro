@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// Check that every locale in messages/ has exactly the keys and {placeholders}
-// of messages/en.json. Exits 1 on any difference.
+// Check that every locale in clients/web/messages/ has exactly the keys and {placeholders}
+// of clients/web/messages/en.json. Exits 1 on any difference.
 //   node scripts/check-i18n.mjs        (also: pnpm check:i18n)
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-const dir = join(import.meta.dirname, "..", "messages");
+const dir = join(import.meta.dirname, "..", "clients", "web", "messages");
 const flat = (obj, prefix = "") =>
   Object.entries(obj).flatMap(([k, v]) =>
     v && typeof v === "object" ? flat(v, `${prefix}${k}.`) : [[`${prefix}${k}`, String(v)]],

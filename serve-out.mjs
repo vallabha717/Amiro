@@ -1,11 +1,11 @@
-// Minimal static server for the `next build` export in out/, so the
+// Minimal static server for the `next build` export in clients/web/out/, so the
 // production bundle can be exercised in a browser the same way `next dev`
 // was. Mirrors the trailing-slash / .html resolution a real static host does.
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 
-const ROOT = new URL("./out/", import.meta.url).pathname;
+const ROOT = new URL("./clients/web/out/", import.meta.url).pathname;
 const PORT = Number(process.argv[2] || 3000);
 
 const TYPES = {
@@ -53,4 +53,4 @@ createServer(async (req, res) => {
     }
   }
   res.writeHead(404).end("not found");
-}).listen(PORT, () => console.log(`serving out/ on http://localhost:${PORT}`));
+}).listen(PORT, () => console.log(`serving clients/web/out/ on http://localhost:${PORT}`));

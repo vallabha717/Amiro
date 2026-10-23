@@ -151,7 +151,7 @@ pub fn out_dir(_state: &AppState) -> PathBuf {
                 .and_then(|p| p.parent().map(|p| p.join("ui")));
             packaged
                 .filter(|p| p.is_dir())
-                .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../out"))
+                .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../clients/web/out"))
         })
 }
 

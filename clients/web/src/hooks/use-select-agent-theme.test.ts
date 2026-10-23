@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
+import path from "node:path";
 import { COLOR_TO_SIDEBAR_THEME } from "@/lib/agent/character-catalog";
 
 const mocks = vi.hoisted(() => ({
@@ -102,7 +103,7 @@ describe("sidebar agent color selection", () => {
 
   it("keeps the sidebar theme menu to the VegaAI palettes", () => {
     const source = readFileSync(
-      "src/components/layouts/app-sidebar-user.tsx",
+      path.join(import.meta.dirname, "../components/layouts/app-sidebar-user.tsx"),
       "utf8",
     );
     expect(source).toContain("VEGA_PALETTES.map(");

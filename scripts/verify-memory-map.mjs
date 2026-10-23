@@ -67,7 +67,7 @@ const child = spawn(path.resolve("backend/target/debug/amiro-backend"), [], {
     AMIRO_RUNTIME_DIR: runtime,
     AMIRO_API_SOCKET: path.join(runtime, "amiro-api.sock"),
     AMIRO_RUNTIME_BIN: path.resolve("runtime/target/debug/amiro-runtime"),
-    AMIRO_OUT_DIR: path.resolve(process.env.MEMORY_MAP_OUT_DIR || "out"),
+    AMIRO_OUT_DIR: path.resolve(process.env.MEMORY_MAP_OUT_DIR || "clients/web/out"),
     AMIRO_HOST: "127.0.0.1",
     AMIRO_PORT: String(port),
     AMIRO_OWNER_EMAIL: "map@amiro.test",

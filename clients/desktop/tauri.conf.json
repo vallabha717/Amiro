@@ -4,7 +4,7 @@
   "version": "1.26.0",
   "identifier": "com.amiro.desktop",
   "build": {
-    "frontendDist": "../out",
+    "frontendDist": "../web/out",
     "devUrl": "http://localhost:3210",
     "beforeDevCommand": "node scripts/build-sidecar.mjs --build && pnpm dev -p 3210",
     "beforeBuildCommand": "node scripts/build-sidecar.mjs --build && pnpm build"
