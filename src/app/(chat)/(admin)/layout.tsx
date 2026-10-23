@@ -14,6 +14,7 @@ import {
   Puzzle,
   Search,
   SlidersHorizontal,
+  Smartphone,
   Volume2,
   type LucideIcon,
 } from "lucide-react";
@@ -39,6 +40,15 @@ const ADMIN_SECTIONS: AdminSection[] = [
     icon: SlidersHorizontal,
     testId: "admin-sidebar-link-general",
     isActive: (p) => matchSubPath(p, "/admin/general"),
+  },
+  {
+    id: "devices",
+    title: "Devices",
+    subtitle: "Pair phones and switch between this computer and a server",
+    href: "/admin/devices",
+    icon: Smartphone,
+    testId: "admin-sidebar-link-devices",
+    isActive: (p) => matchSubPath(p, "/admin/devices"),
   },
   {
     id: "notifications",

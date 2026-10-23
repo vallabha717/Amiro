@@ -1,5 +1,9 @@
 import { apiJson } from "../backend/client";
-import { backendUrl, getBackendSharedSecret } from "../backend/config";
+import {
+  backendUrl,
+  getBackendSharedSecret,
+  getSessionToken,
+} from "../backend/config";
 import type { ClientFrame, ServerFrame } from "./protocol";
 
 /** http(s) -> ws(s) with ticket/token query. Relative URLs resolve against `pageHref`. */
@@ -56,7 +60,8 @@ export async function connectLiveVoice(
   const wsUrl = buildLiveVoiceWsUrl(
     backendUrl("/api/live-voice"),
     ticket,
-    getBackendSharedSecret(),
+    // A paired device has no sidecar secret; its session stands in for it.
+    getBackendSharedSecret() || getSessionToken() || "",
   );
   const ws = new WebSocket(wsUrl);
   ws.binaryType = "arraybuffer";

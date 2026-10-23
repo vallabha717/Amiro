@@ -42,8 +42,56 @@ declare global {
   }
 }
 
+const REMOTE_ORIGIN_STORAGE_KEY = "amiro.remote-origin";
+const REMOTE_SESSION_TOKEN_STORAGE_KEY = "amiro.remote-session-token";
+
+function readStorage(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The other Amiro this app is connected to, when it is not the one it came
+ * with: a phone paired with a desktop, or a desktop app switched to a
+ * cloud-hosted server (Settings → Devices, /pair). `null` means the app talks
+ * to its own backend as usual.
+ */
+export function getRemoteOrigin(): string | null {
+  if (typeof window === "undefined") return null;
+  return readStorage(REMOTE_ORIGIN_STORAGE_KEY) || null;
+}
+
+/** Point the app at another Amiro with the device session it was paired with.
+ * The local session token is kept, so switching back needs no new sign-in. */
+export function connectToRemote(origin: string, token: string) {
+  window.localStorage.setItem(REMOTE_ORIGIN_STORAGE_KEY, origin);
+  window.localStorage.setItem(REMOTE_SESSION_TOKEN_STORAGE_KEY, token);
+}
+
+/** Back to this app's own backend. */
+export function disconnectRemote() {
+  window.localStorage.removeItem(REMOTE_ORIGIN_STORAGE_KEY);
+  window.localStorage.removeItem(REMOTE_SESSION_TOKEN_STORAGE_KEY);
+}
+
+/** True inside the desktop app, which always has its own backend to go back
+ * to. Tauri injects only the port; a page the backend served itself also
+ * carries `__BACKEND_ORIGIN__`, and a phone has neither. */
+export function hasLocalBackend(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    Boolean(window.__BACKEND_PORT__) &&
+    typeof window.__BACKEND_ORIGIN__ !== "string"
+  );
+}
+
 export function getBackendBaseUrl(): string {
   if (typeof window !== "undefined") {
+    const remote = getRemoteOrigin();
+    if (remote) return remote;
     // Deliberately a typeof check, not a truthiness one: "" is the value
     // that means same-origin, and it is falsy.
     if (typeof window.__BACKEND_ORIGIN__ === "string") {
@@ -70,6 +118,8 @@ export function isSameOriginBackend(): boolean {
 }
 
 export function getBackendSharedSecret(): string {
+  // Never hand this app's own sidecar secret to another Amiro.
+  if (getRemoteOrigin()) return "";
   if (typeof window !== "undefined" && window.__BACKEND_TOKEN__) {
     return window.__BACKEND_TOKEN__;
   }
@@ -114,6 +164,7 @@ const LEGACY_SESSION_TOKEN_STORAGE_KEY = "betterchatbot.session-token";
  * persisted in localStorage so a page refresh doesn't sign the user out. */
 export function getSessionToken(): string | null {
   if (typeof window === "undefined") return null;
+  if (getRemoteOrigin()) return readStorage(REMOTE_SESSION_TOKEN_STORAGE_KEY);
   return (
     window.localStorage.getItem(SESSION_TOKEN_STORAGE_KEY) ||
     window.localStorage.getItem(LEGACY_SESSION_TOKEN_STORAGE_KEY)
@@ -122,6 +173,17 @@ export function getSessionToken(): string | null {
 
 export function setSessionToken(token: string | null) {
   if (typeof window === "undefined") return;
+  if (getRemoteOrigin()) {
+    // Signed out of (or unpaired from) the other Amiro: forget the device
+    // session but stay pointed at it, so the sign-in page can offer to switch
+    // back or pair again.
+    if (token) {
+      window.localStorage.setItem(REMOTE_SESSION_TOKEN_STORAGE_KEY, token);
+    } else {
+      window.localStorage.removeItem(REMOTE_SESSION_TOKEN_STORAGE_KEY);
+    }
+    return;
+  }
   if (token) {
     window.localStorage.setItem(SESSION_TOKEN_STORAGE_KEY, token);
   } else {
