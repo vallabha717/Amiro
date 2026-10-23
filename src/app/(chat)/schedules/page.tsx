@@ -25,6 +25,7 @@ import {
   deleteSchedule,
   fetchScheduleUsageSummaries,
   listSchedules,
+  reassignScheduleModel,
   runScheduleNow,
   updateSchedule,
 } from "@/lib/backend/schedules-api";
@@ -32,7 +33,13 @@ import type {
   Schedule,
   ScheduleUsageSummary,
 } from "@/lib/backend/schedules-api";
-import { groupSchedules } from "@/components/schedules/schedule-helpers";
+import {
+  groupSchedules,
+  isPastOneTimeSchedule,
+} from "@/components/schedules/schedule-helpers";
+import { useChatModels } from "@/hooks/queries/use-chat-models";
+import { appStore } from "@/app/store";
+import { useTranslations } from "next-intl";
 import { handleErrorWithToast } from "ui/shared-toast";
 import { toast } from "sonner";
 import {
@@ -54,6 +61,9 @@ type StatusFilter = "all" | "active" | "paused" | "failed";
 
 export default function SchedulesPage() {
   const { data: session } = useSession();
+  const t = useTranslations("Schedules");
+  const { data: modelProviders } = useChatModels();
+  const chatModel = appStore((s) => s.chatModel);
   const [schedules, setSchedules] = useState<Schedule[] | null>(null);
   const [usageSummaries, setUsageSummaries] = useState<
     Record<string, ScheduleUsageSummary>
@@ -69,6 +79,28 @@ export default function SchedulesPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [detailRefresh, setDetailRefresh] = useState(0);
   const [pastOpen, setPastOpen] = useState(true);
+  const [rebaseOpen, setRebaseOpen] = useState(false);
+  const [rebasing, setRebasing] = useState(false);
+
+  const defaultModelRoute = useMemo(() => {
+    if (chatModel?.provider && chatModel?.model) {
+      return `${chatModel.provider}:${chatModel.model}`;
+    }
+    const first = (modelProviders ?? []).find(
+      (p) => p.models && p.models.length > 0,
+    );
+    return first ? `${first.provider}:${first.models[0].name}` : null;
+  }, [chatModel, modelProviders]);
+
+  const offDefaultCount = useMemo(() => {
+    if (!defaultModelRoute || !schedules) return 0;
+    return schedules.filter(
+      (s) =>
+        (s.mode === "agent" || s.mode === "execute") &&
+        !isPastOneTimeSchedule(s) &&
+        s.model !== defaultModelRoute,
+    ).length;
+  }, [defaultModelRoute, schedules]);
 
   const refresh = useCallback(async () => {
     try {
@@ -207,6 +239,25 @@ export default function SchedulesPage() {
     }
   };
 
+  const handleRebaseModels = async () => {
+    if (!defaultModelRoute) return;
+    setRebasing(true);
+    try {
+      const res = await reassignScheduleModel({ to: defaultModelRoute });
+      await refresh();
+      setRebaseOpen(false);
+      toast.success(
+        res.reassigned === 0
+          ? `All schedules already use ${defaultModelRoute}`
+          : `Moved ${res.reassigned} schedule(s) to ${defaultModelRoute}`,
+      );
+    } catch (e) {
+      handleErrorWithToast(e as Error);
+    } finally {
+      setRebasing(false);
+    }
+  };
+
   if (!session) return null;
 
   const isLoading = schedules === null && !error;
@@ -264,7 +315,18 @@ export default function SchedulesPage() {
             ) : null}
           </h2>
           {showSearch ? (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {canWrite && defaultModelRoute && offDefaultCount > 0 ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setRebaseOpen(true)}
+                  data-testid="schedules-rebase-model-button"
+                  className="h-8 rounded-full text-xs"
+                >
+                  {t("useModelForAll", { model: defaultModelRoute })}
+                </Button>
+              ) : null}
               <div className="relative">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -451,6 +513,38 @@ export default function SchedulesPage() {
         initial={draft}
         onSaved={() => void refresh()}
       />
+
+      <AlertDialog open={rebaseOpen} onOpenChange={setRebaseOpen}>
+        <AlertDialogContent data-testid="schedule-rebase-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("moveSchedulesTitle", { model: defaultModelRoute ?? "" })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("moveSchedulesDescription", {
+                count: offDefaultCount,
+                model: defaultModelRoute ?? "",
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              disabled={rebasing}
+              onClick={() => setRebaseOpen(false)}
+              data-testid="schedule-rebase-cancel"
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={rebasing}
+              onClick={() => void handleRebaseModels()}
+              data-testid="schedule-rebase-confirm"
+            >
+              {t("moveSchedulesConfirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
         <AlertDialogContent data-testid="schedule-delete-dialog">

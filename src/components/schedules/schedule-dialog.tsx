@@ -909,6 +909,18 @@ export function ScheduleDialog({
                 </div>
               </div>
             ) : null}
+
+            <div className="grid gap-2">
+              <Label htmlFor="schedule-description">Description (optional)</Label>
+              <Input
+                id="schedule-description"
+                data-testid="schedule-description-input"
+                placeholder="Short summary of what this schedule does"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                maxLength={240}
+              />
+            </div>
           </div>
 
           {formError ? (

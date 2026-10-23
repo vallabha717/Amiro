@@ -1706,6 +1706,7 @@ async fn persist_result_thread(
         new_messages.push(json!({
             "id": format!("scheduser_{turn_nonce}"),
             "threadId": thread_id,
+            "sessionId": session_id.unwrap_or(""),
             "role": "user",
             "parts": [{"type": "text", "text": truncate_chars(prompt_text, MAX_THREAD_TEXT_CHARS)}],
             "createdAt": now,
@@ -1714,6 +1715,7 @@ async fn persist_result_thread(
     let mut assistant_msg = json!({
         "id": format!("schedmsg_{turn_nonce}"),
         "threadId": thread_id,
+        "sessionId": session_id.unwrap_or(""),
         "role": "assistant",
         "parts": [{"type": "text", "text": truncate_chars(text, MAX_THREAD_TEXT_CHARS)}],
         "createdAt": now,
