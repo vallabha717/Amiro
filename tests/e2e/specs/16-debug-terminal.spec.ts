@@ -107,27 +107,41 @@ test.describe.serial("debug-terminal-and-tv-screen", () => {
       );
     });
 
-    await step("Open chat header TV Screen (Monitor button) → floating 16:9 TV preview opens and expands to full Desktop (Browser & File System)", async () => {
+    await step("Open chat header TV Screen (Monitor button) → shows live Amiro OS desktop with Chrome, Files & Terminal dock", async () => {
       await page.goto("/amiro");
       await expect(
         page.getByTestId("assistant-desktop-affordance"),
       ).toBeVisible();
 
-      // Click the TV Monitor icon in the header -> floating 16:9 TV screen appears
+      // Click the TV Monitor icon in the header -> floating 16:9 TV screen appears with Amiro OS
       await page.getByTestId("assistant-desktop-affordance").click();
-      await expect(
-        page.getByTestId("assistant-desktop-preview"),
-      ).toBeVisible();
-      await expect(page.getByTestId("desktop-panel-viewport")).toBeVisible();
+      const preview = page.getByTestId("assistant-desktop-preview");
+      await expect(preview).toBeVisible();
+      await expect(preview.getByTestId("amiro-os-wordmark")).toContainText("OS");
+      await expect(preview.getByTestId("amiro-os-dock")).toBeVisible();
+      await expect(preview.getByTestId("amiro-os-dock-chrome")).toBeVisible();
+      await expect(preview.getByTestId("amiro-os-dock-files")).toBeVisible();
+      await expect(preview.getByTestId("amiro-os-dock-terminal")).toBeVisible();
 
-      // Expand the floating TV screen into the fullscreen Desktop modal
+      // Expand the floating TV screen into the fullscreen Amiro OS Desktop
       await page.getByTestId("desktop-preview-title-button").click();
-      await expect(page.getByTestId("assistant-desktop-modal")).toBeVisible();
-      await expect(page.getByTestId("agent-browser-panel")).toBeVisible();
+      const modal = page.getByTestId("assistant-desktop-modal");
+      await expect(modal).toBeVisible();
+      await expect(modal.getByTestId("amiro-os-wordmark")).toContainText("OS");
 
-      // Switch to File System inside the Desktop TV screen modal
-      await page.getByTestId("desktop-modal-tab-files").click();
-      await expect(page.getByTestId("workspace-browser")).toBeVisible();
+      // Launch Google Chrome from the bottom OS Dock
+      await modal.getByTestId("amiro-os-dock-chrome").click();
+      await expect(modal.getByTestId("amiro-os-window-chrome")).toBeVisible();
+      await expect(modal.getByTestId("agent-browser-panel")).toBeVisible();
+
+      // Launch Files (File System) from the bottom OS Dock
+      await modal.getByTestId("amiro-os-dock-files").click();
+      await expect(modal.getByTestId("amiro-os-window-files")).toBeVisible();
+      await expect(modal.getByTestId("workspace-browser")).toBeVisible();
+
+      // Launch Terminal from the bottom OS Dock
+      await modal.getByTestId("amiro-os-dock-terminal").click();
+      await expect(modal.getByTestId("amiro-os-window-terminal")).toBeVisible();
 
       // Minimize back to the floating TV window, then close
       await page.getByTestId("desktop-modal-minimize").click();

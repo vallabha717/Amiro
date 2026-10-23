@@ -7,17 +7,17 @@ export interface DesktopPreviewState {
     agentId: string;
     view: "preview" | "fullscreen";
   } | null;
-  activeSurface: DesktopSurfaceTab;
+  activeSurface: DesktopSurfaceTab | null;
   position: { x: number; y: number } | null;
   width: number;
 }
 
 export interface DesktopPreviewActions {
-  openPreview: (agentId: string, surface?: DesktopSurfaceTab) => void;
-  openFullscreen: (agentId: string, surface?: DesktopSurfaceTab) => void;
+  openPreview: (agentId: string, surface?: DesktopSurfaceTab | null) => void;
+  openFullscreen: (agentId: string, surface?: DesktopSurfaceTab | null) => void;
   toggle: (agentId: string, fullscreen?: boolean) => void;
   setFullscreen: (fullscreen: boolean) => void;
-  setActiveSurface: (surface: DesktopSurfaceTab) => void;
+  setActiveSurface: (surface: DesktopSurfaceTab | null) => void;
   setPosition: (position: { x: number; y: number }) => void;
   resize: (width: number, position: { x: number; y: number }) => void;
   close: () => void;
@@ -27,7 +27,7 @@ export const useDesktopPreviewStore = create<
   DesktopPreviewState & DesktopPreviewActions
 >()((set) => ({
   session: null,
-  activeSurface: "browser",
+  activeSurface: null,
   position: null,
   width: 420,
 

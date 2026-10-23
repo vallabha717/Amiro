@@ -5,7 +5,7 @@ describe("useDesktopPreviewStore", () => {
   beforeEach(() => {
     useDesktopPreviewStore.setState({
       session: null,
-      activeSurface: "browser",
+      activeSurface: null,
       position: null,
       width: 420,
     });
