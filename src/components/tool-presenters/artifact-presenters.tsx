@@ -6,6 +6,10 @@ import { Button } from "ui/button";
 import { cn } from "lib/utils";
 import { kindLabel } from "@/lib/backend/artifacts-api";
 import { useOpenArtifactFile } from "../artifacts/file-artifacts";
+import {
+  extractOpenUIPayload,
+  OpenUISurface,
+} from "../openui/openui-surface";
 import type { PresenterProps, ToolPresenter } from "./types";
 
 /* ------------------------------------------------------------------ */
@@ -159,6 +163,30 @@ const artifactDelete: ToolPresenter = {
     status === "error" ? "⚠ artifact delete failed" : "artifact deleted",
 };
 
+const uiRenderOpenUI: ToolPresenter = {
+  glance: ({ input, output, status }) => {
+    if (status === "error") return "⚠ openui failed";
+    const payload = extractOpenUIPayload(input, output);
+    const title = payload?.title || (input?.title as string) || "interactive ui";
+    if (status === "pending") return `openui (${title})…`;
+    return `openui · ${title}`;
+  },
+  Compact: ({ input, output, status }: PresenterProps) => {
+    const payload = extractOpenUIPayload(input, output);
+    if (!payload) return null;
+    return (
+      <OpenUISurface
+        code={payload.code}
+        title={payload.title}
+        preset={payload.preset}
+        isStreaming={status === "pending"}
+      />
+    );
+  },
+};
+
+uiRenderOpenUI.Expanded = uiRenderOpenUI.Compact;
+
 /* ------------------------------------------------------------------ */
 /* mcp_call (the runtime's MCP dispatch wrapper)                        */
 /* ------------------------------------------------------------------ */
@@ -182,7 +210,14 @@ function mcpArtifactTarget(input: any): { tool: string; args: any } | undefined 
       : tool.startsWith("amiro_")
         ? tool.slice("amiro_".length)
         : tool;
-  if (!["artifact_create", "artifact_update", "artifact_delete"].includes(bare)) {
+  if (
+    ![
+      "artifact_create",
+      "artifact_update",
+      "artifact_delete",
+      "ui_render_openui",
+    ].includes(bare)
+  ) {
     return undefined;
   }
   return { tool: bare, args: input?.arguments };
@@ -201,6 +236,9 @@ export function withArtifactMcpCard(base: ToolPresenter): ToolPresenter {
     const target = mcpArtifactTarget(props.input);
     if (!target) return base.glance(props);
     const adapted = { input: target.args, output: props.output, status: props.status };
+    if (target.tool === "ui_render_openui") {
+      return uiRenderOpenUI.glance(adapted as PresenterProps);
+    }
     if (target.tool === "artifact_delete") {
       return artifactDelete.glance(adapted as PresenterProps);
     }
@@ -212,6 +250,14 @@ export function withArtifactMcpCard(base: ToolPresenter): ToolPresenter {
     const target = mcpArtifactTarget(props.input);
     if (!target || target.tool === "artifact_delete") {
       return base.Compact ? base.Compact(props) : null;
+    }
+    if (target.tool === "ui_render_openui") {
+      return uiRenderOpenUI.Compact
+        ? uiRenderOpenUI.Compact({
+            ...props,
+            input: target.args,
+          })
+        : null;
     }
     return (
       <ArtifactCard
@@ -226,6 +272,14 @@ export function withArtifactMcpCard(base: ToolPresenter): ToolPresenter {
     const target = mcpArtifactTarget(props.input);
     if (!target || target.tool === "artifact_delete") {
       return base.Expanded ? base.Expanded(props) : null;
+    }
+    if (target.tool === "ui_render_openui") {
+      return uiRenderOpenUI.Expanded
+        ? uiRenderOpenUI.Expanded({
+            ...props,
+            input: target.args,
+          })
+        : null;
     }
     return (
       <ArtifactCard
@@ -243,4 +297,5 @@ export const artifactPresenters = {
   artifact_create: artifactCreate,
   artifact_update: artifactUpdate,
   artifact_delete: artifactDelete,
+  ui_render_openui: uiRenderOpenUI,
 };

@@ -44,6 +44,10 @@ pub const BUNDLED_AGENT_SKILLS: &[(&str, &str)] = &[
         "cli-discover",
         include_str!("../../../agent-skills/cli-discover/SKILL.md"),
     ),
+    (
+        "openui",
+        include_str!("../../../agent-skills/openui/SKILL.md"),
+    ),
 ];
 
 fn bundled_skill(name: &str) -> Option<&'static str> {
@@ -1215,6 +1219,14 @@ mod bundled_skill_tests {
             Some("CLI Discovery")
         );
         assert_eq!(cli.meta.category.as_deref(), Some("development"));
+
+        let openui = parse_skill_markdown(bundled_skill("openui").unwrap(), "openui");
+        assert_eq!(openui.meta.emoji.as_deref(), Some("✨"));
+        assert_eq!(
+            openui.meta.display_name.as_deref(),
+            Some("OpenUI Generative UI")
+        );
+        assert_eq!(openui.meta.category.as_deref(), Some("content"));
         // The Amiro port must not reference Vellum-only tooling.
         for (name, markdown) in BUNDLED_AGENT_SKILLS {
             if ["frontend-design", "geo-writing", "cli-discover"].contains(name) {

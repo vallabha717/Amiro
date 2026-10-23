@@ -73,6 +73,134 @@ test.describe("chat", () => {
     });
   });
 
+  test("openui generative ui: daily executive command center, interactive cloud cost planner and sprint release tracker", async ({ page, step, amiro }) => {
+    await step("Greeting screen shows quick-launch OpenUI demo pills → click Daily Command Center", async () => {
+      await newChat(page);
+      const starterStrip = page.getByTestId("openui-starter-strip");
+      await expect(starterStrip).toBeVisible();
+      await expect(page.getByTestId("openui-starter-daily_brief")).toBeVisible();
+      await expect(page.getByTestId("openui-starter-budget_planner")).toBeVisible();
+      await expect(page.getByTestId("openui-starter-sprint_tracker")).toBeVisible();
+      await expect(page.getByTestId("openui-starter-agent_data_intake")).toBeVisible();
+      await page.waitForTimeout(800);
+      await page.getByTestId("openui-starter-daily_brief").click();
+      await waitForReply(page, { timeoutMs: 240000 });
+    });
+
+    await step("Daily Command Center renders live KPI cards, Recharts bar chart, filterable Service Matrix tab, and Today's Focus steps", async () => {
+      const surface = page.getByTestId("openui-surface").first();
+      await expect(surface).toBeVisible({ timeout: 30000 });
+      await expect(surface.getByTestId("openui-metric-card")).toHaveCount(4);
+      await expect(surface.getByTestId("openui-bar-chart")).toBeVisible();
+      await page.waitForTimeout(1000);
+
+      // Switch to Service Matrix tab and filter rows
+      await surface.getByTestId("openui-tab-1").click();
+      await expect(surface.getByTestId("openui-data-table")).toBeVisible();
+      await page.waitForTimeout(800);
+      const filterInput = surface.getByTestId("openui-table-filter");
+      await filterInput.fill("Degraded");
+      await expect(surface.getByTestId("openui-table-row")).toHaveCount(1);
+      await page.waitForTimeout(800);
+      await filterInput.fill("");
+      await expect(surface.getByTestId("openui-table-row")).toHaveCount(4);
+
+      // Switch to Today's Focus tab (Steps)
+      await surface.getByTestId("openui-tab-2").click();
+      await expect(surface.getByTestId("openui-steps")).toBeVisible();
+      await page.waitForTimeout(900);
+
+      // Inspect OpenUI Lang source code toggle
+      await surface.getByTestId("openui-toggle-source").click();
+      await expect(surface.getByTestId("openui-source-code")).toBeVisible();
+      await page.waitForTimeout(800);
+      await surface.getByTestId("openui-toggle-source").click();
+    });
+
+    await step("Ask for the interactive Cloud AI Cost & Capacity Planner and adjust live workload sliders", async () => {
+      await ask(
+        page,
+        'Use the ui_render_openui tool on the amiro MCP server with preset="budget_planner" to render the Cloud AI Cost & Capacity Planner, then summarize how hybrid routing lowers spend in one sentence.',
+        { timeoutMs: 240000 },
+      );
+      const budgetSurface = page.getByTestId("openui-surface").last();
+      await expect(budgetSurface).toBeVisible({ timeout: 30000 });
+      const form = budgetSurface.getByTestId("openui-interactive-form");
+      await expect(form).toBeVisible({ timeout: 30000 });
+
+      const spendBefore = await form.getByTestId("openui-simulated-spend").textContent();
+      const rpmSlider = form.getByTestId("openui-slider-requests_per_day");
+      await rpmSlider.fill("380");
+      await rpmSlider.dispatchEvent("change");
+      await page.waitForTimeout(800);
+
+      const cacheSlider = form.getByTestId("openui-slider-cache_target");
+      await cacheSlider.fill("84");
+      await cacheSlider.dispatchEvent("change");
+      await page.waitForTimeout(800);
+
+      const spendAfter = await form.getByTestId("openui-simulated-spend").textContent();
+      expect.soft(spendAfter).not.toBe(spendBefore);
+    });
+
+    await step("Agent asks an interactive question, user pastes service values, and pastes an API key/password into the encrypted vault card", async () => {
+      const WEBHOOK_SECRET = "whsec_live_E2eOpenUIVaultSecret9876543210";
+      await ask(
+        page,
+        'Use the ui_render_openui tool on the amiro MCP server with preset="agent_data_intake" to render the Interactive Deployment & Credential Intake surface, then wait for my inputs.',
+        { timeoutMs: 240000 },
+      );
+
+      const intakeSurface = page.getByTestId("openui-surface").last();
+      await expect(intakeSurface).toBeVisible({ timeout: 30000 });
+
+      // 1. User interactively selects an option in QuestionCard and adds a constraint note
+      const qCard = intakeSurface.getByTestId("openui-question-card");
+      await expect(qCard).toBeVisible({ timeout: 30000 });
+      await qCard.getByTestId("openui-question-option-1").click();
+      await page.waitForTimeout(600);
+      await qCard.getByTestId("openui-question-option-0").click();
+      await qCard.getByTestId("openui-question-note").fill("Hold 10% canary for 30 minutes before 50% shift");
+      await page.waitForTimeout(800);
+
+      // 2. User pastes endpoint URL and multi-line ENV/JSON values into the intake form
+      const intakeForm = intakeSurface.getByTestId("openui-interactive-form");
+      await expect(intakeForm).toBeVisible();
+      await intakeForm.getByTestId("openui-input-webhook_url").fill("https://hooks.amiro.internal/v2/deploy-gate");
+      await intakeForm.getByTestId("openui-select-target_region").selectOption("eu-west1 (Belgium)");
+      await intakeForm
+        .getByTestId("openui-textarea-config_snippet")
+        .fill("RELEASE_VERSION=v1.27.0\nCANARY_WEIGHT=10\nMAX_P95_MS=180");
+      await page.waitForTimeout(900);
+
+      // 3. User pastes an API key / signing secret into the embedded encrypted SecretVaultCard
+      const vaultCard = intakeSurface.getByTestId("secret-prompt-card");
+      await expect(vaultCard).toBeVisible();
+      const secretInput = vaultCard.getByTestId("secret-prompt-input");
+      await expect(secretInput).toHaveAttribute("type", "password");
+      await secretInput.fill(WEBHOOK_SECRET);
+      await page.waitForTimeout(700);
+      await vaultCard.getByTestId("secret-prompt-save").click();
+      await expect(vaultCard.getByTestId("secret-prompt-saved")).toBeVisible({ timeout: 30000 });
+      await waitForReply(page, { before: 0, timeoutMs: 240000 });
+
+      // 4. Verify the secret is stored in the encrypted vault and never leaked into chat
+      expect(await page.locator("main").innerText()).not.toContain(WEBHOOK_SECRET);
+      const { body } = await amiro.api("/api/credentials");
+      expect(JSON.stringify(body)).toMatch(/release-webhook/i);
+      expect(JSON.stringify(body)).not.toContain(WEBHOOK_SECRET);
+    });
+
+    await step("User submits the pasted deployment values from the OpenUI form and the agent responds", async () => {
+      const intakeSurface = page.getByTestId("openui-surface").last();
+      const intakeForm = intakeSurface.getByTestId("openui-interactive-form");
+      const beforeCount = await assistantMessages(page).count();
+      await intakeForm.getByTestId("openui-form-submit").click();
+      await expect(intakeForm.getByTestId("openui-form-submitted-badge")).toBeVisible();
+      await waitForReply(page, { before: beforeCount, timeoutMs: 240000 });
+    });
+  });
+
   test("swarm: the agent delegates sub-tasks and shows them", async ({ page, step, note }) => {
     await step("Ask for parallel work", async () => {
       await send(

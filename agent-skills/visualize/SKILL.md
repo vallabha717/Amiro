@@ -32,6 +32,10 @@ Prefer the `applet` tool whenever tools are enabled. If tools are unavailable, e
 
 A visual is part of one answer. Durable things the user reopens (a dashboard, a tracker, a calculator they keep) are apps: use the app-builder skill.
 
+**When to use `openui` (`ui_render_openui` / ```` ```openui ````) instead of `visualize`**:
+- Whenever you need **live-streaming native React UI**: KPI metric grids, Recharts bar/line/pie charts, filterable status tables, tabbed views, step trackers, **interactive Q&A choice cards (`QuestionCard`)**, **user value-pasting / parameter intake forms (`InteractiveForm` with `FormInput`/`FormTextarea`/`FormSlider`/`FormSwitch`)**, or **encrypted API key / password vault cards (`SecretVaultCard`)**, use the **`openui`** skill (`ui_render_openui` MCP tool or ```` ```openui ```` fenced block).
+- Use `visualize` (`applet` HTML/SVG view) for bespoke hand-drawn SVG architecture diagrams, geometry illustrations, or custom canvas animations.
+
 ## Design instincts
 
 - Seamless and flat: no gradients, shadows, glow, or texture. Flat fills, hairline borders.
