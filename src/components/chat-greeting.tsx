@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import {
   ActivityIcon,
+  KeyRoundIcon,
   RocketIcon,
   SlidersHorizontalIcon,
   SparklesIcon,
@@ -77,6 +78,13 @@ export const ChatGreeting = () => {
         label: tOpenUI("demoSprintTracker"),
         prompt:
           "Use the ui_render_openui tool on the amiro MCP server with preset=\"sprint_tracker\" to render the Sprint 42 Release Command Center, then highlight the active release blocker in one sentence.",
+      },
+      {
+        id: "agent_data_intake",
+        icon: KeyRoundIcon,
+        label: tOpenUI("demoAgentIntake"),
+        prompt:
+          "Use the ui_render_openui tool on the amiro MCP server with preset=\"agent_data_intake\" to render the Interactive Deployment & Credential Intake surface so I can answer the rollout question, paste service configuration values, and store the webhook signing key in the encrypted vault.",
       },
     ],
     [tOpenUI],

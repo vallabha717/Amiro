@@ -269,7 +269,8 @@
       "quickLaunchTitle": "इंटरएक्टिव OpenUI डेमो",
       "demoDailyBrief": "दैनिक कमांड सेंटर",
       "demoBudgetPlanner": "AI लागत और क्षमता प्लानर",
-      "demoSprintTracker": "स्प्रिंट 42 रिलीज़ ट्रैकर"
+      "demoSprintTracker": "स्प्रिंट 42 रिलीज़ ट्रैकर",
+      "demoAgentIntake": "इंटरएक्टिव प्रश्नोत्तर और वॉल्ट इनपुट"
     },
     "VoiceChat": {
       "title": "वॉइस चैट मोड",

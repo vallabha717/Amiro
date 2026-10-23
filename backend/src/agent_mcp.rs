@@ -484,10 +484,10 @@ pub fn tool_definitions() -> Vec<Value> {
         json!({"name":"ui_navigate","description":"Emit an interactive navigation card or open a specific Amiro settings/admin/superpowers page for the user.","inputSchema":{"type":"object","properties":{
             "page":{"type":"string","enum":["providers","voice","search","connectors","credentials","integrations","general","notifications","usage","schedules","superpowers","personality","memory","workspace"],"description":"Target Amiro page to open or link to"}
         },"required":["page"],"additionalProperties":false}}),
-        json!({"name":"ui_render_openui","description":"Render a live interactive OpenUI Generative UI surface inline in the chat transcript (KPI metric cards, interactive Recharts bar/line/pie charts, sortable status tables, interactive budget/sprint parameter sliders and switches, tabbed comparisons, step trackers, and clickable follow-up chips). Pass an OpenUI Lang program (`root = Stack([...])`) in `code` or pick a built-in daily-use `preset` (`daily_brief`, `budget_planner`, `sprint_tracker`). Never include secrets in OpenUI surfaces.","inputSchema":{"type":"object","properties":{
+        json!({"name":"ui_render_openui","description":"Render a live interactive OpenUI Generative UI surface inline in the chat transcript (KPI metric cards, interactive Recharts bar/line/pie charts, sortable status tables, interactive Q&A QuestionCard, value-pasting FormInput/FormTextarea/FormSlider/FormSwitch, encrypted SecretVaultCard for API keys/passwords, tabbed comparisons, step trackers, and clickable follow-up chips). Pass an OpenUI Lang program (`root = Stack([...])`) in `code` or pick a built-in daily-use `preset` (`daily_brief`, `budget_planner`, `sprint_tracker`, `agent_data_intake`). Never include raw secret values in OpenUI code; use SecretVaultCard to prompt the user into the encrypted vault.","inputSchema":{"type":"object","properties":{
             "title":{"type":"string","description":"Short card title displayed in the OpenUI surface header"},
             "code":{"type":"string","description":"OpenUI Lang program starting with `root = ...` (optional when `preset` is specified)"},
-            "preset":{"type":"string","enum":["daily_brief","budget_planner","sprint_tracker"],"description":"Optional built-in daily-use interactive OpenUI template when `code` is omitted"}
+            "preset":{"type":"string","enum":["daily_brief","budget_planner","sprint_tracker","agent_data_intake"],"description":"Optional built-in daily-use interactive OpenUI template when `code` is omitted"}
         },"additionalProperties":false}}),
     ]
 }
@@ -1869,9 +1869,10 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<(String
                 (None, Some("daily_brief")) => openui_preset_code("daily_brief").to_string(),
                 (None, Some("budget_planner")) => openui_preset_code("budget_planner").to_string(),
                 (None, Some("sprint_tracker")) => openui_preset_code("sprint_tracker").to_string(),
+                (None, Some("agent_data_intake")) => openui_preset_code("agent_data_intake").to_string(),
                 (None, Some(other)) => {
                     return Err(format!(
-                        "unknown preset \"{other}\"; use daily_brief, budget_planner, or sprint_tracker"
+                        "unknown preset \"{other}\"; use daily_brief, budget_planner, sprint_tracker, or agent_data_intake"
                     ))
                 }
                 (None, None) => {
@@ -1882,6 +1883,7 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<(String
                 Some("daily_brief") => "Daily Executive & Engineering Command Center",
                 Some("budget_planner") => "Cloud AI Cost & Capacity Planner",
                 Some("sprint_tracker") => "Sprint Release Readiness & Triage",
+                Some("agent_data_intake") => "Interactive Deployment & Credential Intake",
                 _ => "Interactive OpenUI Surface",
             };
             let title = arg_str(args, "title")?
@@ -1905,6 +1907,21 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<(String
 
 fn openui_preset_code(preset: &str) -> &'static str {
     match preset {
+        "agent_data_intake" => r##"root = Stack([header, question, intakeForm, secretVault, followUps])
+header = CardHeader("Interactive Deployment & Credential Intake", "Answer the agent's rollout question, paste your service configuration values, and store your API key in the encrypted vault", "Action Needed")
+question = QuestionCard("Which rollout strategy should Amiro execute for the v1.27 service cutover?", [optCanary, optBlueGreen, optShadow], "Confirm Strategy")
+optCanary = QuestionOption("Progressive Canary (10% -> 50% -> 100%)", "Zero-downtime traffic shifting with automated p95 latency rollback gates", "Recommended")
+optBlueGreen = QuestionOption("Blue-Green Instant Cutover", "Provision full parallel fleet and flip ingress router after smoke check", "Fastest")
+optShadow = QuestionOption("Dark Traffic Shadowing (24h)", "Mirror production requests to v1.27 without serving responses to users", "Safest")
+intakeForm = InteractiveForm("Paste Service Endpoints & Configuration Values", [fEndpoint, fRegion, fPayload, fAutoRollback], "Submit Values to Agent", "Here are the service deployment values")
+fEndpoint = FormInput("webhook_url", "Production Webhook / Service URL", "https://api.tyson-cloud.internal/v1/hooks/release", "https://api.tyson-cloud.internal/v1/hooks/release")
+fRegion = FormSelect("target_region", "Primary Deployment Region", ["us-central1 (Iowa)", "eu-west1 (Belgium)", "ap-south1 (Mumbai)"], "us-central1 (Iowa)")
+fPayload = FormTextarea("config_snippet", "Paste JSON / ENV Configuration Values", "Paste JSON, YAML, or KEY=VALUE lines here...", "RELEASE_CHANNEL=canary\nMAX_ERROR_BUDGET_PCT=0.5\nHEALTHCHECK_PATH=/healthz")
+fAutoRollback = FormSwitch("auto_rollback", "Enable automatic rollback if 5xx exceeds 0.5%", true)
+secretVault = SecretVaultCard("release-webhook", "signing_secret", "Release Webhook API Key / Signing Secret", "Paste your webhook API key or signing password below. It is encrypted directly into Amiro's local vault ($AMIRO_CRED_RELEASE_WEBHOOK_SIGNING_SECRET) and never sent in plain chat.", "whsec_live_...", "Sign and verify production release webhooks")
+followUps = FollowUpBlock([fuVerify, fuDryRun])
+fuVerify = FollowUpItem("Run pre-flight readiness check", "Run a pre-flight readiness check using the submitted deployment configuration")
+fuDryRun = FollowUpItem("Generate rollback runbook", "Generate a step-by-step rollback runbook for v1.27")"##,
         "budget_planner" => r##"root = Stack([header, kpis, controls, chartCard, followUps])
 header = CardHeader("Cloud AI Cost & Capacity Planner", "Model spend, latency, and interactive scaling simulator")
 kpis = MetricGrid([mSpend, mTokens, mCache, mSavings])
@@ -2609,6 +2626,22 @@ mod tests {
                 .unwrap_or("")
                 .contains("InteractiveForm"),
             "expected budget_planner code: {data}"
+        );
+
+        let (_, intake_data) = call_tool(
+            &state,
+            "ui_render_openui",
+            &json!({"preset": "agent_data_intake"}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(intake_data["preset"], json!("agent_data_intake"));
+        assert!(
+            intake_data["code"]
+                .as_str()
+                .unwrap_or("")
+                .contains("SecretVaultCard"),
+            "expected agent_data_intake code: {intake_data}"
         );
 
         let custom = "root = Stack([h])\nh = CardHeader(\"Custom Brief\", \"Live\")";

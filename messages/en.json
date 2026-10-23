@@ -269,7 +269,8 @@
       "quickLaunchTitle": "Interactive OpenUI Demos",
       "demoDailyBrief": "Daily Command Center",
       "demoBudgetPlanner": "AI Cost & Capacity Planner",
-      "demoSprintTracker": "Sprint 42 Release Tracker"
+      "demoSprintTracker": "Sprint 42 Release Tracker",
+      "demoAgentIntake": "Interactive Q&A & Vault Intake"
     },
     "VoiceChat": {
       "title": "Voice Chat Mode",

@@ -73,7 +73,7 @@ test.describe("chat", () => {
     });
   });
 
-  test("openui generative ui: daily executive command center, interactive cloud cost planner and sprint release tracker", async ({ page, step }) => {
+  test("openui generative ui: daily executive command center, interactive cloud cost planner and sprint release tracker", async ({ page, step, amiro }) => {
     await step("Greeting screen shows quick-launch OpenUI demo pills → click Daily Command Center", async () => {
       await newChat(page);
       const starterStrip = page.getByTestId("openui-starter-strip");
@@ -81,6 +81,7 @@ test.describe("chat", () => {
       await expect(page.getByTestId("openui-starter-daily_brief")).toBeVisible();
       await expect(page.getByTestId("openui-starter-budget_planner")).toBeVisible();
       await expect(page.getByTestId("openui-starter-sprint_tracker")).toBeVisible();
+      await expect(page.getByTestId("openui-starter-agent_data_intake")).toBeVisible();
       await page.waitForTimeout(800);
       await page.getByTestId("openui-starter-daily_brief").click();
       await waitForReply(page, { timeoutMs: 240000 });
@@ -142,27 +143,61 @@ test.describe("chat", () => {
       expect.soft(spendAfter).not.toBe(spendBefore);
     });
 
-    await step("Render Sprint 42 Release Command Center with burnup line chart, priority PR queue, and release triage callout", async () => {
+    await step("Agent asks an interactive question, user pastes service values, and pastes an API key/password into the encrypted vault card", async () => {
+      const WEBHOOK_SECRET = "whsec_live_E2eOpenUIVaultSecret9876543210";
       await ask(
         page,
-        'Use the ui_render_openui tool on the amiro MCP server with preset="sprint_tracker" to render the Sprint 42 Release Command Center, then highlight the active release blocker in one sentence.',
+        'Use the ui_render_openui tool on the amiro MCP server with preset="agent_data_intake" to render the Interactive Deployment & Credential Intake surface, then wait for my inputs.',
         { timeoutMs: 240000 },
       );
-      const sprintSurface = page.getByTestId("openui-surface").last();
-      await expect(sprintSurface).toBeVisible({ timeout: 30000 });
-      await expect(sprintSurface.getByTestId("openui-steps")).toBeVisible({ timeout: 30000 });
-      await expect(sprintSurface.getByTestId("openui-data-table")).toBeVisible();
+
+      const intakeSurface = page.getByTestId("openui-surface").last();
+      await expect(intakeSurface).toBeVisible({ timeout: 30000 });
+
+      // 1. User interactively selects an option in QuestionCard and adds a constraint note
+      const qCard = intakeSurface.getByTestId("openui-question-card");
+      await expect(qCard).toBeVisible({ timeout: 30000 });
+      await qCard.getByTestId("openui-question-option-1").click();
+      await page.waitForTimeout(600);
+      await qCard.getByTestId("openui-question-option-0").click();
+      await qCard.getByTestId("openui-question-note").fill("Hold 10% canary for 30 minutes before 50% shift");
+      await page.waitForTimeout(800);
+
+      // 2. User pastes endpoint URL and multi-line ENV/JSON values into the intake form
+      const intakeForm = intakeSurface.getByTestId("openui-interactive-form");
+      await expect(intakeForm).toBeVisible();
+      await intakeForm.getByTestId("openui-input-webhook_url").fill("https://hooks.amiro.internal/v2/deploy-gate");
+      await intakeForm.getByTestId("openui-select-target_region").selectOption("eu-west1 (Belgium)");
+      await intakeForm
+        .getByTestId("openui-textarea-config_snippet")
+        .fill("RELEASE_VERSION=v1.27.0\nCANARY_WEIGHT=10\nMAX_P95_MS=180");
       await page.waitForTimeout(900);
 
-      // Switch to Burnup & Throughput line chart tab
-      await sprintSurface.getByTestId("openui-tab-1").click();
-      await expect(sprintSurface.getByTestId("openui-line-chart")).toBeVisible();
-      await page.waitForTimeout(900);
+      // 3. User pastes an API key / signing secret into the embedded encrypted SecretVaultCard
+      const vaultCard = intakeSurface.getByTestId("secret-prompt-card");
+      await expect(vaultCard).toBeVisible();
+      const secretInput = vaultCard.getByTestId("secret-prompt-input");
+      await expect(secretInput).toHaveAttribute("type", "password");
+      await secretInput.fill(WEBHOOK_SECRET);
+      await page.waitForTimeout(700);
+      await vaultCard.getByTestId("secret-prompt-save").click();
+      await expect(vaultCard.getByTestId("secret-prompt-saved")).toBeVisible({ timeout: 30000 });
+      await waitForReply(page, { before: 0, timeoutMs: 240000 });
 
-      // Switch to Release Triage callout tab
-      await sprintSurface.getByTestId("openui-tab-2").click();
-      await expect(sprintSurface.getByTestId("openui-callout")).toBeVisible();
-      await page.waitForTimeout(1000);
+      // 4. Verify the secret is stored in the encrypted vault and never leaked into chat
+      expect(await page.locator("main").innerText()).not.toContain(WEBHOOK_SECRET);
+      const { body } = await amiro.api("/api/credentials");
+      expect(JSON.stringify(body)).toMatch(/release-webhook/i);
+      expect(JSON.stringify(body)).not.toContain(WEBHOOK_SECRET);
+    });
+
+    await step("User submits the pasted deployment values from the OpenUI form and the agent responds", async () => {
+      const intakeSurface = page.getByTestId("openui-surface").last();
+      const intakeForm = intakeSurface.getByTestId("openui-interactive-form");
+      const beforeCount = await assistantMessages(page).count();
+      await intakeForm.getByTestId("openui-form-submit").click();
+      await expect(intakeForm.getByTestId("openui-form-submitted-badge")).toBeVisible();
+      await waitForReply(page, { before: beforeCount, timeoutMs: 240000 });
     });
   });
 

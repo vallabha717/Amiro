@@ -90,6 +90,18 @@ describe("OpenUISurface and OpenUI Lang integration", () => {
     expect(sprintHtml).toContain("Sprint 42 Release Command Center");
     expect(sprintHtml).toContain('data-testid="openui-steps"');
     expect(sprintHtml).toContain("#418 Streaming OpenUI Renderer");
+
+    const intakeHtml = render(
+      createElement(OpenUISurface, {
+        code: "",
+        preset: "agent_data_intake",
+      }),
+    );
+    expect(intakeHtml).toContain('data-testid="openui-question-card"');
+    expect(intakeHtml).toContain('data-testid="openui-input-webhook_url"');
+    expect(intakeHtml).toContain('data-testid="openui-textarea-config_snippet"');
+    expect(intakeHtml).toContain('data-testid="secret-prompt-card"');
+    expect(intakeHtml).toContain("AMIRO_CRED_RELEASE_WEBHOOK_SIGNING_SECRET");
   });
 
   it("extracts OpenUI payloads from tool inputs and MCP text outputs", () => {

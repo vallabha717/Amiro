@@ -1,5 +1,6 @@
 "use client";
 
+import { SecretPromptCard } from "@/components/credentials/secret-prompt-card";
 import {
   createLibrary,
   defineComponent,
@@ -13,6 +14,7 @@ import {
   CheckCircle2Icon,
   CircleDotIcon,
   ClockIcon,
+  HelpCircleIcon,
   InfoIcon,
   SearchIcon,
   SlidersHorizontalIcon,
@@ -56,9 +58,27 @@ import { z } from "zod/v4";
 // ---------------------------------------------------------------------------
 
 export const OPENUI_PRESETS: Record<
-  "daily_brief" | "budget_planner" | "sprint_tracker",
+  "daily_brief" | "budget_planner" | "sprint_tracker" | "agent_data_intake",
   { title: string; code: string }
 > = {
+  agent_data_intake: {
+    title: "Interactive Deployment & Credential Intake",
+    code: `root = Stack([header, question, intakeForm, secretVault, followUps])
+header = CardHeader("Interactive Deployment & Credential Intake", "Answer the agent's rollout question, paste your service configuration values, and store your API key in the encrypted vault", "Action Needed")
+question = QuestionCard("Which rollout strategy should Amiro execute for the v1.27 service cutover?", [optCanary, optBlueGreen, optShadow], "Confirm Strategy")
+optCanary = QuestionOption("Progressive Canary (10% -> 50% -> 100%)", "Zero-downtime traffic shifting with automated p95 latency rollback gates", "Recommended")
+optBlueGreen = QuestionOption("Blue-Green Instant Cutover", "Provision full parallel fleet and flip ingress router after smoke check", "Fastest")
+optShadow = QuestionOption("Dark Traffic Shadowing (24h)", "Mirror production requests to v1.27 without serving responses to users", "Safest")
+intakeForm = InteractiveForm("Paste Service Endpoints & Configuration Values", [fEndpoint, fRegion, fPayload, fAutoRollback], "Submit Values to Agent", "Here are the service deployment values")
+fEndpoint = FormInput("webhook_url", "Production Webhook / Service URL", "https://api.tyson-cloud.internal/v1/hooks/release", "https://api.tyson-cloud.internal/v1/hooks/release")
+fRegion = FormSelect("target_region", "Primary Deployment Region", ["us-central1 (Iowa)", "eu-west1 (Belgium)", "ap-south1 (Mumbai)"], "us-central1 (Iowa)")
+fPayload = FormTextarea("config_snippet", "Paste JSON / ENV Configuration Values", "Paste JSON, YAML, or KEY=VALUE lines here...", "RELEASE_CHANNEL=canary\\nMAX_ERROR_BUDGET_PCT=0.5\\nHEALTHCHECK_PATH=/healthz")
+fAutoRollback = FormSwitch("auto_rollback", "Enable automatic rollback if 5xx exceeds 0.5%", true)
+secretVault = SecretVaultCard("release-webhook", "signing_secret", "Release Webhook API Key / Signing Secret", "Paste your webhook API key or signing password below. It is encrypted directly into Amiro's local vault ($AMIRO_CRED_RELEASE_WEBHOOK_SIGNING_SECRET) and never sent in plain chat.", "whsec_live_...", "Sign and verify production release webhooks")
+followUps = FollowUpBlock([fuVerify, fuDryRun])
+fuVerify = FollowUpItem("Run pre-flight readiness check", "Run a pre-flight readiness check using the submitted deployment configuration")
+fuDryRun = FollowUpItem("Generate rollback runbook", "Generate a step-by-step rollback runbook for v1.27")`,
+  },
   daily_brief: {
     title: "Daily Executive & Engineering Command Center",
     code: `root = Stack([header, kpis, tabs, followUps])
@@ -829,15 +849,238 @@ export const FormSelectComp = defineComponent({
   component: () => null,
 });
 
+export const FormInputComp = defineComponent({
+  name: "FormInput",
+  description: "Single-line text/URL/value input inside an InteractiveForm where the user can type or paste a value",
+  props: z.object({
+    name: z.string().describe("Field key"),
+    label: z.string().describe("Field label"),
+    placeholder: z.string().optional().describe("Placeholder text"),
+    defaultValue: z.string().optional().describe("Initial text value"),
+  }),
+  component: () => null,
+});
+
+export const FormTextareaComp = defineComponent({
+  name: "FormTextarea",
+  description: "Multi-line textarea inside an InteractiveForm where the user can paste JSON, YAML, or KEY=VALUE lines",
+  props: z.object({
+    name: z.string().describe("Field key"),
+    label: z.string().describe("Field label"),
+    placeholder: z.string().optional().describe("Placeholder text"),
+    defaultValue: z.string().optional().describe("Initial multi-line text value"),
+  }),
+  component: () => null,
+});
+
+export const QuestionOptionComp = defineComponent({
+  name: "QuestionOption",
+  description: "Single selectable option inside a QuestionCard",
+  props: z.object({
+    label: z.string().describe("Option title"),
+    description: z.string().optional().describe("Explanation of what this option does"),
+    badge: z.string().optional().describe("Optional tag e.g. Recommended, Fastest, Safest"),
+  }),
+  component: () => null,
+});
+
+export const QuestionCardComp = defineComponent({
+  name: "QuestionCard",
+  description: "Vellum-style interactive question card where the agent asks the user to choose an option and optionally add a note",
+  props: z.object({
+    question: z.string().describe("Question the agent needs the user to answer"),
+    options: z.array(QuestionOptionComp.ref).describe("Choices the user can pick"),
+    submitLabel: z.string().optional().describe("Button label to send the chosen answer"),
+  }),
+  component: ({ props }) => {
+    const isStreaming = useIsStreaming();
+    const triggerAction = useTriggerAction();
+    const rawOptions = Array.isArray(props.options) ? props.options : [];
+    const [selectedIdx, setSelectedIdx] = useState(0);
+    const [customNote, setCustomNote] = useState("");
+    const [answered, setAnswered] = useState(false);
+
+    const chosen = (rawOptions[selectedIdx] as any)?.props ?? rawOptions[selectedIdx] ?? {};
+    const chosenLabel =
+      typeof chosen?.label === "string" ? chosen.label : `Option ${selectedIdx + 1}`;
+
+    const handleConfirm = () => {
+      setAnswered(true);
+      const notePart = customNote.trim() ? ` — Note: ${customNote.trim()}` : "";
+      const message = `Selected answer for "${props.question}": ${chosenLabel}${notePart}`;
+      void triggerAction(message, props.question, {
+        type: "continue_conversation",
+        params: {
+          question: props.question,
+          answer: chosenLabel,
+          note: customNote.trim() || undefined,
+          message,
+        },
+      });
+    };
+
+    return (
+      <div
+        data-testid="openui-question-card"
+        data-answered={answered ? "true" : "false"}
+        className="flex flex-col gap-3 rounded-xl border border-primary/30 bg-card p-4 shadow-2xs"
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-start gap-2.5">
+            <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+              <HelpCircleIcon className="size-3.5" />
+            </span>
+            <div>
+              <h4 className="text-xs font-semibold text-foreground leading-snug">
+                {props.question}
+              </h4>
+              <p className="text-[11px] text-muted-foreground">
+                Pick an option below or add a custom note for the agent
+              </p>
+            </div>
+          </div>
+          {answered ? (
+            <Badge
+              variant="secondary"
+              data-testid="openui-question-answered-badge"
+              className="inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400"
+            >
+              <CheckCircle2Icon className="size-3" />
+              Answered
+            </Badge>
+          ) : null}
+        </div>
+
+        <div className="grid grid-cols-1 gap-2">
+          {rawOptions.map((opt: any, idx) => {
+            const op = opt?.props ?? opt ?? {};
+            const label = typeof op.label === "string" ? op.label : `Option ${idx + 1}`;
+            const isSelected = idx === selectedIdx;
+            return (
+              <button
+                key={idx}
+                type="button"
+                disabled={isStreaming}
+                data-testid={`openui-question-option-${idx}`}
+                aria-pressed={isSelected}
+                onClick={() => {
+                  setSelectedIdx(idx);
+                  setAnswered(false);
+                }}
+                className={cn(
+                  "flex flex-col gap-1 rounded-xl border p-3 text-left transition-all cursor-pointer",
+                  isSelected
+                    ? "border-primary bg-primary/[0.06] ring-1 ring-primary/30"
+                    : "border-border/70 bg-muted/15 hover:border-border hover:bg-muted/30",
+                )}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-foreground">
+                    {label}
+                  </span>
+                  {op.badge ? (
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                      {op.badge}
+                    </span>
+                  ) : null}
+                </div>
+                {op.description ? (
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    {op.description}
+                  </p>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Input
+            data-testid="openui-question-note"
+            value={customNote}
+            disabled={isStreaming}
+            onChange={(e) => {
+              setCustomNote(e.target.value);
+              setAnswered(false);
+            }}
+            placeholder="Optional note or constraint for the agent…"
+            aria-label="Optional note or constraint for the agent"
+            className="h-8 flex-1 text-xs"
+          />
+          <Button
+            type="button"
+            size="sm"
+            disabled={isStreaming}
+            data-testid="openui-question-submit"
+            onClick={handleConfirm}
+            className="h-8 gap-1.5 rounded-lg text-xs shrink-0"
+          >
+            <span>{props.submitLabel || "Answer Agent"}</span>
+            <ArrowRightIcon className="size-3.5" />
+          </Button>
+        </div>
+      </div>
+    );
+  },
+});
+
+export const SecretVaultCardComp = defineComponent({
+  name: "SecretVaultCard",
+  description:
+    "Inline encrypted credential vault card (wraps SecretPromptCard) so the user can paste an API key, token, or password directly into the encrypted vault without sending it in chat",
+  props: z.object({
+    service: z.string().describe("Vault service slug e.g. release-webhook, openai, github"),
+    field: z.string().describe("Vault field slug e.g. api_key, signing_secret"),
+    label: z.string().describe("Human-readable label shown on the vault card"),
+    description: z.string().optional().describe("Instructions explaining what the key unlocks"),
+    placeholder: z.string().optional().describe("Masked placeholder e.g. sk-... or whsec_..."),
+    purpose: z.string().optional().describe("Purpose badge shown on the card"),
+  }),
+  component: ({ props }) => {
+    const triggerAction = useTriggerAction();
+    return (
+      <div data-testid="openui-secret-vault-wrapper" className="w-full">
+        <SecretPromptCard
+          prompt={{
+            id: `openui-secret-${props.service}-${props.field}`,
+            service: props.service,
+            field: props.field,
+            label: props.label,
+            description: props.description,
+            placeholder: props.placeholder,
+            purpose: props.purpose,
+          }}
+          onSaved={(notice) => {
+            void triggerAction(notice, `${props.service}/${props.field}`, {
+              type: "continue_conversation",
+              params: {
+                service: props.service,
+                field: props.field,
+                message: notice,
+              },
+            });
+          }}
+        />
+      </div>
+    );
+  },
+});
+
 export const InteractiveFormComp = defineComponent({
   name: "InteractiveForm",
   description:
-    "Interactive parameter simulator and triage form with live calculated preview and 1-click agent submission",
+    "Interactive parameter simulator, value-pasting intake, and triage form with live calculated preview and 1-click agent submission",
   props: z.object({
     title: z.string().describe("Form section title"),
     fields: z
       .array(
-        z.union([FormSliderComp.ref, FormSwitchComp.ref, FormSelectComp.ref]),
+        z.union([
+          FormSliderComp.ref,
+          FormSwitchComp.ref,
+          FormSelectComp.ref,
+          FormInputComp.ref,
+          FormTextareaComp.ref,
+        ]),
       )
       .describe("Interactive form controls"),
     submitLabel: z.string().optional().describe("Submit button text"),
@@ -869,6 +1112,9 @@ export const InteractiveFormComp = defineComponent({
           init[fp.name] = Boolean(fp.defaultChecked ?? true);
         } else if (Array.isArray(fp.options)) {
           init[fp.name] = fp.defaultValue ?? fp.options[0] ?? "";
+        } else {
+          init[fp.name] =
+            typeof fp.defaultValue === "string" ? fp.defaultValue : "";
         }
       }
       return init;
@@ -876,9 +1122,16 @@ export const InteractiveFormComp = defineComponent({
 
     const [values, setValues] =
       useState<Record<string, string | number | boolean>>(initialValues);
+    const [submitted, setSubmitted] = useState(false);
 
     // Live simulation math when workload/cache fields exist
     const simulation = useMemo(() => {
+      if (
+        values.requests_per_day === undefined &&
+        values.cache_target === undefined
+      ) {
+        return null;
+      }
       const reqs = Number(values.requests_per_day ?? 180);
       const cache = Number(values.cache_target ?? 70);
       const smartRoute = Boolean(values.smart_routing ?? true);
@@ -892,8 +1145,9 @@ export const InteractiveFormComp = defineComponent({
     }, [values]);
 
     const handleSubmit = () => {
+      setSubmitted(true);
       const summaryPairs = Object.entries(values)
-        .map(([k, v]) => `${k}=${String(v)}`)
+        .map(([k, v]) => `${k}=${String(v).replace(/\s*\n\s*/g, "; ")}`)
         .join(", ");
       const prefix =
         props.promptTemplate || `Apply interactive parameters for ${props.title}`;
@@ -1010,9 +1264,71 @@ export const InteractiveFormComp = defineComponent({
                     checked={checked}
                     disabled={isStreaming}
                     aria-label={label}
-                    onCheckedChange={(next) =>
-                      setValues((prev) => ({ ...prev, [name]: Boolean(next) }))
-                    }
+                    onCheckedChange={(next) => {
+                      setSubmitted(false);
+                      setValues((prev) => ({ ...prev, [name]: Boolean(next) }));
+                    }}
+                  />
+                </div>
+              );
+            }
+
+            if (typeName === "FormTextarea") {
+              const textVal = String(values[name] ?? fp.defaultValue ?? "");
+              return (
+                <div
+                  key={name}
+                  className="flex flex-col gap-1.5 rounded-lg border border-border/60 bg-card p-3 sm:col-span-2"
+                >
+                  <label
+                    htmlFor={`openui-textarea-${name}`}
+                    className="text-xs font-medium text-foreground"
+                  >
+                    {label}
+                  </label>
+                  <textarea
+                    id={`openui-textarea-${name}`}
+                    data-testid={`openui-textarea-${name}`}
+                    value={textVal}
+                    disabled={isStreaming}
+                    placeholder={fp.placeholder || "Paste values here…"}
+                    aria-label={label}
+                    rows={3}
+                    onChange={(e) => {
+                      setSubmitted(false);
+                      setValues((prev) => ({ ...prev, [name]: e.target.value }));
+                    }}
+                    className="w-full rounded-md border border-border bg-background p-2 font-mono text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              );
+            }
+
+            if (typeName === "FormInput" || !Array.isArray(fp.options)) {
+              const inputVal = String(values[name] ?? fp.defaultValue ?? "");
+              return (
+                <div
+                  key={name}
+                  className="flex flex-col gap-1.5 rounded-lg border border-border/60 bg-card p-3"
+                >
+                  <label
+                    htmlFor={`openui-input-${name}`}
+                    className="text-xs font-medium text-foreground"
+                  >
+                    {label}
+                  </label>
+                  <Input
+                    id={`openui-input-${name}`}
+                    data-testid={`openui-input-${name}`}
+                    value={inputVal}
+                    disabled={isStreaming}
+                    placeholder={fp.placeholder || "Paste or type value…"}
+                    aria-label={label}
+                    onChange={(e) => {
+                      setSubmitted(false);
+                      setValues((prev) => ({ ...prev, [name]: e.target.value }));
+                    }}
+                    className="h-8 font-mono text-xs"
                   />
                 </div>
               );
@@ -1037,9 +1353,10 @@ export const InteractiveFormComp = defineComponent({
                   value={selected}
                   disabled={isStreaming}
                   aria-label={label}
-                  onChange={(e) =>
-                    setValues((prev) => ({ ...prev, [name]: e.target.value }))
-                  }
+                  onChange={(e) => {
+                    setSubmitted(false);
+                    setValues((prev) => ({ ...prev, [name]: e.target.value }));
+                  }}
                   className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground"
                 >
                   {options.map((opt) => (
@@ -1053,7 +1370,16 @@ export const InteractiveFormComp = defineComponent({
           })}
         </div>
 
-        <div className="flex justify-end">
+        <div className="flex items-center justify-end gap-2">
+          {submitted ? (
+            <span
+              data-testid="openui-form-submitted-badge"
+              className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400"
+            >
+              <CheckCircle2Icon className="size-3.5" />
+              Sent to agent
+            </span>
+          ) : null}
           <Button
             type="button"
             size="sm"
@@ -1147,7 +1473,9 @@ export const StackComp = defineComponent({
           TabsComp.ref,
           StepsComp.ref,
           CalloutComp.ref,
+          QuestionCardComp.ref,
           InteractiveFormComp.ref,
+          SecretVaultCardComp.ref,
           FollowUpBlockComp.ref,
         ]),
       )
@@ -1183,10 +1511,15 @@ export const amiroOpenUILibrary = createLibrary({
     StepItemComp,
     StepsComp,
     CalloutComp,
+    QuestionOptionComp,
+    QuestionCardComp,
     FormSliderComp,
     FormSwitchComp,
     FormSelectComp,
+    FormInputComp,
+    FormTextareaComp,
     InteractiveFormComp,
+    SecretVaultCardComp,
     FollowUpItemComp,
     FollowUpBlockComp,
   ],
