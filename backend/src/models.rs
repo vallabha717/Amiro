@@ -742,6 +742,30 @@ async fn test_provider_model(
     Ok(Json(result))
 }
 
+/// `POST /api/ai/providers/{id}/default-model` -- set the runtime's default
+/// provider and model (`{model}` in, `{route, provider, model}` out).
+async fn post_provider_default_model(
+    AgentState(state): AgentState,
+    user: AuthUser,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    require_admin(&user)?;
+    let model = body
+        .get("model")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let route = set_runtime_default_model(&state, &id, &model).await?;
+    Ok(Json(json!({
+        "ok": true,
+        "route": route,
+        "provider": id,
+        "model": model,
+    })))
+}
+
 /// Upper bound for one provider test, so a stuck provider cannot hold the page.
 const PROVIDER_TEST_TIMEOUT: Duration = Duration::from_secs(120);
 
@@ -751,6 +775,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/ai/providers", get(get_ai_providers))
         .route("/api/ai/providers/models", post(post_provider_models))
         .route("/api/ai/providers/{id}/sync-models", post(sync_provider_models))
+        .route("/api/ai/providers/{id}/default-model", post(post_provider_default_model))
         .route("/api/ai/providers/{id}/test", post(test_provider_model))
         .route("/api/ai/providers/status", get(provider_status))
 }

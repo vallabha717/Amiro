@@ -1,19 +1,11 @@
 "use client";
 
-import { useCopy } from "@/hooks/use-copy";
 import { OPENUI_PRESETS, amiroOpenUILibrary } from "@/lib/openui/amiro-library";
 import { type ActionEvent, Renderer } from "@openuidev/react-lang";
 import { cn } from "lib/utils";
-import {
-  CheckIcon,
-  Code2Icon,
-  CopyIcon,
-  Loader2Icon,
-  SparklesIcon,
-} from "lucide-react";
+import { Loader2Icon } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useCallback, useMemo, useState } from "react";
-import { Button } from "ui/button";
+import { useCallback, useMemo } from "react";
 
 export interface OpenUISurfaceProps {
   /** OpenUI Lang program (`root = Stack([...])`) */
@@ -57,8 +49,6 @@ export function OpenUISurface({
   className,
 }: OpenUISurfaceProps) {
   const t = useTranslations("Chat.OpenUI");
-  const { copied, copy } = useCopy();
-  const [showSource, setShowSource] = useState(false);
 
   const resolvedCode = useMemo(
     () => resolveOpenUICode(code, preset),
@@ -102,66 +92,14 @@ export function OpenUISurface({
         className,
       )}
     >
-      <div className="flex items-center justify-between gap-2 border-b border-border/60 bg-muted/30 px-4 py-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
-            <SparklesIcon className="size-3" />
-            {t("badge")}
-          </span>
-          {title ? (
-            <span className="truncate text-xs font-medium text-muted-foreground">
-              {title}
-            </span>
-          ) : null}
-          {isStreaming ? (
-            <span
-              data-testid="openui-streaming-indicator"
-              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"
-            >
-              <Loader2Icon className="size-3 animate-spin text-primary" />
-              {t("streaming")}
-            </span>
-          ) : null}
-        </div>
-
-        <div className="flex items-center gap-1">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            data-testid="openui-toggle-source"
-            aria-label={showSource ? t("hideSource") : t("viewSource")}
-            onClick={() => setShowSource((v) => !v)}
-            className="h-7 gap-1 px-2 text-[11px] text-muted-foreground hover:text-foreground"
-          >
-            <Code2Icon className="size-3.5" />
-            <span>{showSource ? t("hideSource") : t("viewSource")}</span>
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            data-testid="openui-copy-source"
-            aria-label="Copy OpenUI code"
-            onClick={() => copy(resolvedCode)}
-            className="size-7 text-muted-foreground hover:text-foreground"
-          >
-            {copied ? (
-              <CheckIcon className="size-3.5 text-emerald-500" />
-            ) : (
-              <CopyIcon className="size-3.5" />
-            )}
-          </Button>
-        </div>
-      </div>
-
-      {showSource ? (
-        <pre
-          data-testid="openui-source-code"
-          className="max-h-56 overflow-auto border-b border-border/60 bg-muted/40 p-3.5 font-mono text-xs leading-relaxed text-muted-foreground"
+      {isStreaming ? (
+        <div
+          data-testid="openui-streaming-indicator"
+          className="flex items-center gap-1.5 border-b border-border/50 bg-muted/20 px-4 py-1.5 text-[11px] text-muted-foreground"
         >
-          {resolvedCode}
-        </pre>
+          <Loader2Icon className="size-3 animate-spin text-primary" />
+          <span>{t("streaming")}</span>
+        </div>
       ) : null}
 
       <div className="p-4 sm:p-5">

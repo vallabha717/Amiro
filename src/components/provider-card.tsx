@@ -2,12 +2,14 @@
 
 import {
   Box,
+  Check,
   Eye,
   EyeOff,
   FlaskConical,
   Loader,
   Loader2,
   Settings,
+  Star,
   Trash2,
 } from "lucide-react";
 import { Badge } from "ui/badge";
@@ -29,9 +31,11 @@ import { safe } from "ts-safe";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 
+import { appStore } from "@/app/store";
 import {
   PROVIDERS_KEY,
   removeProvider,
+  setProviderDefaultModel,
   type ProviderConfig,
 } from "@/lib/backend/provider-api";
 
@@ -56,9 +60,42 @@ export const ProviderCard = memo(function ProviderCard({
   const { mutate } = useSWRConfig();
 
   const [isProcessing, setIsProcessing] = useState(false);
+  const [settingDefaultModel, setSettingDefaultModel] = useState<string | null>(
+    null,
+  );
   const [revealKey, setRevealKey] = useState(false);
+  const currentChatModel = appStore((state) => state.chatModel);
 
   const modelList = models ?? [];
+  const activeSelectedModel =
+    currentChatModel?.provider === id
+      ? currentChatModel.model
+      : selectedModel;
+
+  const handleSetDefaultModel = useCallback(
+    async (model: string) => {
+      setSettingDefaultModel(model);
+      try {
+        await setProviderDefaultModel(id, model);
+        appStore.setState({
+          chatModel: {
+            provider: id,
+            model,
+          },
+        });
+        await Promise.all([
+          mutate(PROVIDERS_KEY),
+          mutate("/api/chat/models"),
+        ]);
+        toast.success(`Default model set to ${model}`);
+      } catch (error) {
+        handleErrorWithToast(error as Error);
+      } finally {
+        setSettingDefaultModel(null);
+      }
+    },
+    [id, mutate],
+  );
 
   // The key is stored in the clear and is meant to be readable here, but it
   // should not be sitting on screen by default -- this page is as likely to
@@ -122,13 +159,13 @@ export const ProviderCard = memo(function ProviderCard({
               {t("noKey")}
             </Badge>
           )}
-          {selectedModel && (
+          {activeSelectedModel && (
             <Badge
               data-testid="provider-default-model-badge"
               variant="outline"
               className="border-primary/40 bg-primary/10 text-primary text-[10px] px-1.5 font-mono"
             >
-              Default model: {selectedModel}
+              Default model: {activeSelectedModel}
             </Badge>
           )}
         </h4>
@@ -219,9 +256,9 @@ export const ProviderCard = memo(function ProviderCard({
         </Tooltip>
       </CardHeader>
 
-      <div className="relative hidden sm:flex w-full">
-        <CardContent className="flex min-w-0 w-full flex-row text-sm max-h-[320px] overflow-hidden border-r-0">
-          <div className="w-1/2 min-w-0 flex flex-col pr-2 border-r border-border">
+      <div className="relative flex w-full">
+        <CardContent className="flex min-w-0 w-full flex-col sm:flex-row text-sm max-h-[360px] overflow-hidden border-r-0 gap-4 sm:gap-0">
+          <div className="w-full sm:w-1/2 min-w-0 flex flex-col sm:pr-2 sm:border-r border-border">
             <div className="flex items-center gap-2 mb-2 pt-2 pb-1 z-10">
               <Settings size={14} className="text-muted-foreground" />
               <h5 className="text-muted-foreground text-sm font-medium">
@@ -256,7 +293,7 @@ export const ProviderCard = memo(function ProviderCard({
             </div>
           </div>
 
-          <div className="w-1/2 min-w-0 flex flex-col pl-4">
+          <div className="w-full sm:w-1/2 min-w-0 flex flex-col sm:pl-4">
             <div className="flex items-center gap-2 mb-4 pt-2 pb-1 z-10">
               <Box size={14} className="text-muted-foreground" />
               <h5 className="text-muted-foreground text-sm font-medium">
@@ -274,7 +311,9 @@ export const ProviderCard = memo(function ProviderCard({
                 <ModelsList
                   providerId={id}
                   models={modelList}
-                  selectedModel={selectedModel}
+                  selectedModel={activeSelectedModel}
+                  settingDefaultModel={settingDefaultModel}
+                  onSetDefaultModel={handleSetDefaultModel}
                   agentScope={agentScope}
                 />
               ) : (
@@ -293,42 +332,50 @@ export const ProviderCard = memo(function ProviderCard({
 });
 
 /**
- * Each model links straight into the test page preloaded with that model --
- * the equivalent of MCPCard's per-tool detail popup.
+ * Each model row lets the user set it as the default model right inside the
+ * provider card, or click through to the test page preloaded with that model.
  */
 const ModelsList = memo(
   ({
     providerId,
     models,
     selectedModel,
+    settingDefaultModel,
+    onSetDefaultModel,
     agentScope,
   }: {
     providerId: string;
     models: string[];
     selectedModel?: string;
+    settingDefaultModel: string | null;
+    onSetDefaultModel: (model: string) => void;
     agentScope: string | null;
   }) => (
     <div className="space-y-2 pr-2">
       {models.map((model) => {
         const isDefault = selectedModel === model;
+        const isSavingThis = settingDefaultModel === model;
         return (
-          <Link
+          <div
             key={model}
-            href={agentScopedPath(
-              agentScope,
-              `/admin/providers/test?id=${encodeURIComponent(
-                providerId,
-              )}&model=${encodeURIComponent(model)}`,
-            )}
             className={`flex items-center gap-2 rounded-md p-2 transition-colors ${
               isDefault
-                ? "bg-primary/15 border border-primary/40 text-foreground font-semibold hover:bg-primary/20"
+                ? "bg-primary/15 border border-primary/40 text-foreground font-semibold"
                 : "bg-secondary hover:bg-input text-foreground"
             }`}
             data-testid="provider-model-row"
+            data-model-id={model}
           >
-            <p className="font-medium text-sm break-all flex-1 min-w-0 flex items-center gap-2">
-              {model}
+            <Link
+              href={agentScopedPath(
+                agentScope,
+                `/admin/providers/test?id=${encodeURIComponent(
+                  providerId,
+                )}&model=${encodeURIComponent(model)}`,
+              )}
+              className="font-medium text-sm break-all flex-1 min-w-0 flex items-center gap-2 hover:underline"
+            >
+              <span>{model}</span>
               {isDefault && (
                 <Badge
                   variant="secondary"
@@ -337,13 +384,57 @@ const ModelsList = memo(
                   Default
                 </Badge>
               )}
-            </p>
-            <FlaskConical
-              size={14}
-              className={`shrink-0 ${isDefault ? "text-primary" : "text-muted-foreground"}`}
-              aria-hidden
-            />
-          </Link>
+            </Link>
+
+            {isDefault ? (
+              <span
+                data-testid={`provider-model-default-active-${model}`}
+                className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-medium text-primary shrink-0"
+              >
+                <Check className="size-3" />
+                Default
+              </span>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={settingDefaultModel !== null}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onSetDefaultModel(model);
+                }}
+                data-testid="provider-set-default-model"
+                data-model={model}
+                className="h-6 px-2 text-[11px] gap-1 shrink-0"
+              >
+                {isSavingThis ? (
+                  <Loader2 className="size-3 animate-spin" />
+                ) : (
+                  <Star className="size-3" />
+                )}
+                <span>Set default</span>
+              </Button>
+            )}
+
+            <Link
+              href={agentScopedPath(
+                agentScope,
+                `/admin/providers/test?id=${encodeURIComponent(
+                  providerId,
+                )}&model=${encodeURIComponent(model)}`,
+              )}
+              className="p-1 rounded hover:bg-background/60 shrink-0"
+              aria-label={`Test ${model}`}
+            >
+              <FlaskConical
+                size={14}
+                className={`shrink-0 ${isDefault ? "text-primary" : "text-muted-foreground"}`}
+                aria-hidden
+              />
+            </Link>
+          </div>
         );
       })}
     </div>

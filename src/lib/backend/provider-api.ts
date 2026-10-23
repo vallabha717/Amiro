@@ -106,3 +106,16 @@ export async function testProviderModel(id: string, model: string) {
     body: JSON.stringify({ model }),
   });
 }
+
+/** Sets a model on a connected provider as the runtime and chat default. */
+export async function setProviderDefaultModel(id: string, model: string) {
+  return apiJson<{
+    ok: boolean;
+    route: string;
+    provider: string;
+    model: string;
+  }>(`${PROVIDERS_KEY}/${encodeURIComponent(id)}/default-model`, {
+    method: "POST",
+    body: JSON.stringify({ model }),
+  });
+}
