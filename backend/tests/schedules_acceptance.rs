@@ -1330,8 +1330,172 @@ async fn schedules_agent_mode_validation_run_path_and_cadence() {
             .as_str()
             .unwrap()
             .contains("Scheduled task failed"));
-        assert!(finished["threadId"].is_string());
+        let tid = finished["threadId"].as_str().expect("threadId");
+        // Opening the thread must show the user prompt first, followed by the
+        // assistant reply/failure (Vellum parity).
+        let thread: Value = server
+            .get(&admin, &format!("/api/thread/{tid}"))
+            .await
+            .json()
+            .await
+            .unwrap();
+        let msgs = thread["messages"].as_array().expect("messages array");
+        assert_eq!(
+            msgs.len(),
+            2,
+            "scheduled thread must have user prompt + assistant reply: {msgs:?}"
+        );
+        assert_eq!(msgs[0]["role"], "user");
+        assert_eq!(
+            msgs[0]["parts"][0]["text"],
+            "Check my calendar and summarize"
+        );
+        assert_eq!(msgs[1]["role"], "assistant");
+        assert!(msgs[1]["parts"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("Scheduled task failed"));
     }
+}
+
+#[tokio::test]
+async fn schedules_vellum_parity_script_cancel_reassign_and_usage_summary() {
+    let server = SchedServer::start().await;
+    let admin = server.admin_token().await;
+
+    // 1. Create a script schedule with description, quiet, timeoutMs, maxRetries.
+    let script_resp = server
+        .post(
+            &admin,
+            "/api/schedules",
+            &json!({
+                "name": "Workspace check script",
+                "description": "Echoes schedule env vars",
+                "prompt": "echo hello-from-script",
+                "script": "echo hello-from-script",
+                "mode": "script",
+                "timezone": "UTC",
+                "quiet": true,
+                "timeoutMs": 10000,
+                "maxRetries": 2,
+                "retryBackoffMs": 5000,
+                "schedule": {"kind": "interval", "minutes": 60},
+            }),
+        )
+        .await;
+    assert_eq!(script_resp.status(), StatusCode::CREATED);
+    let script_sched: Value = script_resp.json().await.unwrap();
+    let script_id = script_sched["schedule"]["id"].as_str().unwrap().to_string();
+    assert_eq!(script_sched["schedule"]["mode"], "script");
+    assert_eq!(
+        script_sched["schedule"]["description"],
+        "Echoes schedule env vars"
+    );
+    assert_eq!(script_sched["schedule"]["quiet"], true);
+    assert_eq!(script_sched["schedule"]["timeoutMs"], 10000);
+    assert_eq!(script_sched["schedule"]["maxRetries"], 2);
+    assert_eq!(script_sched["schedule"]["isOneShot"], false);
+
+    // Run script now and wait for completion.
+    let run_resp = server
+        .post(&admin, &format!("/api/schedules/{script_id}/run"), &json!({}))
+        .await;
+    assert_eq!(run_resp.status(), StatusCode::OK);
+    let mut finished_script = None;
+    for _ in 0..80 {
+        let runs = server.runs(&admin, &script_id).await;
+        if let Some(r) = runs.iter().find(|r| r["status"] != "running") {
+            finished_script = Some(r.clone());
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let finished_script = finished_script.expect("script run must finish");
+    assert_eq!(finished_script["status"], "ok", "{finished_script}");
+    assert_eq!(
+        finished_script["output"].as_str().map(str::trim),
+        Some("hello-from-script")
+    );
+    assert!(finished_script["durationMs"].is_number());
+
+    // 2. Create a pending one-shot and cancel it via POST /api/schedules/:id/cancel.
+    let once = server
+        .create_notify_once(&admin, "cancellable reminder", "2030-12-01T09:00:00Z")
+        .await;
+    let once_id = once["schedule"]["id"].as_str().unwrap().to_string();
+    assert_eq!(once["schedule"]["isOneShot"], true);
+    assert_eq!(once["schedule"]["status"], "active");
+    let cancel_resp = server
+        .post(&admin, &format!("/api/schedules/{once_id}/cancel"), &json!({}))
+        .await;
+    assert_eq!(cancel_resp.status(), StatusCode::OK);
+    let cancelled: Value = cancel_resp.json().await.unwrap();
+    assert_eq!(cancelled["schedule"]["enabled"], false);
+    assert_eq!(cancelled["schedule"]["status"], "cancelled");
+    assert!(cancelled["schedule"]["nextRunAt"].is_null());
+
+    // Recurring schedule cannot be cancelled via /cancel (must be 400).
+    let bad_cancel = server
+        .post(
+            &admin,
+            &format!("/api/schedules/{script_id}/cancel"),
+            &json!({}),
+        )
+        .await;
+    assert_eq!(bad_cancel.status(), StatusCode::BAD_REQUEST);
+
+    // 3. Reassign model across live execute/agent schedules.
+    let exec_resp = server
+        .post(
+            &admin,
+            "/api/schedules",
+            &json!({
+                "name": "Rebase target",
+                "prompt": "Daily summary",
+                "mode": "execute",
+                "model": "openai-compatible:old-model",
+                "timezone": "UTC",
+                "reuseConversation": true,
+                "schedule": {"kind": "cron", "expression": "0 9 * * *"},
+            }),
+        )
+        .await;
+    assert_eq!(exec_resp.status(), StatusCode::CREATED);
+    let exec_body: Value = exec_resp.json().await.unwrap();
+    let exec_id = exec_body["schedule"]["id"].as_str().unwrap().to_string();
+    assert_eq!(exec_body["schedule"]["reuseConversation"], true);
+
+    let rebase_resp = server
+        .post(
+            &admin,
+            "/api/schedules/reassign-model",
+            &json!({"to": "openai-compatible:new-model"}),
+        )
+        .await;
+    assert_eq!(rebase_resp.status(), StatusCode::OK);
+    let rebase_body: Value = rebase_resp.json().await.unwrap();
+    assert_eq!(rebase_body["reassigned"], 1);
+    let updated_exec: Value = server
+        .get(&admin, &format!("/api/schedules/{exec_id}"))
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        updated_exec["schedule"]["model"],
+        "openai-compatible:new-model"
+    );
+
+    // 4. Usage summary endpoint returns per-schedule run counts and costs.
+    let usage_resp = server.get(&admin, "/api/schedules/usage-summary").await;
+    assert_eq!(usage_resp.status(), StatusCode::OK);
+    let usage_body: Value = usage_resp.json().await.unwrap();
+    let summaries = usage_body["summaries"].as_array().expect("summaries");
+    let script_summary = summaries
+        .iter()
+        .find(|s| s["scheduleId"] == script_id)
+        .expect("script schedule summary");
+    assert_eq!(script_summary["runCount"], 1);
 }
 
 #[tokio::test]

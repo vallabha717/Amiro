@@ -357,14 +357,26 @@ pub fn history_to_messages(thread_id: &str, session_id: &str, history: &[Value])
 
 /// In-app reminders do not need a model or a runtime session. Keep their
 /// server-authored messages visible if the user later continues the thread.
+/// When a scheduled turn both linked its runtime `sessionId` and wrote
+/// `localMessages` as a fallback, prefer the richer runtime history once
+/// available so the turn is never duplicated.
 fn thread_messages(entry: &Value, thread_id: &str, session_id: &str, history: &[Value]) -> Vec<Value> {
-    let mut messages = entry
+    let mut local = entry
         .get("localMessages")
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
-    messages.extend(history_to_messages(thread_id, session_id, history));
-    messages
+    let runtime_msgs = history_to_messages(thread_id, session_id, history);
+    if !runtime_msgs.is_empty()
+        && entry
+            .get("source")
+            .and_then(Value::as_str)
+            == Some("schedule")
+    {
+        return runtime_msgs;
+    }
+    local.extend(runtime_msgs);
+    local
 }
 
 /// The caller's chat list: the main agent's threads, or — in a team agent's

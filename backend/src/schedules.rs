@@ -61,9 +61,27 @@ const STANDBY_RETRY_SECS: u64 = 30;
 const MIN_INTERVAL_MINUTES: i64 = 5;
 const MAX_INTERVAL_MINUTES: i64 = 43200;
 const EXECUTE_TIMEOUT_SECS: u64 = 15 * 60;
+const DEFAULT_SCRIPT_TIMEOUT_MS: u64 = 60_000;
+const MIN_SCRIPT_TIMEOUT_MS: u64 = 1_000;
+const MAX_SCRIPT_TIMEOUT_MS: u64 = 30 * 60 * 1000;
+const MAX_SCRIPT_OUTPUT_BYTES: usize = 10_000;
+const DEFAULT_MAX_RETRIES: u32 = 3;
+const MAX_ALLOWED_RETRIES: u32 = 10;
+const DEFAULT_RETRY_BACKOFF_MS: u64 = 30_000;
+const MAX_RETRY_BACKOFF_MS: u64 = 30 * 60 * 1000;
 const MAX_NAME_LEN: usize = 120;
+const MAX_DESCRIPTION_LEN: usize = 500;
 const MAX_PROMPT_LEN: usize = 8000;
+const MAX_SCRIPT_LEN: usize = 16000;
 const MAX_MODEL_LEN: usize = 200;
+
+fn default_max_retries() -> u32 {
+    DEFAULT_MAX_RETRIES
+}
+
+fn default_retry_backoff_ms() -> u64 {
+    DEFAULT_RETRY_BACKOFF_MS
+}
 
 // ---------------------------------------------------------------------------
 // Types (camelCase on the wire, matching background-jobs/thread shapes)
@@ -86,13 +104,31 @@ pub struct Schedule {
     pub id: String,
     pub user_id: String,
     pub name: String,
+    #[serde(default)]
+    pub description: String,
     pub prompt: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub script: Option<String>,
     pub mode: String,
     pub timezone: String,
     pub schedule: ScheduleKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     pub enabled: bool,
+    #[serde(default)]
+    pub quiet: bool,
+    #[serde(default)]
+    pub reuse_conversation: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout_ms: Option<u64>,
+    #[serde(default)]
+    pub retry_count: u32,
+    #[serde(default = "default_max_retries")]
+    pub max_retries: u32,
+    #[serde(default = "default_retry_backoff_ms")]
+    pub retry_backoff_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next_run_at: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -131,9 +167,17 @@ pub struct ScheduleRun {
     pub started_at: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finished_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub estimated_cost_usd: Option<f64>,
     pub status: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_preview: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thread_id: Option<String>,
 }
@@ -431,11 +475,11 @@ fn parse_incoming_kind(value: &Value) -> Result<ScheduleKind, ApiError> {
 // ---------------------------------------------------------------------------
 
 fn validate_mode(mode: &str) -> Result<(), ApiError> {
-    if mode == "execute" || mode == "notify" || mode == "agent" {
+    if mode == "execute" || mode == "notify" || mode == "agent" || mode == "script" {
         Ok(())
     } else {
         Err(bad(format!(
-            "mode must be \"notify\", \"execute\" or \"agent\", got \"{mode}\""
+            "mode must be \"notify\", \"execute\", \"agent\" or \"script\", got \"{mode}\""
         )))
     }
 }
@@ -453,6 +497,17 @@ fn validate_name(name: &str) -> Result<(), ApiError> {
     }
 }
 
+fn validate_description(description: &str) -> Result<String, ApiError> {
+    let trimmed = description.trim();
+    if trimmed.chars().count() > MAX_DESCRIPTION_LEN {
+        Err(bad(format!(
+            "description must be at most {MAX_DESCRIPTION_LEN} characters"
+        )))
+    } else {
+        Ok(trimmed.to_string())
+    }
+}
+
 fn validate_prompt(prompt: &str) -> Result<(), ApiError> {
     if prompt.trim().is_empty() {
         Err(bad("prompt is required"))
@@ -463,6 +518,86 @@ fn validate_prompt(prompt: &str) -> Result<(), ApiError> {
     } else {
         Ok(())
     }
+}
+
+fn validate_script(script: &str) -> Result<(), ApiError> {
+    if script.trim().is_empty() {
+        Err(bad("script is required for mode \"script\""))
+    } else if script.chars().count() > MAX_SCRIPT_LEN {
+        Err(bad(format!(
+            "script must be at most {MAX_SCRIPT_LEN} characters"
+        )))
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_timeout_ms(timeout_ms: u64) -> Result<u64, ApiError> {
+    if !(MIN_SCRIPT_TIMEOUT_MS..=MAX_SCRIPT_TIMEOUT_MS).contains(&timeout_ms) {
+        Err(bad(format!(
+            "timeoutMs must be between {MIN_SCRIPT_TIMEOUT_MS} and {MAX_SCRIPT_TIMEOUT_MS} ms, got {timeout_ms}"
+        )))
+    } else {
+        Ok(timeout_ms)
+    }
+}
+
+fn validate_max_retries(max_retries: i64) -> Result<u32, ApiError> {
+    if !(0..=(MAX_ALLOWED_RETRIES as i64)).contains(&max_retries) {
+        Err(bad(format!(
+            "maxRetries must be between 0 and {MAX_ALLOWED_RETRIES}, got {max_retries}"
+        )))
+    } else {
+        Ok(max_retries as u32)
+    }
+}
+
+fn validate_retry_backoff_ms(backoff_ms: i64) -> Result<u64, ApiError> {
+    if !(1_000..=(MAX_RETRY_BACKOFF_MS as i64)).contains(&backoff_ms) {
+        Err(bad(format!(
+            "retryBackoffMs must be between 1000 and {MAX_RETRY_BACKOFF_MS} ms, got {backoff_ms}"
+        )))
+    } else {
+        Ok(backoff_ms as u64)
+    }
+}
+
+/// Vellum-compatible exponential backoff with ±20% jitter, capped at 30 minutes.
+pub fn compute_retry_delay_ms(attempt: u32, base_ms: u64) -> u64 {
+    let shift = attempt.min(16);
+    let exp = base_ms.saturating_mul(1u64 << shift).min(MAX_RETRY_BACKOFF_MS);
+    let nanos = Utc::now().timestamp_subsec_nanos() as f64 / 1_000_000_000.0;
+    let jitter = (exp as f64) * 0.2 * (2.0 * nanos - 1.0);
+    let raw = ((exp as f64) + jitter).round().max(0.0) as u64;
+    raw.min(MAX_RETRY_BACKOFF_MS)
+}
+
+fn estimate_turn_cost_usd(model: Option<&str>, usage: Option<crate::runtime::TurnUsage>) -> f64 {
+    let Some(u) = usage else {
+        return 0.0;
+    };
+    let lower = model.unwrap_or("").to_lowercase();
+    let (p_price, c_price) = if lower.contains("opus") {
+        (15.0, 75.0)
+    } else if lower.contains("sonnet") {
+        (3.0, 15.0)
+    } else if lower.contains("haiku") {
+        (0.25, 1.25)
+    } else if lower.contains("gpt-4o-mini") || lower.contains("mini") {
+        (0.15, 0.60)
+    } else if lower.contains("gpt-4o") || lower.contains("gpt-4") || lower.contains("gpt-5") {
+        (2.50, 10.00)
+    } else if lower.contains("o1") || lower.contains("o3") {
+        (15.0, 60.0)
+    } else if lower.contains("flash") {
+        (0.075, 0.30)
+    } else if lower.contains("pro") {
+        (1.25, 5.00)
+    } else {
+        (1.0, 3.0)
+    };
+    let raw = (u.prompt_tokens as f64 * p_price + u.completion_tokens as f64 * c_price) / 1_000_000.0;
+    (raw * 100_000.0).round() / 100_000.0
 }
 
 fn normalized_model(raw: &str) -> String {
@@ -600,15 +735,27 @@ fn api_schedule(schedule: &Schedule) -> Value {
 }
 
 /// Wire shape for responses: the stored row plus the server-computed
-/// `cadenceDescription` (never persisted).
+/// `cadenceDescription` and `isOneShot` (never persisted).
 fn public_schedule(schedule: &Schedule) -> Value {
     let mut value = api_schedule(schedule);
     let tz = schedule.timezone.parse::<Tz>().unwrap_or(chrono_tz::UTC);
+    let is_one_shot = matches!(schedule.schedule, ScheduleKind::Once { .. });
+    let status = schedule.status.clone().unwrap_or_else(|| {
+        if is_running(&schedule.id) {
+            "firing".to_string()
+        } else if is_one_shot && !schedule.enabled && schedule.last_run_at.is_some() {
+            "fired".to_string()
+        } else {
+            "active".to_string()
+        }
+    });
     if let Some(map) = value.as_object_mut() {
         map.insert(
             "cadenceDescription".into(),
             json!(describe_cadence(&schedule.schedule, tz)),
         );
+        map.insert("isOneShot".into(), json!(is_one_shot));
+        map.insert("status".into(), json!(status));
     }
     value
 }
@@ -701,12 +848,39 @@ pub async fn create_schedule_from(
 ) -> Result<Value, ApiError> {
     require_mutation(state)?;
     let name = body.get("name").and_then(|v| v.as_str()).unwrap_or("");
-    let prompt = body.get("prompt").and_then(|v| v.as_str()).unwrap_or("");
+    let description = validate_description(
+        body.get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or(""),
+    )?;
     let mode = body.get("mode").and_then(|v| v.as_str()).unwrap_or("");
+    let prompt_raw = body.get("prompt").and_then(|v| v.as_str()).unwrap_or("");
+    let script_raw = body.get("script").and_then(|v| v.as_str());
     let timezone = body.get("timezone").and_then(|v| v.as_str()).unwrap_or("");
     validate_name(name)?;
-    validate_prompt(prompt)?;
     validate_mode(mode)?;
+    let (prompt, script) = if mode == "script" {
+        let sc = script_raw
+            .filter(|s| !s.trim().is_empty())
+            .or_else(|| (!prompt_raw.trim().is_empty()).then_some(prompt_raw))
+            .unwrap_or("");
+        validate_script(sc)?;
+        let pr = if prompt_raw.trim().is_empty() {
+            sc.trim().to_string()
+        } else {
+            prompt_raw.trim().to_string()
+        };
+        (pr, Some(sc.trim().to_string()))
+    } else {
+        validate_prompt(prompt_raw)?;
+        (
+            prompt_raw.trim().to_string(),
+            script_raw
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string),
+        )
+    };
     if timezone.trim().is_empty() {
         return Err(bad(
             "timezone is required (IANA name, e.g. UTC or America/New_York)",
@@ -722,6 +896,43 @@ pub async fn create_schedule_from(
         .get("enabled")
         .and_then(|v| v.as_bool())
         .unwrap_or(true);
+    let quiet = body
+        .get("quiet")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let is_once = matches!(kind, ScheduleKind::Once { .. });
+    let reuse_conversation = !is_once
+        && body
+            .get("reuseConversation")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+    let timeout_ms = match body.get("timeoutMs") {
+        Some(Value::Null) | None => None,
+        Some(v) => {
+            let ms = v
+                .as_u64()
+                .ok_or_else(|| bad("timeoutMs must be an integer in milliseconds"))?;
+            Some(validate_timeout_ms(ms)?)
+        }
+    };
+    let max_retries = match body.get("maxRetries") {
+        Some(Value::Null) | None => DEFAULT_MAX_RETRIES,
+        Some(v) => {
+            let n = v
+                .as_i64()
+                .ok_or_else(|| bad("maxRetries must be an integer"))?;
+            validate_max_retries(n)?
+        }
+    };
+    let retry_backoff_ms = match body.get("retryBackoffMs") {
+        Some(Value::Null) | None => DEFAULT_RETRY_BACKOFF_MS,
+        Some(v) => {
+            let ms = v
+                .as_i64()
+                .ok_or_else(|| bad("retryBackoffMs must be an integer in milliseconds"))?;
+            validate_retry_backoff_ms(ms)?
+        }
+    };
 
     let _guard = state.store.lock().await;
     let mut doc = load_schedules(state).await?;
@@ -753,12 +964,21 @@ pub async fn create_schedule_from(
         id: id.clone(),
         user_id: uid.to_string(),
         name: name.trim().to_string(),
-        prompt: prompt.trim().to_string(),
+        description,
+        prompt,
+        script,
         mode: mode.to_string(),
         timezone: timezone.trim().to_string(),
         schedule: kind,
         model,
         enabled,
+        quiet,
+        reuse_conversation,
+        timeout_ms,
+        retry_count: 0,
+        max_retries,
+        retry_backoff_ms,
+        status: Some("active".to_string()),
         next_run_at,
         last_run_at: None,
         last_status: None,
@@ -797,23 +1017,74 @@ pub async fn update_schedule(
         validate_name(name)?;
         schedule.name = name.trim().to_string();
     }
+    if let Some(desc) = patch.get("description").and_then(|v| v.as_str()) {
+        schedule.description = validate_description(desc)?;
+    }
     if let Some(prompt) = patch.get("prompt").and_then(|v| v.as_str()) {
         validate_prompt(prompt)?;
         schedule.prompt = prompt.trim().to_string();
     }
+    if let Some(script_val) = patch.get("script") {
+        if script_val.is_null() {
+            schedule.script = None;
+        } else if let Some(sc) = script_val.as_str() {
+            validate_script(sc)?;
+            schedule.script = Some(sc.trim().to_string());
+        } else {
+            return Err(bad("script must be a string or null"));
+        }
+    }
     if let Some(mode) = patch.get("mode").and_then(|v| v.as_str()) {
         validate_mode(mode)?;
         schedule.mode = mode.to_string();
-        if mode == "notify" {
+        if mode == "notify" || mode == "script" {
             schedule.model = None;
         } else if patch.get("model").is_some() || schedule.model.is_none() {
             schedule.model = pin_model(patch, mode)?;
+        }
+        if mode == "script" {
+            if schedule.script.as_deref().unwrap_or("").trim().is_empty() {
+                if !schedule.prompt.trim().is_empty() {
+                    schedule.script = Some(schedule.prompt.clone());
+                } else {
+                    return Err(bad("script is required for mode \"script\""));
+                }
+            }
         }
     } else if patch.get("model").is_some()
         && (schedule.mode == "execute" || schedule.mode == "agent")
     {
         let mode = schedule.mode.clone();
         schedule.model = pin_model(patch, &mode)?;
+    }
+    if let Some(quiet) = patch.get("quiet").and_then(|v| v.as_bool()) {
+        schedule.quiet = quiet;
+    }
+    if let Some(reuse) = patch.get("reuseConversation").and_then(|v| v.as_bool()) {
+        schedule.reuse_conversation = !matches!(schedule.schedule, ScheduleKind::Once { .. }) && reuse;
+    }
+    if let Some(timeout_val) = patch.get("timeoutMs") {
+        if timeout_val.is_null() {
+            schedule.timeout_ms = None;
+        } else if let Some(ms) = timeout_val.as_u64() {
+            schedule.timeout_ms = Some(validate_timeout_ms(ms)?);
+        } else {
+            return Err(bad("timeoutMs must be an integer in milliseconds or null"));
+        }
+    }
+    if let Some(retries_val) = patch.get("maxRetries") {
+        if let Some(n) = retries_val.as_i64() {
+            schedule.max_retries = validate_max_retries(n)?;
+        } else {
+            return Err(bad("maxRetries must be an integer"));
+        }
+    }
+    if let Some(backoff_val) = patch.get("retryBackoffMs") {
+        if let Some(ms) = backoff_val.as_i64() {
+            schedule.retry_backoff_ms = validate_retry_backoff_ms(ms)?;
+        } else {
+            return Err(bad("retryBackoffMs must be an integer in milliseconds"));
+        }
     }
     if let Some(timezone) = patch.get("timezone").and_then(|v| v.as_str()) {
         if timezone.trim().is_empty() {
@@ -830,15 +1101,22 @@ pub async fn update_schedule(
     if let Some(kind_raw) = patch.get("schedule") {
         let tz = parse_timezone(&schedule.timezone)?;
         schedule.schedule = normalize_kind(&parse_incoming_kind(kind_raw)?, tz)?;
+        if matches!(schedule.schedule, ScheduleKind::Once { .. }) {
+            schedule.reuse_conversation = false;
+        }
         recompute = true;
     }
     if let Some(enabled) = patch.get("enabled").and_then(|v| v.as_bool()) {
         if schedule.enabled != enabled {
             schedule.enabled = enabled;
+            if enabled && schedule.status.as_deref() == Some("cancelled") {
+                schedule.status = Some("active".to_string());
+            }
             recompute = true;
         }
     }
     if recompute {
+        schedule.retry_count = 0;
         let tz = parse_timezone(&schedule.timezone)?;
         schedule.next_run_at = if schedule.enabled {
             next_after(&schedule.schedule, tz, Utc::now())?.map(|dt| fmt_utc(&dt))
@@ -882,6 +1160,166 @@ pub async fn update_schedule(
     }
     write_json(&schedules_path(state), &doc).await?;
     Ok(public_schedule(&schedule))
+}
+
+/// Cancel a pending one-shot schedule (Vellum `POST /:id/cancel` parity).
+/// Latches `status = "cancelled"`, `enabled = false`, `nextRunAt = None`.
+pub async fn cancel_schedule(state: &AppState, uid: &str, id: &str) -> Result<Value, ApiError> {
+    require_mutation(state)?;
+    let _guard = state.store.lock().await;
+    let mut doc = load_schedules(state).await?;
+    let mut schedule = doc
+        .get(id)
+        .and_then(|v| decode_schedule(id, v))
+        .filter(|s| owned(s, uid))
+        .ok_or_else(not_found)?;
+    if !matches!(schedule.schedule, ScheduleKind::Once { .. }) {
+        return Err(bad("only one-time schedules can be cancelled; pause recurring schedules instead"));
+    }
+    let runs = load_runs(state).await?;
+    if is_running(id) || has_running_run(&runs, id) {
+        return Err(conflict("schedule has a running execution"));
+    }
+    schedule.enabled = false;
+    schedule.next_run_at = None;
+    schedule.retry_count = 0;
+    schedule.status = Some("cancelled".to_string());
+    schedule.updated_at = crate::state::now_iso();
+    if let Some(map) = doc.as_object_mut() {
+        map.insert(id.to_string(), api_schedule(&schedule));
+    }
+    write_json(&schedules_path(state), &doc).await?;
+    Ok(public_schedule(&schedule))
+}
+
+/// Reassign schedules onto a new model (`POST /api/schedules/reassign-model`,
+/// Vellum `POST /schedules/reassign-profile` parity).
+pub async fn reassign_model(
+    state: &AppState,
+    uid: &str,
+    body: &Value,
+) -> Result<Value, ApiError> {
+    require_mutation(state)?;
+    let to_raw = body
+        .get("to")
+        .or_else(|| body.get("model"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim();
+    if to_raw.is_empty() {
+        return Err(bad("to is required"));
+    }
+    let to_model = normalized_model(to_raw);
+    validate_pinned_model(&to_model)?;
+    let from_model = body
+        .get("from")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(normalized_model);
+
+    let _guard = state.store.lock().await;
+    let mut doc = load_schedules(state).await?;
+    let scope = state.agent_scope();
+    let mut reassigned = 0usize;
+    let now = crate::state::now_iso();
+    if let Some(map) = doc.as_object_mut() {
+        for (id, val) in map.iter_mut() {
+            let Some(mut schedule) = decode_schedule(id, val) else {
+                continue;
+            };
+            if !owned(&schedule, uid) || schedule.agent_id != scope {
+                continue;
+            }
+            if schedule.mode != "execute" && schedule.mode != "agent" {
+                continue;
+            }
+            if let Some(ref from) = from_model {
+                if schedule.model.as_deref() != Some(from.as_str()) {
+                    continue;
+                }
+            } else {
+                // Skip spent/cancelled one-shots when moving all live schedules.
+                let spent_once = matches!(schedule.schedule, ScheduleKind::Once { .. })
+                    && (!schedule.enabled
+                        || matches!(
+                            schedule.status.as_deref(),
+                            Some("fired") | Some("cancelled")
+                        ));
+                if spent_once {
+                    continue;
+                }
+            }
+            if schedule.model.as_deref() == Some(to_model.as_str()) {
+                continue;
+            }
+            schedule.model = Some(to_model.clone());
+            schedule.updated_at = now.clone();
+            *val = api_schedule(&schedule);
+            reassigned += 1;
+        }
+    }
+    if reassigned > 0 {
+        write_json(&schedules_path(state), &doc).await?;
+    }
+    Ok(json!({ "reassigned": reassigned, "model": to_model }))
+}
+
+/// Per-schedule usage summaries (`GET /api/schedules/usage-summary`, Vellum parity).
+pub async fn usage_summary(state: &AppState, uid: &str) -> Result<Value, ApiError> {
+    let schedules = load_schedules(state).await?;
+    let runs = load_runs(state).await?;
+    let scope = state.agent_scope();
+    let cutoff = Utc::now() - chrono::Duration::days(30);
+    let owned_ids: Vec<String> = schedules
+        .as_object()
+        .map(|map| {
+            map.iter()
+                .filter_map(|(id, v)| decode_schedule(id, v))
+                .filter(|s| owned(s, uid) && s.agent_id == scope)
+                .map(|s| s.id)
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut summaries = Vec::with_capacity(owned_ids.len());
+    for sid in owned_ids {
+        let mut run_count = 0usize;
+        let mut total_cost = 0.0f64;
+        if let Some(rmap) = runs.as_object() {
+            for r in rmap.values() {
+                if r.get("scheduleId").and_then(|v| v.as_str()) != Some(sid.as_str()) {
+                    continue;
+                }
+                let status = r.get("status").and_then(|v| v.as_str()).unwrap_or("");
+                if status == "skipped" || status == "running" {
+                    continue;
+                }
+                let in_window = r
+                    .get("startedAt")
+                    .or_else(|| r.get("scheduledAt"))
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.parse::<DateTime<Utc>>().ok())
+                    .map(|dt| dt >= cutoff)
+                    .unwrap_or(true);
+                if !in_window {
+                    continue;
+                }
+                run_count += 1;
+                if let Some(cost) = r.get("estimatedCostUsd").and_then(|v| v.as_f64()) {
+                    if cost.is_finite() {
+                        total_cost += cost;
+                    }
+                }
+            }
+        }
+        summaries.push(json!({
+            "scheduleId": sid,
+            "runCount": run_count,
+            "totalEstimatedCostUsd": (total_cost * 100_000.0).round() / 100_000.0,
+            "eventCount": run_count,
+        }));
+    }
+    Ok(json!({ "summaries": summaries }))
 }
 
 /// Delete a schedule. Refused with 409 while an execution is in flight:
@@ -1232,25 +1670,78 @@ pub async fn system_tasks(state: &AppState) -> Result<Value, ApiError> {
 // Execution
 // ---------------------------------------------------------------------------
 
-/// Persist a visible Amiro thread for a firing (notify content or execute
-/// output/failure). Uses the same `localMessages` shape `get_thread` already
-/// prepends, so the result opens as a normal conversation even though no
-/// runtime session exists. Best-effort: returns `None` when the write fails.
+/// Persist a visible Amiro thread for a firing (notify content or execute/agent
+/// prompt + output/failure).
+///
+/// Matches Vellum's `runBackgroundJob` + `processMessage` behavior:
+/// - In `execute` and `agent` modes (`prompt` is `Some`), the thread records
+///   the schedule's prompt as a `user` message followed by the `assistant`
+///   reply, and links `sessionId` to the live runtime session (not archived)
+///   so tool calls, reasoning, and follow-up turns in the same conversation
+///   work just like a normal chat.
+/// - When `reused_thread_id` is `Some` (`reuseConversation: true`), appends the
+///   new turn to the existing thread entry.
+/// - In `notify` mode (`prompt` is `None`), writes the reminder message into a
+///   standalone thread.
 async fn persist_result_thread(
     state: &AppState,
     uid: &str,
     title: &str,
+    prompt: Option<&str>,
     text: &str,
+    session_id: Option<&str>,
+    reused_thread_id: Option<&str>,
+    model: Option<&str>,
+    usage: Option<crate::runtime::TurnUsage>,
+    duration_ms: Option<u64>,
     now: &str,
 ) -> Option<String> {
-    let thread_id = uuid::Uuid::new_v4().to_string();
-    let message = json!({
-        "id": format!("schedmsg_{thread_id}"),
+    let thread_id = reused_thread_id
+        .filter(|id| !id.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let turn_nonce = uuid::Uuid::new_v4().simple().to_string();
+    let mut new_messages = Vec::new();
+    if let Some(prompt_text) = prompt.filter(|p| !p.trim().is_empty()) {
+        new_messages.push(json!({
+            "id": format!("scheduser_{turn_nonce}"),
+            "threadId": thread_id,
+            "role": "user",
+            "parts": [{"type": "text", "text": truncate_chars(prompt_text, MAX_THREAD_TEXT_CHARS)}],
+            "createdAt": now,
+        }));
+    }
+    let mut assistant_msg = json!({
+        "id": format!("schedmsg_{turn_nonce}"),
         "threadId": thread_id,
         "role": "assistant",
         "parts": [{"type": "text", "text": truncate_chars(text, MAX_THREAD_TEXT_CHARS)}],
         "createdAt": now,
     });
+    if model.is_some() || usage.is_some() || duration_ms.is_some() {
+        let mut meta = json!({});
+        if let Some(m) = model {
+            meta["model"] = json!(m);
+        }
+        if let Some(d) = duration_ms {
+            meta["durationMs"] = json!(d);
+        }
+        if let Some(u) = usage {
+            let cost = estimate_turn_cost_usd(model, Some(u));
+            meta["usage"] = json!({
+                "promptTokens": u.prompt_tokens,
+                "completionTokens": u.completion_tokens,
+                "totalTokens": u.total_tokens,
+                "prompt_tokens": u.prompt_tokens,
+                "completion_tokens": u.completion_tokens,
+                "total_tokens": u.total_tokens,
+                "estimated_usd": cost,
+            });
+        }
+        assistant_msg["metadata"] = meta;
+    }
+    new_messages.push(assistant_msg);
+
     let _guard = state.store.lock().await;
     let path = state.home.join("threads.json");
     let mut doc = read_json(&path, json!({})).await.ok()?;
@@ -1268,53 +1759,116 @@ async fn persist_result_thread(
     {
         return None;
     }
-    let mut entry = json!({
-        "sessionId": "",
-        "userId": uid,
-        "title": title,
-        "localMessages": [message],
-        "createdAt": now,
-        "lastMessageAt": now,
-        "archived": false,
-        "workingDir": state.workspace.to_string_lossy().to_string(),
-    });
-    // A team agent's result lands in that agent's chats.
-    if let Some(agent) = state.agent_scope() {
-        entry["agentId"] = json!(agent);
-        entry["runtime"] = json!("agent");
-    }
-    if let Some(map) = doc.as_object_mut() {
-        map.insert(thread_id.clone(), entry);
+
+    if let Some(existing) = doc
+        .get_mut(&thread_id)
+        .filter(|e| crate::threads::entry_owned(e, uid))
+    {
+        if let Some(sid) = session_id.filter(|s| !s.is_empty()) {
+            existing["sessionId"] = json!(sid);
+        }
+        match existing.get_mut("localMessages").and_then(Value::as_array_mut) {
+            Some(arr) => arr.extend(new_messages),
+            None => existing["localMessages"] = json!(new_messages),
+        }
+        existing["lastMessageAt"] = json!(now);
+        existing["archived"] = json!(false);
+        existing["unread"] = json!(true);
+        existing["source"] = json!("schedule");
+    } else {
+        let mut entry = json!({
+            "sessionId": session_id.unwrap_or(""),
+            "userId": uid,
+            "title": title,
+            "titleSource": "manual",
+            "source": "schedule",
+            "localMessages": new_messages,
+            "createdAt": now,
+            "lastMessageAt": now,
+            "archived": false,
+            "unread": true,
+            "workingDir": state.workspace.to_string_lossy().to_string(),
+        });
+        // A team agent's result lands in that agent's chats.
+        if let Some(agent) = state.agent_scope() {
+            entry["agentId"] = json!(agent);
+            entry["runtime"] = json!("agent");
+        }
+        if let Some(map) = doc.as_object_mut() {
+            map.insert(thread_id.clone(), entry);
+        }
     }
     write_json(&path, &doc).await.ok()?;
     Some(thread_id)
 }
 
+/// Look up the last reusable conversation thread + runtime session for a
+/// recurring schedule with `reuseConversation == true`.
+async fn resolve_reused_conversation(
+    state: &AppState,
+    schedule: &Schedule,
+) -> Option<(String, Option<String>)> {
+    if !schedule.reuse_conversation || matches!(schedule.schedule, ScheduleKind::Once { .. }) {
+        return None;
+    }
+    let tid = schedule.thread_id.as_deref().filter(|s| !s.is_empty())?;
+    let entry = crate::threads::get_entry(state, tid).await.ok()??;
+    if !crate::threads::entry_owned(&entry, &schedule.user_id) {
+        return None;
+    }
+    if entry.get("archived").and_then(Value::as_bool).unwrap_or(false) {
+        return None;
+    }
+    let sid = entry
+        .get("sessionId")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    Some((tid.to_string(), sid))
+}
+
+#[derive(Default)]
 struct ExecOutcome {
     status: String,
     preview: String,
+    output: Option<String>,
+    error: Option<String>,
     thread_id: Option<String>,
+    duration_ms: Option<u64>,
+    estimated_cost_usd: Option<f64>,
 }
 
 async fn execute_notify(state: &AppState, schedule: &Schedule, now: &str) -> ExecOutcome {
+    let started = std::time::Instant::now();
     let thread_id = persist_result_thread(
         state,
         &schedule.user_id,
         &schedule.name,
+        None,
         &schedule.prompt,
+        None,
+        None,
+        None,
+        None,
+        Some(0),
         now,
     )
     .await;
     let delivered = thread_id.is_some();
+    let preview = if delivered {
+        truncate_chars(&schedule.prompt, MAX_OUTPUT_PREVIEW_CHARS)
+    } else {
+        "Could not persist the in-app reminder. Check storage and account availability."
+            .to_string()
+    };
     ExecOutcome {
         status: if delivered { "ok" } else { "failed" }.to_string(),
-        preview: if delivered {
-            truncate_chars(&schedule.prompt, MAX_OUTPUT_PREVIEW_CHARS)
-        } else {
-            "Could not persist the in-app reminder. Check storage and account availability."
-                .to_string()
-        },
+        preview: preview.clone(),
+        output: delivered.then(|| schedule.prompt.clone()),
+        error: (!delivered).then(|| preview),
         thread_id,
+        duration_ms: Some(started.elapsed().as_millis() as u64),
+        estimated_cost_usd: Some(0.0),
     }
 }
 
@@ -1331,10 +1885,25 @@ impl Drop for ScheduledTurnGuard {
     }
 }
 
-/// Collect an explicit model-aware, no-tools turn. Dropping this future on its
-/// deadline cancels the actual runtime session, not just the HTTP waiter.
-async fn scheduled_model_turn(state: &AppState, schedule: &Schedule) -> Result<String, ApiError> {
-    use crate::runtime::{TurnPlan, TurnUpdate};
+struct TurnRunResult {
+    text: String,
+    session_id: String,
+    usage: Option<crate::runtime::TurnUsage>,
+}
+
+/// Collect an explicit model-aware turn (`expose_tools = false` for `execute`,
+/// `expose_tools = runtime::expose_tools()` for `agent`). Dropping this future
+/// on its deadline cancels the actual runtime session. The completed session is
+/// kept alive (not archived) and linked to the schedule's conversation thread
+/// so the full user prompt + tool calls + assistant answer are visible when the
+/// user opens the conversation.
+async fn run_scheduled_runtime_turn(
+    state: &AppState,
+    schedule: &Schedule,
+    expose_tools: bool,
+    existing_session_id: Option<String>,
+) -> Result<TurnRunResult, ApiError> {
+    use crate::runtime::{TurnPlan, TurnUpdate, TurnUsage};
     use amiro_sdk::ApiEvent;
     let model = schedule
         .model
@@ -1344,14 +1913,14 @@ async fn scheduled_model_turn(state: &AppState, schedule: &Schedule) -> Result<S
     let mut turn = crate::runtime::start_turn(
         state.clone(),
         TurnPlan {
-            session_id: None,
+            session_id: existing_session_id,
             working_dir: state.workspace.to_string_lossy().to_string(),
-            expose_tools: false,
+            expose_tools,
             model: Some(model.to_string()),
             prompt: schedule.prompt.clone(),
             images: Vec::new(),
             tool_results: Vec::new(),
-            system_reminder: None,
+            system_reminder: Some(format!("Schedule: {}", schedule.name)),
             agent_tools: None,
         },
     )
@@ -1368,26 +1937,58 @@ async fn scheduled_model_turn(state: &AppState, schedule: &Schedule) -> Result<S
         .map_err(|message| ApiError(StatusCode::BAD_GATEWAY, message))?;
     let mut guard = ScheduledTurnGuard {
         state: state.clone(),
-        session_id: session.session_id,
+        session_id: session.session_id.clone(),
         completed: false,
     };
     let mut text = String::new();
+    let mut after_tool = false;
+    let mut usage: Option<TurnUsage> = None;
     while let Some(update) = turn.updates.recv().await {
         match update {
+            TurnUpdate::Event(
+                ApiEvent::ToolStart { .. } | ApiEvent::ToolExec { .. } | ApiEvent::ToolCall { .. },
+            ) => {
+                after_tool = true;
+            }
             TurnUpdate::Event(ApiEvent::TextDelta { text: delta, .. }) => {
+                if expose_tools && after_tool {
+                    text.clear();
+                    after_tool = false;
+                }
                 let remaining = MAX_THREAD_TEXT_CHARS.saturating_sub(text.chars().count());
                 text.extend(delta.chars().take(remaining));
             }
             TurnUpdate::Event(ApiEvent::TextReplace {
                 text: replacement, ..
             }) => {
+                after_tool = false;
                 text = truncate_chars(&replacement, MAX_THREAD_TEXT_CHARS);
             }
+            TurnUpdate::Event(ApiEvent::TokenUsage {
+                input,
+                output,
+                cache_read_input,
+                ..
+            }) => {
+                let read = cache_read_input.unwrap_or(0);
+                usage = Some(TurnUsage {
+                    prompt_tokens: input + read,
+                    completion_tokens: output,
+                    total_tokens: input + read + output,
+                });
+            }
             TurnUpdate::Error(message) => return Err(ApiError(StatusCode::BAD_GATEWAY, message)),
-            TurnUpdate::Done(_) => {
+            TurnUpdate::Done(done_usage) => {
                 guard.completed = true;
-                let _ = crate::runtime::archive_session(state, &guard.session_id).await;
-                return Ok(text);
+                let final_usage = done_usage.or(usage);
+                // Set the runtime session's title to the schedule name so it
+                // reads cleanly in the sidebar and thread header.
+                let _ = crate::runtime::rename_session(state, &guard.session_id, &schedule.name).await;
+                return Ok(TurnRunResult {
+                    text,
+                    session_id: guard.session_id.clone(),
+                    usage: final_usage,
+                });
             }
             _ => {}
         }
@@ -1399,47 +2000,83 @@ async fn scheduled_model_turn(state: &AppState, schedule: &Schedule) -> Result<S
 }
 
 async fn execute_execute(state: &AppState, schedule: &Schedule, now: &str) -> ExecOutcome {
+    let started = std::time::Instant::now();
+    let reused = resolve_reused_conversation(state, schedule).await;
+    let existing_session = reused.as_ref().and_then(|(_, sid)| sid.clone());
+    let reused_tid = reused.as_ref().map(|(tid, _)| tid.as_str());
+
     let result = tokio::time::timeout(
         Duration::from_secs(EXECUTE_TIMEOUT_SECS),
-        scheduled_model_turn(state, schedule),
+        run_scheduled_runtime_turn(state, schedule, false, existing_session),
     )
     .await;
-    let (mut status, body) = match result {
-        Ok(Ok(text)) => (
+    let duration_ms = started.elapsed().as_millis() as u64;
+    let (mut status, body, session_id, usage, mut err_text) = match result {
+        Ok(Ok(turn)) => (
             "ok",
-            if text.trim().is_empty() {
+            if turn.text.trim().is_empty() {
                 "(the scheduled run produced no output)".to_string()
             } else {
-                text
+                turn.text
             },
+            Some(turn.session_id),
+            turn.usage,
+            None,
         ),
-        Ok(Err(error)) => ("failed", format!("Scheduled task failed: {}", error.1)),
-        Err(_) => (
-            "failed",
-            format!(
+        Ok(Err(error)) => {
+            let msg = format!("Scheduled task failed: {}", error.1);
+            ("failed", msg.clone(), None, None, Some(msg))
+        }
+        Err(_) => {
+            let msg = format!(
                 "Scheduled task timed out after {} minutes and was cancelled",
                 EXECUTE_TIMEOUT_SECS / 60
-            ),
-        ),
+            );
+            ("failed", msg.clone(), None, None, Some(msg))
+        }
     };
-    let thread_id =
-        persist_result_thread(state, &schedule.user_id, &schedule.name, &body, now).await;
+    let cost = estimate_turn_cost_usd(schedule.model.as_deref(), usage);
+    let thread_id = persist_result_thread(
+        state,
+        &schedule.user_id,
+        &schedule.name,
+        Some(&schedule.prompt),
+        &body,
+        session_id.as_deref(),
+        reused_tid,
+        schedule.model.as_deref(),
+        usage,
+        Some(duration_ms),
+        now,
+    )
+    .await;
     let preview = if thread_id.is_none() {
         status = "failed";
-        "Could not persist the scheduled result. Check storage and account availability."
-            .to_string()
+        let msg = "Could not persist the scheduled result. Check storage and account availability."
+            .to_string();
+        err_text = Some(msg.clone());
+        msg
     } else {
         truncate_chars(&body, MAX_OUTPUT_PREVIEW_CHARS)
     };
+    if let Some(ref tid) = thread_id {
+        let _ = crate::thread_activity::RunningGuard::start(&schedule.user_id, tid)
+            .finish(state, status != "ok")
+            .await;
+    }
     ExecOutcome {
         status: status.to_string(),
         preview,
+        output: (status == "ok").then(|| body),
+        error: err_text,
         thread_id,
+        duration_ms: Some(duration_ms),
+        estimated_cost_usd: Some(cost),
     }
 }
 
-/// `agent` mode: a tools-on turn in a fresh session with the agent workspace
-/// as working dir (agent-home files load, Connectors/MCP and file tools work),
+/// `agent` mode: a tools-on turn in a session with the agent workspace as
+/// working dir (agent-home files load, Connectors/MCP and file tools work),
 /// the pinned model, the shared timeout, and cancel-on-drop. Skipped (never
 /// silently dropped) when a live chat turn is in flight.
 async fn execute_agent(state: &AppState, schedule: &Schedule, now: &str) -> ExecOutcome {
@@ -1448,56 +2085,215 @@ async fn execute_agent(state: &AppState, schedule: &Schedule, now: &str) -> Exec
             status: "skipped".to_string(),
             preview: "Skipped: a conversation was in progress. The next run is still scheduled."
                 .to_string(),
+            output: None,
+            error: None,
             thread_id: None,
+            duration_ms: Some(0),
+            estimated_cost_usd: Some(0.0),
         };
     }
-    let turn = async {
-        let model = schedule
-            .model
-            .as_deref()
-            .ok_or_else(|| bad("schedule has no pinned model; edit it and select a model"))?;
-        validate_pinned_model(model)?;
-        crate::heartbeat::agent_turn(state, schedule.prompt.clone(), Some(model.to_string())).await
-    };
-    let result = tokio::time::timeout(Duration::from_secs(EXECUTE_TIMEOUT_SECS), turn).await;
-    let (mut status, body) = match result {
-        Ok(Ok((text, session_id))) => {
-            let _ = crate::runtime::archive_session(state, &session_id).await;
-            (
-                "ok",
-                if text.trim().is_empty() {
-                    "(the scheduled run produced no output)".to_string()
-                } else {
-                    text
-                },
-            )
+    let started = std::time::Instant::now();
+    let reused = resolve_reused_conversation(state, schedule).await;
+    let existing_session = reused.as_ref().and_then(|(_, sid)| sid.clone());
+    let reused_tid = reused.as_ref().map(|(tid, _)| tid.as_str());
+
+    let result = tokio::time::timeout(
+        Duration::from_secs(EXECUTE_TIMEOUT_SECS),
+        run_scheduled_runtime_turn(
+            state,
+            schedule,
+            crate::runtime::expose_tools(),
+            existing_session,
+        ),
+    )
+    .await;
+    let duration_ms = started.elapsed().as_millis() as u64;
+    let (mut status, body, session_id, usage, mut err_text) = match result {
+        Ok(Ok(turn)) => (
+            "ok",
+            if turn.text.trim().is_empty() {
+                "(the scheduled run produced no output)".to_string()
+            } else {
+                turn.text
+            },
+            Some(turn.session_id),
+            turn.usage,
+            None,
+        ),
+        Ok(Err(error)) => {
+            let msg = format!("Scheduled task failed: {}", error.1);
+            ("failed", msg.clone(), None, None, Some(msg))
         }
-        Ok(Err(error)) => ("failed", format!("Scheduled task failed: {}", error.1)),
-        Err(_) => (
-            "failed",
-            format!(
+        Err(_) => {
+            let msg = format!(
                 "Scheduled task timed out after {} minutes and was cancelled",
                 EXECUTE_TIMEOUT_SECS / 60
-            ),
-        ),
+            );
+            ("failed", msg.clone(), None, None, Some(msg))
+        }
     };
-    let thread_id =
-        persist_result_thread(state, &schedule.user_id, &schedule.name, &body, now).await;
+    let cost = estimate_turn_cost_usd(schedule.model.as_deref(), usage);
+    let thread_id = persist_result_thread(
+        state,
+        &schedule.user_id,
+        &schedule.name,
+        Some(&schedule.prompt),
+        &body,
+        session_id.as_deref(),
+        reused_tid,
+        schedule.model.as_deref(),
+        usage,
+        Some(duration_ms),
+        now,
+    )
+    .await;
     let preview = if thread_id.is_none() {
         status = "failed";
-        "Could not persist the scheduled result. Check storage and account availability."
-            .to_string()
+        let msg = "Could not persist the scheduled result. Check storage and account availability."
+            .to_string();
+        err_text = Some(msg.clone());
+        msg
     } else {
         truncate_chars(&body, MAX_OUTPUT_PREVIEW_CHARS)
     };
+    if let Some(ref tid) = thread_id {
+        let _ = crate::thread_activity::RunningGuard::start(&schedule.user_id, tid)
+            .finish(state, status != "ok")
+            .await;
+    }
     ExecOutcome {
         status: status.to_string(),
         preview,
+        output: (status == "ok").then(|| body),
+        error: err_text,
         thread_id,
+        duration_ms: Some(duration_ms),
+        estimated_cost_usd: Some(cost),
     }
 }
 
-async fn run_execution(state: &AppState, schedule: Schedule) -> ExecOutcome {
+/// `script` mode (Vellum parity): runs a shell command directly in the agent
+/// workspace with `__SCHEDULE_ID`, `__SCHEDULE_RUN_ID`, and `AMIRO_WORKSPACE_DIR`
+/// (`VELLUM_WORKSPACE_DIR` alias), bounded by `timeout_ms` (default 60s).
+async fn execute_script(
+    state: &AppState,
+    schedule: &Schedule,
+    run_id: &str,
+    _now: &str,
+) -> ExecOutcome {
+    let command = schedule
+        .script
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or(schedule.prompt.as_str())
+        .trim()
+        .to_string();
+    if command.is_empty() {
+        return ExecOutcome {
+            status: "skipped".to_string(),
+            preview: "Skipped: script schedule has no command.".to_string(),
+            output: None,
+            error: None,
+            thread_id: None,
+            duration_ms: Some(0),
+            estimated_cost_usd: Some(0.0),
+        };
+    }
+    let timeout_ms = schedule
+        .timeout_ms
+        .unwrap_or(DEFAULT_SCRIPT_TIMEOUT_MS)
+        .clamp(MIN_SCRIPT_TIMEOUT_MS, MAX_SCRIPT_TIMEOUT_MS);
+    let started = std::time::Instant::now();
+    let _ = std::fs::create_dir_all(&state.workspace);
+    let mut cmd = tokio::process::Command::new("bash");
+    cmd.arg("-c")
+        .arg(&command)
+        .current_dir(&state.workspace)
+        .env("__SCHEDULE_ID", &schedule.id)
+        .env("__SCHEDULE_RUN_ID", run_id)
+        .env(
+            "AMIRO_WORKSPACE_DIR",
+            state.workspace.to_string_lossy().to_string(),
+        )
+        .env(
+            "VELLUM_WORKSPACE_DIR",
+            state.workspace.to_string_lossy().to_string(),
+        )
+        .kill_on_drop(true);
+    let output_res =
+        tokio::time::timeout(Duration::from_millis(timeout_ms), cmd.output()).await;
+    let duration_ms = started.elapsed().as_millis() as u64;
+    match output_res {
+        Ok(Ok(out)) => {
+            let stdout = truncate_chars(
+                &String::from_utf8_lossy(&out.stdout),
+                MAX_SCRIPT_OUTPUT_BYTES,
+            );
+            let stderr = truncate_chars(
+                &String::from_utf8_lossy(&out.stderr),
+                MAX_SCRIPT_OUTPUT_BYTES,
+            );
+            if out.status.success() {
+                let preview = if !stdout.trim().is_empty() {
+                    truncate_chars(stdout.trim(), MAX_OUTPUT_PREVIEW_CHARS)
+                } else {
+                    "(script completed with no stdout)".to_string()
+                };
+                ExecOutcome {
+                    status: "ok".to_string(),
+                    preview,
+                    output: (!stdout.is_empty()).then_some(stdout),
+                    error: (!stderr.is_empty()).then_some(stderr),
+                    thread_id: None,
+                    duration_ms: Some(duration_ms),
+                    estimated_cost_usd: Some(0.0),
+                }
+            } else {
+                let code = out.status.code().unwrap_or(-1);
+                let err_msg = if !stderr.trim().is_empty() {
+                    stderr
+                } else {
+                    format!("Script exited with status {code}")
+                };
+                ExecOutcome {
+                    status: "failed".to_string(),
+                    preview: truncate_chars(&err_msg, MAX_OUTPUT_PREVIEW_CHARS),
+                    output: (!stdout.is_empty()).then_some(stdout),
+                    error: Some(err_msg),
+                    thread_id: None,
+                    duration_ms: Some(duration_ms),
+                    estimated_cost_usd: Some(0.0),
+                }
+            }
+        }
+        Ok(Err(err)) => {
+            let msg = format!("Script execution failed: {err}");
+            ExecOutcome {
+                status: "failed".to_string(),
+                preview: truncate_chars(&msg, MAX_OUTPUT_PREVIEW_CHARS),
+                output: None,
+                error: Some(msg),
+                thread_id: None,
+                duration_ms: Some(duration_ms),
+                estimated_cost_usd: Some(0.0),
+            }
+        }
+        Err(_) => {
+            let msg = format!("Script timed out after {timeout_ms}ms");
+            ExecOutcome {
+                status: "failed".to_string(),
+                preview: msg.clone(),
+                output: None,
+                error: Some(msg),
+                thread_id: None,
+                duration_ms: Some(duration_ms),
+                estimated_cost_usd: Some(0.0),
+            }
+        }
+    }
+}
+
+async fn run_execution(state: &AppState, schedule: Schedule, run_id: &str) -> ExecOutcome {
     // A team agent's schedule runs on that agent's own runtime and folder.
     let scoped;
     let state = match schedule.agent_id.as_deref() {
@@ -1507,10 +2303,12 @@ async fn run_execution(state: &AppState, schedule: Schedule) -> ExecOutcome {
                 &scoped
             }
             Err(_) => {
+                let msg = "This schedule's agent no longer exists. No task was executed.".to_string();
                 return ExecOutcome {
                     status: "failed".to_string(),
-                    preview: "This schedule's agent no longer exists. No task was executed.".to_string(),
-                    thread_id: None,
+                    preview: msg.clone(),
+                    error: Some(msg),
+                    ..Default::default()
                 };
             }
         },
@@ -1529,21 +2327,25 @@ async fn run_execution(state: &AppState, schedule: Schedule) -> ExecOutcome {
         })
         .unwrap_or(false);
     if !owner_exists {
+        let msg = "Schedule owner is unavailable. No task was executed.".to_string();
         return ExecOutcome {
             status: "failed".to_string(),
-            preview: "Schedule owner is unavailable. No task was executed.".to_string(),
-            thread_id: None,
+            preview: msg.clone(),
+            error: Some(msg),
+            ..Default::default()
         };
     }
     if !schedule.enabled {
         return ExecOutcome {
             status: "skipped".to_string(),
             preview: "schedule was paused before it fired".to_string(),
-            thread_id: None,
+            ..Default::default()
         };
     }
     if schedule.mode == "notify" {
         execute_notify(state, &schedule, &now).await
+    } else if schedule.mode == "script" {
+        execute_script(state, &schedule, run_id, &now).await
     } else if schedule.mode == "agent" {
         execute_agent(state, &schedule, &now).await
     } else {
@@ -1606,10 +2408,12 @@ async fn finalize(
         unmark(schedule_id);
         info
     };
-    if let Some((uid, name, status, preview, thread_id)) = notif_info {
-        if status == "ok" || status == "failed" {
+    if let Some((uid, name, status, preview, thread_id, quiet)) = notif_info {
+        if (status == "ok" && !quiet) || status == "failed" {
             // Phase 02: schedule results go through the signal pipeline. The
             // run id is the dedupe key, so a retried finalize emits once.
+            // Quiet schedules suppress automatic completion notifications on
+            // success (`status == "ok"`), matching Vellum's `job.quiet`.
             let urgency = if status == "failed" { "high" } else { "normal" };
             let _ = crate::notify::emit_signal(
                 state,
@@ -1645,11 +2449,15 @@ async fn finalize_locked(
     run_id: &str,
     fire_time: DateTime<Utc>,
     outcome: ExecOutcome,
-) -> Option<(String, String, String, String, Option<String>)> {
+) -> Option<(String, String, String, String, Option<String>, bool)> {
     let ExecOutcome {
         status,
         preview,
+        output,
+        error,
         thread_id,
+        duration_ms,
+        estimated_cost_usd,
     } = outcome;
     let finished = crate::state::now_iso();
     let mut schedules = match load_schedules(state).await {
@@ -1695,6 +2503,18 @@ async fn finalize_locked(
             obj.insert("status".into(), json!(status.clone()));
             obj.insert("finishedAt".into(), json!(finished.clone()));
             obj.insert("outputPreview".into(), json!(preview.clone()));
+            if let Some(out) = output.clone() {
+                obj.insert("output".into(), json!(out));
+            }
+            if let Some(err) = error.clone() {
+                obj.insert("error".into(), json!(err));
+            }
+            if let Some(dur) = duration_ms {
+                obj.insert("durationMs".into(), json!(dur));
+            }
+            if let Some(cost) = estimated_cost_usd {
+                obj.insert("estimatedCostUsd".into(), json!(cost));
+            }
             if let Some(tid) = thread_id.clone() {
                 obj.insert("threadId".into(), json!(tid));
             }
@@ -1717,20 +2537,36 @@ async fn finalize_locked(
                     "scheduledAt": fmt_utc(&fire_time),
                     "startedAt": finished.clone(),
                     "finishedAt": finished.clone(),
+                    "durationMs": duration_ms,
+                    "estimatedCostUsd": estimated_cost_usd,
                     "status": status.clone(),
                     "outputPreview": preview.clone(),
+                    "output": output.clone(),
+                    "error": error.clone(),
                     "threadId": thread_id.clone(),
                 }),
             );
         }
     }
 
-    let notif_meta = schedule
-        .as_ref()
-        .map(|s| (s.user_id.clone(), s.name.clone(), status.clone(), preview.clone(), thread_id.clone()));
+    let notif_meta = schedule.as_ref().map(|s| {
+        (
+            s.user_id.clone(),
+            s.name.clone(),
+            status.clone(),
+            preview.clone(),
+            thread_id.clone(),
+            s.quiet,
+        )
+    });
     if let Some(mut schedule) = schedule {
         schedule.last_run_at = Some(finished.clone());
         schedule.last_status = Some(status.clone());
+        if status == "ok" {
+            schedule.retry_count = 0;
+        } else if status == "failed" {
+            schedule.retry_count = schedule.retry_count.saturating_add(1);
+        }
         if let Some(tid) = thread_id.clone() {
             schedule.thread_id = Some(tid);
         }
@@ -1741,16 +2577,34 @@ async fn finalize_locked(
                 ScheduleKind::Once { .. } => {
                     schedule.enabled = false;
                     schedule.next_run_at = None;
+                    schedule.status = Some("fired".to_string());
                 }
                 // Recurring advance from COMPLETION time, never from the fire
                 // time: a run that outlived its interval must not queue a
                 // catch-up storm of fires that are already in the past.
                 _ => {
+                    schedule.status = Some("active".to_string());
                     let tz = parse_timezone(&schedule.timezone).unwrap_or(chrono_tz::UTC);
-                    schedule.next_run_at = next_after(&schedule.schedule, tz, Utc::now())
+                    let regular_next = next_after(&schedule.schedule, tz, Utc::now())
                         .ok()
-                        .flatten()
-                        .map(|dt| fmt_utc(&dt));
+                        .flatten();
+                    let next_dt = if status == "failed" && schedule.retry_count <= schedule.max_retries {
+                        let delay_ms = compute_retry_delay_ms(
+                            schedule.retry_count.saturating_sub(1),
+                            schedule.retry_backoff_ms,
+                        );
+                        let retry_at = Utc::now() + chrono::Duration::milliseconds(delay_ms as i64);
+                        match regular_next {
+                            Some(reg) if reg < retry_at => Some(reg),
+                            _ => Some(retry_at),
+                        }
+                    } else {
+                        if status == "failed" {
+                            schedule.retry_count = 0;
+                        }
+                        regular_next
+                    };
+                    schedule.next_run_at = next_dt.map(|dt| fmt_utc(&dt));
                 }
             }
         }
@@ -1866,8 +2720,12 @@ async fn tick(state: &AppState) {
                 scheduled_at: fmt_utc(&due),
                 started_at: Some(crate::state::now_iso()),
                 finished_at: None,
+                duration_ms: None,
+                estimated_cost_usd: None,
                 status: "running".to_string(),
                 output_preview: None,
+                output: None,
+                error: None,
                 thread_id: None,
             };
             if let Some(map) = schedules.as_object_mut() {
@@ -1913,7 +2771,7 @@ async fn tick(state: &AppState) {
     for (schedule, run, due) in claims {
         let state = state.clone();
         tokio::spawn(async move {
-            let outcome = run_execution(&state, schedule.clone()).await;
+            let outcome = run_execution(&state, schedule.clone(), &run.id).await;
             finalize(&state, &schedule.id, &run.id, due, outcome).await;
         });
     }
@@ -2098,8 +2956,12 @@ pub async fn run_schedule_now(
             scheduled_at: now.clone(),
             started_at: Some(now.clone()),
             finished_at: None,
+            duration_ms: None,
+            estimated_cost_usd: None,
             status: "running".to_string(),
             output_preview: None,
+            output: None,
+            error: None,
             thread_id: None,
         };
         // A manual run of a one-shot consumes it: the fire marker is dropped in
@@ -2158,12 +3020,16 @@ pub async fn run_schedule_now(
     if stored.mode == "notify" {
         // Notify is always fast (JSON writes only): run inline and return the
         // finished record.
-        let outcome = run_execution(state, exec_schedule).await;
+        let outcome = run_execution(state, exec_schedule, &run.id).await;
         let finished = crate::state::now_iso();
         let finished_run = ScheduleRun {
             status: outcome.status.clone(),
             finished_at: Some(finished.clone()),
+            duration_ms: outcome.duration_ms,
+            estimated_cost_usd: outcome.estimated_cost_usd,
             output_preview: Some(outcome.preview.clone()),
+            output: outcome.output.clone(),
+            error: outcome.error.clone(),
             thread_id: outcome.thread_id.clone(),
             ..run
         };
@@ -2174,14 +3040,14 @@ pub async fn run_schedule_now(
             .unwrap_or(public_schedule(&stored));
         Ok((updated, api_run(&finished_run)))
     } else {
-        // Execute can run for minutes: return the running record now and
-        // finish in the background, like background jobs do.
+        // Execute/agent/script can run for seconds or minutes: return the
+        // running record now and finish in the background.
         let state_clone = state.clone();
         let run_id = run.id.clone();
         let schedule_id = stored.id.clone();
         let fire_time = Utc::now();
         tokio::spawn(async move {
-            let outcome = run_execution(&state_clone, exec_schedule).await;
+            let outcome = run_execution(&state_clone, exec_schedule, &run_id).await;
             finalize(&state_clone, &schedule_id, &run_id, fire_time, outcome).await;
         });
         Ok((public_schedule(&stored), api_run(&run)))
@@ -2211,7 +3077,7 @@ mod tests {
 
     #[test]
     fn mode_validation_accepts_agent() {
-        for m in ["notify", "execute", "agent"] {
+        for m in ["notify", "execute", "agent", "script"] {
             assert!(validate_mode(m).is_ok());
         }
         assert!(validate_mode("tools").is_err());
@@ -2426,5 +3292,154 @@ mod tests {
     fn unknown_timezone_is_rejected() {
         assert!(parse_timezone("Mars/Olympus").is_err());
         assert!(parse_timezone("UTC").is_ok());
+    }
+
+    #[tokio::test]
+    async fn persist_result_thread_records_user_prompt_and_assistant_reply_and_supports_reuse() {
+        let home = std::env::temp_dir().join(format!(
+            "amiro-sched-thread-test-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&home).unwrap();
+        let mut state = AppState::from_env();
+        state.home = home.clone();
+        state.workspace = home.join("workspace");
+        write_json(
+            &home.join("users.json"),
+            &json!({"users": [{"id": "owner-1", "role": "admin"}]}),
+        )
+        .await
+        .unwrap();
+
+        let now = "2026-10-23T09:00:00.000Z";
+        let tid = persist_result_thread(
+            &state,
+            "owner-1",
+            "Morning briefing",
+            Some("Summarize my day in 3 bullets"),
+            "1. Standup at 9\n2. Review PR\n3. Ship release",
+            Some("sess-123"),
+            None,
+            Some("openai-compatible:stub-model"),
+            Some(crate::runtime::TurnUsage {
+                prompt_tokens: 100,
+                completion_tokens: 50,
+                total_tokens: 150,
+            }),
+            Some(420),
+            now,
+        )
+        .await
+        .expect("thread persisted");
+
+        let entry = crate::threads::get_entry(&state, &tid)
+            .await
+            .unwrap()
+            .expect("thread exists");
+        assert_eq!(entry["sessionId"], "sess-123");
+        assert_eq!(entry["title"], "Morning briefing");
+        assert_eq!(entry["source"], "schedule");
+        let msgs = entry["localMessages"].as_array().unwrap();
+        assert_eq!(msgs.len(), 2, "must contain user prompt + assistant answer");
+        assert_eq!(msgs[0]["role"], "user");
+        assert_eq!(
+            msgs[0]["parts"][0]["text"],
+            "Summarize my day in 3 bullets"
+        );
+        assert_eq!(msgs[1]["role"], "assistant");
+        assert_eq!(
+            msgs[1]["parts"][0]["text"],
+            "1. Standup at 9\n2. Review PR\n3. Ship release"
+        );
+        assert_eq!(msgs[1]["metadata"]["durationMs"], 420);
+        assert_eq!(msgs[1]["metadata"]["usage"]["totalTokens"], 150);
+
+        // Reusing the conversation appends the second turn's prompt + answer.
+        let tid2 = persist_result_thread(
+            &state,
+            "owner-1",
+            "Morning briefing",
+            Some("Follow up briefing"),
+            "All tasks on track.",
+            Some("sess-123"),
+            Some(&tid),
+            Some("openai-compatible:stub-model"),
+            None,
+            Some(210),
+            "2026-10-24T09:00:00.000Z",
+        )
+        .await
+        .expect("reused thread persisted");
+        assert_eq!(tid2, tid);
+        let entry2 = crate::threads::get_entry(&state, &tid)
+            .await
+            .unwrap()
+            .unwrap();
+        let msgs2 = entry2["localMessages"].as_array().unwrap();
+        assert_eq!(msgs2.len(), 4);
+        assert_eq!(msgs2[2]["role"], "user");
+        assert_eq!(msgs2[2]["parts"][0]["text"], "Follow up briefing");
+        assert_eq!(msgs2[3]["role"], "assistant");
+        assert_eq!(msgs2[3]["parts"][0]["text"], "All tasks on track.");
+
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[tokio::test]
+    async fn script_mode_executes_command_and_captures_stdout_and_env() {
+        let home = std::env::temp_dir().join(format!(
+            "amiro-sched-script-test-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&home).unwrap();
+        let mut state = AppState::from_env();
+        state.home = home.clone();
+        state.workspace = home.join("workspace");
+        write_json(
+            &home.join("users.json"),
+            &json!({"users": [{"id": "owner-1", "role": "admin"}]}),
+        )
+        .await
+        .unwrap();
+
+        let sched = Schedule {
+            id: "sched-script-1".to_string(),
+            user_id: "owner-1".to_string(),
+            name: "Script check".to_string(),
+            description: "Check env vars".to_string(),
+            prompt: "echo \"$__SCHEDULE_ID:$__SCHEDULE_RUN_ID\"".to_string(),
+            script: Some("echo \"$__SCHEDULE_ID:$__SCHEDULE_RUN_ID\"".to_string()),
+            mode: "script".to_string(),
+            timezone: "UTC".to_string(),
+            schedule: ScheduleKind::Interval { minutes: 60 },
+            model: None,
+            enabled: true,
+            quiet: false,
+            reuse_conversation: false,
+            timeout_ms: Some(5_000),
+            retry_count: 0,
+            max_retries: 3,
+            retry_backoff_ms: 30_000,
+            status: Some("active".to_string()),
+            next_run_at: None,
+            last_run_at: None,
+            last_status: None,
+            thread_id: None,
+            created_by: "user".to_string(),
+            created_from_thread_id: None,
+            agent_id: None,
+            created_at: "2026-10-23T00:00:00.000Z".to_string(),
+            updated_at: "2026-10-23T00:00:00.000Z".to_string(),
+        };
+        let outcome = run_execution(&state, sched, "run-42").await;
+        assert_eq!(outcome.status, "ok");
+        assert_eq!(outcome.preview.trim(), "sched-script-1:run-42");
+        assert_eq!(
+            outcome.output.as_deref().map(str::trim),
+            Some("sched-script-1:run-42")
+        );
+        assert!(outcome.duration_ms.is_some());
+
+        let _ = std::fs::remove_dir_all(&home);
     }
 }

@@ -5,6 +5,10 @@ import {
   validateCronExpression,
   wallTimeToAt,
   presetToCron,
+  formatDuration,
+  formatScheduleCost,
+  formatScheduleRunCount,
+  groupSchedules,
 } from "./schedule-helpers";
 
 describe("wallTimeToAt", () => {
@@ -84,5 +88,62 @@ describe("presetToCron", () => {
     expect(presetToCron({ kind: "weekdays", time: "09:00" })).toBe("0 9 * * 1-5");
     expect(presetToCron({ kind: "weekly", time: "09:00", weekday: 1 })).toBe("0 9 * * 1");
     expect(presetToCron({ kind: "monthly", time: "09:00", day: 15 })).toBe("0 9 15 * *");
+  });
+});
+
+describe("Vellum schedule formatters and grouping", () => {
+  it("formats duration and cost", () => {
+    expect(formatDuration(null)).toBe("—");
+    expect(formatDuration(450)).toBe("450ms");
+    expect(formatDuration(2500)).toBe("2.5s");
+    expect(formatScheduleCost(0)).toBe("$0.00");
+    expect(formatScheduleCost(1.25)).toBe("$1.25");
+    expect(formatScheduleRunCount(1)).toBe("1 run");
+    expect(formatScheduleRunCount(5)).toBe("5 runs");
+  });
+
+  it("groups recurring, upcoming one-time, and past one-time schedules", () => {
+    const now = Date.parse("2026-10-23T12:00:00Z");
+    const items = [
+      {
+        id: "r1",
+        schedule: { kind: "cron" },
+        enabled: true,
+        nextRunAt: "2026-10-24T09:00:00Z",
+        lastRunAt: null,
+        lastStatus: null,
+      },
+      {
+        id: "u1",
+        schedule: { kind: "once" },
+        enabled: true,
+        status: "active",
+        nextRunAt: "2026-10-25T09:00:00Z",
+        lastRunAt: null,
+        lastStatus: null,
+      },
+      {
+        id: "p1",
+        schedule: { kind: "once" },
+        enabled: false,
+        status: "fired",
+        nextRunAt: null,
+        lastRunAt: "2026-10-20T09:00:00Z",
+        lastStatus: "ok",
+      },
+      {
+        id: "p2",
+        schedule: { kind: "once" },
+        enabled: false,
+        status: "cancelled",
+        nextRunAt: null,
+        lastRunAt: null,
+        lastStatus: null,
+      },
+    ];
+    const grouped = groupSchedules(items, now);
+    expect(grouped.recurring.map((x) => x.id)).toEqual(["r1"]);
+    expect(grouped.upcomingOneTime.map((x) => x.id)).toEqual(["u1"]);
+    expect(grouped.pastOneTime.map((x) => x.id)).toEqual(["p1", "p2"]);
   });
 });

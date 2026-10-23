@@ -1,16 +1,27 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertCircle, Clock3, ExternalLink } from "lucide-react";
+import { AlertCircle, Clock3, Coins, ExternalLink, Play, Repeat, XCircle } from "lucide-react";
 
 import { Alert, AlertDescription } from "ui/alert";
 import { Badge } from "ui/badge";
 import { Button } from "ui/button";
 import { Card } from "ui/card";
 import { Skeleton } from "ui/skeleton";
-import type { Schedule, ScheduleRun } from "@/lib/backend/schedules-api";
+import type {
+  Schedule,
+  ScheduleRun,
+  ScheduleUsageSummary,
+} from "@/lib/backend/schedules-api";
 import { listScheduleRuns } from "@/lib/backend/schedules-api";
-import { formatInTimezone } from "./schedule-helpers";
+import {
+  formatDuration,
+  formatInTimezone,
+  formatScheduleCost,
+  formatScheduleRunCount,
+  isOneShotSchedule,
+  isPastOneTimeSchedule,
+} from "./schedule-helpers";
 
 function runStatusBadge(status: string) {
   const s = status.toLowerCase();
@@ -24,13 +35,19 @@ function runStatusBadge(status: string) {
 
 export function ScheduleDetailSheet({
   schedule,
+  usageSummary,
   onClose,
   onEdit,
+  onRunNow,
+  onCancelOneTime,
   refreshKey,
 }: {
   schedule: Schedule;
+  usageSummary?: ScheduleUsageSummary | null;
   onClose: () => void;
   onEdit: () => void;
+  onRunNow?: () => void;
+  onCancelOneTime?: () => void;
   /** Bumps when parent observes lastRunAt/lastStatus change or a run-now completes. */
   refreshKey?: number;
 }) {
@@ -38,6 +55,10 @@ export function ScheduleDetailSheet({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const canCancelPending =
+    isOneShotSchedule(schedule) &&
+    !isPastOneTimeSchedule(schedule) &&
+    schedule.status !== "firing";
 
   useEffect(() => {
     let cancelled = false;
@@ -68,8 +89,15 @@ export function ScheduleDetailSheet({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h3 className="truncate text-sm font-semibold">{schedule.name}</h3>
+            {schedule.description ? (
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {schedule.description}
+              </p>
+            ) : null}
             <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
-              {schedule.prompt}
+              {schedule.mode === "script"
+                ? schedule.script || schedule.prompt
+                : schedule.prompt}
             </p>
           </div>
           <Button variant="ghost" size="sm" onClick={onClose} data-testid="schedule-detail-close">
@@ -84,12 +112,22 @@ export function ScheduleDetailSheet({
                 ? "Agent (tools and connectors)"
                 : schedule.mode === "execute"
                   ? "Text only"
-                  : "Reminder"}
+                  : schedule.mode === "script"
+                    ? "Script (shell command)"
+                    : "Reminder"}
             </dd>
           </div>
           <div>
-            <dt className="text-muted-foreground">Enabled</dt>
-            <dd className="font-medium">{schedule.enabled ? "Yes" : "Paused"}</dd>
+            <dt className="text-muted-foreground">Status</dt>
+            <dd className="font-medium">
+              {schedule.status === "cancelled"
+                ? "Cancelled"
+                : schedule.status === "fired"
+                  ? "Completed"
+                  : schedule.enabled
+                    ? "Enabled"
+                    : "Paused"}
+            </dd>
           </div>
           <div>
             <dt className="text-muted-foreground">Timezone</dt>
@@ -106,6 +144,19 @@ export function ScheduleDetailSheet({
               <dt className="text-muted-foreground">Last run</dt>
               <dd className="font-medium">
                 {formatInTimezone(schedule.lastRunAt, schedule.timezone)}
+              </dd>
+            </div>
+          ) : null}
+          {schedule.reuseConversation || schedule.quiet ? (
+            <div>
+              <dt className="text-muted-foreground">Options</dt>
+              <dd className="font-medium">
+                {[
+                  schedule.reuseConversation ? "Reuses conversation" : null,
+                  schedule.quiet ? "Quiet" : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
               </dd>
             </div>
           ) : null}
@@ -135,7 +186,36 @@ export function ScheduleDetailSheet({
             </dd>
           </div>
         </dl>
-        <div className="mt-3 flex gap-2">
+        {usageSummary ? (
+          <div
+            className="mt-3 grid grid-cols-2 gap-2"
+            data-testid="schedule-detail-usage"
+          >
+            <div className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-xs">
+              <Coins className="size-3.5 text-muted-foreground shrink-0" />
+              <div>
+                <div className="font-semibold">
+                  {formatScheduleCost(usageSummary.totalEstimatedCostUsd)}
+                </div>
+                <div className="text-[11px] text-muted-foreground">
+                  30 Day Cost
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-xs">
+              <Repeat className="size-3.5 text-muted-foreground shrink-0" />
+              <div>
+                <div className="font-semibold">
+                  {formatScheduleRunCount(usageSummary.runCount)}
+                </div>
+                <div className="text-[11px] text-muted-foreground">
+                  30 Day Runs
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        <div className="mt-3 flex flex-wrap gap-2">
           <Button
             size="sm"
             variant="outline"
@@ -144,6 +224,30 @@ export function ScheduleDetailSheet({
           >
             Edit
           </Button>
+          {onRunNow ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onRunNow}
+              data-testid="schedule-detail-run-now"
+              className="gap-1.5"
+            >
+              <Play className="size-3.5" />
+              Run now
+            </Button>
+          ) : null}
+          {canCancelPending && onCancelOneTime ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onCancelOneTime}
+              data-testid="schedule-detail-cancel-once"
+              className="gap-1.5 text-destructive hover:text-destructive"
+            >
+              <XCircle className="size-3.5" />
+              Cancel reminder
+            </Button>
+          ) : null}
           {schedule.createdBy === "agent" && schedule.createdFromThreadId ? (
             <a
               href={`/?thread=${encodeURIComponent(schedule.createdFromThreadId)}`}
@@ -210,6 +314,14 @@ export function ScheduleDetailSheet({
                         <span className="text-xs text-muted-foreground">
                           {formatInTimezone(r.startedAt ?? r.scheduledAt, schedule.timezone)}
                         </span>
+                        {r.durationMs != null || r.estimatedCostUsd != null ? (
+                          <span className="text-[11px] text-muted-foreground">
+                            · {formatDuration(r.durationMs)}
+                            {r.estimatedCostUsd != null
+                              ? ` · ${formatScheduleCost(r.estimatedCostUsd)}`
+                              : ""}
+                          </span>
+                        ) : null}
                       </div>
                       {r.outputPreview ? (
                         <p className="mt-1.5 line-clamp-3 whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">
@@ -231,7 +343,9 @@ export function ScheduleDetailSheet({
                       </a>
                     ) : null}
                   </div>
-                  {(r.outputPreview && r.outputPreview.length > 220) || r.error ? (
+                  {(r.outputPreview && r.outputPreview.length > 220) ||
+                  r.output ||
+                  r.error ? (
                     <button
                       type="button"
                       data-testid={`schedule-run-toggle-${r.id}`}
@@ -243,9 +357,9 @@ export function ScheduleDetailSheet({
                   ) : null}
                   {isExpanded ? (
                     <div className="mt-2 space-y-2">
-                      {r.outputPreview ? (
+                      {r.output || r.outputPreview ? (
                         <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md border bg-muted/40 p-2 text-xs">
-                          {r.outputPreview}
+                          {r.output || r.outputPreview}
                         </pre>
                       ) : null}
                       {r.error ? (

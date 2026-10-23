@@ -120,17 +120,46 @@ async fn system_tasks(
     Ok(Json(schedules::system_tasks(&state).await?))
 }
 
+async fn cancel_schedule(
+    AgentState(state): AgentState,
+    user: AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let schedule = schedules::cancel_schedule(&state, &uid_of(&user), &id).await?;
+    Ok(Json(json!({ "schedule": schedule })))
+}
+
+async fn reassign_model(
+    AgentState(state): AgentState,
+    user: AuthUser,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    Ok(Json(
+        schedules::reassign_model(&state, &uid_of(&user), &body).await?,
+    ))
+}
+
+async fn usage_summary(
+    AgentState(state): AgentState,
+    user: AuthUser,
+) -> Result<Json<Value>, ApiError> {
+    Ok(Json(schedules::usage_summary(&state, &uid_of(&user)).await?))
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/schedules", post(create_schedule).get(list_schedules))
         .route("/api/schedules/preview", post(preview))
         .route("/api/schedules/system", get(system_tasks))
+        .route("/api/schedules/usage-summary", get(usage_summary))
+        .route("/api/schedules/reassign-model", post(reassign_model))
         .route(
             "/api/schedules/{id}",
             get(get_schedule)
                 .patch(update_schedule)
                 .delete(delete_schedule),
         )
+        .route("/api/schedules/{id}/cancel", post(cancel_schedule))
         .route("/api/schedules/{id}/run", post(run_schedule))
         .route("/api/schedules/{id}/runs", get(list_runs))
 }

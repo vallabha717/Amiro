@@ -93,14 +93,59 @@ test.describe("schedules", () => {
       await expect(page.getByTestId("notifications-bell-popover")).toBeVisible();
       await expect(page.getByTestId("notifications-feed")).toBeVisible({ timeout: 15000 });
     });
-    await step("Click the row → Go to Conversation routes to the thread", async () => {
+    await step("Click the row → Go to Conversation routes to the thread showing the prompt and reply", async () => {
       await page.locator('[data-testid^="notification-row-"]').first().click();
       await expect(page.getByTestId("notification-detail")).toBeVisible();
       const go = page.getByRole("button", { name: /go to conversation/i });
       if (await go.isVisible().catch(() => false)) {
         await go.click();
         await expect.soft(page).toHaveURL(/thread=/, { timeout: 15000 });
+        await expect
+          .soft(
+            page.getByText(/Write three short focus lines for today/i).first(),
+          )
+          .toBeVisible({ timeout: 15000 });
       }
+    });
+  });
+
+  test("schedule script mode and one-time reminder cancellation work like Vellum", async ({ page, step }) => {
+    await step("Create a Script schedule and run it now → stdout appears in run history", async () => {
+      await page.getByRole("button", { name: "New schedule" }).first().click();
+      const d = page.getByRole("dialog");
+      await expect(d).toBeVisible();
+      await d.getByTestId("schedule-name-input").fill("E2E script check");
+      await d.getByTestId("schedule-mode-script").click();
+      await d.getByTestId("schedule-prompt-input").fill("echo e2e-script-ok");
+      await d.getByTestId("schedule-dialog-save").click();
+      await expect(d).toBeHidden();
+      const scriptRow = page.getByTestId("schedule-row").filter({ hasText: "E2E script check" }).last();
+      await expect(scriptRow).toBeVisible();
+      await scriptRow.click();
+      await expect(page.getByTestId("schedule-detail")).toBeVisible();
+      await page.getByTestId("schedule-detail-run-now").click();
+      await expect.soft(page.getByText(/e2e-script-ok/i).first()).toBeVisible({ timeout: 30000 });
+    });
+
+    await step("Create a one-time reminder and cancel it from the detail panel", async () => {
+      await page.getByRole("button", { name: "New schedule" }).first().click();
+      const d = page.getByRole("dialog");
+      await expect(d).toBeVisible();
+      await d.getByTestId("schedule-name-input").fill("E2E cancellable once");
+      await d.getByTestId("schedule-mode-notify").click();
+      await d.getByTestId("schedule-prompt-input").fill("Future reminder to cancel");
+      await d.getByTestId("schedule-cadence-once").click();
+      await d.getByTestId("schedule-once-at-input").fill("2030-12-01T09:00");
+      await d.getByTestId("schedule-preview-item").first().waitFor();
+      await d.getByTestId("schedule-dialog-save").click();
+      await expect(d).toBeHidden();
+      const onceRow = page.getByTestId("schedule-row").filter({ hasText: "E2E cancellable once" }).last();
+      await expect(onceRow).toBeVisible();
+      await onceRow.click();
+      const cancelBtn = page.getByTestId("schedule-detail-cancel-once");
+      await expect(cancelBtn).toBeVisible();
+      await cancelBtn.click();
+      await expect.soft(page.getByText(/Cancelled/i).first()).toBeVisible({ timeout: 15000 });
     });
   });
 });
