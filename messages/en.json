@@ -256,6 +256,21 @@
       "outdatedComments": "No longer in the plan",
       "commentOnLine": "Comment on this line"
     },
+    "OpenUI": {
+      "badge": "OpenUI Live",
+      "streaming": "Streaming interactive surface…",
+      "viewSource": "OpenUI Lang",
+      "hideSource": "Hide code",
+      "followUpsTitle": "Suggested Next Actions",
+      "applyParameters": "Apply & Send to Agent",
+      "simulatedMonthlySpend": "Simulated Monthly Spend",
+      "estimatedSavings": "Estimated Savings",
+      "filterRowsPlaceholder": "Filter table rows…",
+      "quickLaunchTitle": "Interactive OpenUI Demos",
+      "demoDailyBrief": "Daily Command Center",
+      "demoBudgetPlanner": "AI Cost & Capacity Planner",
+      "demoSprintTracker": "Sprint 42 Release Tracker"
+    },
     "VoiceChat": {
       "title": "Voice Chat Mode",
       "compactDisplayMode": "Compact display mode",

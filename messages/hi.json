@@ -256,6 +256,21 @@
       "outdatedComments": "अब योजना में नहीं",
       "commentOnLine": "इस पंक्ति पर टिप्पणी करें"
     },
+    "OpenUI": {
+      "badge": "OpenUI लाइव",
+      "streaming": "इंटरएक्टिव सतह स्ट्रीम हो रही है…",
+      "viewSource": "OpenUI Lang",
+      "hideSource": "कोड छिपाएँ",
+      "followUpsTitle": "सुझाई गई अगली कार्रवाइयाँ",
+      "applyParameters": "लागू करें और एजेंट को भेजें",
+      "simulatedMonthlySpend": "अनुमानित मासिक खर्च",
+      "estimatedSavings": "अनुमानित बचत",
+      "filterRowsPlaceholder": "तालिका पंक्तियाँ फ़िल्टर करें…",
+      "quickLaunchTitle": "इंटरएक्टिव OpenUI डेमो",
+      "demoDailyBrief": "दैनिक कमांड सेंटर",
+      "demoBudgetPlanner": "AI लागत और क्षमता प्लानर",
+      "demoSprintTracker": "स्प्रिंट 42 रिलीज़ ट्रैकर"
+    },
     "VoiceChat": {
       "title": "वॉइस चैट मोड",
       "compactDisplayMode": "संक्षिप्त प्रदर्शन मोड",

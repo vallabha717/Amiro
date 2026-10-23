@@ -73,6 +73,99 @@ test.describe("chat", () => {
     });
   });
 
+  test("openui generative ui: daily executive command center, interactive cloud cost planner and sprint release tracker", async ({ page, step }) => {
+    await step("Greeting screen shows quick-launch OpenUI demo pills → click Daily Command Center", async () => {
+      await newChat(page);
+      const starterStrip = page.getByTestId("openui-starter-strip");
+      await expect(starterStrip).toBeVisible();
+      await expect(page.getByTestId("openui-starter-daily_brief")).toBeVisible();
+      await expect(page.getByTestId("openui-starter-budget_planner")).toBeVisible();
+      await expect(page.getByTestId("openui-starter-sprint_tracker")).toBeVisible();
+      await page.waitForTimeout(800);
+      await page.getByTestId("openui-starter-daily_brief").click();
+      await waitForReply(page, { timeoutMs: 240000 });
+    });
+
+    await step("Daily Command Center renders live KPI cards, Recharts bar chart, filterable Service Matrix tab, and Today's Focus steps", async () => {
+      const surface = page.getByTestId("openui-surface").first();
+      await expect(surface).toBeVisible({ timeout: 30000 });
+      await expect(surface.getByTestId("openui-metric-card")).toHaveCount(4);
+      await expect(surface.getByTestId("openui-bar-chart")).toBeVisible();
+      await page.waitForTimeout(1000);
+
+      // Switch to Service Matrix tab and filter rows
+      await surface.getByTestId("openui-tab-1").click();
+      await expect(surface.getByTestId("openui-data-table")).toBeVisible();
+      await page.waitForTimeout(800);
+      const filterInput = surface.getByTestId("openui-table-filter");
+      await filterInput.fill("Degraded");
+      await expect(surface.getByTestId("openui-table-row")).toHaveCount(1);
+      await page.waitForTimeout(800);
+      await filterInput.fill("");
+      await expect(surface.getByTestId("openui-table-row")).toHaveCount(4);
+
+      // Switch to Today's Focus tab (Steps)
+      await surface.getByTestId("openui-tab-2").click();
+      await expect(surface.getByTestId("openui-steps")).toBeVisible();
+      await page.waitForTimeout(900);
+
+      // Inspect OpenUI Lang source code toggle
+      await surface.getByTestId("openui-toggle-source").click();
+      await expect(surface.getByTestId("openui-source-code")).toBeVisible();
+      await page.waitForTimeout(800);
+      await surface.getByTestId("openui-toggle-source").click();
+    });
+
+    await step("Ask for the interactive Cloud AI Cost & Capacity Planner and adjust live workload sliders", async () => {
+      await ask(
+        page,
+        'Use the ui_render_openui tool on the amiro MCP server with preset="budget_planner" to render the Cloud AI Cost & Capacity Planner, then summarize how hybrid routing lowers spend in one sentence.',
+        { timeoutMs: 240000 },
+      );
+      const budgetSurface = page.getByTestId("openui-surface").last();
+      await expect(budgetSurface).toBeVisible({ timeout: 30000 });
+      const form = budgetSurface.getByTestId("openui-interactive-form");
+      await expect(form).toBeVisible({ timeout: 30000 });
+
+      const spendBefore = await form.getByTestId("openui-simulated-spend").textContent();
+      const rpmSlider = form.getByTestId("openui-slider-requests_per_day");
+      await rpmSlider.fill("380");
+      await rpmSlider.dispatchEvent("change");
+      await page.waitForTimeout(800);
+
+      const cacheSlider = form.getByTestId("openui-slider-cache_target");
+      await cacheSlider.fill("84");
+      await cacheSlider.dispatchEvent("change");
+      await page.waitForTimeout(800);
+
+      const spendAfter = await form.getByTestId("openui-simulated-spend").textContent();
+      expect.soft(spendAfter).not.toBe(spendBefore);
+    });
+
+    await step("Render Sprint 42 Release Command Center with burnup line chart, priority PR queue, and release triage callout", async () => {
+      await ask(
+        page,
+        'Use the ui_render_openui tool on the amiro MCP server with preset="sprint_tracker" to render the Sprint 42 Release Command Center, then highlight the active release blocker in one sentence.',
+        { timeoutMs: 240000 },
+      );
+      const sprintSurface = page.getByTestId("openui-surface").last();
+      await expect(sprintSurface).toBeVisible({ timeout: 30000 });
+      await expect(sprintSurface.getByTestId("openui-steps")).toBeVisible({ timeout: 30000 });
+      await expect(sprintSurface.getByTestId("openui-data-table")).toBeVisible();
+      await page.waitForTimeout(900);
+
+      // Switch to Burnup & Throughput line chart tab
+      await sprintSurface.getByTestId("openui-tab-1").click();
+      await expect(sprintSurface.getByTestId("openui-line-chart")).toBeVisible();
+      await page.waitForTimeout(900);
+
+      // Switch to Release Triage callout tab
+      await sprintSurface.getByTestId("openui-tab-2").click();
+      await expect(sprintSurface.getByTestId("openui-callout")).toBeVisible();
+      await page.waitForTimeout(1000);
+    });
+  });
+
   test("swarm: the agent delegates sub-tasks and shows them", async ({ page, step, note }) => {
     await step("Ask for parallel work", async () => {
       await send(

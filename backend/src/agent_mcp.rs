@@ -484,6 +484,11 @@ pub fn tool_definitions() -> Vec<Value> {
         json!({"name":"ui_navigate","description":"Emit an interactive navigation card or open a specific Amiro settings/admin/superpowers page for the user.","inputSchema":{"type":"object","properties":{
             "page":{"type":"string","enum":["providers","voice","search","connectors","credentials","integrations","general","notifications","usage","schedules","superpowers","personality","memory","workspace"],"description":"Target Amiro page to open or link to"}
         },"required":["page"],"additionalProperties":false}}),
+        json!({"name":"ui_render_openui","description":"Render a live interactive OpenUI Generative UI surface inline in the chat transcript (KPI metric cards, interactive Recharts bar/line/pie charts, sortable status tables, interactive budget/sprint parameter sliders and switches, tabbed comparisons, step trackers, and clickable follow-up chips). Pass an OpenUI Lang program (`root = Stack([...])`) in `code` or pick a built-in daily-use `preset` (`daily_brief`, `budget_planner`, `sprint_tracker`). Never include secrets in OpenUI surfaces.","inputSchema":{"type":"object","properties":{
+            "title":{"type":"string","description":"Short card title displayed in the OpenUI surface header"},
+            "code":{"type":"string","description":"OpenUI Lang program starting with `root = ...` (optional when `preset` is specified)"},
+            "preset":{"type":"string","enum":["daily_brief","budget_planner","sprint_tracker"],"description":"Optional built-in daily-use interactive OpenUI template when `code` is omitted"}
+        },"additionalProperties":false}}),
     ]
 }
 
@@ -1856,7 +1861,124 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<(String
             let text = format!("Opened [**{}**]({}) in Amiro.", title, path);
             Ok((text, json!({"page": page, "title": title, "path": path})))
         }
+        "ui_render_openui" => {
+            let preset = arg_str(args, "preset")?;
+            let raw_code = arg_str(args, "code")?;
+            let code = match (raw_code.map(str::trim).filter(|s| !s.is_empty()), preset) {
+                (Some(c), _) => c.to_string(),
+                (None, Some("daily_brief")) => openui_preset_code("daily_brief").to_string(),
+                (None, Some("budget_planner")) => openui_preset_code("budget_planner").to_string(),
+                (None, Some("sprint_tracker")) => openui_preset_code("sprint_tracker").to_string(),
+                (None, Some(other)) => {
+                    return Err(format!(
+                        "unknown preset \"{other}\"; use daily_brief, budget_planner, or sprint_tracker"
+                    ))
+                }
+                (None, None) => {
+                    return Err("code or preset is required for ui_render_openui".to_string())
+                }
+            };
+            let default_title = match preset {
+                Some("daily_brief") => "Daily Executive & Engineering Command Center",
+                Some("budget_planner") => "Cloud AI Cost & Capacity Planner",
+                Some("sprint_tracker") => "Sprint Release Readiness & Triage",
+                _ => "Interactive OpenUI Surface",
+            };
+            let title = arg_str(args, "title")?
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or(default_title);
+            let payload = json!({
+                "surface": "openui",
+                "title": title,
+                "preset": preset,
+                "code": code,
+            });
+            let text = format!(
+                "Rendered interactive OpenUI surface **{title}**.\n\n```openui\n{code}\n```"
+            );
+            Ok((text, payload))
+        }
         other => Err(format!("unknown tool \"{other}\"")),
+    }
+}
+
+fn openui_preset_code(preset: &str) -> &'static str {
+    match preset {
+        "budget_planner" => r##"root = Stack([header, kpis, controls, chartCard, followUps])
+header = CardHeader("Cloud AI Cost & Capacity Planner", "Model spend, latency, and interactive scaling simulator")
+kpis = MetricGrid([mSpend, mTokens, mCache, mSavings])
+mSpend = Metric("Monthly Run-Rate", "$4,820", "-14% vs last month", "positive")
+mTokens = Metric("Daily Requests", "184K", "+22% this week", "info")
+mCache = Metric("Prompt Cache Hit", "68.4%", "+9.1% efficiency", "positive")
+mSavings = Metric("Projected Annual Savings", "$19,400", "With hybrid routing", "positive")
+controls = InteractiveForm("Simulate Workload & Routing Policy", [fRpm, fCache, fRoute], "Recalculate Forecast", "Update my AI budget plan with the selected workload parameters")
+fRpm = FormSlider("requests_per_day", "Peak Daily Requests (K)", 50, 500, 180, "K req/day")
+fCache = FormSlider("cache_target", "Target Cache Hit Rate (%)", 20, 90, 70, "%")
+fRoute = FormSwitch("smart_routing", "Auto-route routine tasks to Flash tier", true)
+chartCard = BarChart("Monthly Spend by Model Tier ($ USD)", ["Jan", "Feb", "Mar", "Apr"], [seriesFrontier, seriesFlash])
+seriesFrontier = ChartSeries("Frontier Reasoning", [3400, 3150, 2890, 2420], "#6366f1")
+seriesFlash = ChartSeries("Fast Workhorse", [1200, 1480, 1790, 2400], "#10b981")
+followUps = FollowUpBlock([fuOptimize, fuExport, fuAlert])
+fuOptimize = FollowUpItem("Apply hybrid routing policy", "Configure hybrid model routing to cap monthly spend at $4,500")
+fuExport = FollowUpItem("Export FinOps CSV report", "Generate a CSV artifact of the April model cost breakdown")
+fuAlert = FollowUpItem("Schedule weekly budget check", "Schedule a weekly Monday 9am cost anomaly digest")"##,
+        "sprint_tracker" => r##"root = Stack([header, kpis, steps, tabs, followUps])
+header = CardHeader("Sprint 42 Release Command Center", "Release v1.27 readiness, PR velocity, and active blockers")
+kpis = MetricGrid([mVelocity, mMerged, mP95, mBlockers])
+mVelocity = Metric("Sprint Completion", "88%", "37 of 42 story points", "positive")
+mMerged = Metric("PRs Merged", "29", "+6 since yesterday", "info")
+mP95 = Metric("API p95 Latency", "142 ms", "-18 ms improvement", "positive")
+mBlockers = Metric("Release Blockers", "1", "OAuth token refresh edge case", "warning")
+steps = Steps([sFreeze, sCanary, sE2E, sProd])
+sFreeze = StepItem("Feature Freeze & Schema Lock", "completed", "All 14 migrations verified in staging")
+sCanary = StepItem("EU-West Canary Rollout (10%)", "completed", "Zero 5xx errors over 6h soak")
+sE2E = StepItem("Playwright E2E Suite & Security Audit", "in_progress", "13/14 journeys green, final voice check running")
+sProd = StepItem("Global Production Promotion", "pending", "Scheduled for 16:00 UTC")
+tabs = Tabs([tabPRs, tabVelocity, tabRisk])
+tabPRs = TabItem("Priority PR Queue", prTable)
+tabVelocity = TabItem("Burnup & Throughput", velocityChart)
+tabRisk = TabItem("Release Triage", riskCallout)
+prTable = DataTable(["PR", "Owner", "Service", "Status", "Impact"], [r1, r2, r3, r4])
+r1 = ["#418 Streaming OpenUI Renderer", "A. Patel", "frontend-chat", "Ready to Merge", "High"]
+r2 = ["#421 Vault Key Rotation Guard", "S. Somayaji", "backend-auth", "Merged", "Critical"]
+r3 = ["#425 MCP OAuth Retry Backoff", "M. Chen", "runtime-mcp", "In Review", "High"]
+r4 = ["#429 Hindi Locale Parity Check", "R. Sharma", "i18n", "Merged", "Medium"]
+velocityChart = LineChart("Story Points Completed vs Target", ["Day 1", "Day 3", "Day 5", "Day 7", "Day 10"], [sActual, sTarget])
+sActual = ChartSeries("Completed Points", [4, 12, 21, 31, 37], "#10b981")
+sTarget = ChartSeries("Ideal Burnup", [4, 11, 19, 28, 42], "#6366f1")
+riskCallout = Callout("warning", "Action Required: MCP OAuth Refresh (#425)", "Approve PR #425 before 15:00 UTC to unblock the remaining 2 enterprise connector tests.")
+followUps = FollowUpBlock([fuNudge, fuNotes, fuRollback])
+fuNudge = FollowUpItem("Draft release notes for v1.27", "Draft customer-facing release notes for Sprint 42 v1.27")
+fuNotes = FollowUpItem("Inspect PR #425 blocker", "Show the risk summary and test plan for PR #425 MCP OAuth Retry Backoff")
+fuRollback = FollowUpItem("Generate rollout checklist", "Create an interactive production deployment and rollback checklist")"##,
+        _ => r##"root = Stack([header, kpis, tabs, followUps])
+header = CardHeader("Daily Executive & Engineering Command Center", "Live snapshot of system health, sprint delivery, and AI operations")
+kpis = MetricGrid([mUptime, mDeploy, mLatency, mCost])
+mUptime = Metric("Platform Availability", "99.98%", "Last 30 days SLA", "positive")
+mDeploy = Metric("Deploys This Week", "18", "100% automated rollback ready", "info")
+mLatency = Metric("Agent Median Response", "1.18s", "-240ms faster with streaming UI", "positive")
+mCost = Metric("Open Action Items", "3", "1 high-priority review today", "warning")
+tabs = Tabs([tabOverview, tabServices, tabActionPlan])
+tabOverview = TabItem("Traffic & Latency", trafficChart)
+tabServices = TabItem("Service Matrix", serviceTable)
+tabActionPlan = TabItem("Today's Focus", focusSteps)
+trafficChart = BarChart("Weekly Agent Tasks & Automated Resolutions", ["Mon", "Tue", "Wed", "Thu", "Fri"], [sResolved, sEscalated])
+sResolved = ChartSeries("Resolved Autonomously", [420, 465, 510, 548, 590], "#10b981")
+sEscalated = ChartSeries("Human-in-the-Loop", [48, 41, 39, 34, 28], "#6366f1")
+serviceTable = DataTable(["Subsystem", "Health", "Latency (p95)", "Owner", "Notes"], [row1, row2, row3, row4])
+row1 = ["Amiro Rust Backend", "Healthy", "11 ms", "Core Platform", "v1.26 active"]
+row2 = ["Jcode Agent Runtime", "Healthy", "185 ms", "Agent Engine", "MCP bridge synced"]
+row3 = ["Connector OAuth Broker", "Degraded", "410 ms", "Integrations", "Token refresh retry queued"]
+row4 = ["Voice TTS/STT Pipeline", "Healthy", "210 ms", "Voice & Speech", "EN + HI active"]
+focusSteps = Steps([step1, step2, step3])
+step1 = StepItem("Morning Health & Vault Audit", "completed", "All 6 encrypted credentials verified")
+step2 = StepItem("Approve Connector OAuth Retry Patch", "in_progress", "Waiting on final staging check")
+step3 = StepItem("Publish Friday Customer Digest", "pending", "Scheduled for 17:00 UTC")
+followUps = FollowUpBlock([f1, f2, f3])
+f1 = FollowUpItem("Open Cloud AI Budget Planner", "Show me the interactive Cloud AI Cost & Capacity Planner")
+f2 = FollowUpItem("Drill into Connector OAuth latency", "Why is the Connector OAuth Broker showing 410ms p95 latency?")
+f3 = FollowUpItem("Schedule this briefing daily at 8:30 AM", "Schedule this Executive Command Center briefing every weekday at 08:30")"##,
     }
 }
 
@@ -2459,5 +2581,56 @@ mod tests {
         assert!(call_tool(&state, "notify_channel_bind", &json!({"channel": "telegram"}))
             .await
             .is_err());
+    }
+
+    #[tokio::test]
+    async fn ui_render_openui_supports_presets_and_custom_code() {
+        let state = state();
+        write_json(
+            &state.home.join("users.json"),
+            &json!({"users":[{"id":"owner","role":"admin"}]}),
+        )
+        .await
+        .unwrap();
+
+        let (text, data) = call_tool(
+            &state,
+            "ui_render_openui",
+            &json!({"preset": "budget_planner"}),
+        )
+        .await
+        .unwrap();
+        assert!(text.contains("```openui"), "expected openui fence: {text}");
+        assert_eq!(data["surface"], json!("openui"));
+        assert_eq!(data["preset"], json!("budget_planner"));
+        assert!(
+            data["code"]
+                .as_str()
+                .unwrap_or("")
+                .contains("InteractiveForm"),
+            "expected budget_planner code: {data}"
+        );
+
+        let custom = "root = Stack([h])\nh = CardHeader(\"Custom Brief\", \"Live\")";
+        let (_, custom_data) = call_tool(
+            &state,
+            "ui_render_openui",
+            &json!({"title": "Custom Brief", "code": custom}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(custom_data["title"], json!("Custom Brief"));
+        assert_eq!(custom_data["code"], json!(custom));
+
+        assert!(call_tool(&state, "ui_render_openui", &json!({}))
+            .await
+            .is_err());
+        assert!(call_tool(
+            &state,
+            "ui_render_openui",
+            &json!({"preset": "nonexistent"})
+        )
+        .await
+        .is_err());
     }
 }

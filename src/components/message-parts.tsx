@@ -41,6 +41,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
 import { RewindConfirmDialog } from "./checkpoint/rewind-confirm-dialog";
 import { Markdown } from "./markdown";
 import { MessageEditor } from "./message-editor";
+import { OpenUISurface } from "./openui/openui-surface";
 import { parseInlineVisuals, VisualSurface } from "./visual/visual-surface";
 
 import {
@@ -452,6 +453,23 @@ export const AssistMessagePart = memo(function AssistMessagePart({
                 html={seg.html}
                 height={seg.height}
                 title={seg.title}
+                onSendPrompt={
+                  sendMessage
+                    ? (prompt) =>
+                        sendMessage({
+                          role: "user",
+                          parts: [{ type: "text", text: prompt }],
+                        })
+                    : undefined
+                }
+              />
+            ) : seg.type === "openui" ? (
+              <OpenUISurface
+                key={seg.id}
+                code={seg.code}
+                title={seg.title}
+                preset={seg.preset}
+                isStreaming={Boolean(isStreamingText && seg.streaming)}
                 onSendPrompt={
                   sendMessage
                     ? (prompt) =>

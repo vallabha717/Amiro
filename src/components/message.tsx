@@ -15,6 +15,10 @@ import {
   parseSecretPrompt,
   parseOAuthConnect,
 } from "@/lib/security/secret-detection";
+import {
+  extractOpenUIPayload,
+  OpenUISurface,
+} from "./openui/openui-surface";
 import { VisualPlaceholder, VisualSurface } from "./visual/visual-surface";
 import equal from "lib/equal";
 import { type ReactNode, memo, useMemo, useState } from "react";
@@ -497,6 +501,13 @@ const PurePreviewMessage = ({
               title?: string;
               pending: boolean;
             }[] = [];
+            const inlineOpenUIs: {
+              id: string;
+              code: string;
+              title?: string;
+              preset?: string;
+              pending: boolean;
+            }[] = [];
             const secretPrompts: SecretPromptRequest[] = [];
             for (let i = 0; i < workParts.length; i++) {
               const part = workParts[i];
@@ -540,6 +551,34 @@ const PurePreviewMessage = ({
                 if (setup) connectorSetups.push({ ...setup, id: part.toolCallId });
               }
               const partInput = (part as any).input;
+              const isOpenUITool =
+                toolName === "ui_render_openui" ||
+                toolName === "mcp__amiro__ui_render_openui" ||
+                toolName === "amiro__ui_render_openui" ||
+                toolName === "amiro_ui_render_openui" ||
+                ((toolName === "mcp" || toolName === "mcp_call") &&
+                  partInput?.server === "amiro" &&
+                  typeof partInput?.tool === "string" &&
+                  partInput.tool.endsWith("ui_render_openui"));
+              if (isOpenUITool && part.state !== "output-error") {
+                const toolArgs =
+                  partInput?.arguments && typeof partInput.arguments === "object"
+                    ? partInput.arguments
+                    : partInput;
+                const openuiPayload = extractOpenUIPayload(
+                  toolArgs,
+                  part.state === "output-available" ? (part as any).output : null,
+                );
+                if (openuiPayload) {
+                  inlineOpenUIs.push({
+                    id: part.toolCallId,
+                    code: openuiPayload.code,
+                    title: openuiPayload.title,
+                    preset: openuiPayload.preset,
+                    pending: !part.state.startsWith("output"),
+                  });
+                }
+              }
               if (toolName === "applet") {
                 const htmlSource =
                   partInput?.view?.type === "html" &&
@@ -889,6 +928,34 @@ const PurePreviewMessage = ({
                   }
                   return renderPart(part, lastToolIndex + 1 + i);
                 })}
+                {inlineOpenUIs
+                  .filter(
+                    () =>
+                      !tailParts.some(
+                        (p) =>
+                          p.type === "text" &&
+                          typeof p.text === "string" &&
+                          p.text.includes("```openui"),
+                      ),
+                  )
+                  .map((oui) => (
+                    <OpenUISurface
+                      key={oui.id}
+                      code={oui.code}
+                      title={oui.title}
+                      preset={oui.preset}
+                      isStreaming={oui.pending}
+                      onSendPrompt={
+                        sendMessage
+                          ? (prompt) =>
+                              sendMessage({
+                                role: "user",
+                                parts: [{ type: "text", text: prompt }],
+                              })
+                          : undefined
+                      }
+                    />
+                  ))}
                 {inlineVisuals.map((vis) =>
                   vis.pending ? (
                     <VisualPlaceholder

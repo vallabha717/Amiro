@@ -262,10 +262,18 @@ export type InlineVisualSegment =
       height?: number;
       title?: string;
       id: string;
+    }
+  | {
+      type: "openui";
+      code: string;
+      title?: string;
+      preset?: string;
+      streaming?: boolean;
+      id: string;
     };
 
 const VISUAL_BLOCK_RE =
-  /<ui_show\s*([^>]*?)>([\s\S]*?)<\/ui_show>|```visual(?=[\s{]|$)[^\n]*\n([\s\S]*?)```/g;
+  /<ui_show\s*([^>]*?)>([\s\S]*?)<\/ui_show>|```visual(?=[\s{]|$)[^\n]*\n([\s\S]*?)```|```(?:openui|openui-lang)(?=[\s{]|$)([^\n]*)\n([\s\S]*?)(?:```|$)/g;
 
 const ATTR_RE = /([\w-]+)\s*=\s*"([^"]*)"/g;
 
@@ -376,15 +384,69 @@ export function parseInlineVisuals(text: string): InlineVisualSegment[] | null {
 
   while ((match = VISUAL_BLOCK_RE.exec(text)) !== null) {
     const isUiShow = match[2] !== undefined;
+    const isOpenUIFence = match[5] !== undefined;
+
+    if (isOpenUIFence) {
+      const fenceMeta = (match[4] ?? "").trim();
+      const rawCode = (match[5] ?? "").trim();
+      if (!rawCode) {
+        continue;
+      }
+      if (match.index > lastIndex) {
+        segments.push({
+          type: "text",
+          content: text.slice(lastIndex, match.index),
+        });
+      }
+      const attrs = readAttributes(fenceMeta);
+      const isClosed = match[0].endsWith("```");
+      segments.push({
+        type: "openui",
+        code: rawCode,
+        title: attrs.title || undefined,
+        preset: attrs.preset || undefined,
+        streaming: !isClosed,
+        id: `inline-openui-${++inlineVisualCounter}`,
+      });
+      found = true;
+      lastIndex = VISUAL_BLOCK_RE.lastIndex;
+      continue;
+    }
+
     const payloadRaw = isUiShow ? match[2] : match[3];
 
-    let payload: { html: string; height?: number; title?: string } | null;
     if (isUiShow) {
       const attrs = readAttributes(match[1]);
+      if (attrs.surface_type === "openui") {
+        const rawCode = payloadRaw.trim();
+        if (!rawCode) continue;
+        if (match.index > lastIndex) {
+          segments.push({
+            type: "text",
+            content: text.slice(lastIndex, match.index),
+          });
+        }
+        segments.push({
+          type: "openui",
+          code: rawCode,
+          title: attrs.title || undefined,
+          preset: attrs.preset || undefined,
+          streaming: false,
+          id: `inline-openui-${++inlineVisualCounter}`,
+        });
+        found = true;
+        lastIndex = VISUAL_BLOCK_RE.lastIndex;
+        continue;
+      }
       if (attrs.surface_type && attrs.surface_type !== "visual") {
         // A different surface type: leave the tag in the flowing text.
         continue;
       }
+    }
+
+    let payload: { html: string; height?: number; title?: string } | null;
+    if (isUiShow) {
+      const attrs = readAttributes(match[1]);
       payload = parseVisualPayload(payloadRaw);
       if (payload) {
         if (!payload.title && attrs.title) {
