@@ -66,6 +66,9 @@ describe("OpenUISurface and OpenUI Lang integration", () => {
       }),
     );
     expect(briefHtml).toContain('data-testid="openui-surface"');
+    expect(briefHtml).not.toContain('data-testid="openui-toggle-source"');
+    expect(briefHtml).not.toContain('data-testid="openui-copy-source"');
+    expect(briefHtml).not.toContain("OpenUI Live");
     expect(briefHtml).toContain("Daily Executive &amp; Engineering Command Center");
     expect(briefHtml).toContain("99.98%");
     expect(briefHtml).toContain("Open Cloud AI Budget Planner");

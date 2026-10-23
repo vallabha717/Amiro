@@ -109,12 +109,6 @@ test.describe("chat", () => {
       await surface.getByTestId("openui-tab-2").click();
       await expect(surface.getByTestId("openui-steps")).toBeVisible();
       await page.waitForTimeout(900);
-
-      // Inspect OpenUI Lang source code toggle
-      await surface.getByTestId("openui-toggle-source").click();
-      await expect(surface.getByTestId("openui-source-code")).toBeVisible();
-      await page.waitForTimeout(800);
-      await surface.getByTestId("openui-toggle-source").click();
     });
 
     await step("Ask for the interactive Cloud AI Cost & Capacity Planner and adjust live workload sliders", async () => {

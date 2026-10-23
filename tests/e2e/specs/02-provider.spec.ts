@@ -81,14 +81,16 @@ test.describe("provider", () => {
       if (stale) note("Sidebar 'Finish setting up → Connect an AI provider' is still shown after a provider is connected.", "bug");
     });
 
-    await step("Back on the providers list, check which model is the chat default", async () => {
+    await step("Back on the providers list, set the configured model as the default directly on the provider card", async () => {
       await page.getByText("Back to providers").click();
-      const badge = page.getByTestId("provider-default-model-badge").first();
-      await expect(badge).toBeVisible();
-      const def = (await badge.innerText()).replace("Default model:", "").trim();
-      if (def !== model) {
-        note(`Admin has no way to set the default chat model: the card says "${def}" and the only control is the per-chat picker.`);
+      const card = page.locator(`[data-testid="provider-card"][data-provider-id="${provider.id}"]`);
+      await expect(card).toBeVisible();
+      const setBtn = card.locator(`[data-testid="provider-set-default-model"][data-model="${model}"]`);
+      if (await setBtn.isVisible().catch(() => false)) {
+        await setBtn.click();
       }
+      const badge = card.getByTestId("provider-default-model-badge").first();
+      await expect(badge).toContainText(`Default model: ${model}`);
     });
 
     await step("New chat → pick the model in the composer", async () => {
