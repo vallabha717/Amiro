@@ -110,6 +110,25 @@ test.describe("agent-hub", () => {
     });
   });
 
+  test("superpowers: Vellum-ported skills appear with display names", async ({ page, step }) => {
+    await step("Search for 'frontend design' → Frontend Design card", async () => {
+      await page.goto("/agent/superpowers");
+      const search = page.getByTestId("superpowers-search-input");
+      await search.fill("frontend design");
+      await expect(page.getByTestId("skill-card").filter({ hasText: "Frontend Design" }).first()).toBeVisible();
+    });
+    await step("Search for 'geo' → GEO Article Writer card", async () => {
+      const search = page.getByTestId("superpowers-search-input");
+      await search.fill("geo");
+      await expect(page.getByTestId("skill-card").filter({ hasText: "GEO Article Writer" }).first()).toBeVisible();
+    });
+    await step("Search for 'cli' → CLI Discovery card", async () => {
+      const search = page.getByTestId("superpowers-search-input");
+      await search.fill("cli");
+      await expect(page.getByTestId("skill-card").filter({ hasText: "CLI Discovery" }).first()).toBeVisible();
+    });
+  });
+
   test("superpowers: browse, search and open a skill", async ({ page, step }) => {
     await step("Agent hub → Superpowers lists built-in skills", async () => {
       await page.goto("/agent/superpowers");
