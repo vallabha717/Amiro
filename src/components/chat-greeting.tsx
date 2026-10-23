@@ -6,7 +6,6 @@ import {
   KeyRoundIcon,
   RocketIcon,
   SlidersHorizontalIcon,
-  SparklesIcon,
 } from "lucide-react";
 import { useMemo } from "react";
 import { FlipWords } from "ui/flip-words";
@@ -108,10 +107,6 @@ export const ChatGreeting = () => {
           data-testid="openui-starter-strip"
           className="flex flex-wrap items-center justify-center gap-2 pt-1"
         >
-          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground mr-1">
-            <SparklesIcon className="size-3 text-primary" />
-            {tOpenUI("quickLaunchTitle")}:
-          </span>
           {starters.map((item) => {
             const Icon = item.icon;
             return (
