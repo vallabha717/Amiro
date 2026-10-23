@@ -6,8 +6,8 @@ reported (pass, fail with output, or "not run because …").
 | Changed | Run | Notes |
 | --- | --- | --- |
 | Anything | `git diff --check` | no whitespace errors, no conflict markers |
-| `src/`, `messages/`, `tests/e2e/` | `pnpm check-types` · `pnpm lint` · `pnpm test` | type-check also compiles the E2E specs |
-| `messages/` | `pnpm check:i18n` | en/hi keys + placeholders match |
+| `clients/web/src/`, `clients/web/messages/`, `tests/e2e/` | `pnpm check-types` · `pnpm lint` · `pnpm test` | type-check also compiles the E2E specs |
+| `clients/web/messages/` | `pnpm check:i18n` | en/hi keys + placeholders match |
 | `backend/` | `cargo test --manifest-path backend/Cargo.toml` | re-run alone if a readiness timeout flakes |
 | `runtime/` | `pnpm runtime:check` (+ targeted `cargo test -p amiro-…`) | record patch in `docs/runtime-customizations.json` |
 | Anything user-visible | `pnpm build` then `pnpm --dir tests e2e --project <journey>` | watch `tests/recordings/<stamp>/suites/<journey>.mp4` |

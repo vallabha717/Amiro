@@ -7,17 +7,21 @@ Amiro/
 ├── .agents/skills/           repo skills: develop-feature, amiro-standards (this),
 │                             backend, ui, test, e2e-journeys, amiro-runtime-update,
 │                             plan, implement
-├── src/                      Next.js app, statically exported to out/
-│   ├── app/                  routes (App Router). (chat)/ = signed-in shell,
-│   │                         (chat)/(admin)/admin/* = admin pages,
-│   │                         (auth)/ = setup + sign-in, onboarding/ = wizard
-│   ├── components/           feature folders (connectors/, credentials/,
-│   │                         voice-room/, onboarding/…) + ui/ (shadcn primitives)
-│   ├── lib/backend/          one <area>-api.ts per backend area, all via apiJson
-│   ├── lib/                  domain helpers (ai/, chat/, voice/, security/…)
-│   ├── i18n/                 locale resolution (cookie → navigator → "en")
-│   └── types/                shared TS types (alias app-types/*)
-├── messages/                 en.json + hi.json ONLY (language.md explains)
+├── clients/                  one folder per client, like Vellum's clients/
+│   ├── web/                  Next.js app, statically exported to clients/web/out/
+│   │   ├── src/app/          routes (App Router). (chat)/ = signed-in shell,
+│   │   │                     (chat)/(admin)/admin/* = admin pages,
+│   │   │                     (auth)/ = setup + sign-in, onboarding/ = wizard
+│   │   ├── src/components/   feature folders (connectors/, credentials/,
+│   │   │                     voice-room/, onboarding/…) + ui/ (shadcn primitives)
+│   │   ├── src/lib/backend/  one <area>-api.ts per backend area, all via apiJson
+│   │   ├── src/lib/          domain helpers (ai/, chat/, voice/, security/…)
+│   │   ├── src/i18n/         locale resolution (cookie → navigator → "en")
+│   │   ├── src/types/        shared TS types (alias app-types/*)
+│   │   ├── messages/         en.json + hi.json ONLY (language.md explains)
+│   │   └── public/           static assets
+│   ├── desktop/              Tauri 2 desktop shell; binaries/ = sidecars (ignored)
+│   └── mobile/               Tauri mobile app (iOS + Android), not started yet
 ├── backend/                  Rust axum backend, binary amiro-backend
 │   ├── src/main.rs           router assembly: .merge(<module>::router())
 │   ├── src/routes.rs         merges every routes/<area>::routes()
@@ -26,7 +30,6 @@ Amiro/
 │   ├── src/state.rs          AppState, AuthUser, ApiError, read_json/write_json
 │   └── tests/                integration tests on the real router (temp home)
 ├── runtime/                  vendored jcode fork (amiro-* crates); PROVENANCE.md
-├── src-tauri/                desktop shell; binaries/ = sidecars (ignored)
 ├── tests/
 │   ├── e2e/                  recorded Playwright journeys (see e2e-journeys)
 │   ├── rust/                 std-only testkit
@@ -43,9 +46,9 @@ workflow for a feature: `develop-feature`.
 
 | Thing | Convention | Example |
 | --- | --- | --- |
-| Route folder | kebab-case under `src/app/(chat)/…` | `admin/voice/page.tsx` |
+| Route folder | kebab-case under `clients/web/src/app/(chat)/…` | `admin/voice/page.tsx` |
 | Component file | kebab-case `.tsx`, PascalCase export | `secret-prompt-card.tsx` → `SecretPromptCard` |
-| API client | `src/lib/backend/<area>-api.ts` | `connectors-api.ts` |
+| API client | `clients/web/src/lib/backend/<area>-api.ts` | `connectors-api.ts` |
 | i18n key | `Section.camelCaseKey`, same in en + hi | `Providers.runTestHint` |
 | Test id | `data-testid="<area>-<thing>"` kebab | `composer-store-securely` |
 | Backend module | snake_case `.rs`; `routes/<area>.rs` exposes `pub fn routes()`, top-level domains `pub fn router()` | `routes/voice.rs` |
@@ -56,8 +59,13 @@ workflow for a feature: `develop-feature`.
 | Skill | `.agents/skills/<kebab>/SKILL.md`, `name:` = folder | `amiro-standards` |
 | Commit | `type(scope): imperative summary` | `feat(i18n): add Hindi` |
 
-## Import aliases (tsconfig)
+The root `package.json` is the one Node package: run `pnpm dev`, `pnpm build`,
+`pnpm test` and friends from the repo root. The web app's `tsconfig.json`,
+`next.config.ts` and `components.json` live in `clients/web/`; the root
+`tsconfig.json` extends it to type-check the E2E specs as well.
 
-`ui/*` → `src/components/ui/*`, `lib/*` → `src/lib/*`, `app-types/*` →
-`src/types/*`, `auth/*`, `logger`, `@/*` → `src/*`. Prefer the alias the
+## Import aliases (clients/web/tsconfig.json)
+
+`ui/*` → `clients/web/src/components/ui/*`, `lib/*` → `clients/web/src/lib/*`, `app-types/*` →
+`clients/web/src/types/*`, `auth/*`, `logger`, `@/*` → `clients/web/src/*`. Prefer the alias the
 surrounding file already uses.

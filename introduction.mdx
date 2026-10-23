@@ -54,10 +54,10 @@ to know this to use it, but it explains why a running Amiro needs no Node.js.
 
 | Part | Path | What it does |
 |---|---|---|
-| Web UI | `src/` | The Next.js app, statically exported so the backend serves it with no Node runtime |
+| Web UI | `clients/web/src/` | The Next.js app, statically exported so the backend serves it with no Node runtime |
 | Backend | `backend/` | The `amiro-backend` service; it serves the UI and the API from one address |
 | Runtime | `runtime/` | The `amiro-runtime` agent engine; it runs models, sessions, tools, and provider routing |
-| Desktop shell | `src-tauri/` | The Tauri app that starts the backend and runtime for you on launch |
+| Desktop shell | `clients/desktop/` | The Tauri app that starts the backend and runtime for you on launch |
 
 <Note>
 Node.js is only needed to build and test the frontend. A shipped or installed

@@ -4,8 +4,8 @@ This directory contains the architecture, implementation guides, and specificati
 for the Amiro project.
 
 Amiro is an open-source AI desktop application combining:
-- A **Tauri 2 (Rust)** desktop shell (`src-tauri/`)
-- A **statically-exported Next.js** frontend (`src/`)
+- A **Tauri 2 (Rust)** desktop shell (`clients/desktop/`)
+- A **statically-exported Next.js** frontend (`clients/web/src/`)
 - A **native Rust backend** (`backend/`, binary `amiro-backend`, axum)
 - A **vendored Rust runtime** workspace (`runtime/`, binary `amiro-runtime`)
 

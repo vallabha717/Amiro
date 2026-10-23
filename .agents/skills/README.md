@@ -27,7 +27,7 @@ step, import, or manifest to also update.
 | [`develop-feature`](develop-feature/SKILL.md) | **Use when coding anything.** The step-by-step workflow (orient → backend → UI → test → finish) that tells you when to load each skill below. |
 | [`amiro-standards`](amiro-standards/SKILL.md) | **Start here.** Where every kind of change goes, folder structure and naming, frontend/backend/runtime rules, English+Hindi i18n, secrets, definition of done, commit conventions, and which skill to load next. Installed globally for every agent (see "Global install" below). |
 | [`backend`](backend/SKILL.md) | Rust backend (`backend/`, axum): folder structure, where a route goes, auth, errors, JSON store, credential vault, agent tools, backend tests. |
-| [`ui`](ui/SKILL.md) | Next.js frontend (`src/`, static export): folder structure, pages vs components, API clients, SWR/zustand, styling tokens, English+Hindi i18n, a11y, test ids. |
+| [`ui`](ui/SKILL.md) | Next.js frontend (`clients/web/src/`, static export): folder structure, pages vs components, API clients, SWR/zustand, styling tokens, English+Hindi i18n, a11y, test ids. |
 | [`test`](test/SKILL.md) | Which test layer proves which change (Vitest, type-check/lint, backend integration, runtime crates, E2E journeys) and the end-of-feature test run. |
 | [`e2e-journeys`](e2e-journeys/SKILL.md) | Recorded Playwright journeys in `tests/e2e/`: how to run them, how every user-facing change adds a journey step, config for user-supplied keys, and the video/`REVIEW.md` output. |
 | [`plan`](plan/SKILL.md) | How work gets planned — the phased plan-folder method behind `docs/testing/`. Produces `docs/<initiative>/` with design docs, `phases/`, and a seeded `progress/`. Writes documents, never code. |
@@ -78,7 +78,7 @@ disable-model-invocation: true   # optional — see below
   `plan/PHASE-TEMPLATE.md`, `implement/PROGRESS-TEMPLATE.md`).
 - If the skill carries executable helpers, put them under `scripts/` next to
   `SKILL.md`. They're invoked by the agent through the terminal, not
-  imported by the app — nothing in `src/` or `backend-go/` depends on them.
+  imported by the app — nothing in `clients/web/src/` or `backend-go/` depends on them.
 
 ## Steps to add a new skill
 

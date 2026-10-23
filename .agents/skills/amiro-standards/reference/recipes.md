@@ -2,14 +2,14 @@
 
 ## Add a page or UI feature
 
-1. Route under `src/app/(chat)/…/page.tsx` (`"use client"`; the app is a
+1. Route under `clients/web/src/app/(chat)/…/page.tsx` (`"use client"`; the app is a
    static export — no server actions, no Next API routes, no `fetch` at build).
-2. Components in the matching `src/components/<feature>/` folder; primitives
+2. Components in the matching `clients/web/src/components/<feature>/` folder; primitives
    from `ui/*`. Match existing tokens/classes; no new design system.
-3. Data: add/extend `src/lib/backend/<area>-api.ts` (`apiJson`), use SWR like
+3. Data: add/extend `clients/web/src/lib/backend/<area>-api.ts` (`apiJson`), use SWR like
    neighbouring pages.
 4. Strings: `const t = useTranslations("Section")`; add keys to **both**
-   `messages/en.json` and `messages/hi.json`.
+   `clients/web/messages/en.json` and `clients/web/messages/hi.json`.
 5. Accessibility: every icon-only button gets `aria-label`; interactive
    things the E2E suite drives get a `data-testid`.
 6. E2E: add a `step(...)` in the owning journey; run it; watch the video.

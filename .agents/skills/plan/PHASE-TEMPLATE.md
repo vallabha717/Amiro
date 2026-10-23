@@ -43,7 +43,7 @@ gets a `cross` row as well.
 |---|---|---|
 | backend | `tests/suites/backend/<feature>/` | … |
 | terminal | `tests/suites/tui/<feature>/` | … |
-| web | `tests/ui/specs/<feature>/` | … + the `data-testid`s `src/` must add |
+| web | `tests/ui/specs/<feature>/` | … + the `data-testid`s `clients/web/src/` must add |
 | desktop | `tests/suites/desktop/<feature>/` | … |
 | cross | `tests/suites/cross/<feature>/` | what must agree, and between which surfaces |
 | meta | `tests/suites/meta/` | the guard enforcing any contract introduced here |

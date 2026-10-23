@@ -14,12 +14,12 @@ test to get green.
 
 | You changed | Write / update | Where | Run |
 | --- | --- | --- | --- |
-| A TS helper, hook, store, component | Vitest unit/component test | co-located `src/**/<name>.test.ts(x)` | `pnpm test` (single: `pnpm vitest run <path>`) |
+| A TS helper, hook, store, component | Vitest unit/component test | co-located `clients/web/src/**/<name>.test.ts(x)` | `pnpm test` (single: `pnpm vitest run <path>`) |
 | Any TS (incl. E2E specs) | — | — | `pnpm check-types` · `pnpm lint` |
 | A backend route / persisted setting | Integration test via `router().with_state(fixture)` + `oneshot` | `backend/tests/<area>.rs` (copy the fixture in `tests/voice.rs`) | `cargo test --manifest-path backend/Cargo.toml` |
 | Backend pure logic / agent tool | `#[cfg(test)] mod tests` | bottom of the module / `agent_mcp.rs` | same as above |
 | `runtime/` (local patch) | crate test next to the code; record the patch in `docs/runtime-customizations.json` | `runtime/crates/<crate>/src/**` | `pnpm runtime:check` + `cargo test --manifest-path runtime/Cargo.toml -p <crate>` |
-| Translations | key + `{placeholder}` parity en↔hi | `messages/` | `pnpm check:i18n` |
+| Translations | key + `{placeholder}` parity en↔hi | `clients/web/messages/` | `pnpm check:i18n` |
 | **Anything a user can see or trigger** | a `step(...)` in the owning E2E journey | `tests/e2e/specs/NN-<journey>.spec.ts` | `pnpm build` then `pnpm --dir tests e2e --project <journey>` |
 
 Which journey owns which surface, the config file for keys, fixtures (offline
@@ -33,7 +33,7 @@ load the **`e2e-journeys`** skill.
   response body. Use a temp home per test; never touch `~/.amiro`.
 - **E2E**: wrap each user action in `step("What the user does → what they see")`
   (it becomes the video caption). Prefer `getByRole`/`getByLabel`/`getByTestId`;
-  add a `data-testid` in `src/` rather than CSS paths. Hard-assert the
+  add a `data-testid` in `clients/web/src/` rather than CSS paths. Hard-assert the
   mechanism (card shown, API state changed, tool call visible); `expect.soft`
   model wording. Product bug found → `expect.soft(…, "what is wrong")` +
   `note("…", "bug")` so the journey keeps recording. Values a user supplies go

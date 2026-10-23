@@ -6,7 +6,7 @@ description: Amiro's backend standards for the native Rust HTTP backend in backe
 # Amiro backend standards
 
 One Rust crate, `backend/` → binary `amiro-backend`. It serves the static UI
-(`out/`) and the JSON API on one port, authenticates users, stores product
+(`clients/web/out/`) and the JSON API on one port, authenticates users, stores product
 state as JSON under `AMIRO_HOME`, keeps secrets in an encrypted vault, and
 supervises/bridges the `amiro-runtime` agent engine over a Unix socket. It does
 **not** run the agent loop (that is `runtime/`). There is no database, no Go,
@@ -52,7 +52,7 @@ in that file.
 | Runtime | Talk to the engine only through `runtime.rs` / the SDK crates (`amiro-sdk`, `amiro-config-types`, `amiro-session-types`). Engine behaviour changes belong in `runtime/` (see `amiro-runtime-update`) |
 | Config | Env `AMIRO_*` and `amiro.toml` (`config.rs`); new settings need a sane default and an entry in `amiro.example.toml` / `.env.example` |
 | Style | rustfmt defaults; document public items; no `unwrap()` on request data; no blocking IO in async handlers (use tokio fs) |
-| Contract | The UI (`src/lib/backend/<area>-api.ts`) and agent tools both call your route — changing a shape means updating both in the same change |
+| Contract | The UI (`clients/web/src/lib/backend/<area>-api.ts`) and agent tools both call your route — changing a shape means updating both in the same change |
 
 ## Test it (required)
 

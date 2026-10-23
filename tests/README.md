@@ -5,7 +5,7 @@ backend is now the native Rust crate in `backend/` (binary `amiro-backend`), and
 the engine is the vendored Rust runtime in `runtime/` (binary `amiro-runtime`).
 
 * Backend: native Rust backend (`backend/`, `amiro-backend`) over the vendored runtime
-* Desktop Shell: Tauri 2 and Rust (`src-tauri/`)
+* Desktop Shell: Tauri 2 and Rust (`clients/desktop/`)
 * Rust Testkit: `tests/rust/` (`amiro-testkit`, std-only, offline)
 * Web and E2E: Vitest and recorded Playwright journeys (`tests/e2e/`)
 * Retired harness: `adapter/`, kept only for its contract tests
@@ -26,7 +26,7 @@ pin the routes the native backend implements.
 | Retired adapter contract tests | `node --test adapter/test/*.test.mjs` | Requires `pnpm --dir adapter install` |
 | Retired adapter live smoke | `node adapter/test/live-smoke.mjs` | Requires a running, authenticated preview |
 | Rust Testkit | `cargo test --offline` (in `tests/rust`) | Std-only, zero network dependencies |
-| Tauri Desktop Check | `cargo check --offline` (in `src-tauri`) | Tauri shell check |
+| Tauri Desktop Check | `cargo check --offline` (in `clients/desktop`) | Tauri shell check |
 | E2E journeys (Playwright, recorded) | `pnpm test:e2e` | Isolated instance, video + `REVIEW.md`. See `e2e/README.md` |
 
 The backend integration tests spawn their own server per test and wait for

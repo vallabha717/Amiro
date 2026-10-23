@@ -34,4 +34,4 @@ plain text. The E2E journeys assert this; keep them passing.
 ## Languages
 
 The UI ships English and Hindi only. Every new string goes into both
-`messages/en.json` and `messages/hi.json`.
+`clients/web/messages/en.json` and `clients/web/messages/hi.json`.
