@@ -11,10 +11,7 @@ import { useSession } from "@/lib/backend/session-context";
 import { cn } from "@/lib/utils";
 import {
   ArrowUpRightIcon,
-  FolderOpenIcon,
   MessagesSquareIcon,
-  MonitorIcon,
-  TerminalIcon,
   Trash2Icon,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -38,7 +35,8 @@ import { Button } from "ui/button";
 import { Skeleton } from "ui/skeleton";
 import { AgentAvatar } from "./agent-avatar";
 import { AgentChat } from "./agent-chat";
-import { agentScopedPath, agentSpacePath, teamThreadPath } from "./team-paths";
+import { AssistantDesktopAffordance } from "@/components/desktop-preview/assistant-desktop-affordance";
+import { agentSpacePath, teamThreadPath } from "./team-paths";
 
 function AgentRow({ agent, active }: { agent: TeamAgent; active: boolean }) {
   const t = useTranslations("Team");
@@ -115,7 +113,6 @@ function DeleteAgentButton({ agent }: { agent: TeamAgent }) {
 
 function ThreadHeader({ agent, isOwner }: { agent: TeamAgent; isOwner: boolean }) {
   const t = useTranslations("Team");
-  const scope = agent.isMain ? null : agent.id;
   return (
     <div className="flex items-center gap-3 border-b px-4 py-3">
       <AgentAvatar agent={agent} size={36} />
@@ -126,41 +123,10 @@ function ThreadHeader({ agent, isOwner }: { agent: TeamAgent; isOwner: boolean }
         <p className="truncate text-xs text-muted-foreground">{t("channelSubtitle")}</p>
       </div>
       {isOwner && (
-        <div className="hidden sm:flex items-center gap-1">
-          <Button
-            asChild
-            variant="ghost"
-            size="icon"
-            title="Terminal"
-            data-testid="team-open-terminal"
-          >
-            <Link href={agentScopedPath(scope, "/admin/debug")}>
-              <TerminalIcon className="size-4" />
-            </Link>
-          </Button>
-          <Button
-            asChild
-            variant="ghost"
-            size="icon"
-            title="Browser & Screen"
-            data-testid="team-open-browser"
-          >
-            <Link href={`${agentScopedPath(scope, "/admin/debug")}?tab=browser`}>
-              <MonitorIcon className="size-4" />
-            </Link>
-          </Button>
-          <Button
-            asChild
-            variant="ghost"
-            size="icon"
-            title="File System"
-            data-testid="team-open-files"
-          >
-            <Link href={`${agentScopedPath(scope, "/admin/debug")}?tab=files`}>
-              <FolderOpenIcon className="size-4" />
-            </Link>
-          </Button>
-        </div>
+        <AssistantDesktopAffordance
+          agentId={agent.id}
+          agentName={agent.name}
+        />
       )}
       {!agent.isMain && isOwner && <DeleteAgentButton agent={agent} />}
       <Button asChild size="sm" data-testid="team-open-in-amiro">

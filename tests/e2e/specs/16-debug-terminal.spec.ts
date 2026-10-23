@@ -1,6 +1,11 @@
 /**
- * Focused E2E test for Admin → Debug (Terminal, Browser & Screen, File System)
- * across the main agent (Amiro) and an isolated team agent (Scout).
+ * Focused E2E test for:
+ * 1) Admin → Debug showing ONLY the per-agent Terminal (Host PTY for Amiro,
+ *    isolated Container PTY for team agents).
+ * 2) Vellum-style TV Screen (`AssistantDesktopAffordance` Monitor icon in the
+ *    header -> floating 16:9 draggable/resizable `#assistant-desktop-preview`
+ *    TV window -> expandable fullscreen `#assistant-desktop-modal` with
+ *    Browser, File System, and Terminal).
  */
 import { expect, test } from "../support/fixtures";
 
@@ -11,13 +16,12 @@ interface TeamAgent {
   workspaceDir: string;
 }
 
-test.describe.serial("debug-terminal-browser-files", () => {
-  test("admin debug: per-agent Terminal, Browser & Screen, and File System UI", async ({
+test.describe.serial("debug-terminal-and-tv-screen", () => {
+  test("admin debug has only Terminal, and header Monitor button opens Vellum TV screen per agent", async ({
     page,
     step,
     amiro,
   }) => {
-    // Ensure a team agent "Scout" exists via the API
     const existing = await amiro.api<{ agents: TeamAgent[] }>("/api/agents");
     let scout = existing.body.agents.find((a) => a.name === "Scout");
     if (!scout) {
@@ -33,11 +37,13 @@ test.describe.serial("debug-terminal-browser-files", () => {
       scout = created.body;
     }
 
-    await step("Open Admin → Debug for Amiro (Main Agent) → Terminal tab is shown", async () => {
+    await step("Open Admin → Debug for Amiro (Main Agent) → ONLY Terminal is shown", async () => {
       await page.goto("/amiro/admin/debug");
       await expect(page.getByTestId("admin-debug-page")).toBeVisible();
       await expect(page.getByTestId("admin-sidebar-link-debug")).toBeVisible();
       await expect(page.getByTestId("terminal-panel")).toBeVisible();
+      // Verify extra tabs are removed from Admin -> Debug
+      await expect(page.getByTestId("admin-debug-tabs")).toHaveCount(0);
       await expect(page.getByTestId("terminal-status-badge")).toHaveAttribute(
         "data-status",
         "idle",
@@ -66,25 +72,7 @@ test.describe.serial("debug-terminal-browser-files", () => {
       );
     });
 
-    await step("Switch to Browser & Screen tab → navigate and inspect live viewport", async () => {
-      await page.getByTestId("admin-debug-tab-browser").click();
-      await expect(page.getByTestId("agent-browser-panel")).toBeVisible();
-      await page.getByTestId("agent-browser-url-input").fill("about:blank");
-      await page.getByTestId("agent-browser-go-button").click();
-      await expect(
-        page.getByTestId("agent-browser-screen-image"),
-      ).toBeVisible({ timeout: 15000 });
-      await expect(page.getByTestId("agent-browser-page-title")).toHaveText(
-        "Blank Page",
-      );
-    });
-
-    await step("Switch to File System tab → browse Amiro's workspace files", async () => {
-      await page.getByTestId("admin-debug-tab-files").click();
-      await expect(page.getByTestId("workspace-browser")).toBeVisible();
-    });
-
-    await step("Select team agent Scout → verify container policy & enable Shell", async () => {
+    await step("Select team agent Scout in Admin → Debug → verify container policy & connect Container PTY", async () => {
       await page.goto(`/${scout!.id}/admin/debug`);
       await expect(page.getByTestId("debug-team-agent-banner")).toBeVisible();
 
@@ -98,8 +86,11 @@ test.describe.serial("debug-terminal-browser-files", () => {
       await page.getByTestId("debug-team-shell-switch").click();
       await expect(page.getByTestId("debug-team-shell-switch")).toBeChecked();
 
-      // Connect Scout's isolated Container PTY terminal
-      await page.getByTestId("terminal-connect-button").click();
+      // Auto-reconnect (or manual connect if still in error/idle) connects Scout's isolated Container PTY terminal
+      const connectBtn = page.getByTestId("terminal-connect-button");
+      if (await connectBtn.isVisible().catch(() => false)) {
+        await connectBtn.click();
+      }
       await expect(page.getByTestId("terminal-status-badge")).toHaveAttribute(
         "data-status",
         "connected",
@@ -116,17 +107,39 @@ test.describe.serial("debug-terminal-browser-files", () => {
       );
     });
 
-    await step("Scout's Browser & File System tabs operate in Scout's isolated scope", async () => {
-      await page.getByTestId("admin-debug-tab-browser").click();
-      await expect(page.getByTestId("agent-browser-panel")).toBeVisible();
-      await page.getByTestId("agent-browser-url-input").fill("about:blank");
-      await page.getByTestId("agent-browser-go-button").click();
+    await step("Open chat header TV Screen (Monitor button) → floating 16:9 TV preview opens and expands to full Desktop (Browser & File System)", async () => {
+      await page.goto("/amiro");
       await expect(
-        page.getByTestId("agent-browser-screen-image"),
-      ).toBeVisible({ timeout: 15000 });
+        page.getByTestId("assistant-desktop-affordance"),
+      ).toBeVisible();
 
-      await page.getByTestId("admin-debug-tab-files").click();
+      // Click the TV Monitor icon in the header -> floating 16:9 TV screen appears
+      await page.getByTestId("assistant-desktop-affordance").click();
+      await expect(
+        page.getByTestId("assistant-desktop-preview"),
+      ).toBeVisible();
+      await expect(page.getByTestId("desktop-panel-viewport")).toBeVisible();
+
+      // Expand the floating TV screen into the fullscreen Desktop modal
+      await page.getByTestId("desktop-preview-title-button").click();
+      await expect(page.getByTestId("assistant-desktop-modal")).toBeVisible();
+      await expect(page.getByTestId("agent-browser-panel")).toBeVisible();
+
+      // Switch to File System inside the Desktop TV screen modal
+      await page.getByTestId("desktop-modal-tab-files").click();
       await expect(page.getByTestId("workspace-browser")).toBeVisible();
+
+      // Minimize back to the floating TV window, then close
+      await page.getByTestId("desktop-modal-minimize").click();
+      await expect(page.getByTestId("assistant-desktop-modal")).toBeHidden();
+      await expect(
+        page.getByTestId("assistant-desktop-preview"),
+      ).toBeVisible();
+
+      await page.getByTestId("desktop-preview-close").click();
+      await expect(page.getByTestId("assistant-desktop-preview")).toHaveCount(
+        0,
+      );
     });
   });
 });

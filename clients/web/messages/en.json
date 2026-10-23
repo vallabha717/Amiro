@@ -741,6 +741,24 @@
       }
     }
   },
+  "AssistantDesktop": {
+    "title": "Desktop",
+    "openAria": "Open {name}'s virtual desktop",
+    "openUnnamedAria": "Open virtual desktop",
+    "hideAria": "Hide virtual desktop",
+    "closeAria": "Close virtual desktop preview",
+    "moveAria": "Move virtual desktop preview (arrow keys)",
+    "resizeAria": "Resize virtual desktop preview (arrow keys)",
+    "expandAria": "Expand virtual desktop",
+    "minimizeButton": "Minimize to TV window",
+    "connecting": "Connecting to the virtual desktop…",
+    "reconnectButton": "Refresh screen",
+    "tabs": {
+      "browser": "Browser",
+      "files": "File System",
+      "terminal": "Terminal"
+    }
+  },
   "Admin": {
     "title": "Admin",
     "Sidebar": {

@@ -1,6 +1,7 @@
 "use client";
 
 import { SWRConfigProvider } from "@/app/(chat)/swr-config";
+import { AssistantDesktopPreview } from "@/components/desktop-preview/assistant-desktop-preview";
 import { AppPopupProvider } from "@/components/layouts/app-popup-provider";
 import { TeamShell } from "@/components/team/team-shell";
 import { UserDetailContent } from "@/components/user/user-detail/user-detail-content";
@@ -24,6 +25,7 @@ export default function TeamLayout({ children }: { children: React.ReactNode }) 
           }
         />
         <TeamShell>{children}</TeamShell>
+        <AssistantDesktopPreview />
       </SWRConfigProvider>
     </RequireAuth>
   );

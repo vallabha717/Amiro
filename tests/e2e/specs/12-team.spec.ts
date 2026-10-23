@@ -341,7 +341,7 @@ test.describe.serial("team", () => {
       await expect(page.getByText("Scout weekly digest")).toHaveCount(0);
     });
 
-    await step("Admin → Debug → Terminal, Browser & File System work per agent", async () => {
+    await step("Admin → Debug → Terminal connects to Amiro's host PTY and enforces Scout's container boundary", async () => {
       await page.goto("/amiro/admin/debug");
       await expect(page.getByTestId("admin-debug-page")).toBeVisible();
       await expect(page.getByTestId("terminal-panel")).toBeVisible();
@@ -356,19 +356,6 @@ test.describe.serial("team", () => {
       await page.getByTestId("terminal-disconnect-button").click();
       await expect(page.getByTestId("terminal-status-badge")).toHaveAttribute("data-status", "closed");
 
-      // Switch to Browser & Screen tab and navigate to about:blank
-      await page.getByTestId("admin-debug-tab-browser").click();
-      await expect(page.getByTestId("agent-browser-panel")).toBeVisible();
-      await page.getByTestId("agent-browser-url-input").fill("about:blank");
-      await page.getByTestId("agent-browser-go-button").click();
-      await expect(page.getByTestId("agent-browser-screen-image")).toBeVisible({ timeout: 15000 });
-      await expect(page.getByTestId("agent-browser-page-title")).toHaveText("Blank Page");
-
-      // Switch to File System tab and verify WorkspaceBrowser renders
-      await page.getByTestId("admin-debug-tab-files").click();
-      await expect(page.getByTestId("workspace-browser")).toBeVisible();
-
-      // Switch to Scout's Debug page and verify container boundary
       await page.goto(`/${scout.id}/admin/debug`);
       await expect(page.getByTestId("debug-team-agent-banner")).toBeVisible();
       await page.getByTestId("terminal-connect-button").click();

@@ -22,8 +22,10 @@ import { TextShimmer } from "ui/text-shimmer";
 import { buildReturnUrl } from "lib/admin/navigation-utils";
 import { BackButton } from "@/components/layouts/back-button";
 import { NotificationsBell } from "@/components/notifications/notifications-bell";
+import { AssistantDesktopAffordance } from "@/components/desktop-preview/assistant-desktop-affordance";
 import { useVoiceStore } from "@/lib/voice/voice-store";
 import { cn } from "@/lib/utils";
+import { matchSubPath } from "@/components/team/team-paths";
 
 export function AppHeader() {
   const t = useTranslations();
@@ -35,7 +37,7 @@ export function AppHeader() {
   const searchParams = useSearchParams();
 
   const showActionButtons = useMemo(() => {
-    if (currentPaths.startsWith("/admin")) {
+    if (matchSubPath(currentPaths, "/admin")) {
       return false;
     }
     return true;
@@ -120,6 +122,7 @@ export function AppHeader() {
       {componentByPage}
       <div className="flex-1" />
       <div className="flex items-center gap-2">
+        {showActionButtons && <AssistantDesktopAffordance />}
         <NotificationsBell />
         {showActionButtons && (
           <>
