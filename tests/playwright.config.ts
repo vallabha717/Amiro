@@ -27,6 +27,7 @@ const JOURNEYS = [
   "notifications",
   "channels-contacts",
   "devices",
+  "debug-terminal",
 ] as const;
 
 const use = {

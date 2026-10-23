@@ -753,6 +753,100 @@
     "Providers": {
       "title": "प्रोवाइडर"
     },
+    "debug": {
+      "tabs": {
+        "terminal": "टर्मिनल",
+        "browser": "ब्राउज़र और स्क्रीन",
+        "files": "फ़ाइल सिस्टम",
+        "general": "सामान्य"
+      },
+      "targetAgentLabel": "लक्ष्य एजेंट",
+      "targetAgentPlaceholder": "एजेंट चुनें",
+      "mainBadge": "मुख्य · होस्ट",
+      "teamBadge": "टीम · कंटेनर",
+      "shellEnabledToast": "इस टीम एजेंट के लिए शेल एक्सेस चालू किया गया",
+      "shellDisabledToast": "इस टीम एजेंट के लिए शेल एक्सेस बंद किया गया",
+      "shellToggleError": "शेल एक्सेस अपडेट नहीं हो सका",
+      "terminalPanel": {
+        "title": "डीबग टर्मिनल · {agent}",
+        "mainSubtitle": "Amiro के होस्ट वर्कस्पेस (~/.amiro/workspace) में इंटरैक्टिव शेल",
+        "teamSubtitle": "इस टीम एजेंट के अलग कंटेनर (/home/agent) के अंदर इंटरैक्टिव शेल"
+      },
+      "browser": {
+        "title": "ब्राउज़र और स्क्रीन · {agent}",
+        "mainSubtitle": "Amiro के होस्ट ब्राउज़र संदर्भ के लिए लाइव व्यूपोर्ट और DOM इंस्पेक्टर",
+        "teamSubtitle": "इस टीम एजेंट के अलग कंटेनर के अंदर लाइव व्यूपोर्ट और DOM इंस्पेक्टर",
+        "heading": "ब्राउज़र",
+        "isolationHost": "होस्ट ब्राउज़र",
+        "isolationContainer": "कंटेनर ब्राउज़र",
+        "urlAria": "ब्राउज़र URL",
+        "go": "जाएँ",
+        "refresh": "पृष्ठ रीफ़्रेश करें",
+        "fullscreen": "दृश्य बड़ा करें",
+        "exitFullscreen": "पूर्ण स्क्रीन से बाहर निकलें",
+        "loading": "एजेंट ब्राउज़र लोड हो रहा है…",
+        "loadError": "एजेंट ब्राउज़र स्थिति लोड नहीं हो सकी।",
+        "navigateError": "नेविगेशन विफल रहा।",
+        "emptyTitle": "एजेंट ब्राउज़र स्क्रीन तैयार है",
+        "emptyDescription": "इस एजेंट के लिए रेंडर की गई स्क्रीन और निकाला गया पृष्ठ टेक्स्ट देखने के लिए ऊपर URL दर्ज करें या प्रीसेट चुनें।",
+        "openExternal": "टैब खोलें",
+        "interactiveLinks": "इंटरैक्टिव पृष्ठ लिंक (नेविगेट करने के लिए क्लिक करें)",
+        "pageTextHeading": "निकाला गया पृष्ठ टेक्स्ट",
+        "noTextContent": "(कोई दृश्य टेक्स्ट नहीं मिला)",
+        "inspectorEmpty": "शीर्षक, लिंक और टेक्स्ट देखने के लिए किसी पृष्ठ पर नेविगेट करें।"
+      },
+      "files": {
+        "title": "फ़ाइल सिस्टम · {agent}",
+        "subtitle": "{path} में फ़ाइलें ब्राउज़ करें, पढ़ें, संपादित करें और बनाएँ"
+      },
+      "teamBanner": {
+        "shellOff": "इस टीम एजेंट के लिए शेल एक्सेस बंद है। डीबग टर्मिनल से जुड़ने के लिए इसे चालू करें।",
+        "sandboxUnavailable": "शेल चालू है, लेकिन सैंडबॉक्स सुपरवाइज़र उपलब्ध नहीं है। होस्ट पर scripts/sandbox.sh up चलाएँ।",
+        "containerReady": "इस टीम एजेंट के लिए अलग कंटेनर शेल चालू है (/home/agent)।",
+        "enableShell": "शेल अनुमति दें"
+      },
+      "terminal": {
+        "heading": "टर्मिनल",
+        "clearTitle": "टर्मिनल आउटपुट साफ़ करें",
+        "clear": "साफ़ करें",
+        "disconnectTitle": "टर्मिनल सेशन डिस्कनेक्ट करें",
+        "disconnect": "डिस्कनेक्ट करें",
+        "connectTitle": "टर्मिनल सेशन कनेक्ट करें",
+        "connect": "कनेक्ट करें",
+        "statusAria": "टर्मिनल स्थिति: {status}",
+        "consoleAria": "टर्मिनल कंसोल",
+        "isolationHost": "होस्ट PTY",
+        "isolationContainer": "कंटेनर PTY",
+        "status": {
+          "idle": "निष्क्रिय",
+          "connecting": "कनेक्ट हो रहा है",
+          "connected": "कनेक्टेड",
+          "reconnecting": "पुनः कनेक्ट हो रहा है",
+          "error": "त्रुटि",
+          "closed": "बंद"
+        }
+      },
+      "general": {
+        "title": "डीबग नियंत्रण",
+        "subtitle": "रनटाइम डायग्नोस्टिक्स, वर्कस्पेस सीमा जाँच और ऑनबोर्डिंग रीप्ले",
+        "agentRuntimeTitle": "एजेंट रनटाइम और सीमा",
+        "agentRuntimeDescription": "देखें कि चुने गए एजेंट के सेशन और टर्मिनल कमांड कहाँ चलते हैं।",
+        "activeAgent": "सक्रिय एजेंट",
+        "workspacePath": "वर्कस्पेस रूट",
+        "executionMode": "टर्मिनल निष्पादन मोड",
+        "modeHost": "होस्ट PTY (मुख्य वर्कस्पेस)",
+        "modeContainer": "अलग कंटेनर PTY",
+        "serverVersion": "बैकएंड संस्करण",
+        "verifyContainerBoundary": "कंटेनर सीमा जाँचें",
+        "isolationCheckedToast": "कंटेनर सीमा सत्यापित हुई",
+        "isolationCheckError": "कंटेनर सीमा जाँच विफल रही",
+        "replayTitle": "ऑनबोर्डिंग फिर से चलाएँ",
+        "replayDescription": "शुरुआती ऑनबोर्डिंग प्रवाह का परीक्षण करने के लिए सेटअप विज़ार्ड फिर से खोलें।",
+        "replayAction": "रीप्ले करें",
+        "replayToast": "ऑनबोर्डिंग फिर से खोली गई",
+        "replayError": "ऑनबोर्डिंग फिर से खोलने में विफल"
+      }
+    },
     "Usage": {
       "title": "उपयोग",
       "allUsers": "उपयोगकर्ता उपयोग",

@@ -131,4 +131,73 @@ impl SandboxClient {
     pub async fn list_files(&self, id: &str, path: &str) -> Result<Value, ClientError> {
         self.post(id, "files/list", json!({"path": path})).await
     }
+
+    pub async fn create_terminal_session(
+        &self,
+        id: &str,
+        cols: u16,
+        rows: u16,
+    ) -> Result<Value, ClientError> {
+        self.post(id, "terminal/sessions", json!({"cols": cols, "rows": rows}))
+            .await
+    }
+
+    pub async fn terminal_session_input(
+        &self,
+        id: &str,
+        session_id: &str,
+        data: &str,
+    ) -> Result<Value, ClientError> {
+        self.post(
+            id,
+            &format!("terminal/sessions/{session_id}/input"),
+            json!({"data": data}),
+        )
+        .await
+    }
+
+    pub async fn terminal_session_resize(
+        &self,
+        id: &str,
+        session_id: &str,
+        cols: u16,
+        rows: u16,
+    ) -> Result<Value, ClientError> {
+        self.post(
+            id,
+            &format!("terminal/sessions/{session_id}/resize"),
+            json!({"cols": cols, "rows": rows}),
+        )
+        .await
+    }
+
+    pub async fn terminal_session_destroy(
+        &self,
+        id: &str,
+        session_id: &str,
+    ) -> Result<Value, ClientError> {
+        Self::finish(
+            self.agent(
+                reqwest::Method::DELETE,
+                id,
+                &format!("terminal/sessions/{session_id}"),
+            )
+            .send()
+            .await,
+        )
+        .await
+    }
+
+    pub async fn terminal_session_events(
+        &self,
+        id: &str,
+        session_id: &str,
+        after_seq: u64,
+    ) -> Result<Value, ClientError> {
+        self.get(
+            id,
+            &format!("terminal/sessions/{session_id}/events?after_seq={after_seq}"),
+        )
+        .await
+    }
 }

@@ -55,7 +55,13 @@ function setUrlFile(path: string | null) {
 const isUnder = (path: string, base: string) =>
   path === base || path.startsWith(`${base}/`);
 
-export function WorkspaceBrowser() {
+export function WorkspaceBrowser({
+  embedded = false,
+  scopeKey,
+}: {
+  embedded?: boolean;
+  scopeKey?: string;
+} = {}) {
   const { data: session } = useSession();
   const canWrite = session?.user.role === "admin";
 
@@ -111,9 +117,14 @@ export function WorkspaceBrowser() {
     setUrlFile(path);
   }, []);
 
-  // Initial load + ?file= deep link.
+  // Initial load + ?file= deep link + reload when scopeKey changes.
   React.useEffect(() => {
-    const file = new URLSearchParams(window.location.search).get("file");
+    setDirs({});
+    setExpandedState(new Set());
+    expandedRef.current = new Set();
+    const file = !embedded
+      ? new URLSearchParams(window.location.search).get("file")
+      : null;
     if (file) {
       if (hasHiddenSegment(file)) {
         hiddenRef.current = true;
@@ -122,9 +133,10 @@ export function WorkspaceBrowser() {
       setSelected(file);
       void revealPath(file);
     } else {
+      setSelected(null);
       void loadDir("");
     }
-  }, []);
+  }, [scopeKey, embedded, loadDir, revealPath]);
 
   const reloadAll = React.useCallback(() => {
     for (const d of ["", ...expandedRef.current]) void loadDir(d);
@@ -233,39 +245,62 @@ export function WorkspaceBrowser() {
   return (
     <div
       data-testid="workspace-browser"
-      className="mx-auto flex w-full max-w-6xl flex-col gap-5 p-6 sm:p-8"
+      className={
+        embedded
+          ? "flex h-full min-h-0 w-full flex-1 flex-col gap-3"
+          : "mx-auto flex w-full max-w-6xl flex-col gap-5 p-6 sm:p-8"
+      }
     >
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex min-w-0 items-start gap-3">
-          <Link
-            href="/agent"
-            data-testid="workspace-back-link"
-            className="mt-1 inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-card px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          >
-            <ArrowLeft className="size-3.5" aria-hidden="true" />
-            Agent Hub
-          </Link>
-          <div className="min-w-0">
-            <h1 className="font-brand text-2xl font-bold tracking-tight sm:text-[28px]">
-              Workspace
-            </h1>
-            <p className="mt-1 max-w-xl text-xs leading-relaxed text-muted-foreground">
-              Files your agent reads and writes. Everything it creates in chats lands here.
-            </p>
+      {!embedded ? (
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex min-w-0 items-start gap-3">
+            <Link
+              href="/agent"
+              data-testid="workspace-back-link"
+              className="mt-1 inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-card px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <ArrowLeft className="size-3.5" aria-hidden="true" />
+              Agent Hub
+            </Link>
+            <div className="min-w-0">
+              <h1 className="font-brand text-2xl font-bold tracking-tight sm:text-[28px]">
+                Workspace
+              </h1>
+              <p className="mt-1 max-w-xl text-xs leading-relaxed text-muted-foreground">
+                Files your agent reads and writes. Everything it creates in chats lands here.
+              </p>
+            </div>
           </div>
+          <Button
+            size="sm"
+            className="shrink-0 gap-1.5 rounded-full px-4 font-medium"
+            data-testid="workspace-new-file"
+            disabled={!canWrite}
+            title={canWrite ? undefined : "Only the owner can create files"}
+            onClick={() => openNew("new-file")}
+          >
+            <FilePlus className="size-4" aria-hidden="true" />
+            New file
+          </Button>
         </div>
-        <Button
-          size="sm"
-          className="shrink-0 gap-1.5 rounded-full px-4 font-medium"
-          data-testid="workspace-new-file"
-          disabled={!canWrite}
-          title={canWrite ? undefined : "Only the owner can create files"}
-          onClick={() => openNew("new-file")}
-        >
-          <FilePlus className="size-4" aria-hidden="true" />
-          New file
-        </Button>
-      </div>
+      ) : (
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground">
+            Files this agent reads and writes in its isolated workspace.
+          </p>
+          <Button
+            size="sm"
+            className="shrink-0 gap-1.5 rounded-full px-3.5 font-medium"
+            data-testid="workspace-new-file"
+            disabled={!canWrite}
+            title={canWrite ? undefined : "Only the owner can create files"}
+            onClick={() => openNew("new-file")}
+          >
+            <FilePlus className="size-4" aria-hidden="true" />
+            New file
+          </Button>
+        </div>
+      )}
 
       <AgentHomeBar
         activePath={selected}

@@ -41,6 +41,25 @@ pub struct Supervisor {
     master: String,
     /// One lock per agent so concurrent ensures don't race on create.
     locks: Mutex<HashMap<String, Arc<Mutex<()>>>>,
+    /// Active interactive terminal sessions keyed by `session_id`.
+    terminals: Arc<Mutex<HashMap<String, Arc<ContainerTerminalSession>>>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct TerminalChunk {
+    pub seq: u64,
+    /// Base64-encoded raw PTY output bytes.
+    pub data: String,
+}
+
+pub struct ContainerTerminalSession {
+    pub agent_id: String,
+    pub exec_id: String,
+    pub input_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
+    pub output_tx: tokio::sync::broadcast::Sender<TerminalChunk>,
+    pub history: Mutex<Vec<TerminalChunk>>,
+    pub closed: std::sync::atomic::AtomicBool,
+    pub abort_tx: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
 }
 
 impl Supervisor {
@@ -54,7 +73,14 @@ impl Supervisor {
         if credential::secrets_equal(&token, &master) {
             return Err("AMIRO_SANDBOX_TOKEN and AMIRO_SANDBOX_MASTER must differ".into());
         }
-        Ok(Supervisor { cfg, docker, token, master, locks: Mutex::new(HashMap::new()) })
+        Ok(Supervisor {
+            cfg,
+            docker,
+            token,
+            master,
+            locks: Mutex::new(HashMap::new()),
+            terminals: Arc::new(Mutex::new(HashMap::new())),
+        })
     }
 
     async fn lock_for(&self, id: &str) -> Arc<Mutex<()>> {
@@ -377,6 +403,248 @@ async fn index(State(sup): State<Shared>, headers: HeaderMap) -> Result<Json<Val
     Ok(Json(json!({"namespace": sup.cfg.namespace})))
 }
 
+async fn create_terminal_session(
+    State(sup): State<Shared>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    authorize(&sup, &headers, Some(&id))?;
+    let cols = body["cols"].as_u64().unwrap_or(80).clamp(1, 1000) as u16;
+    let rows = body["rows"].as_u64().unwrap_or(24).clamp(1, 1000) as u16;
+
+    let cid = sup.ensure(&id).await?;
+    let argv = vec![
+        "/bin/sh".to_string(),
+        "-c".to_string(),
+        "if [ -x /bin/bash ]; then exec /bin/bash -i; else exec /bin/sh -i; fi".to_string(),
+    ];
+    let exec_id = sup
+        .docker
+        .create_tty_exec(&cid, &argv)
+        .await
+        .map_err(docker_error)?;
+    let stream = sup
+        .docker
+        .start_tty_exec(&exec_id)
+        .await
+        .map_err(docker_error)?;
+    let _ = sup.docker.resize_tty_exec(&exec_id, cols, rows).await;
+
+    let session_id = uuid::Uuid::new_v4().simple().to_string();
+    let (input_tx, mut input_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(128);
+    let (output_tx, _) = tokio::sync::broadcast::channel::<TerminalChunk>(256);
+    let (abort_tx, mut abort_rx) = tokio::sync::oneshot::channel::<()>();
+
+    let session = Arc::new(ContainerTerminalSession {
+        agent_id: id.clone(),
+        exec_id: exec_id.clone(),
+        input_tx,
+        output_tx: output_tx.clone(),
+        history: Mutex::new(Vec::new()),
+        closed: std::sync::atomic::AtomicBool::new(false),
+        abort_tx: Mutex::new(Some(abort_tx)),
+    });
+
+    sup.terminals
+        .lock()
+        .await
+        .insert(session_id.clone(), session.clone());
+
+    let terminals_map = sup.terminals.clone();
+    let sid_cleanup = session_id.clone();
+    let session_clone = session.clone();
+
+    tokio::spawn(async move {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let (mut reader, mut writer) = tokio::io::split(stream);
+        let mut seq: u64 = 0;
+        let mut buf = [0u8; 8192];
+
+        loop {
+            tokio::select! {
+                biased;
+                _ = &mut abort_rx => {
+                    let _ = writer.write_all(b"\x03\r\nexit\r\n").await;
+                    break;
+                }
+                maybe_in = input_rx.recv() => {
+                    match maybe_in {
+                        Some(bytes) => {
+                            if writer.write_all(&bytes).await.is_err() {
+                                break;
+                            }
+                            let _ = writer.flush().await;
+                        }
+                        None => break,
+                    }
+                }
+                read_res = reader.read(&mut buf) => {
+                    match read_res {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => {
+                            seq += 1;
+                            let encoded = base64::engine::general_purpose::STANDARD.encode(&buf[..n]);
+                            let chunk = TerminalChunk { seq, data: encoded };
+                            {
+                                let mut hist = session_clone.history.lock().await;
+                                if hist.len() >= 128 {
+                                    hist.remove(0);
+                                }
+                                hist.push(chunk.clone());
+                            }
+                            let _ = output_tx.send(chunk);
+                        }
+                    }
+                }
+            }
+        }
+        session_clone
+            .closed
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        terminals_map.lock().await.remove(&sid_cleanup);
+    });
+
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({
+            "session_id": session_id,
+            "id": session_id,
+            "agent_id": id,
+        })),
+    ))
+}
+
+async fn get_terminal_session(
+    sup: &Supervisor,
+    agent_id: &str,
+    session_id: &str,
+) -> Result<Arc<ContainerTerminalSession>, ApiError> {
+    let session = sup
+        .terminals
+        .lock()
+        .await
+        .get(session_id)
+        .cloned()
+        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "terminal session not found".into()))?;
+    if session.agent_id != agent_id {
+        return Err(ApiError(
+            StatusCode::NOT_FOUND,
+            "terminal session not found".into(),
+        ));
+    }
+    Ok(session)
+}
+
+async fn terminal_session_input(
+    State(sup): State<Shared>,
+    Path((id, session_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    authorize(&sup, &headers, Some(&id))?;
+    let data = body["data"].as_str().unwrap_or("");
+    let session = get_terminal_session(&sup, &id, &session_id).await?;
+    if !data.is_empty() {
+        session
+            .input_tx
+            .send(data.as_bytes().to_vec())
+            .await
+            .map_err(|_| ApiError(StatusCode::GONE, "terminal session closed".into()))?;
+    }
+    Ok(Json(json!({"ok": true})))
+}
+
+async fn terminal_session_resize(
+    State(sup): State<Shared>,
+    Path((id, session_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    authorize(&sup, &headers, Some(&id))?;
+    let cols = body["cols"].as_u64().unwrap_or(80).clamp(1, 1000) as u16;
+    let rows = body["rows"].as_u64().unwrap_or(24).clamp(1, 1000) as u16;
+    let session = get_terminal_session(&sup, &id, &session_id).await?;
+    sup.docker
+        .resize_tty_exec(&session.exec_id, cols, rows)
+        .await
+        .map_err(docker_error)?;
+    Ok(Json(json!({"ok": true})))
+}
+
+async fn terminal_session_destroy(
+    State(sup): State<Shared>,
+    Path((id, session_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    authorize(&sup, &headers, Some(&id))?;
+    if let Some(session) = sup.terminals.lock().await.remove(&session_id) {
+        if session.agent_id == id {
+            if let Some(tx) = session.abort_tx.lock().await.take() {
+                let _ = tx.send(());
+            }
+        }
+    }
+    Ok(Json(json!({"ok": true})))
+}
+
+#[derive(serde::Deserialize, Default)]
+struct EventsQuery {
+    after_seq: Option<u64>,
+}
+
+async fn terminal_session_events(
+    State(sup): State<Shared>,
+    Path((id, session_id)): Path<(String, String)>,
+    axum::extract::Query(query): axum::extract::Query<EventsQuery>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    authorize(&sup, &headers, Some(&id))?;
+    let after_seq = query.after_seq.unwrap_or(0);
+    let maybe_session = sup.terminals.lock().await.get(&session_id).cloned();
+    let Some(session) = maybe_session else {
+        return Ok(Json(json!({"events": [], "closed": true})));
+    };
+    if session.agent_id != id {
+        return Err(ApiError(
+            StatusCode::NOT_FOUND,
+            "terminal session not found".into(),
+        ));
+    }
+
+    let mut rx = session.output_tx.subscribe();
+    {
+        let hist = session.history.lock().await;
+        let unseen: Vec<Value> = hist
+            .iter()
+            .filter(|c| c.seq > after_seq)
+            .map(|c| json!({"seq": c.seq, "data": c.data}))
+            .collect();
+        if !unseen.is_empty() {
+            return Ok(Json(json!({
+                "events": unseen,
+                "closed": session.closed.load(std::sync::atomic::Ordering::SeqCst),
+            })));
+        }
+    }
+
+    if session.closed.load(std::sync::atomic::Ordering::SeqCst) {
+        return Ok(Json(json!({"events": [], "closed": true})));
+    }
+
+    match tokio::time::timeout(Duration::from_secs(15), rx.recv()).await {
+        Ok(Ok(chunk)) => Ok(Json(json!({
+            "events": [{"seq": chunk.seq, "data": chunk.data}],
+            "closed": session.closed.load(std::sync::atomic::Ordering::SeqCst),
+        }))),
+        Ok(Err(_)) => Ok(Json(json!({"events": [], "closed": true}))),
+        Err(_) => Ok(Json(json!({
+            "events": [],
+            "closed": session.closed.load(std::sync::atomic::Ordering::SeqCst),
+        }))),
+    }
+}
+
 pub fn router(sup: Arc<Supervisor>) -> Router {
     Router::new()
         .route("/health", get(health))
@@ -389,5 +657,22 @@ pub fn router(sup: Arc<Supervisor>) -> Router {
         .route("/v1/agents/{id}/files/write", post(write_file))
         .route("/v1/agents/{id}/files/list", post(list_files))
         .route("/v1/agents/{id}/selfcheck", get(selfcheck))
+        .route("/v1/agents/{id}/terminal/sessions", post(create_terminal_session))
+        .route(
+            "/v1/agents/{id}/terminal/sessions/{session_id}",
+            axum::routing::delete(terminal_session_destroy),
+        )
+        .route(
+            "/v1/agents/{id}/terminal/sessions/{session_id}/input",
+            post(terminal_session_input),
+        )
+        .route(
+            "/v1/agents/{id}/terminal/sessions/{session_id}/resize",
+            post(terminal_session_resize),
+        )
+        .route(
+            "/v1/agents/{id}/terminal/sessions/{session_id}/events",
+            get(terminal_session_events),
+        )
         .with_state(sup)
 }

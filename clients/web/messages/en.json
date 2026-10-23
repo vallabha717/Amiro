@@ -753,6 +753,100 @@
     "Providers": {
       "title": "Providers"
     },
+    "debug": {
+      "tabs": {
+        "terminal": "Terminal",
+        "browser": "Browser & Screen",
+        "files": "File System",
+        "general": "General"
+      },
+      "targetAgentLabel": "Target agent",
+      "targetAgentPlaceholder": "Select agent",
+      "mainBadge": "Main · Host",
+      "teamBadge": "Team · Container",
+      "shellEnabledToast": "Shell access enabled for this team agent",
+      "shellDisabledToast": "Shell access disabled for this team agent",
+      "shellToggleError": "Could not update shell access",
+      "terminalPanel": {
+        "title": "Debug Terminal · {agent}",
+        "mainSubtitle": "Interactive shell rooted in Amiro's host workspace (~/.amiro/workspace)",
+        "teamSubtitle": "Interactive shell inside this team agent's isolated container (/home/agent)"
+      },
+      "browser": {
+        "title": "Browser & Screen · {agent}",
+        "mainSubtitle": "Live viewport and DOM inspector for Amiro's host browser context",
+        "teamSubtitle": "Live viewport and DOM inspector inside this team agent's isolated container",
+        "heading": "Browser",
+        "isolationHost": "Host Browser",
+        "isolationContainer": "Container Browser",
+        "urlAria": "Browser URL",
+        "go": "Go",
+        "refresh": "Refresh page",
+        "fullscreen": "Expand view",
+        "exitFullscreen": "Exit fullscreen",
+        "loading": "Loading agent browser…",
+        "loadError": "Could not load agent browser state.",
+        "navigateError": "Navigation failed.",
+        "emptyTitle": "Agent browser screen is ready",
+        "emptyDescription": "Enter a URL above or pick a quick preset to inspect the rendered screen and extracted page text for this agent.",
+        "openExternal": "Open tab",
+        "interactiveLinks": "Interactive page links (click to navigate)",
+        "pageTextHeading": "Extracted page text",
+        "noTextContent": "(No visible text extracted)",
+        "inspectorEmpty": "Navigate to a page to inspect its title, links, and extracted text."
+      },
+      "files": {
+        "title": "File System · {agent}",
+        "subtitle": "Browse, read, edit, and create files in {path}"
+      },
+      "teamBanner": {
+        "shellOff": "Shell access is currently switched off for this team agent. Enable it to connect the debug terminal.",
+        "sandboxUnavailable": "Shell is on, but the sandbox supervisor is unreachable. Run scripts/sandbox.sh up on the host.",
+        "containerReady": "Isolated container shell is enabled for this team agent (/home/agent).",
+        "enableShell": "Allow Shell"
+      },
+      "terminal": {
+        "heading": "Terminal",
+        "clearTitle": "Clear terminal output",
+        "clear": "Clear",
+        "disconnectTitle": "Disconnect terminal session",
+        "disconnect": "Disconnect",
+        "connectTitle": "Connect terminal session",
+        "connect": "Connect",
+        "statusAria": "Terminal status: {status}",
+        "consoleAria": "Terminal console",
+        "isolationHost": "Host PTY",
+        "isolationContainer": "Container PTY",
+        "status": {
+          "idle": "Idle",
+          "connecting": "Connecting",
+          "connected": "Connected",
+          "reconnecting": "Reconnecting",
+          "error": "Error",
+          "closed": "Closed"
+        }
+      },
+      "general": {
+        "title": "Debug Controls",
+        "subtitle": "Runtime diagnostics, workspace boundary verification, and onboarding replay",
+        "agentRuntimeTitle": "Agent Runtime & Boundary",
+        "agentRuntimeDescription": "Inspect where the selected agent's sessions and terminal commands run.",
+        "activeAgent": "Active agent",
+        "workspacePath": "Workspace root",
+        "executionMode": "Terminal execution mode",
+        "modeHost": "Host PTY (main workspace)",
+        "modeContainer": "Isolated container PTY",
+        "serverVersion": "Backend version",
+        "verifyContainerBoundary": "Verify container boundary",
+        "isolationCheckedToast": "Container boundary verified",
+        "isolationCheckError": "Container boundary check failed",
+        "replayTitle": "Replay Onboarding",
+        "replayDescription": "Re-open the setup wizard to test the initial onboarding journey.",
+        "replayAction": "Replay",
+        "replayToast": "Onboarding reopened",
+        "replayError": "Failed to reopen onboarding"
+      }
+    },
     "Usage": {
       "title": "Usage",
       "allUsers": "User Usage",

@@ -144,6 +144,8 @@ async fn fake_supervisor() -> (String, Log) {
                     "status" => json!({"state": "running", "network": "bridge", "runtime": "runc"}),
                     "selfcheck" => json!({"uid": 1000, "capEff": "0000000000000000", "noCapabilities": true, "dockerSocket": false, "homeMounts": ["/home/agent"]}),
                     "exec" => json!({"exitCode": 0, "stdout": format!("ran: {}\n", body["command"].as_str().unwrap_or("")), "stderr": "", "truncated": false, "timedOut": false}),
+                    "terminal-create" => json!({"session_id": "remote-term-1", "id": "remote-term-1", "agent_id": id}),
+                    "terminal-input" | "terminal-resize" | "terminal-destroy" => json!({"ok": true}),
                     "write" => json!({"bytes": body["content"].as_str().map(str::len).unwrap_or(0)}),
                     "read" => json!({"content": "hello from the container", "truncated": false}),
                     _ => json!({"entries": [{"name": "notes", "kind": "folder", "size": 0}, {"name": "a.md", "kind": "file", "size": 3}], "truncated": false}),
@@ -159,7 +161,11 @@ async fn fake_supervisor() -> (String, Log) {
         .route("/v1/agents/{id}/exec", post(reply(log.clone(), "exec")))
         .route("/v1/agents/{id}/files/write", post(reply(log.clone(), "write")))
         .route("/v1/agents/{id}/files/read", post(reply(log.clone(), "read")))
-        .route("/v1/agents/{id}/files/list", post(reply(log.clone(), "list")));
+        .route("/v1/agents/{id}/files/list", post(reply(log.clone(), "list")))
+        .route("/v1/agents/{id}/terminal/sessions", post(reply(log.clone(), "terminal-create")))
+        .route("/v1/agents/{id}/terminal/sessions/remote-term-1", axum::routing::delete(reply(log.clone(), "terminal-destroy")))
+        .route("/v1/agents/{id}/terminal/sessions/remote-term-1/input", post(reply(log.clone(), "terminal-input")))
+        .route("/v1/agents/{id}/terminal/sessions/remote-term-1/resize", post(reply(log.clone(), "terminal-resize")));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
     tokio::spawn(async move {
@@ -349,4 +355,96 @@ async fn only_the_agents_own_remote_connectors_are_offered() {
     seed(&scoped.runtime_home.join("mcp.json"), &json!({"mcpServers": {"github": {"url": "https://github.example/mcp"}}}));
     let toolset = backend::sandbox::AgentToolset::for_agent(&scoped, &id).await.unwrap().unwrap();
     assert_eq!(toolset.mcp_servers, vec!["github".to_string()]);
+}
+
+#[tokio::test]
+async fn terminal_sessions_support_main_host_pty_and_enforce_team_agent_sandbox_policy() {
+    let fx = fixture();
+    let app = app(&fx);
+    let (url, log) = fake_supervisor().await;
+    configure_sandbox(&fx, &url);
+    let scout = create_agent(&app, "Scout").await;
+
+    // Non-admin is forbidden from opening debug terminal sessions.
+    let (status, _) = call(&app, Some(MEMBER_TOKEN), Method::POST, "/api/terminal/sessions", Some(json!({"agentId": "main"}))).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Main agent ("main") opens a host PTY in state.workspace.
+    let (status, main_sess) = call(&app, Some(OWNER_TOKEN), Method::POST, "/api/terminal/sessions", Some(json!({"agentId": "main", "cols": 100, "rows": 30}))).await;
+    assert_eq!(status, StatusCode::CREATED, "{main_sess}");
+    assert_eq!(main_sess["agent_id"], "main");
+    assert_eq!(main_sess["isolation"], "host");
+    let main_sid = main_sess["session_id"].as_str().unwrap().to_string();
+
+    let (status, _) = call(&app, Some(OWNER_TOKEN), Method::POST, &format!("/api/terminal/sessions/{main_sid}/resize"), Some(json!({"cols": 120, "rows": 40}))).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = call(&app, Some(OWNER_TOKEN), Method::POST, &format!("/api/terminal/sessions/{main_sid}/input"), Some(json!({"data": "echo hello\n"}))).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = call(&app, Some(OWNER_TOKEN), Method::DELETE, &format!("/api/terminal/sessions/{main_sid}"), None).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Team agent with shell tool OFF is refused before reaching supervisor.
+    let (status, err) = call(&app, Some(OWNER_TOKEN), Method::POST, "/api/terminal/sessions", Some(json!({"agentId": scout}))).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{err}");
+    assert!(err["error"].as_str().unwrap_or("").contains("Shell access is disabled"));
+
+    // Turn shell ON for Scout -> terminal session delegates to supervisor with Scout's credential.
+    let uri = format!("/api/agents/{scout}/computer");
+    call(&app, Some(OWNER_TOKEN), Method::PATCH, &uri, Some(json!({"tools": {"shell": true}}))).await;
+
+    let (status, team_sess) = call(&app, Some(OWNER_TOKEN), Method::POST, "/api/terminal/sessions", Some(json!({"agentId": scout, "cols": 90, "rows": 28}))).await;
+    assert_eq!(status, StatusCode::CREATED, "{team_sess}");
+    assert_eq!(team_sess["agent_id"], scout);
+    assert_eq!(team_sess["isolation"], "container");
+    assert_eq!(team_sess["cwd"], "/home/agent");
+    let team_sid = team_sess["session_id"].as_str().unwrap().to_string();
+
+    let (status, _) = call(&app, Some(OWNER_TOKEN), Method::POST, &format!("/api/terminal/sessions/{team_sid}/input"), Some(json!({"data": "pwd\n"}))).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = call(&app, Some(OWNER_TOKEN), Method::POST, &format!("/api/terminal/sessions/{team_sid}/resize"), Some(json!({"cols": 110, "rows": 32}))).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = call(&app, Some(OWNER_TOKEN), Method::DELETE, &format!("/api/terminal/sessions/{team_sid}"), None).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let seen = log.lock().unwrap().clone();
+    assert!(seen.contains(&format!("terminal-create {scout}")), "{seen:?}");
+    assert!(seen.contains(&format!("terminal-input {scout}")), "{seen:?}");
+    assert!(seen.contains(&format!("terminal-resize {scout}")), "{seen:?}");
+    assert!(seen.contains(&format!("terminal-destroy {scout}")), "{seen:?}");
+}
+
+#[tokio::test]
+async fn agent_browser_supports_main_and_isolated_team_agents() {
+    let fx = fixture();
+    let app = app(&fx);
+    let (url, log) = fake_supervisor().await;
+    configure_sandbox(&fx, &url);
+    let scout = create_agent(&app, "Scout").await;
+
+    // Main agent navigate to about:blank produces a viewport screenshot and saves state
+    let (status, nav) = call(&app, Some(OWNER_TOKEN), Method::POST, "/api/debug/browser/navigate", Some(json!({"agentId": "main", "url": "about:blank"}))).await;
+    assert_eq!(status, StatusCode::OK, "{nav}");
+    assert_eq!(nav["isolation"], "host");
+    assert_eq!(nav["page"]["title"], "Blank Page");
+    assert!(nav["page"]["screenshot"].as_str().unwrap_or("").starts_with("data:image/svg+xml;base64,"));
+
+    // Scout with shell/browser OFF is refused before reaching supervisor
+    let (status, err) = call(&app, Some(OWNER_TOKEN), Method::POST, "/api/debug/browser/navigate", Some(json!({"agentId": scout, "url": "https://example.com"}))).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{err}");
+
+    // Enable shell for Scout -> browser navigation executes inside Scout's container via supervisor
+    let uri = format!("/api/agents/{scout}/computer");
+    call(&app, Some(OWNER_TOKEN), Method::PATCH, &uri, Some(json!({"tools": {"shell": true}}))).await;
+
+    let (status, team_nav) = call(&app, Some(OWNER_TOKEN), Method::POST, "/api/debug/browser/navigate", Some(json!({"agentId": scout, "url": "https://example.com"}))).await;
+    assert_eq!(status, StatusCode::OK, "{team_nav}");
+    assert_eq!(team_nav["isolation"], "container");
+    assert!(team_nav["page"]["screenshot"].as_str().unwrap_or("").starts_with("data:image/svg+xml;base64,"));
+
+    // Scout's browser state is isolated from main's
+    let (_, main_state) = call(&app, Some(OWNER_TOKEN), Method::GET, "/api/debug/browser", None).await;
+    assert_eq!(main_state["page"]["url"], "about:blank");
+
+    let seen = log.lock().unwrap().clone();
+    assert!(seen.contains(&format!("exec {scout}")), "{seen:?}");
 }

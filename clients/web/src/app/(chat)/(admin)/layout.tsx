@@ -15,6 +15,7 @@ import {
   Search,
   SlidersHorizontal,
   Smartphone,
+  Terminal,
   Volume2,
   type LucideIcon,
 } from "lucide-react";
@@ -114,6 +115,15 @@ const ADMIN_SECTIONS: AdminSection[] = [
     testId: "admin-sidebar-link-usage",
     isActive: (p) =>
       matchSubPath(p, "/admin/usage") || matchSubPath(p, "/admin/users"),
+  },
+  {
+    id: "debug",
+    title: "Debug",
+    subtitle: "Interactive agent terminals & runtime diagnostics",
+    href: "/admin/debug",
+    icon: Terminal,
+    testId: "admin-sidebar-link-debug",
+    isActive: (p) => matchSubPath(p, "/admin/debug"),
   },
 ];
 
