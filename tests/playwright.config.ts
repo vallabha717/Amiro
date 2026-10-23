@@ -26,6 +26,7 @@ const JOURNEYS = [
   "team",
   "notifications",
   "channels-contacts",
+  "devices",
 ] as const;
 
 const use = {

@@ -28,6 +28,7 @@ const PAGES = [
   "/contacts",
   "/skills",
   "/admin/general",
+  "/admin/devices",
   "/admin/notifications",
   "/admin/credentials",
   "/admin/providers",
