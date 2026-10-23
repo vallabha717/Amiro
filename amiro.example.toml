@@ -24,6 +24,12 @@
 # home = "~/.amiro"
 # Days a sign-in lasts (0 = until you sign out).       AMIRO_SESSION_TTL_DAYS
 # session_ttl_days = 30
+# Days a paired phone stays signed in (0 = until you remove it in
+# Settings → Devices).                            AMIRO_DEVICE_SESSION_TTL_DAYS
+# device_session_ttl_days = 0
+# Port for "Allow phones on my network" (Settings → Devices) when Amiro
+# listens on 127.0.0.1, as the desktop app does.  AMIRO_REMOTE_PORT
+# remote_port = 8790
 
 [owner]
 # Create the owner account on first start, so the wizard skips the password

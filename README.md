@@ -216,6 +216,15 @@ inject a secret server-side, scoped to allowed domains, so the model never sees
 the raw value. See [docs/CREDENTIAL-VAULT.md](docs/CREDENTIAL-VAULT.md) and
 [Security](#security) for the limits.
 
+### Phones and other devices
+
+Connect a phone or another desktop app the way you sign in to the GitHub CLI:
+enter your Amiro's address on the device, it shows a short code, and you approve
+it at `<address>/device` from any browser, or in Settings → Devices. Each device
+gets its own sign-in that you can remove at any time. The desktop app can open a
+listener on your Wi-Fi for approved phones only, and can connect to an Amiro on a
+server instead of its own, then switch back. See [docs/DEVICES.md](docs/DEVICES.md).
+
 ---
 
 ## Quick start
@@ -380,6 +389,8 @@ startup, not silently ignored.
 | `AMIRO_DEFAULT_MODEL` | unset | `provider:model` used when a request omits a model |
 | `AMIRO_PINNED_MODELS` | unset | Hard allow-list of models. Anything else is rejected |
 | `AMIRO_SESSION_TTL_DAYS` | `7` | Sign-in lifetime in days (`0` = until sign-out) |
+| `AMIRO_DEVICE_SESSION_TTL_DAYS` | `0` | Paired-device sign-in lifetime in days (`0` = until removed in Settings → Devices) |
+| `AMIRO_REMOTE_PORT` | `8790` | Port of the phone-access listener (Settings → Devices) |
 | `AMIRO_BROWSE_ROOTS` | `/root,/home,/srv,/opt,/var/www,/tmp` | Roots the server-side folder picker may browse |
 | `AMIRO_WORKSPACE_ROOT` | `$AMIRO_HOME/workspace` | Default workspace for file, edit, search and git tools |
 | `AMIRO_TOOL_PROFILE` | on | Tools run with the owner's permissions. `none` = chat without tools |
