@@ -301,23 +301,35 @@ fn cadence_schema() -> Value {
 }
 
 pub fn tool_definitions() -> Vec<Value> {
-    let mode = json!({"type":"string","enum":["agent","execute","notify"],"description":"agent: full agent turn with tools (default). execute: model-only turn. notify: post the instructions as a message."});
+    let mode = json!({"type":"string","enum":["agent","execute","notify","script"],"description":"agent: full agent turn with tools (default). execute: model-only turn. notify: post the instructions as a message. script: run a shell command directly."});
     let id = json!({"type":"string","description":"Schedule id from schedule_list"});
     vec![
         json!({"name":"schedule_list","description":"List the owner's schedules (the same ones shown on the Schedules page).","inputSchema":{"type":"object","properties":{},"additionalProperties":false}}),
         json!({"name":"schedule_create","description":"Create a recurring or one-time schedule. It appears on the Schedules page.","inputSchema":{"type":"object","properties":{
             "name":{"type":"string"},
+            "description":{"type":"string","description":"Short summary of what this schedule does"},
             "instructions":{"type":"string","description":"What the agent should do each run"},
+            "message":{"type":"string","description":"Alias for instructions (Vellum compatibility)"},
+            "script":{"type":"string","description":"Shell command to run when mode is script"},
             "mode":mode,
             "cadence":cadence_schema(),
+            "expression":{"type":"string","description":"5-field cron expression (alternative to cadence)"},
+            "fire_at":{"type":"string","description":"One-shot ISO-8601 timestamp (alternative to cadence)"},
             "timezone":{"type":"string","description":"IANA timezone; defaults to the owner's timezone, else UTC"},
             "enabled":{"type":"boolean","default":true},
+            "quiet":{"type":"boolean","default":false,"description":"Suppress automatic completion notifications on clean runs"},
+            "reuse_conversation":{"type":"boolean","default":false,"description":"Reuse the previous run's conversation across recurring runs"},
+            "timeout_ms":{"type":"integer","minimum":1000,"maximum":1800000,"description":"Timeout in milliseconds for script mode (default 60000)"},
+            "max_retries":{"type":"integer","minimum":0,"maximum":10,"description":"Maximum retries on failure with exponential backoff (default 3)"},
+            "retry_backoff_ms":{"type":"integer","minimum":1000,"maximum":1800000,"description":"Base retry backoff in milliseconds (default 30000)"},
             "model":{"type":"string","description":"Provider-qualified model route; defaults to the deployment default"},
             "thread_id":{"type":"string","description":"Chat thread this was created from, if known"}
-        },"required":["name","instructions","cadence"],"additionalProperties":false}}),
+        },"required":["name"],"additionalProperties":false}}),
         json!({"name":"schedule_update","description":"Change a schedule. Only the provided fields change.","inputSchema":{"type":"object","properties":{
-            "id":id,"name":{"type":"string"},"instructions":{"type":"string"},"mode":mode,
-            "cadence":cadence_schema(),"timezone":{"type":"string"},"enabled":{"type":"boolean"},"model":{"type":"string"}
+            "id":id,"name":{"type":"string"},"description":{"type":"string"},"instructions":{"type":"string"},"message":{"type":"string"},"script":{"type":"string"},"mode":mode,
+            "cadence":cadence_schema(),"expression":{"type":"string"},"fire_at":{"type":"string"},"timezone":{"type":"string"},"enabled":{"type":"boolean"},
+            "quiet":{"type":"boolean"},"reuse_conversation":{"type":"boolean"},"timeout_ms":{"type":"integer"},"max_retries":{"type":"integer"},"retry_backoff_ms":{"type":"integer"},
+            "model":{"type":"string"}
         },"required":["id"],"additionalProperties":false}}),
         json!({"name":"schedule_delete","description":"Delete a schedule (run history is kept).","inputSchema":{"type":"object","properties":{"id":id},"required":["id"],"additionalProperties":false}}),
         json!({"name":"schedule_run_now","description":"Run a schedule immediately and return the run result.","inputSchema":{"type":"object","properties":{"id":id},"required":["id"],"additionalProperties":false}}),
@@ -578,10 +590,13 @@ pub fn cadence_to_spec(cadence: &Value) -> Result<Value, String> {
 fn summary(schedule: &Value) -> Value {
     let pick = |k: &str| schedule.get(k).cloned().unwrap_or(Value::Null);
     json!({
-        "id": pick("id"), "name": pick("name"), "mode": pick("mode"),
-        "enabled": pick("enabled"), "cadenceDescription": pick("cadenceDescription"),
+        "id": pick("id"), "name": pick("name"), "description": pick("description"),
+        "mode": pick("mode"), "enabled": pick("enabled"),
+        "quiet": pick("quiet"), "reuseConversation": pick("reuseConversation"),
+        "cadenceDescription": pick("cadenceDescription"),
         "nextRunAt": pick("nextRunAt"), "lastRunAt": pick("lastRunAt"),
-        "lastStatus": pick("lastStatus"), "createdBy": pick("createdBy"),
+        "lastStatus": pick("lastStatus"), "status": pick("status"),
+        "createdBy": pick("createdBy"),
     })
 }
 
@@ -590,8 +605,12 @@ fn detail(schedule: &Value) -> Value {
     let pick = |k: &str| schedule.get(k).cloned().unwrap_or(Value::Null);
     if let Some(map) = out.as_object_mut() {
         map.insert("instructions".into(), pick("prompt"));
+        map.insert("script".into(), pick("script"));
         map.insert("timezone".into(), pick("timezone"));
         map.insert("model".into(), pick("model"));
+        map.insert("timeoutMs".into(), pick("timeoutMs"));
+        map.insert("maxRetries".into(), pick("maxRetries"));
+        map.insert("retryBackoffMs".into(), pick("retryBackoffMs"));
         map.insert("createdFromThreadId".into(), pick("createdFromThreadId"));
     }
     out
@@ -604,10 +623,15 @@ fn run_view(run: &Value) -> Value {
     let mut out = json!({
         "id": pick("id"), "status": pick("status"),
         "scheduledAt": pick("scheduledAt"), "startedAt": pick("startedAt"),
-        "finishedAt": pick("finishedAt"), "outputPreview": preview.clone(),
+        "finishedAt": pick("finishedAt"), "durationMs": pick("durationMs"),
+        "estimatedCostUsd": pick("estimatedCostUsd"),
+        "outputPreview": preview.clone(),
+        "output": pick("output"),
         "threadId": pick("threadId"),
     });
-    if !matches!(status, "ok" | "running" | "success") {
+    if let Some(err) = run.get("error").filter(|v| !v.is_null()) {
+        out["error"] = err.clone();
+    } else if !matches!(status, "ok" | "running" | "success") {
         out["error"] = preview;
     }
     out
@@ -677,15 +701,71 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<(String
                 Some(t) => t.to_string(),
                 None => default_timezone(state).await,
             };
-            let spec = cadence_to_spec(args.get("cadence").unwrap_or(&Value::Null))?;
+            let spec = if let Some(cadence) = args.get("cadence").filter(|c| !c.is_null()) {
+                cadence_to_spec(cadence)?
+            } else if let Some(fire_at) = arg_str(args, "fire_at")?.filter(|s| !s.trim().is_empty()) {
+                json!({"kind": "once", "at": fire_at.trim()})
+            } else if let Some(expr) = arg_str(args, "expression")?.filter(|s| !s.trim().is_empty()) {
+                json!({"kind": "cron", "expression": expr.trim()})
+            } else {
+                cadence_to_spec(&Value::Null)?
+            };
+            let instructions = arg_str(args, "instructions")?
+                .filter(|s| !s.trim().is_empty())
+                .or(arg_str(args, "message")?.filter(|s| !s.trim().is_empty()))
+                .or_else(|| {
+                    if mode == "script" {
+                        args.get("script").and_then(Value::as_str).filter(|s| !s.trim().is_empty())
+                    } else {
+                        None
+                    }
+                })
+                .ok_or_else(|| "instructions is required".to_string())?;
             let mut body = json!({
                 "name": require_str(args, "name")?,
-                "prompt": require_str(args, "instructions")?,
+                "prompt": instructions,
                 "mode": mode,
                 "timezone": timezone,
                 "schedule": spec,
                 "enabled": args.get("enabled").and_then(Value::as_bool).unwrap_or(true),
             });
+            if let Some(desc) = arg_str(args, "description")? {
+                body["description"] = json!(desc);
+            }
+            if let Some(sc) = arg_str(args, "script")?.filter(|s| !s.trim().is_empty()) {
+                body["script"] = json!(sc);
+            }
+            if let Some(quiet) = args.get("quiet").and_then(Value::as_bool) {
+                body["quiet"] = json!(quiet);
+            }
+            if let Some(reuse) = args
+                .get("reuse_conversation")
+                .or_else(|| args.get("reuseConversation"))
+                .and_then(Value::as_bool)
+            {
+                body["reuseConversation"] = json!(reuse);
+            }
+            if let Some(timeout_ms) = args
+                .get("timeout_ms")
+                .or_else(|| args.get("timeoutMs"))
+                .and_then(Value::as_u64)
+            {
+                body["timeoutMs"] = json!(timeout_ms);
+            }
+            if let Some(max_retries) = args
+                .get("max_retries")
+                .or_else(|| args.get("maxRetries"))
+                .and_then(Value::as_i64)
+            {
+                body["maxRetries"] = json!(max_retries);
+            }
+            if let Some(backoff_ms) = args
+                .get("retry_backoff_ms")
+                .or_else(|| args.get("retryBackoffMs"))
+                .and_then(Value::as_i64)
+            {
+                body["retryBackoffMs"] = json!(backoff_ms);
+            }
             if let Some(model) = arg_str(args, "model")?.filter(|m| !m.trim().is_empty()) {
                 body["model"] = json!(model);
             }
@@ -709,7 +789,10 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<(String
             let mut patch = serde_json::Map::new();
             for (arg, field) in [
                 ("name", "name"),
+                ("description", "description"),
                 ("instructions", "prompt"),
+                ("message", "prompt"),
+                ("script", "script"),
                 ("mode", "mode"),
                 ("timezone", "timezone"),
                 ("model", "model"),
@@ -721,11 +804,46 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<(String
             if let Some(enabled) = args.get("enabled").and_then(Value::as_bool) {
                 patch.insert("enabled".into(), json!(enabled));
             }
+            if let Some(quiet) = args.get("quiet").and_then(Value::as_bool) {
+                patch.insert("quiet".into(), json!(quiet));
+            }
+            if let Some(reuse) = args
+                .get("reuse_conversation")
+                .or_else(|| args.get("reuseConversation"))
+                .and_then(Value::as_bool)
+            {
+                patch.insert("reuseConversation".into(), json!(reuse));
+            }
+            if let Some(timeout_ms) = args
+                .get("timeout_ms")
+                .or_else(|| args.get("timeoutMs"))
+                .and_then(Value::as_u64)
+            {
+                patch.insert("timeoutMs".into(), json!(timeout_ms));
+            }
+            if let Some(max_retries) = args
+                .get("max_retries")
+                .or_else(|| args.get("maxRetries"))
+                .and_then(Value::as_i64)
+            {
+                patch.insert("maxRetries".into(), json!(max_retries));
+            }
+            if let Some(backoff_ms) = args
+                .get("retry_backoff_ms")
+                .or_else(|| args.get("retryBackoffMs"))
+                .and_then(Value::as_i64)
+            {
+                patch.insert("retryBackoffMs".into(), json!(backoff_ms));
+            }
             if let Some(cadence) = args.get("cadence").filter(|c| !c.is_null()) {
                 patch.insert("schedule".into(), cadence_to_spec(cadence)?);
+            } else if let Some(fire_at) = arg_str(args, "fire_at")?.filter(|s| !s.trim().is_empty()) {
+                patch.insert("schedule".into(), json!({"kind": "once", "at": fire_at.trim()}));
+            } else if let Some(expr) = arg_str(args, "expression")?.filter(|s| !s.trim().is_empty()) {
+                patch.insert("schedule".into(), json!({"kind": "cron", "expression": expr.trim()}));
             }
             if patch.is_empty() {
-                return Err("nothing to update: provide at least one of name, instructions, mode, cadence, timezone, enabled, model".into());
+                return Err("nothing to update: provide at least one of name, description, instructions, script, mode, cadence, timezone, enabled, quiet, reuse_conversation, model".into());
             }
             let updated = schedules::update_schedule(state, &uid, id, &Value::Object(patch))
                 .await

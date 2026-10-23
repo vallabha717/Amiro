@@ -194,3 +194,92 @@ export function validateCronExpression(expr: string): string | null {
   if (parts.length !== 5) return "Use 5 fields: minute hour day month weekday";
   return null;
 }
+
+export function formatDuration(ms: number | null | undefined): string {
+  if (ms == null) return "—";
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+const costFormatter = new Intl.NumberFormat(undefined, {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 4,
+});
+
+export function formatScheduleCost(cost: number | null | undefined): string {
+  if (cost == null || !Number.isFinite(cost)) return "—";
+  return costFormatter.format(cost);
+}
+
+export function formatScheduleRunCount(count: number): string {
+  return `${count.toLocaleString()} ${count === 1 ? "run" : "runs"}`;
+}
+
+export interface GroupedSchedules<T> {
+  recurring: T[];
+  upcomingOneTime: T[];
+  pastOneTime: T[];
+}
+
+export function isOneShotSchedule(s: {
+  isOneShot?: boolean;
+  schedule: { kind: string };
+}): boolean {
+  return s.isOneShot ?? s.schedule.kind === "once";
+}
+
+export function isPastOneTimeSchedule(
+  s: {
+    isOneShot?: boolean;
+    schedule: { kind: string };
+    status?: string;
+    enabled: boolean;
+    nextRunAt: string | null;
+    lastStatus?: string | null;
+  },
+  nowMs: number = Date.now(),
+): boolean {
+  if (!isOneShotSchedule(s)) return false;
+  if (s.status === "fired" || s.status === "cancelled") return true;
+  if (s.status === "firing") return false;
+  if (
+    s.lastStatus === "ok" ||
+    s.lastStatus === "failed" ||
+    s.lastStatus === "skipped"
+  ) {
+    return true;
+  }
+  if (!s.nextRunAt) return true;
+  const due = new Date(s.nextRunAt).getTime();
+  return !s.enabled && Number.isFinite(due) && due <= nowMs;
+}
+
+export function groupSchedules<
+  T extends {
+    isOneShot?: boolean;
+    schedule: { kind: string };
+    status?: string;
+    enabled: boolean;
+    nextRunAt: string | null;
+    lastRunAt: string | null;
+    lastStatus?: string | null;
+  },
+>(schedules: T[], nowMs: number = Date.now()): GroupedSchedules<T> {
+  const recurring: T[] = [];
+  const upcomingOneTime: T[] = [];
+  const pastOneTime: T[] = [];
+
+  for (const s of schedules) {
+    if (!isOneShotSchedule(s)) {
+      recurring.push(s);
+    } else if (isPastOneTimeSchedule(s, nowMs)) {
+      pastOneTime.push(s);
+    } else {
+      upcomingOneTime.push(s);
+    }
+  }
+
+  return { recurring, upcomingOneTime, pastOneTime };
+}

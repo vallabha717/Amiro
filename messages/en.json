@@ -1652,5 +1652,34 @@
       "saved": "Settings saved.",
       "saveFailed": "Could not save settings. Please try again."
     }
+  },
+  "Schedules": {
+    "title": "Schedules",
+    "subtitle": "Your agent works on its own, on a cadence. Results land in each schedule's conversation with the prompt and reply.",
+    "newSchedule": "New schedule",
+    "createSchedule": "Create schedule",
+    "editSchedule": "Edit schedule",
+    "description": "Description (optional)",
+    "descriptionPlaceholder": "Short summary of what this schedule does",
+    "instructions": "Instructions",
+    "scriptCommand": "Script command",
+    "modeAgent": "Agent",
+    "modeExecute": "Text only",
+    "modeNotify": "Reminder",
+    "modeScript": "Script",
+    "reuseConversation": "Continue in same conversation",
+    "reuseConversationHint": "Reuse the previous run's thread so context carries across recurring runs.",
+    "quietMode": "Quiet mode",
+    "quietModeHint": "Silence automatic completion notifications when a run succeeds cleanly.",
+    "scriptTimeout": "Script timeout (seconds)",
+    "useModelForAll": "Use {model} for all schedules",
+    "moveSchedulesTitle": "Move schedules to {model}?",
+    "moveSchedulesDescription": "This will update {count} schedule(s) to run on {model}.",
+    "moveSchedulesConfirm": "Move schedules",
+    "oneTimeHeading": "One-time",
+    "pastToggle": "Past ({count})",
+    "cancelOneTime": "Cancel reminder",
+    "costLabel": "30 Day Cost",
+    "runsLabel": "30 Day Runs"
   }
 }

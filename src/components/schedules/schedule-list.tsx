@@ -1,8 +1,15 @@
 "use client";
 
 import type { ScheduleDraft } from "@/components/schedules/schedule-dialog";
+import {
+  formatScheduleCost,
+  formatScheduleRunCount,
+} from "@/components/schedules/schedule-helpers";
 import { apiJson } from "@/lib/backend/client";
-import type { Schedule } from "@/lib/backend/schedules-api";
+import type {
+  Schedule,
+  ScheduleUsageSummary,
+} from "@/lib/backend/schedules-api";
 import { cn } from "lib/utils";
 import {
   Activity,
@@ -10,8 +17,10 @@ import {
   ChevronRight,
   Loader2,
   MoreHorizontal,
+  Pencil,
   Play,
   Plus,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -139,7 +148,12 @@ export function SuggestedSchedules({
 // Rows
 // ---------------------------------------------------------------------------
 
-const MODE_LABEL: Record<string, string> = { agent: "Agent", execute: "Text only", notify: "Reminder" };
+const MODE_LABEL: Record<string, string> = {
+  agent: "Agent",
+  execute: "Text only",
+  notify: "Reminder",
+  script: "Script",
+};
 
 export function relativeTime(iso: string | null | undefined): string {
   if (!iso) return "";
@@ -165,6 +179,7 @@ function fallbackCadence(s: Schedule): string {
 
 export function ScheduleListRow({
   schedule: s,
+  usageSummary,
   selected,
   busy,
   onSelect,
@@ -174,6 +189,7 @@ export function ScheduleListRow({
   onDelete,
 }: {
   schedule: Schedule;
+  usageSummary?: ScheduleUsageSummary | null;
   selected: boolean;
   busy: boolean;
   onSelect: () => void;
@@ -183,13 +199,25 @@ export function ScheduleListRow({
   onDelete: () => void;
 }) {
   const failed = s.lastStatus === "failed";
-  const when = s.enabled
-    ? s.nextRunAt
-      ? new Date(s.nextRunAt).getTime() <= Date.now()
-        ? "Due now"
-        : `Next ${relativeTime(s.nextRunAt)}`
-      : "No upcoming run"
-    : "Paused";
+  const isCompletedOnce =
+    s.schedule.kind === "once" &&
+    (s.status === "fired" ||
+      s.status === "cancelled" ||
+      s.lastStatus === "ok" ||
+      s.lastStatus === "failed" ||
+      s.lastStatus === "skipped");
+  const when =
+    s.status === "cancelled"
+      ? "Cancelled"
+      : isCompletedOnce
+        ? "Completed"
+        : s.enabled
+          ? s.nextRunAt
+            ? new Date(s.nextRunAt).getTime() <= Date.now()
+              ? "Due now"
+              : `Next ${relativeTime(s.nextRunAt)}`
+            : "No upcoming run"
+          : "Paused";
   return (
     <div
       role="button"
@@ -208,20 +236,44 @@ export function ScheduleListRow({
         selected ? "bg-accent" : "hover:bg-muted/60",
       )}
     >
-      <span onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+      <span
+        data-testid={`schedule-row-${s.id}`}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+      >
         <Switch
           checked={s.enabled}
-          disabled={busy}
+          disabled={busy || isCompletedOnce}
           onCheckedChange={onToggle}
-          aria-label={s.enabled ? `Pause ${s.name}` : `Resume ${s.name}`}
+          data-testid={`schedule-toggle-${s.id}`}
+          aria-label={
+            isCompletedOnce
+              ? `${s.name} is completed`
+              : s.enabled
+                ? `Pause ${s.name}`
+                : `Resume ${s.name}`
+          }
         />
       </span>
-      <div className="min-w-0 flex-1">
+      <div
+        className="min-w-0 flex-1"
+        data-testid={`schedule-row-select-${s.id}`}
+      >
         <div className="flex items-center gap-2">
           <span className={cn("truncate text-sm font-medium", !s.enabled && "text-muted-foreground")}>{s.name}</span>
           <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
             {MODE_LABEL[s.mode] ?? s.mode}
           </span>
+          {s.reuseConversation && (
+            <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+              Reuses chat
+            </span>
+          )}
+          {s.quiet && (
+            <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+              Quiet
+            </span>
+          )}
           {s.createdBy === "agent" && (
             <span
               className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
@@ -241,6 +293,13 @@ export function ScheduleListRow({
           ) : null}
         </p>
       </div>
+      {usageSummary && usageSummary.runCount > 0 ? (
+        <div className="hidden shrink-0 items-center gap-2 text-xs text-muted-foreground sm:flex">
+          <span>{formatScheduleCost(usageSummary.totalEstimatedCostUsd)}</span>
+          <span>·</span>
+          <span>{formatScheduleRunCount(usageSummary.runCount)}</span>
+        </div>
+      ) : null}
       {busy && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
       <span onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} className="flex items-center">
         <Button
@@ -249,10 +308,35 @@ export function ScheduleListRow({
           className="size-8 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
           onClick={onRunNow}
           disabled={busy}
+          data-testid={`schedule-run-now-${s.id}`}
           aria-label={`Run ${s.name} now`}
           title="Run now"
         >
           <Play className="size-3.5" />
+        </Button>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="size-8 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+          onClick={onEdit}
+          disabled={busy}
+          data-testid={`schedule-edit-${s.id}`}
+          aria-label={`Edit ${s.name}`}
+          title="Edit"
+        >
+          <Pencil className="size-3.5" />
+        </Button>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="size-8 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 text-muted-foreground hover:text-destructive"
+          onClick={onDelete}
+          disabled={busy}
+          data-testid={`schedule-delete-${s.id}`}
+          aria-label={`Delete ${s.name}`}
+          title="Delete"
+        >
+          <Trash2 className="size-3.5" />
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -261,14 +345,19 @@ export function ScheduleListRow({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onEdit}>Edit</DropdownMenuItem>
+            <DropdownMenuItem onClick={onEdit}>
+              Edit
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={onRunNow}>Run now</DropdownMenuItem>
             {s.threadId && (
               <DropdownMenuItem asChild>
                 <Link href={`/?thread=${encodeURIComponent(s.threadId)}`}>Open conversation</Link>
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem className="text-red-600 focus:text-red-600" onClick={onDelete}>
+            <DropdownMenuItem
+              className="text-red-600 focus:text-red-600"
+              onClick={onDelete}
+            >
               Delete
             </DropdownMenuItem>
           </DropdownMenuContent>

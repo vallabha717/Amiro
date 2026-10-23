@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "ui/select";
+import { Switch } from "ui/switch";
 import { Textarea } from "ui/textarea";
 import { handleErrorWithToast } from "ui/shared-toast";
 import { useChatModels } from "@/hooks/queries/use-chat-models";
@@ -98,11 +99,15 @@ function parseCronToTimeFields(expression: string): {
 /** A pre-filled new schedule, e.g. from a suggested recipe. */
 export interface ScheduleDraft {
   name: string;
+  description?: string;
   prompt: string;
+  script?: string;
   mode: ScheduleMode;
   cadence: "daily" | "weekdays" | "weekly";
   time: string;
   weekday?: number;
+  quiet?: boolean;
+  reuseConversation?: boolean;
 }
 
 export function ScheduleDialog({
@@ -138,11 +143,15 @@ export function ScheduleDialog({
 
   const browserTz = useMemo(() => detectBrowserTimezone(), []);
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [prompt, setPrompt] = useState("");
   const [mode, setMode] = useState<ScheduleMode>("agent");
   const [timezone, setTimezone] = useState(browserTz);
   const [model, setModel] = useState<string>("");
   const [cadence, setCadence] = useState<CadenceTab>("daily");
+  const [quiet, setQuiet] = useState(false);
+  const [reuseConversation, setReuseConversation] = useState(false);
+  const [timeoutSec, setTimeoutSec] = useState(60);
 
   const [onceAt, setOnceAt] = useState("");
   const [dailyTime, setDailyTime] = useState("09:00");
@@ -175,10 +184,22 @@ export function ScheduleDialog({
 
     if (schedule) {
       setName(schedule.name);
-      setPrompt(schedule.prompt);
+      setDescription(schedule.description ?? "");
+      setPrompt(
+        schedule.mode === "script"
+          ? schedule.script || schedule.prompt
+          : schedule.prompt,
+      );
       setMode(schedule.mode);
       setTimezone(schedule.timezone || browserTz);
       setModel(schedule.model ?? "");
+      setQuiet(Boolean(schedule.quiet));
+      setReuseConversation(Boolean(schedule.reuseConversation));
+      setTimeoutSec(
+        schedule.timeoutMs
+          ? Math.max(1, Math.round(schedule.timeoutMs / 1000))
+          : 60,
+      );
       const tab = inferCadenceTab(schedule.schedule);
       setCadence(tab);
       if (schedule.schedule.kind === "once") {
@@ -203,12 +224,16 @@ export function ScheduleDialog({
       }
     } else {
       setName(initial?.name ?? "");
+      setDescription(initial?.description ?? "");
       setPrompt(initial?.prompt ?? "");
       setMode(initial?.mode ?? "agent");
       setTimezone(browserTz);
       // model default is handled by the separate effect below so it can wait
       // for the catalog without re-hydrating the whole form.
       setModel("");
+      setQuiet(Boolean(initial?.quiet));
+      setReuseConversation(Boolean(initial?.reuseConversation));
+      setTimeoutSec(60);
       setCadence(initial?.cadence ?? "daily");
       setOnceAt("");
       setDailyTime(initial?.cadence === "daily" ? initial.time : "09:00");
@@ -351,11 +376,19 @@ export function ScheduleDialog({
     try {
       const payload: CreateScheduleInput = {
         name: name.trim(),
+        ...(description.trim() ? { description: description.trim() } : {}),
         prompt: prompt.trim(),
+        ...(mode === "script" ? { script: prompt.trim() } : {}),
         mode,
         timezone,
         schedule: builtSchedule,
-        model: mode === "notify" ? null : model.trim() || null,
+        model:
+          mode === "notify" || mode === "script" ? null : model.trim() || null,
+        quiet,
+        reuseConversation: cadence === "once" ? false : reuseConversation,
+        ...(mode === "script"
+          ? { timeoutMs: Math.max(1, Math.min(1800, timeoutSec)) * 1000 }
+          : {}),
       };
       const { createSchedule, updateSchedule } = await import(
         "@/lib/backend/schedules-api"
@@ -420,30 +453,38 @@ export function ScheduleDialog({
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="schedule-prompt">Instructions</Label>
+              <Label htmlFor="schedule-prompt">
+                {mode === "script" ? "Script command" : "Instructions"}
+              </Label>
               <Textarea
                 id="schedule-prompt"
                 data-testid="schedule-prompt-input"
-                placeholder="What should Amiro do when this fires? Be specific and include files, repos, or checks to run."
+                placeholder={
+                  mode === "script"
+                    ? "echo \"Checking status...\" && curl -fsSL https://example.com/health"
+                    : "What should Amiro do when this fires? Be specific and include files, repos, or checks to run."
+                }
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 rows={4}
-                className="min-h-[96px] resize-y"
+                className={`min-h-[96px] resize-y ${mode === "script" ? "font-mono text-xs" : ""}`}
               />
               <p className="text-xs text-muted-foreground">
-                Write it like a message to your agent. Results land in this
-                schedule&apos;s conversation.
+                {mode === "script"
+                  ? "Runs in your agent workspace with __SCHEDULE_ID and __SCHEDULE_RUN_ID."
+                  : "Write it like a message to your agent. Results land in this schedule's conversation with the prompt and reply."}
               </p>
             </div>
 
             <div className="grid gap-2">
               <Label>Mode</Label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {(
                   [
                     ["agent", "Agent", "Uses tools and connectors, like a chat"],
                     ["execute", "Text only", "Writes a reply, no tools"],
                     ["notify", "Reminder", "Posts your text as-is"],
+                    ["script", "Script", "Runs a shell command directly"],
                   ] as const
                 ).map(([id, title, sub]) => (
                   <button
@@ -461,7 +502,26 @@ export function ScheduleDialog({
               </div>
             </div>
 
-            {mode !== "notify" ? (
+            {mode === "script" ? (
+              <div className="grid gap-2">
+                <Label htmlFor="schedule-timeout">Script timeout (seconds)</Label>
+                <Input
+                  id="schedule-timeout"
+                  data-testid="schedule-timeout-input"
+                  type="number"
+                  min={1}
+                  max={1800}
+                  value={String(timeoutSec)}
+                  onChange={(e) =>
+                    setTimeoutSec(
+                      Math.max(1, Math.min(1800, Number(e.target.value) || 60)),
+                    )
+                  }
+                />
+              </div>
+            ) : null}
+
+            {mode !== "notify" && mode !== "script" ? (
               <div className="grid gap-2">
                 <Label htmlFor="schedule-model">Model</Label>
                 {allModels.length === 0 ? (
@@ -799,6 +859,67 @@ export function ScheduleDialog({
                   )}
                 </div>
               </div>
+            </div>
+
+            {mode !== "notify" ? (
+              <div className="grid gap-3 rounded-lg border bg-card p-3">
+                {cadence !== "once" && mode !== "script" ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <Label
+                        htmlFor="schedule-reuse-conversation"
+                        className="text-xs font-medium"
+                      >
+                        Continue in same conversation
+                      </Label>
+                      <p className="text-[11px] text-muted-foreground">
+                        Reuse the previous run&apos;s thread so context carries
+                        across recurring runs.
+                      </p>
+                    </div>
+                    <Switch
+                      id="schedule-reuse-conversation"
+                      data-testid="schedule-reuse-conversation-switch"
+                      checked={reuseConversation}
+                      onCheckedChange={setReuseConversation}
+                      aria-label="Continue in same conversation"
+                    />
+                  </div>
+                ) : null}
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <Label
+                      htmlFor="schedule-quiet"
+                      className="text-xs font-medium"
+                    >
+                      Quiet mode
+                    </Label>
+                    <p className="text-[11px] text-muted-foreground">
+                      Silence automatic completion notifications when a run
+                      succeeds cleanly.
+                    </p>
+                  </div>
+                  <Switch
+                    id="schedule-quiet"
+                    data-testid="schedule-quiet-switch"
+                    checked={quiet}
+                    onCheckedChange={setQuiet}
+                    aria-label="Quiet mode"
+                  />
+                </div>
+              </div>
+            ) : null}
+
+            <div className="grid gap-2">
+              <Label htmlFor="schedule-description">Description (optional)</Label>
+              <Input
+                id="schedule-description"
+                data-testid="schedule-description-input"
+                placeholder="Short summary of what this schedule does"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                maxLength={240}
+              />
             </div>
           </div>
 

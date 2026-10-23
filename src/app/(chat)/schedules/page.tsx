@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   CalendarClock,
+  ChevronRight,
   Plus,
   Search,
 } from "lucide-react";
@@ -20,12 +21,25 @@ import {
 } from "ui/select";
 import { useSession } from "@/lib/backend/session-context";
 import {
+  cancelSchedule,
   deleteSchedule,
+  fetchScheduleUsageSummaries,
   listSchedules,
+  reassignScheduleModel,
   runScheduleNow,
   updateSchedule,
 } from "@/lib/backend/schedules-api";
-import type { Schedule } from "@/lib/backend/schedules-api";
+import type {
+  Schedule,
+  ScheduleUsageSummary,
+} from "@/lib/backend/schedules-api";
+import {
+  groupSchedules,
+  isPastOneTimeSchedule,
+} from "@/components/schedules/schedule-helpers";
+import { useChatModels } from "@/hooks/queries/use-chat-models";
+import { appStore } from "@/app/store";
+import { useTranslations } from "next-intl";
 import { handleErrorWithToast } from "ui/shared-toast";
 import { toast } from "sonner";
 import {
@@ -47,7 +61,13 @@ type StatusFilter = "all" | "active" | "paused" | "failed";
 
 export default function SchedulesPage() {
   const { data: session } = useSession();
+  const t = useTranslations("Schedules");
+  const { data: modelProviders } = useChatModels();
+  const chatModel = appStore((s) => s.chatModel);
   const [schedules, setSchedules] = useState<Schedule[] | null>(null);
+  const [usageSummaries, setUsageSummaries] = useState<
+    Record<string, ScheduleUsageSummary>
+  >({});
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
@@ -58,12 +78,43 @@ export default function SchedulesPage() {
   const [deleting, setDeleting] = useState<Schedule | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [detailRefresh, setDetailRefresh] = useState(0);
+  const [pastOpen, setPastOpen] = useState(true);
+  const [rebaseOpen, setRebaseOpen] = useState(false);
+  const [rebasing, setRebasing] = useState(false);
+
+  const defaultModelRoute = useMemo(() => {
+    if (chatModel?.provider && chatModel?.model) {
+      return `${chatModel.provider}:${chatModel.model}`;
+    }
+    const first = (modelProviders ?? []).find(
+      (p) => p.models && p.models.length > 0,
+    );
+    return first ? `${first.provider}:${first.models[0].name}` : null;
+  }, [chatModel, modelProviders]);
+
+  const offDefaultCount = useMemo(() => {
+    if (!defaultModelRoute || !schedules) return 0;
+    return schedules.filter(
+      (s) =>
+        (s.mode === "agent" || s.mode === "execute") &&
+        !isPastOneTimeSchedule(s) &&
+        s.model !== defaultModelRoute,
+    ).length;
+  }, [defaultModelRoute, schedules]);
 
   const refresh = useCallback(async () => {
     try {
       setError(null);
-      const list = await listSchedules();
+      const [list, summaries] = await Promise.all([
+        listSchedules(),
+        fetchScheduleUsageSummaries().catch(() => []),
+      ]);
       setSchedules(list);
+      const map: Record<string, ScheduleUsageSummary> = {};
+      for (const s of summaries) {
+        map[s.scheduleId] = s;
+      }
+      setUsageSummaries(map);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not load schedules.";
       setError(msg);
@@ -127,6 +178,24 @@ export default function SchedulesPage() {
     [schedules, selectedId],
   );
 
+  const grouped = useMemo(() => groupSchedules(filtered), [filtered]);
+
+  const handleCancelOneTime = async (s: Schedule) => {
+    setBusyId(s.id);
+    try {
+      const updated = await cancelSchedule(s.id);
+      setSchedules((prev) =>
+        (prev ?? []).map((x) => (x.id === s.id ? updated : x)),
+      );
+      setDetailRefresh((n) => n + 1);
+      toast.success("One-time schedule cancelled");
+    } catch (e) {
+      handleErrorWithToast(e as Error);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const handleToggle = async (s: Schedule, enabled: boolean) => {
     setBusyId(s.id);
     try {
@@ -167,6 +236,25 @@ export default function SchedulesPage() {
       handleErrorWithToast(e as Error);
     } finally {
       setBusyId(null);
+    }
+  };
+
+  const handleRebaseModels = async () => {
+    if (!defaultModelRoute) return;
+    setRebasing(true);
+    try {
+      const res = await reassignScheduleModel({ to: defaultModelRoute });
+      await refresh();
+      setRebaseOpen(false);
+      toast.success(
+        res.reassigned === 0
+          ? `All schedules already use ${defaultModelRoute}`
+          : `Moved ${res.reassigned} schedule(s) to ${defaultModelRoute}`,
+      );
+    } catch (e) {
+      handleErrorWithToast(e as Error);
+    } finally {
+      setRebasing(false);
     }
   };
 
@@ -227,7 +315,18 @@ export default function SchedulesPage() {
             ) : null}
           </h2>
           {showSearch ? (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {canWrite && defaultModelRoute && offDefaultCount > 0 ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setRebaseOpen(true)}
+                  data-testid="schedules-rebase-model-button"
+                  className="h-8 rounded-full text-xs"
+                >
+                  {t("useModelForAll", { model: defaultModelRoute })}
+                </Button>
+              ) : null}
               <div className="relative">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -283,10 +382,11 @@ export default function SchedulesPage() {
         ) : (
           <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
             <div className="min-w-0 self-start rounded-2xl border border-border/60 bg-card p-1.5" data-testid="schedules-list">
-              {filtered.map((sc) => (
+              {grouped.recurring.map((sc) => (
                 <ScheduleListRow
                   key={sc.id}
                   schedule={sc}
+                  usageSummary={usageSummaries[sc.id]}
                   selected={selectedId === sc.id}
                   busy={busyId === sc.id}
                   onSelect={() => setSelectedId(sc.id)}
@@ -300,17 +400,82 @@ export default function SchedulesPage() {
                   onDelete={() => setDeleting(sc)}
                 />
               ))}
+              {grouped.upcomingOneTime.length > 0 ? (
+                <div className={grouped.recurring.length > 0 ? "mt-2 border-t border-border/60 pt-2" : ""}>
+                  {grouped.recurring.length > 0 ? (
+                    <div className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      One-time
+                    </div>
+                  ) : null}
+                  {grouped.upcomingOneTime.map((sc) => (
+                    <ScheduleListRow
+                      key={sc.id}
+                      schedule={sc}
+                      usageSummary={usageSummaries[sc.id]}
+                      selected={selectedId === sc.id}
+                      busy={busyId === sc.id}
+                      onSelect={() => setSelectedId(sc.id)}
+                      onToggle={(enabled) => void handleToggle(sc, enabled)}
+                      onRunNow={() => void handleRunNow(sc)}
+                      onEdit={() => {
+                        setEditing(sc);
+                        setDraft(null);
+                        setDialogOpen(true);
+                      }}
+                      onDelete={() => setDeleting(sc)}
+                    />
+                  ))}
+                </div>
+              ) : null}
+              {grouped.pastOneTime.length > 0 ? (
+                <div className="mt-2 border-t border-border/60 pt-1">
+                  <button
+                    type="button"
+                    data-testid="schedules-past-toggle"
+                    onClick={() => setPastOpen((v) => !v)}
+                    className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-xs font-medium text-muted-foreground hover:text-foreground"
+                  >
+                    <ChevronRight
+                      className={`size-3.5 transition-transform ${pastOpen ? "rotate-90" : ""}`}
+                    />
+                    <span>Past ({grouped.pastOneTime.length})</span>
+                  </button>
+                  {pastOpen
+                    ? grouped.pastOneTime.map((sc) => (
+                        <ScheduleListRow
+                          key={sc.id}
+                          schedule={sc}
+                          usageSummary={usageSummaries[sc.id]}
+                          selected={selectedId === sc.id}
+                          busy={busyId === sc.id}
+                          onSelect={() => setSelectedId(sc.id)}
+                          onToggle={(enabled) => void handleToggle(sc, enabled)}
+                          onRunNow={() => void handleRunNow(sc)}
+                          onEdit={() => {
+                            setEditing(sc);
+                            setDraft(null);
+                            setDialogOpen(true);
+                          }}
+                          onDelete={() => setDeleting(sc)}
+                        />
+                      ))
+                    : null}
+                </div>
+              ) : null}
             </div>
             <div className="min-w-0 lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-6rem)] lg:overflow-hidden">
               {selected ? (
                 <ScheduleDetailSheet
                   schedule={selected}
+                  usageSummary={usageSummaries[selected.id]}
                   onClose={() => setSelectedId(null)}
                   onEdit={() => {
                     setEditing(selected);
                     setDraft(null);
                     setDialogOpen(true);
                   }}
+                  onRunNow={() => void handleRunNow(selected)}
+                  onCancelOneTime={() => void handleCancelOneTime(selected)}
                   refreshKey={detailRefresh}
                 />
               ) : (
@@ -348,6 +513,38 @@ export default function SchedulesPage() {
         initial={draft}
         onSaved={() => void refresh()}
       />
+
+      <AlertDialog open={rebaseOpen} onOpenChange={setRebaseOpen}>
+        <AlertDialogContent data-testid="schedule-rebase-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("moveSchedulesTitle", { model: defaultModelRoute ?? "" })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("moveSchedulesDescription", {
+                count: offDefaultCount,
+                model: defaultModelRoute ?? "",
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              disabled={rebasing}
+              onClick={() => setRebaseOpen(false)}
+              data-testid="schedule-rebase-cancel"
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={rebasing}
+              onClick={() => void handleRebaseModels()}
+              data-testid="schedule-rebase-confirm"
+            >
+              {t("moveSchedulesConfirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
         <AlertDialogContent data-testid="schedule-delete-dialog">

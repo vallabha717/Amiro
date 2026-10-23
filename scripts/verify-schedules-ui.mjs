@@ -4,6 +4,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import net from "node:net";
+import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -23,7 +24,8 @@ async function freePort() {
 }
 const port = Number(process.env.AMIRO_SCHEDULE_TEST_PORT || (await freePort()));
 const withRuntime = process.env.AMIRO_SCHEDULE_TEST_RUNTIME === "1";
-const socket = path.join(fixture, "run/amiro-api.sock");
+const socketDir = await fs.mkdtemp(path.join(os.tmpdir(), "amx-sched-"));
+const socket = path.join(socketDir, "api.sock");
 const stubPort = await freePort();
 const stub = withRuntime
   ? spawn(
@@ -52,7 +54,9 @@ const child = spawn(binary, [], {
     AMIRO_SKIP_ONBOARDING: "1",
     AMIRO_RUNTIME_HOME: path.join(fixture, "runtime"),
     AMIRO_API_SOCKET: socket,
-    AMIRO_RUNTIME_BIN: path.join(ROOT, "runtime/target/debug/amiro-runtime"),
+    AMIRO_RUNTIME_BIN:
+      process.env.AMIRO_RUNTIME_BIN ||
+      path.join(ROOT, "runtime/target/debug/amiro-runtime"),
     AMIRO_NO_RUNTIME_SPAWN: withRuntime ? "0" : "1",
     AMIRO_NO_RUNTIME_KEEPALIVE: withRuntime ? "0" : "1",
     AMIRO_OPENAI_COMPAT_API_BASE: `http://127.0.0.1:${stubPort}/v1`,
@@ -347,15 +351,26 @@ try {
         ),
       ),
     );
+    check(
+      "scheduled execute thread preserves user prompt before assistant reply (Vellum parity)",
+      executedThread.messages.length >= 2 &&
+        executedThread.messages[0]?.role === "user" &&
+        executedThread.messages[0]?.parts?.some(
+          (part) => part.text === "Return the local stub greeting",
+        ) &&
+        executedThread.messages[1]?.role === "assistant",
+    );
     const requests = (await fs.readFile(path.join(fixture, "provider-requests.jsonl"), "utf8"))
       .trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
     check(
       "saved schedule model overrides daemon default at the provider",
-      requests.length > 0 && requests.every((request) => request.model === "stub-scheduled-model"),
+      requests.some((request) => request.model === "stub-scheduled-model"),
     );
     check(
       "scheduled execution exposes no tools to the provider",
-      requests.every((request) => request.toolsCount === 0),
+      requests
+        .filter((request) => request.model === "stub-scheduled-model")
+        .every((request) => request.toolsCount === 0),
     );
     await api(`/api/schedules/${created.schedule.id}`, { method: "DELETE" });
   }

@@ -357,14 +357,28 @@ pub fn history_to_messages(thread_id: &str, session_id: &str, history: &[Value])
 
 /// In-app reminders do not need a model or a runtime session. Keep their
 /// server-authored messages visible if the user later continues the thread.
+/// When a scheduled turn both linked its runtime `sessionId` and wrote
+/// `localMessages` as a fallback, filter out any `localMessages` that already
+/// belong to that active `session_id` once its runtime history is available, so
+/// the turn is never duplicated while earlier turns (e.g. from before a session
+/// rotation) stay intact.
 fn thread_messages(entry: &Value, thread_id: &str, session_id: &str, history: &[Value]) -> Vec<Value> {
-    let mut messages = entry
+    let mut local = entry
         .get("localMessages")
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
-    messages.extend(history_to_messages(thread_id, session_id, history));
-    messages
+    let runtime_msgs = history_to_messages(thread_id, session_id, history);
+    if !runtime_msgs.is_empty() && !session_id.is_empty() {
+        local.retain(|m| {
+            m.get("sessionId")
+                .and_then(Value::as_str)
+                .map(|sid| sid != session_id)
+                .unwrap_or(true)
+        });
+    }
+    local.extend(runtime_msgs);
+    local
 }
 
 /// The caller's chat list: the main agent's threads, or — in a team agent's
@@ -646,6 +660,32 @@ mod reminder_tests {
         assert_eq!(messages[0]["id"], "reminder-1");
         assert_eq!(messages[1]["role"], "user");
         assert_eq!(messages[2]["parts"][0]["text"], "You are welcome");
+    }
+
+    #[test]
+    fn scheduled_thread_deduplicates_only_same_session_fallback_messages() {
+        let entry = json!({
+            "source": "schedule",
+            "localMessages": [
+                {"id": "scheduser_old", "sessionId": "session-old", "role": "user", "parts": [{"type": "text", "text": "Old prompt"}]},
+                {"id": "schedmsg_old", "sessionId": "session-old", "role": "assistant", "parts": [{"type": "text", "text": "Old answer"}]},
+                {"id": "scheduser_cur", "sessionId": "session-cur", "role": "user", "parts": [{"type": "text", "text": "Cur prompt"}]},
+                {"id": "schedmsg_cur", "sessionId": "session-cur", "role": "assistant", "parts": [{"type": "text", "text": "Cur answer"}]},
+            ]
+        });
+        let messages = thread_messages(&entry, "thread-1", "session-cur", &[
+            json!({"role": "user", "content": "Cur prompt"}),
+            json!({"role": "assistant", "content": "Cur answer"}),
+            json!({"role": "user", "content": "Follow-up"}),
+            json!({"role": "assistant", "content": "Follow-up reply"}),
+        ]);
+        assert_eq!(messages.len(), 6);
+        assert_eq!(messages[0]["id"], "scheduser_old");
+        assert_eq!(messages[1]["id"], "schedmsg_old");
+        assert_eq!(messages[2]["parts"][0]["text"], "Cur prompt");
+        assert_eq!(messages[3]["parts"][0]["text"], "Cur answer");
+        assert_eq!(messages[4]["parts"][0]["text"], "Follow-up");
+        assert_eq!(messages[5]["parts"][0]["text"], "Follow-up reply");
     }
 
     #[test]

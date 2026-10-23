@@ -1,11 +1,17 @@
 # Schedules
 
-Schedules run a saved prompt on a timer. Each schedule belongs to one user,
-fires in its own timezone, and records every firing in run history you can
-inspect. There are three modes: `notify` posts the result as a visible thread
+Schedules run a saved prompt or script on a timer. Each schedule belongs to one
+user, fires in its own timezone, and records every firing in run history you can
+inspect. There are four modes: `notify` posts the result as a visible thread
 message with no model call, `execute` runs a model turn with tools forced off
-and the model pinned server side, and `agent` runs a full agent turn with
-tools on.
+and the model pinned server side, `agent` runs a full agent turn with tools on,
+and `script` runs a shell command directly in the agent workspace without an
+LLM call. In `execute` and `agent` modes, every run's conversation records the
+schedule prompt as the `user` message followed by the `assistant` response and
+links the live runtime session so tool steps, reasoning, and follow-up turns
+work identically to Vellum. Recurring schedules also support
+`reuseConversation: true` to continue the previous run's conversation and
+`quiet: true` to suppress automatic completion notifications on clean runs.
 
 ## User guide
 

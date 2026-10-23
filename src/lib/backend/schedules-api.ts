@@ -2,8 +2,8 @@
 
 import { apiJson } from "./client";
 
-/** agent: a full agent turn with tools in the Workspace. execute: text only, no tools. notify: posts the text as-is. */
-export type ScheduleMode = "agent" | "execute" | "notify";
+/** agent: a full agent turn with tools in the Workspace. execute: text only, no tools. notify: posts the text as-is. script: runs a shell command directly. */
+export type ScheduleMode = "agent" | "execute" | "notify" | "script";
 
 export type ScheduleKind =
   | { kind: "once"; at: string }
@@ -13,12 +13,22 @@ export type ScheduleKind =
 export interface Schedule {
   id: string;
   name: string;
+  description?: string;
   prompt: string;
+  script?: string | null;
   mode: ScheduleMode;
   timezone: string;
   schedule: ScheduleKind;
   model: string | null;
   enabled: boolean;
+  quiet?: boolean;
+  reuseConversation?: boolean;
+  timeoutMs?: number | null;
+  retryCount?: number;
+  maxRetries?: number;
+  retryBackoffMs?: number;
+  status?: "active" | "firing" | "fired" | "cancelled" | string;
+  isOneShot?: boolean;
   nextRunAt: string | null;
   lastRunAt: string | null;
   lastStatus: "ok" | "failed" | "skipped" | null;
@@ -39,12 +49,22 @@ export interface ScheduleRun {
   scheduledAt: string | null;
   startedAt: string | null;
   finishedAt: string | null;
+  durationMs?: number | null;
+  estimatedCostUsd?: number | null;
   /** Backend may emit ok/failed/skipped or running/done/interrupted depending on execution path. */
   status: "ok" | "failed" | "skipped" | "running" | "done" | "error" | "interrupted" | string;
   outputPreview?: string | null;
+  output?: string | null;
   error?: string | null;
   threadId?: string | null;
   jobId?: string | null;
+}
+
+export interface ScheduleUsageSummary {
+  scheduleId: string;
+  runCount: number;
+  totalEstimatedCostUsd: number;
+  eventCount: number;
 }
 
 export const SCHEDULES_KEY = "/api/schedules";
@@ -66,12 +86,19 @@ export async function getSchedule(id: string): Promise<Schedule> {
 
 export interface CreateScheduleInput {
   name: string;
+  description?: string;
   prompt: string;
+  script?: string | null;
   mode: ScheduleMode;
   timezone: string;
   schedule: ScheduleKind;
   model?: string | null;
   enabled?: boolean;
+  quiet?: boolean;
+  reuseConversation?: boolean;
+  timeoutMs?: number | null;
+  maxRetries?: number;
+  retryBackoffMs?: number;
 }
 
 export async function createSchedule(
@@ -131,4 +158,32 @@ export async function previewSchedule(params: {
     { method: "POST", body: JSON.stringify(params) },
   );
   return res.nextRuns ?? [];
+}
+
+export async function cancelSchedule(id: string): Promise<Schedule> {
+  const res = await apiJson<{ schedule: Schedule }>(
+    `${SCHEDULES_KEY}/${encodeURIComponent(id)}/cancel`,
+    { method: "POST", body: JSON.stringify({}) },
+  );
+  return res.schedule;
+}
+
+export async function reassignScheduleModel(params: {
+  to: string;
+  from?: string | null;
+}): Promise<{ reassigned: number; model: string }> {
+  return apiJson<{ reassigned: number; model: string }>(
+    `${SCHEDULES_KEY}/reassign-model`,
+    { method: "POST", body: JSON.stringify(params) },
+  );
+}
+
+export async function fetchScheduleUsageSummaries(): Promise<
+  ScheduleUsageSummary[]
+> {
+  const res = await apiJson<{ summaries: ScheduleUsageSummary[] }>(
+    `${SCHEDULES_KEY}/usage-summary`,
+    { method: "GET" },
+  );
+  return res.summaries ?? [];
 }

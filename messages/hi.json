@@ -1652,5 +1652,34 @@
       "saved": "सेटिंग्स सहेजी गईं।",
       "saveFailed": "सेटिंग्स सहेजी नहीं जा सकीं। कृपया पुनः प्रयास करें।"
     }
+  },
+  "Schedules": {
+    "title": "शेड्यूल",
+    "subtitle": "आपका एजेंट तय समय पर अपने-आप काम करता है। परिणाम हर शेड्यूल की बातचीत में प्रॉम्प्ट और उत्तर के साथ मिलते हैं।",
+    "newSchedule": "नया शेड्यूल",
+    "createSchedule": "शेड्यूल बनाएँ",
+    "editSchedule": "शेड्यूल संपादित करें",
+    "description": "विवरण (वैकल्पिक)",
+    "descriptionPlaceholder": "यह शेड्यूल क्या करता है, इसका संक्षिप्त विवरण",
+    "instructions": "निर्देश",
+    "scriptCommand": "स्क्रिप्ट कमांड",
+    "modeAgent": "एजेंट",
+    "modeExecute": "केवल टेक्स्ट",
+    "modeNotify": "रिमाइंडर",
+    "modeScript": "स्क्रिप्ट",
+    "reuseConversation": "उसी बातचीत में जारी रखें",
+    "reuseConversationHint": "पिछली रन की थ्रेड का पुनः उपयोग करें ताकि संदर्भ बना रहे।",
+    "quietMode": "शांत मोड",
+    "quietModeHint": "रन सफलतापूर्वक पूरा होने पर स्वचालित सूचनाएं बंद रखें।",
+    "scriptTimeout": "स्क्रिप्ट टाइमआउट (सेकंड)",
+    "useModelForAll": "सभी शेड्यूल के लिए {model} का उपयोग करें",
+    "moveSchedulesTitle": "क्या सभी शेड्यूल को {model} पर ले जाएँ?",
+    "moveSchedulesDescription": "यह {count} शेड्यूल को {model} पर चलाने के लिए अपडेट करेगा।",
+    "moveSchedulesConfirm": "शेड्यूल अपडेट करें",
+    "oneTimeHeading": "एक-बारगी",
+    "pastToggle": "पिछले ({count})",
+    "cancelOneTime": "रिमाइंडर रद्द करें",
+    "costLabel": "30 दिन की लागत",
+    "runsLabel": "30 दिन के रन"
   }
 }
