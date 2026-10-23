@@ -65,14 +65,14 @@ export const MAP_CLUSTER_INFO: Record<MapClusterKey, MapClusterInfo> = {
     singular: "Fact",
     plural: "Facts",
     description: "Durable truths about people, projects, and how things work.",
-    color: "#007AFF",
+    color: "#467CC8",
   },
   preference: {
     key: "preference",
     singular: "Preference",
     plural: "Preferences",
     description: "How the user likes things done and which defaults to pick.",
-    color: "#A665C9",
+    color: "#7A5AF5",
   },
   entity: {
     key: "entity",
@@ -86,14 +86,14 @@ export const MAP_CLUSTER_INFO: Record<MapClusterKey, MapClusterInfo> = {
     singular: "Correction",
     plural: "Corrections",
     description: "Fixes to past mistakes and what to do instead next time.",
-    color: "#E9642F",
+    color: "#E86B40",
   },
   other: {
     key: "other",
     singular: "Other",
     plural: "Other",
     description: "Anything useful that fits nowhere else.",
-    color: "#8A8F98",
+    color: "#8D99A5",
   },
 };
 

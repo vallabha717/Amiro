@@ -81,6 +81,7 @@ export function SetupChat({
   const [turns, setTurns] = useState<SetupTurn[]>(firstTurn);
   const [streamed, setStreamed] = useState<Set<string>>(() => new Set());
   const [traits, setTraits] = useState<CharacterTraits>(initialTraits);
+  const [teamDraft, setTeamDraft] = useState<TeamAgentDraft | null>(null);
   const [name, setName] = useState(mode === "team" ? "" : initialName);
   const [agentId, setAgentId] = useState<string | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
@@ -121,6 +122,8 @@ export function SetupChat({
       setAgentScope(agent.id);
       setAgentId(agent.id);
       setName(agent.name);
+      const theme = COLOR_TO_SIDEBAR_THEME[traits.color ?? "teal"];
+      if (theme) setThemeStyle(theme);
       answer(`${agent.name} · ${look}`);
       return;
     }
@@ -178,6 +181,7 @@ export function SetupChat({
             mode={mode}
             traits={traits}
             onTraits={setTraits}
+            onDraftChange={setTeamDraft}
             onSubmit={saveLook}
           />
         );
@@ -314,6 +318,13 @@ export function SetupChat({
   };
 
   const progress = progressOf(open.step);
+  const displayName = (team ? teamDraft?.name : name) || name || t("newAgent");
+  const displaySubtitle =
+    team && teamDraft?.role
+      ? teamDraft.role
+      : team
+        ? t("subtitleTeam")
+        : t("subtitle");
 
   return (
     <div
@@ -337,8 +348,8 @@ export function SetupChat({
             turns={turns}
             traits={traits}
             accent={accent}
-            name={name || t("newAgent")}
-            subtitle={team ? t("subtitleTeam") : t("subtitle")}
+            name={displayName}
+            subtitle={displaySubtitle}
           />
         </div>
         <div className="flex min-w-0 flex-1 flex-col">
@@ -350,10 +361,8 @@ export function SetupChat({
               animated
             />
             <div className="min-w-0 flex-1">
-              <p className="truncate font-semibold">{name || t("newAgent")}</p>
-              <p className="text-xs text-muted-foreground">
-                {team ? t("subtitleTeam") : t("subtitle")}
-              </p>
+              <p className="truncate font-semibold">{displayName}</p>
+              <p className="text-xs text-muted-foreground">{displaySubtitle}</p>
             </div>
             {progress.index > 0 && (
               <p

@@ -2,6 +2,7 @@
 
 import { VrndaLogo } from "@/components/layouts/vrnda-logo";
 import { SetupChat, type SetupResult } from "@/components/setup-chat/setup-chat";
+import { teamThreadPath } from "@/components/team/team-paths";
 import { VoiceMascot } from "@/components/voice-room/voice-mascot";
 import { useAuthStatus } from "@/hooks/queries/use-auth-status";
 import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
@@ -113,7 +114,7 @@ export function OnboardingWizard() {
     }
   };
 
-  const finish = async ({ skipped }: SetupResult) => {
+  const finish = async ({ skipped, agentId }: SetupResult) => {
     // Of the chat's steps, only the provider is an onboarding step the
     // sidebar checklist tracks.
     const later: OnboardingStepId[] = skipped.includes("provider")
@@ -121,7 +122,7 @@ export function OnboardingWizard() {
       : [];
     await completeOnboarding(later);
     // Land on the Team view with the onboarded agent's channel open.
-    router.replace("/team");
+    router.replace(agentId ? teamThreadPath(agentId) : "/team");
   };
 
   const agent = onboarding?.steps.agent;
@@ -148,9 +149,9 @@ export function OnboardingWizard() {
         data-step="chat"
       >
         {/* Floats over the chat's own background: one seamless surface. */}
-        <header className="pointer-events-none absolute left-0 top-0 z-10 hidden h-14 items-center gap-2 px-5 text-[15px] font-semibold sm:px-8 xl:flex">
-          <VrndaLogo className="size-5" />
-          <span className="font-brand">Amiro</span>
+        <header className="pointer-events-none absolute left-0 top-0 z-10 hidden h-14 items-center gap-2 px-5 sm:px-8 xl:flex">
+          <VrndaLogo className="size-7 shrink-0" />
+          <span className="font-brand font-bold text-3xl tracking-tight text-foreground">Amiro</span>
         </header>
         <main className="min-h-0 flex-1">
           <h1 className="sr-only">{`Set up ${agentName}`}</h1>
@@ -194,9 +195,9 @@ export function OnboardingWizard() {
       </div>
 
       <header className="relative z-10 flex h-16 items-center px-5 sm:px-8">
-        <div className="flex items-center gap-2 text-[15px] font-semibold">
-          <VrndaLogo className="size-5" />
-          <span className="font-brand">Amiro</span>
+        <div className="flex items-center gap-2">
+          <VrndaLogo className="size-7 shrink-0" />
+          <span className="font-brand font-bold text-3xl tracking-tight text-foreground">Amiro</span>
         </div>
       </header>
 

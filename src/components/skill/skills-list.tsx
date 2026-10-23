@@ -4,37 +4,40 @@ import { appStore } from "@/app/store";
 import { useAgentIdentity } from "@/hooks/queries/use-agent-identity";
 import { useMutateSkills, useSkills } from "@/hooks/queries/use-skills";
 import { duplicateSkill } from "@/lib/backend/skills-api";
+import { cn } from "@/lib/utils";
 import type { SkillSummary } from "@/types/skill";
 import type { ChatMention } from "app-types/chat";
-import { cn } from "lib/utils";
-import { ArrowLeft, Copy, Plus, Search, Sparkles } from "lucide-react";
+import {
+  ArrowLeft,
+  Box,
+  Copy,
+  Plus,
+  Search,
+  Sparkles,
+  Terminal,
+  User,
+  X,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "ui/badge";
 import { Button } from "ui/button";
 import { Card } from "ui/card";
 import { Input } from "ui/input";
 import { Skeleton } from "ui/skeleton";
+import {
+  CategorySidebar,
+  DEFAULT_SKILL_CATEGORIES,
+  formatCategoryLabel,
+  resolveCategoryIcon,
+} from "./category-sidebar";
 
 type SuperpowerFilter = "all" | "builtin" | "custom" | "project";
 
-const CATEGORIES = [
-  "all",
-  "integrations",
-  "voice",
-  "email",
-  "calendar",
-  "messaging",
-  "productivity",
-  "development",
-  "content",
-  "system",
-  "commerce",
-] as const;
-type CategoryFilter = (typeof CATEGORIES)[number];
+const TIP_STORAGE_KEY = "amiro:superpowers:tipDismissed";
 
 /** Where a skill comes from, as the user thinks of it. */
 function kindOf(skill: SkillSummary): "builtin" | "project" | "custom" {
@@ -43,7 +46,17 @@ function kindOf(skill: SkillSummary): "builtin" | "project" | "custom" {
   return "custom";
 }
 
-const KIND_LABEL = { builtin: "Built-in", project: "Project", custom: "My skill" } as const;
+const KIND_LABEL = {
+  builtin: "Built-in",
+  project: "Project",
+  custom: "My skill",
+} as const;
+
+const KIND_ICON = {
+  builtin: Box,
+  project: Terminal,
+  custom: User,
+} as const;
 
 /** "mcp-setup" -> "Mcp setup" when a skill has no display name. */
 function titleOf(skill: SkillSummary): string {
@@ -62,11 +75,43 @@ export function SkillsList() {
 
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<SuperpowerFilter>("all");
-  const [category, setCategory] = useState<CategoryFilter>("all");
+  const [category, setCategory] = useState<string>("all");
   const [duplicatingName, setDuplicatingName] = useState<string | null>(null);
+  const [tipDismissed, setTipDismissed] = useState(false);
+
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined") {
+        setTipDismissed(window.localStorage.getItem(TIP_STORAGE_KEY) === "true");
+      }
+    } catch {
+      // Ignore local storage errors
+    }
+  }, []);
+
+  const handleDismissTip = useCallback(() => {
+    setTipDismissed(true);
+    try {
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(TIP_STORAGE_KEY, "true");
+      }
+    } catch {
+      // Ignore local storage errors
+    }
+  }, []);
 
   const items = data?.items ?? [];
   const agentName = identity?.name || "Amiro";
+
+  // Calculate counts per category
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const skill of items) {
+      const cat = (skill.category || "other").toLowerCase();
+      counts[cat] = (counts[cat] ?? 0) + 1;
+    }
+    return counts;
+  }, [items]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -139,7 +184,28 @@ export function SkillsList() {
   const showFilteredEmpty = !isLoading && !error && items.length > 0 && filtered.length === 0;
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-6 sm:p-8">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 sm:p-6 md:p-8">
+      {/* Vellum Tip Banner */}
+      {!tipDismissed && (
+        <div
+          data-slot="tip-banner"
+          className="flex items-center gap-3 rounded-2xl border border-border/60 bg-card/70 px-4 py-3 text-xs text-muted-foreground backdrop-blur-xs transition-colors"
+        >
+          <Sparkles className="size-4 shrink-0 text-primary" aria-hidden="true" />
+          <p className="flex-1 leading-relaxed">
+            Skills shape your agent&apos;s instructions, not its permissions. Actions still depend on the tools enabled in Amiro.
+          </p>
+          <button
+            type="button"
+            onClick={handleDismissTip}
+            aria-label="Dismiss tip"
+            className="cursor-pointer rounded-full p-1 text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <X className="size-3.5" aria-hidden="true" />
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-3">
@@ -184,11 +250,7 @@ export function SkillsList() {
         </Link>
       </div>
 
-      <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">
-        Skills shape your agent&apos;s instructions, not its permissions. Actions still depend on the tools enabled in Amiro.
-      </p>
-
-      {/* Search & filters */}
+      {/* Search & Origin Filters Bar */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative w-full sm:max-w-[360px]">
           <Search
@@ -207,7 +269,7 @@ export function SkillsList() {
             <button
               type="button"
               onClick={() => setQuery("")}
-              className="absolute top-1/2 right-1 -translate-y-1/2 rounded-full px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="absolute top-1/2 right-1 -translate-y-1/2 cursor-pointer rounded-full px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
             >
               Clear
             </button>
@@ -232,7 +294,7 @@ export function SkillsList() {
               className={cn(
                 "cursor-pointer rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors",
                 filter === id
-                  ? "border-foreground bg-foreground text-background shadow-sm"
+                  ? "border-foreground bg-foreground text-background shadow-xs font-semibold"
                   : "border-border/70 bg-card text-muted-foreground hover:border-foreground/20 hover:text-foreground",
               )}
             >
@@ -242,101 +304,126 @@ export function SkillsList() {
         </div>
       </div>
 
-      {/* Category Pills */}
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-border/50 pb-3" role="group" aria-label="Filter by category">
-        {CATEGORIES.map((cat) => (
-          <button
-            key={cat}
-            type="button"
-            onClick={() => setCategory(cat)}
-            className={cn(
-              "cursor-pointer rounded-lg px-2.5 py-1 text-[11px] font-medium capitalize transition-colors",
-              category === cat
-                ? "bg-primary/10 text-primary font-semibold"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
-            )}
-          >
-            {cat === "all" ? "All Categories" : cat}
-          </button>
-        ))}
+      {/* Mobile Category Bar (visible only on mobile) */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:hidden" role="group" aria-label="Mobile categories">
+        {DEFAULT_SKILL_CATEGORIES.map((cat) => {
+          const Icon = resolveCategoryIcon(cat);
+          return (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setCategory(cat)}
+              className={cn(
+                "flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                category === cat
+                  ? "bg-secondary font-semibold text-foreground"
+                  : "bg-card text-muted-foreground hover:bg-muted/70 hover:text-foreground border border-border/60",
+              )}
+            >
+              <Icon className="size-3.5" aria-hidden="true" />
+              <span>{formatCategoryLabel(cat)}</span>
+            </button>
+          );
+        })}
       </div>
 
-      {/* Content */}
-      {isLoading ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Card key={i} className="rounded-2xl border-border/60 p-4">
-              <Skeleton className="h-4 w-2/3" />
-              <Skeleton className="mt-3 h-3 w-full" />
-              <Skeleton className="mt-2 h-3 w-5/6" />
-              <div className="mt-4 flex gap-2">
-                <Skeleton className="h-6 w-16 rounded-full" />
-                <Skeleton className="ml-auto h-7 w-20 rounded-full" />
+      {/* Two-Column Layout: Left Category Rail (Desktop) + Right Superpowers Content */}
+      <div className="flex min-h-0 flex-1 gap-6 items-start">
+        {/* Desktop Category Rail */}
+        <aside className="hidden md:block w-52 shrink-0">
+          <div className="sticky top-20 rounded-2xl border border-border/60 bg-card/50 p-2 backdrop-blur-xs">
+            <CategorySidebar
+              selected={category}
+              onSelect={setCategory}
+              counts={categoryCounts}
+              totalCount={items.length}
+              showCounts={true}
+              categories={DEFAULT_SKILL_CATEGORIES}
+            />
+          </div>
+        </aside>
+
+        {/* Superpowers List / Grid Column */}
+        <main className="min-w-0 flex-1">
+          {isLoading ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Card key={i} className="rounded-2xl border-border/60 p-4">
+                  <Skeleton className="h-4 w-2/3" />
+                  <Skeleton className="mt-3 h-3 w-full" />
+                  <Skeleton className="mt-2 h-3 w-5/6" />
+                  <div className="mt-4 flex gap-2">
+                    <Skeleton className="h-6 w-16 rounded-full" />
+                    <Skeleton className="ml-auto h-7 w-20 rounded-full" />
+                  </div>
+                </Card>
+              ))}
+            </div>
+          ) : error ? (
+            <Card className="rounded-2xl border-destructive/20 bg-destructive/5 p-8 text-center" role="alert">
+              <p className="text-sm font-medium text-destructive">Couldn&apos;t load superpowers.</p>
+              <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
+                {(error as Error)?.message || "Something went wrong while fetching skills. Please try again."}
+              </p>
+              <Button variant="outline" size="sm" className="mt-4 rounded-full" onClick={() => window.location.reload()}>
+                Retry
+              </Button>
+            </Card>
+          ) : showEmptyAll ? (
+            <Card className="rounded-2xl border-dashed bg-card/60 px-6 py-14 text-center sm:py-16">
+              <div className="mx-auto flex max-w-md flex-col items-center gap-3">
+                <div className="flex size-10 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+                  <Sparkles className="size-5" aria-hidden="true" />
+                </div>
+                <h2 className="text-base font-semibold">No superpowers yet</h2>
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  Your workspace has no skills installed. Create your first one to give {agentName} a reusable capability.
+                </p>
+                <Link href="/skill?name=new" className="mt-2">
+                  <Button size="sm" className="rounded-full px-5">
+                    <Plus className="size-4" aria-hidden="true" />
+                    Create skill
+                  </Button>
+                </Link>
+                <p className="text-[11px] text-muted-foreground/70">You can also add skills from your project&apos;s agent directory.</p>
               </div>
             </Card>
-          ))}
-        </div>
-      ) : error ? (
-        <Card className="rounded-2xl border-destructive/20 bg-destructive/5 p-8 text-center" role="alert">
-          <p className="text-sm font-medium text-destructive">Couldn&apos;t load superpowers.</p>
-          <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
-            {(error as Error)?.message || "Something went wrong while fetching skills. Please try again."}
-          </p>
-          <Button variant="outline" size="sm" className="mt-4 rounded-full" onClick={() => window.location.reload()}>
-            Retry
-          </Button>
-        </Card>
-      ) : showEmptyAll ? (
-        <Card className="rounded-2xl border-dashed bg-card/60 px-6 py-14 text-center sm:py-16">
-          <div className="mx-auto flex max-w-md flex-col items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
-              <Sparkles className="size-5" aria-hidden="true" />
-            </div>
-            <h2 className="text-base font-semibold">No superpowers yet</h2>
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              Your workspace has no skills installed. Create your first one to give {agentName} a reusable capability.
-            </p>
-            <Link href="/skill?name=new" className="mt-2">
-              <Button size="sm" className="rounded-full px-5">
-                <Plus className="size-4" aria-hidden="true" />
-                Create skill
+          ) : showFilteredEmpty ? (
+            <Card className="rounded-2xl border-border/60 bg-card/50 px-6 py-10 text-center">
+              <p className="text-sm font-medium">No matches</p>
+              <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
+                No superpowers match &quot;{query.trim()}&quot;
+                {filter !== "all" ? ` in ${filter === "builtin" ? "Built-in" : filter === "custom" ? "My skills" : "Project"}` : ""}
+                {category !== "all" ? ` under ${formatCategoryLabel(category)}` : ""}. Try a different search or filter.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-4 rounded-full"
+                onClick={() => {
+                  setQuery("");
+                  setFilter("all");
+                  setCategory("all");
+                }}
+              >
+                Clear search & filters
               </Button>
-            </Link>
-            <p className="text-[11px] text-muted-foreground/70">You can also add skills from your project&apos;s agent directory.</p>
-          </div>
-        </Card>
-      ) : showFilteredEmpty ? (
-        <Card className="rounded-2xl border-border/60 bg-card/50 px-6 py-10 text-center">
-          <p className="text-sm font-medium">No matches</p>
-          <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
-            No superpowers match &quot;{query.trim()}&quot;
-            {filter !== "all" ? ` in ${filter === "builtin" ? "Built-in" : filter === "custom" ? "My skills" : "Project"}` : ""}. Try a different search or filter.
-          </p>
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-4 rounded-full"
-            onClick={() => {
-              setQuery("");
-              setFilter("all");
-            }}
-          >
-            Clear search & filters
-          </Button>
-        </Card>
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="superpowers-grid">
-          {filtered.map((skill) => (
-            <SkillCard
-              key={skill.name}
-              skill={skill}
-              onUseInChat={handleUseInChat}
-              onDuplicate={handleDuplicate}
-              duplicating={duplicatingName === skill.name}
-            />
-          ))}
-        </div>
-      )}
+            </Card>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="superpowers-grid">
+              {filtered.map((skill) => (
+                <SkillCard
+                  key={skill.name}
+                  skill={skill}
+                  onUseInChat={handleUseInChat}
+                  onDuplicate={handleDuplicate}
+                  duplicating={duplicatingName === skill.name}
+                />
+              ))}
+            </div>
+          )}
+        </main>
+      </div>
     </div>
   );
 }
@@ -354,6 +441,7 @@ function SkillCard({
 }) {
   const t = useTranslations();
   const kind = kindOf(skill);
+  const KindIcon = KIND_ICON[kind];
   const canUse = skill.deliverable !== false && !skill.disableModelInvocation;
   const href = `/skill?name=${encodeURIComponent(skill.name)}`;
 
@@ -362,39 +450,31 @@ function SkillCard({
       data-testid="skill-card"
       data-item-name={skill.name}
       data-kind={kind}
-      className="group relative flex flex-col gap-3 rounded-2xl border-border/60 bg-card p-4 transition-all hover:border-border hover:shadow-sm"
+      className="group relative flex flex-col gap-3 rounded-2xl border-border/60 bg-card/70 p-4 transition-all duration-150 hover:border-foreground/20 hover:bg-card hover:shadow-xs"
     >
       <div className="flex items-start gap-3">
         <div
-          className={cn(
-            "flex size-10 shrink-0 items-center justify-center rounded-xl text-lg",
-            kind === "builtin" ? "bg-primary/10" : "bg-muted",
-          )}
+          className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-secondary/60 text-lg shadow-2xs"
           aria-hidden="true"
         >
           {skill.emoji ? <span>{skill.emoji}</span> : <Sparkles className="size-4 text-muted-foreground" />}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <Link
               href={href}
-              className="truncate text-sm font-semibold leading-tight hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+              className="truncate text-sm font-semibold leading-tight hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xs"
             >
               {titleOf(skill)}
             </Link>
-            <span
+            <Badge
+              variant="secondary"
               data-testid={`skill-card-kind-${kind}`}
-              className={cn(
-                "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium",
-                kind === "builtin"
-                  ? "bg-primary/10 text-primary"
-                  : kind === "project"
-                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-                    : "bg-muted text-muted-foreground",
-              )}
+              className="shrink-0 gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
             >
+              <KindIcon className="size-2.5 opacity-70" aria-hidden="true" />
               {KIND_LABEL[kind]}
-            </span>
+            </Badge>
           </div>
           <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
             /{skill.name}
@@ -407,7 +487,7 @@ function SkillCard({
         {skill.description || t("Skill.noDescription")}
       </p>
 
-      <div className="mt-auto flex items-center gap-1.5">
+      <div className="mt-auto flex items-center gap-1.5 pt-1">
         {!skill.writable && (
           <button
             type="button"

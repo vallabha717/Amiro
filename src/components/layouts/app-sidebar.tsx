@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import {
@@ -13,7 +13,7 @@ import {
   useSidebar,
 } from "ui/sidebar";
 
-import { AppSidebarMenus } from "./app-sidebar-menus";
+import { AppSidebarMenus, type SidebarActivityMode } from "./app-sidebar-menus";
 import { AppSidebarSkills } from "./app-sidebar-skills";
 import { AppSidebarThreads } from "./app-sidebar-threads";
 import { AppSidebarUser } from "./app-sidebar-user";
@@ -39,6 +39,9 @@ export function AppSidebar({ user }: { user?: BasicUser }) {
   const isCollapsed = state === "collapsed" && !isMobile;
   const agentScope = useAgentScope();
 
+  const [activityMode, setActivityMode] =
+    useState<SidebarActivityMode>("admin");
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isShortcutEvent(e, Shortcuts.openNewChat)) {
@@ -60,10 +63,10 @@ export function AppSidebar({ user }: { user?: BasicUser }) {
       variant="floating"
       className="md:py-4 md:pl-4 [&_[data-slot=sidebar-inner]]:rounded-2xl motion-reduce:transition-none"
     >
-      <SidebarHeader className="h-16 shrink-0 justify-center border-b border-sidebar-border/60 px-3 group-data-[collapsible=icon]:px-0">
+      <SidebarHeader className="shrink-0 pt-2 pb-1.5 border-b border-sidebar-border/60 px-2.5 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-1.5">
         <div
           className={cn(
-            "flex items-center gap-2",
+            "flex items-center gap-1.5",
             isCollapsed ? "justify-center" : "justify-between",
           )}
         >
@@ -77,8 +80,8 @@ export function AppSidebar({ user }: { user?: BasicUser }) {
               aria-label={t("home")}
             >
               <span className="flex items-center gap-1.5">
-                <VrndaLogo className="size-6" />
-                <span className="font-brand font-bold text-xl tracking-tight text-foreground">
+                <VrndaLogo className="size-6 shrink-0" />
+                <span className="font-brand font-bold text-[26px] tracking-tight text-foreground">
                   Amiro
                 </span>
               </span>
@@ -103,9 +106,16 @@ export function AppSidebar({ user }: { user?: BasicUser }) {
 
       <SidebarContent className="custom-scrollbar relative">
         <div className="flex flex-col">
-          <AppSidebarMenus user={user} />
-          <AppSidebarSkills />
-          <AppSidebarThreads />
+          <AppSidebarMenus
+            user={user}
+            mode={activityMode}
+            onModeChange={setActivityMode}
+          />
+          {activityMode === "admin" ? (
+            <AppSidebarSkills />
+          ) : (
+            <AppSidebarThreads />
+          )}
         </div>
       </SidebarContent>
 

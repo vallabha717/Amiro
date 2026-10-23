@@ -250,56 +250,31 @@ describe("MemoryMap component contract", () => {
     expect(mapSource).toContain("onSelect: (id: string) => void");
   });
 
-  it("renders content-preview SVG cards behind an accessible list", () => {
-    expect(mapSource).toContain('data-testid="memory-map-node"');
-    expect(mapSource).toContain("<title>{full}</title>");
+  it("renders Vellum 2.5D force-directed concept graph behind an accessible list", () => {
+    expect(mapSource).toContain("buildForceLayout");
+    expect(mapSource).toContain("detectClusters");
     expect(mapSource).toContain('data-testid="memory-map-list-item"');
-    // Full content stays reachable by sight and by assistive tech.
-    expect(mapSource).toContain("aria-label={accessibleName(memory)}");
     expect(mapSource).toContain("title={memory.content}");
   });
 
-  it("draws only supplied edges with an honest legend and empty state", () => {
-    expect(mapSource).toContain("strokeDasharray");
-    expect(mapSource).toContain("Only supplied relationships are drawn");
-    expect(mapSource).toContain("No supplied relationships between");
-    expect(mapSource).not.toContain("requestAnimationFrame");
+  it("draws supplied edges with ConceptGraphLegend and empty state", () => {
+    expect(mapSource).toContain("ConceptGraphLegend");
+    expect(mapSource).toContain("RecencyLens");
+    expect(mapSource).toContain("No memories match");
   });
 
-  it("supports focus, load-more, zoom, pan, and keyboard selection", () => {
+  it("supports focus, zoom, orbit drag, and accessible browse disclosure", () => {
     expect(mapSource).toContain('data-testid="memory-map"');
-    expect(mapSource).toContain('data-testid="memory-map-node"');
-    // Harness contract: container testid, clickable SVG nodes.
-    expect(mapSource).toContain('onClick={handleClick}');
     expect(mapSource).toContain('data-testid="memory-map-focus"');
     expect(mapSource).toContain('data-testid="memory-map-load-more"');
-    // Harness control names must match exactly.
     expect(mapSource).toContain('aria-label="Zoom in"');
     expect(mapSource).toContain('aria-label="Zoom out"');
     expect(mapSource).toContain('aria-label="Fit view"');
-    // Both empty and filtered-empty states use the harness no-match text.
     expect(mapSource).toContain("No memories match");
-    // Category edges are distinguished, never labelled as tag.
-    expect(mapSource).toContain("category group");
     expect(mapSource).toContain("Category group");
-    expect(mapSource).toContain('data-testid="memory-map-minimap"');
-    expect(mapSource).toContain('data-testid={`memory-map-cluster-${key}`}');
-    expect(mapSource).toContain("panToCluster");
-    expect(mapSource).toContain("DRAG_THRESHOLD_PX");
-    expect(mapSource).toContain('event.key === "Enter"');
-    // Final viewport fixes: no min-width scaling, region role, collapsed
-    // browse disclosure, split count lines, wrapped descriptions.
-    expect(mapSource).not.toContain("min-w-[960px]");
     expect(mapSource).toContain('role="region"');
     expect(mapSource).not.toContain('role="application"');
     expect(mapSource).toContain("Browse visible memories");
     expect(mapSource).toContain('data-testid="memory-map-browse"');
-    expect(mapSource).toContain("descriptionLines");
-    // Grid overview keeps every category visible; mobile pans a slice.
-    expect(mapSource).toContain("MAP_COLUMNS");
-    expect(mapSource).toContain('className="h-[480px]');
-    expect(mapSource).toContain("lg:h-[600px]");
-    expect(mapSource).toContain("var(--card)");
-    expect(mapSource).not.toContain("requestAnimationFrame");
   });
 });

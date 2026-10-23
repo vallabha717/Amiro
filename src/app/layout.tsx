@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Fraunces } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import "katex/dist/katex.min.css";
 import {
@@ -11,17 +11,34 @@ import { LocaleProvider } from "@/components/layouts/locale-provider";
 import { BackendSessionProvider } from "@/lib/backend/session-context";
 import { VEGA_PALETTE_INIT_SCRIPT } from "@/lib/vega-themes";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+const dmSans = localFont({
+  src: "../fonts/DMSans-Regular.ttf",
+  variable: "--font-dm-sans",
+  display: "swap",
 });
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+
+const dmMono = localFont({
+  src: [
+    {
+      path: "../fonts/DMMono-Regular.ttf",
+      weight: "400",
+      style: "normal",
+    },
+    {
+      path: "../fonts/DMMono-Medium.ttf",
+      weight: "500",
+      style: "normal",
+    },
+  ],
+  variable: "--font-dm-mono",
+  display: "swap",
 });
-const fraunces = Fraunces({
-  variable: "--font-fraunces",
-  subsets: ["latin"],
+
+const instrumentSerif = localFont({
+  src: "../fonts/InstrumentSerif-Regular.ttf",
+  variable: "--font-instrument-serif",
+  weight: "400",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -40,11 +57,11 @@ export default function RootLayout({
   return (
     // `data-theme="default"` selects VegaAI's Graphite palette (globals.css).
     // The font variables sit on <html> so the root font stack (Tailwind's
-    // preflight reads `--font-sans` there) resolves to Fraunces everywhere.
+    // preflight reads `--font-sans` there) resolves to DM Sans everywhere.
     <html
       lang="en"
       data-theme="default"
-      className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable}`}
+      className={`${dmSans.variable} ${dmMono.variable} ${instrumentSerif.variable}`}
       suppressHydrationWarning
     >
       <head>
@@ -54,7 +71,7 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} antialiased`}
+        className={`${dmSans.variable} ${dmMono.variable} ${instrumentSerif.variable} antialiased`}
       >
         <ThemeProvider
           attribute="class"

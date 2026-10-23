@@ -42,10 +42,10 @@ export function TeamSidebar({ user }: { user?: BasicUser }) {
       variant="floating"
       className="md:py-4 md:pl-4 [&_[data-slot=sidebar-inner]]:rounded-2xl motion-reduce:transition-none"
     >
-      <SidebarHeader className="h-16 shrink-0 justify-center border-b border-sidebar-border/60 px-3 group-data-[collapsible=icon]:px-0">
+      <SidebarHeader className="shrink-0 pt-2 pb-1.5 border-b border-sidebar-border/60 px-2.5 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-1.5">
         <div
           className={cn(
-            "flex items-center gap-2",
+            "flex items-center gap-1.5",
             isCollapsed ? "justify-center" : "justify-between",
           )}
         >
@@ -55,14 +55,14 @@ export function TeamSidebar({ user }: { user?: BasicUser }) {
               onClick={() => {
                 if (isMobile) setOpenMobile(false);
               }}
-              className="flex min-w-0 items-center gap-2"
+              className="flex min-w-0 items-center gap-1.5"
               aria-label="Teams"
             >
-              <VrndaLogo className="size-6" />
-              <span className="font-brand font-bold text-xl tracking-tight text-foreground">
+              <VrndaLogo className="size-6 shrink-0" />
+              <span className="font-brand font-bold text-[26px] tracking-tight text-foreground">
                 Amiro
               </span>
-              <span className="rounded-full border bg-background/70 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+              <span className="rounded-full border bg-background/70 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
                 Teams
               </span>
             </Link>
