@@ -107,41 +107,33 @@ test.describe.serial("debug-terminal-and-tv-screen", () => {
       );
     });
 
-    await step("Open chat header TV Screen (Monitor button) → shows live Amiro OS desktop with Chrome, Files & Terminal dock", async () => {
+    await step("Open chat header TV Screen (Monitor button) → connects live noVNC X11 Desktop (Xtigervnc + Openbox + Plank + Chromium)", async () => {
       await page.goto("/amiro");
       await expect(
         page.getByTestId("assistant-desktop-affordance"),
       ).toBeVisible();
 
-      // Click the TV Monitor icon in the header -> floating 16:9 TV screen appears with Amiro OS
+      // Click the TV Monitor icon in the header -> floating 16:9 TV screen appears
       await page.getByTestId("assistant-desktop-affordance").click();
       const preview = page.getByTestId("assistant-desktop-preview");
       await expect(preview).toBeVisible();
-      await expect(preview.getByTestId("amiro-os-wordmark")).toContainText("OS");
-      await expect(preview.getByTestId("amiro-os-dock")).toBeVisible();
-      await expect(preview.getByTestId("amiro-os-dock-chrome")).toBeVisible();
-      await expect(preview.getByTestId("amiro-os-dock-files")).toBeVisible();
-      await expect(preview.getByTestId("amiro-os-dock-terminal")).toBeVisible();
+      await expect(page.getByTestId("desktop-panel-viewport")).toBeVisible();
 
-      // Expand the floating TV screen into the fullscreen Amiro OS Desktop
+      // Wait for real noVNC RFB canvas to connect (desktop-panel-status disappears once connected)
+      await expect(page.getByTestId("desktop-panel-status")).toHaveCount(0, {
+        timeout: 30000,
+      });
+      await expect(
+        page.getByTestId("desktop-panel-viewport").locator("canvas"),
+      ).toBeVisible({ timeout: 15000 });
+
+      // Expand the floating TV screen into the fullscreen Desktop modal (keeps same live VNC canvas!)
       await page.getByTestId("desktop-preview-title-button").click();
       const modal = page.getByTestId("assistant-desktop-modal");
       await expect(modal).toBeVisible();
-      await expect(modal.getByTestId("amiro-os-wordmark")).toContainText("OS");
-
-      // Launch Google Chrome from the bottom OS Dock
-      await modal.getByTestId("amiro-os-dock-chrome").click();
-      await expect(modal.getByTestId("amiro-os-window-chrome")).toBeVisible();
-      await expect(modal.getByTestId("agent-browser-panel")).toBeVisible();
-
-      // Launch Files (File System) from the bottom OS Dock
-      await modal.getByTestId("amiro-os-dock-files").click();
-      await expect(modal.getByTestId("amiro-os-window-files")).toBeVisible();
-      await expect(modal.getByTestId("workspace-browser")).toBeVisible();
-
-      // Launch Terminal from the bottom OS Dock
-      await modal.getByTestId("amiro-os-dock-terminal").click();
-      await expect(modal.getByTestId("amiro-os-window-terminal")).toBeVisible();
+      await expect(
+        modal.getByTestId("desktop-panel-viewport").locator("canvas"),
+      ).toBeVisible();
 
       // Minimize back to the floating TV window, then close
       await page.getByTestId("desktop-modal-minimize").click();

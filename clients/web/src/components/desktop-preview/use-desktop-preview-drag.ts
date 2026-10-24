@@ -84,6 +84,9 @@ export function useDesktopPreviewDrag() {
       }
     };
     keepInBounds();
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
     const observer = new ResizeObserver(keepInBounds);
     if (boundsRef.current) {
       observer.observe(boundsRef.current);

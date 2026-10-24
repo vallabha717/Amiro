@@ -1,32 +1,215 @@
-//! Per-agent Browser & Screen preview service.
+//! Per-agent Browser & Real X11 Virtual Desktop (VNC over WebSocket) service.
 //!
-//! Gives every agent (`main` or team agent `<id>`) an isolated browser state
-//! and live screen capture for Admin -> Debug -> Browser (Vellum/OpenDots style):
-//! - For the main agent (`main` / `amiro`), persists browser state under
-//!   `~/.amiro/runtime/browser-state.json`.
-//! - For a team agent (`<32-hex>`), persists browser state under
-//!   `~/.amiro/agents-private/<id>/browser-state.json`. When the team agent's
-//!   `shell` or `browser` switch is enabled and `sandboxd` is reachable, page
-//!   fetches execute inside the agent's isolated container (`<ns>-agent-<id>`)
-//!   so network egress follows that container's boundary.
-//! - Generates a crisp visual browser viewport SVG (encoded as a PNG/SVG data URL
-//!   screenshot) plus extracted title, canonical URL, status code, text excerpt,
-//!   and interactive links so the UI can render both the visual screen preview
-//!   and interactive link/page controls.
+//! 1. **Real X11 Virtual Desktop (`/api/desktop/ticket`, `/api/desktop/stream` WebSocket)**:
+//!    Streams a live Vellum-parity Xtigervnc + Openbox + Plank + Chromium + Thunar + Terminal
+//!    desktop running inside the agent's Docker container (`amiro-agent-<id>`) over
+//!    raw RFB WebSocket binary frames to `@novnc/novnc`.
+//! 2. **Browser inspection fallback (`/api/debug/browser`, `/api/debug/browser/navigate`)**:
+//!    Provides HTTP browser inspection for tests and lightweight previews.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::sync::{LazyLock, Mutex};
+use std::time::{Duration, Instant};
 
-use axum::extract::State;
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use base64::Engine as _;
+use futures::{SinkExt, StreamExt};
+use rand::RngCore;
+use serde::Deserialize;
 use serde_json::{json, Value};
 
+use crate::agent::get_agent_identity;
 use crate::routes::agents::{self, AGENT_HEADER, MAIN_AGENT_ID};
 use crate::sandbox;
 use crate::state::{now_iso, read_json, write_json, ApiError, AppState, AuthUser};
+
+const TICKET_TTL: Duration = Duration::from_secs(60);
+
+#[derive(Default)]
+struct DesktopTicketStore {
+    map: HashMap<String, (String, Instant)>,
+}
+
+impl DesktopTicketStore {
+    fn issue(&mut self, user_id: &str) -> String {
+        let now = Instant::now();
+        self.map.retain(|_, (_, at)| now.duration_since(*at) < TICKET_TTL);
+        let mut bytes = [0u8; 24];
+        rand::thread_rng().fill_bytes(&mut bytes);
+        let ticket = hex::encode(bytes);
+        self.map.insert(ticket.clone(), (user_id.to_string(), now));
+        ticket
+    }
+
+    fn consume(&mut self, ticket: &str) -> Option<String> {
+        let now = Instant::now();
+        let (user, at) = self.map.remove(ticket)?;
+        (now.saturating_duration_since(at) < TICKET_TTL).then_some(user)
+    }
+}
+
+static DESKTOP_TICKETS: LazyLock<Mutex<DesktopTicketStore>> =
+    LazyLock::new(|| Mutex::new(DesktopTicketStore::default()));
+
+async fn issue_desktop_ticket(user: AuthUser) -> Result<Json<Value>, ApiError> {
+    agents::require_admin(&user)?;
+    let uid = user.0.get("id").and_then(Value::as_str).unwrap_or("admin");
+    let ticket = DESKTOP_TICKETS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .issue(uid);
+    Ok(Json(json!({
+        "ticket": ticket,
+        "expiresInMs": TICKET_TTL.as_millis() as u64,
+    })))
+}
+
+#[derive(Deserialize, Default)]
+struct StreamQuery {
+    ticket: Option<String>,
+    #[serde(rename = "agentId")]
+    agent_id: Option<String>,
+}
+
+async fn desktop_stream_ws(
+    State(state): State<AppState>,
+    Query(query): Query<StreamQuery>,
+    ws: WebSocketUpgrade,
+) -> Response {
+    let Some(ticket) = query.ticket.as_deref() else {
+        return (StatusCode::UNAUTHORIZED, "missing desktop ticket").into_response();
+    };
+    let valid = DESKTOP_TICKETS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .consume(ticket);
+    if valid.is_none() {
+        return (StatusCode::UNAUTHORIZED, "invalid or expired desktop ticket").into_response();
+    }
+
+    let raw_agent = query.agent_id.unwrap_or_else(|| MAIN_AGENT_ID.to_string());
+    let agent_id = if raw_agent.is_empty() || raw_agent == "amiro" {
+        MAIN_AGENT_ID.to_string()
+    } else {
+        raw_agent
+    };
+
+    ws.protocols(["binary"])
+        .on_upgrade(move |socket| handle_desktop_ws(state, agent_id, socket))
+}
+
+async fn resolve_agent_label_and_accent(state: &AppState, agent_id: &str) -> (String, String) {
+    if agent_id == MAIN_AGENT_ID {
+        let _ = tokio::fs::create_dir_all(state.home.join("agents").join(MAIN_AGENT_ID)).await;
+        let id_doc = get_agent_identity(state, None).await.unwrap_or_else(|_| json!({}));
+        let name = id_doc["name"].as_str().unwrap_or("Amiro").to_string();
+        let accent = id_doc["accentHex"].as_str().unwrap_or("#E9642F").to_string();
+        return (name, accent);
+    }
+    let _ = agents::working_dir_for(state, agent_id).await;
+    if let Ok(scoped) = agents::scoped_state(state, agent_id).await {
+        let id_doc = get_agent_identity(&scoped, None).await.unwrap_or_else(|_| json!({}));
+        let name = id_doc["name"].as_str().unwrap_or("Agent").to_string();
+        let accent = id_doc["accentHex"].as_str().unwrap_or("#38bdf8").to_string();
+        return (name, accent);
+    }
+    ("Agent".to_string(), "#38bdf8".to_string())
+}
+
+async fn handle_desktop_ws(state: AppState, agent_id: String, socket: WebSocket) {
+    let Some(client) = sandbox::client(&state).await else {
+        return;
+    };
+    let (label, accent) = resolve_agent_label_and_accent(&state, &agent_id).await;
+    let created = match client.create_desktop_session(&agent_id, &label, &accent).await {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+    let Some(session_id) = created["session_id"]
+        .as_str()
+        .or_else(|| created["id"].as_str())
+        .map(str::to_string)
+    else {
+        return;
+    };
+
+    let (mut ws_tx, mut ws_rx) = socket.split();
+    let client_in = client.clone();
+    let agent_in = agent_id.clone();
+    let sid_in = session_id.clone();
+
+    let mut in_task = tokio::spawn(async move {
+        while let Some(Ok(msg)) = ws_rx.next().await {
+            match msg {
+                Message::Binary(bytes) => {
+                    if !bytes.is_empty() {
+                        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                        if client_in
+                            .desktop_session_input(&agent_in, &sid_in, &b64)
+                            .await
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                }
+                Message::Close(_) => break,
+                _ => {}
+            }
+        }
+    });
+
+    let client_out = client.clone();
+    let agent_out = agent_id.clone();
+    let sid_out = session_id.clone();
+
+    let mut out_task = tokio::spawn(async move {
+        loop {
+            match client_out.desktop_session_read(&agent_out, &sid_out).await {
+                Ok(resp) => {
+                    if let Some(chunks) = resp["chunks"].as_array() {
+                        for chunk in chunks {
+                            if let Some(b64) = chunk.as_str() {
+                                if let Ok(bytes) =
+                                    base64::engine::general_purpose::STANDARD.decode(b64.as_bytes())
+                                {
+                                    if ws_tx.send(Message::Binary(bytes.into())).await.is_err() {
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if resp["closed"].as_bool() == Some(true) {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    tokio::select! {
+        _ = &mut in_task => {
+            out_task.abort();
+        }
+        _ = &mut out_task => {
+            in_task.abort();
+        }
+    }
+
+    let _ = client.desktop_session_destroy(&agent_id, &session_id).await;
+}
+
+// ---------------------------------------------------------------------------
+// Browser State & Navigation Endpoints (used by tests & HTTP preview)
+// ---------------------------------------------------------------------------
 
 fn resolve_agent_id(headers: &HeaderMap, body: Option<&Value>) -> String {
     if let Some(id) = body
@@ -66,7 +249,6 @@ fn xml_escape(input: &str) -> String {
 }
 
 fn strip_html_tags(html: &str) -> (String, String, Vec<Value>) {
-    // Extract <title>
     let mut title = String::new();
     let lower = html.to_lowercase();
     if let Some(start) = lower.find("<title") {
@@ -81,7 +263,6 @@ fn strip_html_tags(html: &str) -> (String, String, Vec<Value>) {
         }
     }
 
-    // Extract up to 12 <a href="..."> links
     let mut links = Vec::new();
     let mut search_pos = 0;
     while let Some(a_idx) = lower[search_pos..].find("<a ") {
@@ -105,7 +286,9 @@ fn strip_html_tags(html: &str) -> (String, String, Vec<Value>) {
             .join(" ");
 
         if let Some(href) = extract_attr(tag_attrs, "href") {
-            if (href.starts_with("http://") || href.starts_with("https://") || href.starts_with('/'))
+            if (href.starts_with("http://")
+                || href.starts_with("https://")
+                || href.starts_with('/'))
                 && !label.is_empty()
                 && links.len() < 12
             {
@@ -118,7 +301,6 @@ fn strip_html_tags(html: &str) -> (String, String, Vec<Value>) {
         search_pos = abs_a + gt + 1 + end_a + 4;
     }
 
-    // Remove <script>, <style>, <noscript>, <svg> blocks before extracting text
     let mut cleaned = html.to_string();
     for tag in ["script", "style", "noscript", "svg", "head"] {
         let open_pat = format!("<{tag}");
@@ -431,6 +613,8 @@ async fn navigate_browser(
 
 pub fn routes() -> Router<AppState> {
     Router::new()
+        .route("/api/desktop/ticket", post(issue_desktop_ticket))
+        .route("/api/desktop/stream", get(desktop_stream_ws))
         .route("/api/debug/browser", get(get_browser_state))
         .route("/api/debug/browser/navigate", post(navigate_browser))
 }

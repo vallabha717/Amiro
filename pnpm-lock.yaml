@@ -47,6 +47,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.25.1
         version: 1.30.0(zod@4.4.3)
+      '@novnc/novnc':
+        specifier: 1.7.0
+        version: 1.7.0
       '@openrouter/ai-sdk-provider':
         specifier: ^1.5.4
         version: 1.5.4(ai@5.0.228(zod@4.4.3))(zod@4.4.3)
@@ -1151,6 +1154,9 @@ packages:
   '@nolyfill/is-core-module@1.0.39':
     resolution: {integrity: sha512-nn5ozdjYQpUCZlWGuxcJY/KpxkWQs4DcbMCmKojjyrYDEAGy4Ce19NN4v5MduafTwJlbKc99UA8YhSVqq9yPZA==}
     engines: {node: '>=12.4.0'}
+
+  '@novnc/novnc@1.7.0':
+    resolution: {integrity: sha512-ucEJOx4T2avIRCleodk7YobZj5O2Ga2AeLfQ69A/yjG9HHba2+PDgwSkN3FttrmG+70ZGx21sElNFouK13RzyA==}
 
   '@openrouter/ai-sdk-provider@1.5.4':
     resolution: {integrity: sha512-xrSQPUIH8n9zuyYZR0XK7Ba0h2KsjJcMkxnwaYfmv13pKs3sDkjPzVPPhlhzqBGddHb5cFEwJ9VFuFeDcxCDSw==}
@@ -6585,6 +6591,8 @@ snapshots:
       fastq: 1.20.1
 
   '@nolyfill/is-core-module@1.0.39': {}
+
+  '@novnc/novnc@1.7.0': {}
 
   '@openrouter/ai-sdk-provider@1.5.4(ai@5.0.228(zod@4.4.3))(zod@4.4.3)':
     dependencies:

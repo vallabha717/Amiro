@@ -43,6 +43,8 @@ pub struct Supervisor {
     locks: Mutex<HashMap<String, Arc<Mutex<()>>>>,
     /// Active interactive terminal sessions keyed by `session_id`.
     terminals: Arc<Mutex<HashMap<String, Arc<ContainerTerminalSession>>>>,
+    /// Active VNC desktop bridge sessions keyed by `session_id`.
+    vnc_sessions: Arc<Mutex<HashMap<String, Arc<ContainerVncSession>>>>,
 }
 
 #[derive(Clone, Debug)]
@@ -58,6 +60,14 @@ pub struct ContainerTerminalSession {
     pub input_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
     pub output_tx: tokio::sync::broadcast::Sender<TerminalChunk>,
     pub history: Mutex<Vec<TerminalChunk>>,
+    pub closed: std::sync::atomic::AtomicBool,
+    pub abort_tx: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+}
+
+pub struct ContainerVncSession {
+    pub agent_id: String,
+    pub input_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
+    pub output_rx: Mutex<tokio::sync::mpsc::Receiver<Vec<u8>>>,
     pub closed: std::sync::atomic::AtomicBool,
     pub abort_tx: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
 }
@@ -80,6 +90,7 @@ impl Supervisor {
             master,
             locks: Mutex::new(HashMap::new()),
             terminals: Arc::new(Mutex::new(HashMap::new())),
+            vnc_sessions: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -674,5 +685,246 @@ pub fn router(sup: Arc<Supervisor>) -> Router {
             "/v1/agents/{id}/terminal/sessions/{session_id}/events",
             get(terminal_session_events),
         )
+        .route("/v1/agents/{id}/desktop/sessions", post(create_desktop_session))
+        .route(
+            "/v1/agents/{id}/desktop/sessions/{session_id}",
+            axum::routing::delete(destroy_desktop_session),
+        )
+        .route(
+            "/v1/agents/{id}/desktop/sessions/{session_id}/input",
+            post(desktop_session_input),
+        )
+        .route(
+            "/v1/agents/{id}/desktop/sessions/{session_id}/read",
+            get(desktop_session_read),
+        )
         .with_state(sup)
+}
+
+async fn create_desktop_session(
+    State(sup): State<Shared>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    authorize(&sup, &headers, Some(&id))?;
+    let label = body["label"]
+        .as_str()
+        .unwrap_or("Amiro")
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == ' ' || *c == '-' || *c == '_')
+        .take(28)
+        .collect::<String>();
+    let accent = body["accentHex"]
+        .as_str()
+        .filter(|s| s.len() == 7 && s.starts_with('#') && s[1..].bytes().all(|b| b.is_ascii_hexdigit()))
+        .unwrap_or("#E9642F")
+        .to_string();
+
+    // Ensure container and start the Xtigervnc + Openbox + Plank + Chromium desktop
+    let start_argv = vec![
+        "/usr/local/bin/amiro-desktop-start".to_string(),
+        if label.is_empty() { "Amiro".to_string() } else { label },
+        accent,
+    ];
+    let _ = sup.exec(&id, start_argv, 16 * 1024, Duration::from_secs(25)).await?;
+
+    let cid = sup.ensure(&id).await?;
+    let stream = start_raw_exec_unmuxed(&sup.docker, &cid, &id).await.map_err(docker_error)?;
+
+    let session_id = uuid::Uuid::new_v4().simple().to_string();
+    let (input_tx, mut input_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(256);
+    let (output_tx, output_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(256);
+    let (abort_tx, mut abort_rx) = tokio::sync::oneshot::channel::<()>();
+
+    let session = Arc::new(ContainerVncSession {
+        agent_id: id.clone(),
+        input_tx,
+        output_rx: Mutex::new(output_rx),
+        closed: std::sync::atomic::AtomicBool::new(false),
+        abort_tx: Mutex::new(Some(abort_tx)),
+    });
+
+    sup.vnc_sessions
+        .lock()
+        .await
+        .insert(session_id.clone(), session.clone());
+
+    let vnc_map = sup.vnc_sessions.clone();
+    let sid_cleanup = session_id.clone();
+    let session_clone = session.clone();
+
+    tokio::spawn(async move {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let (mut reader, mut writer) = tokio::io::split(stream);
+        let mut buf = [0u8; 32768];
+        let mut pending = bytes::BytesMut::new();
+
+        loop {
+            tokio::select! {
+                biased;
+                _ = &mut abort_rx => {
+                    break;
+                }
+                maybe_in = input_rx.recv() => {
+                    match maybe_in {
+                        Some(bytes) => {
+                            if writer.write_all(&bytes).await.is_err() {
+                                break;
+                            }
+                            let _ = writer.flush().await;
+                        }
+                        None => break,
+                    }
+                }
+                read_res = reader.read(&mut buf) => {
+                    match read_res {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => {
+                            pending.extend_from_slice(&buf[..n]);
+                            while pending.len() >= 8 {
+                                let len = u32::from_be_bytes([pending[4], pending[5], pending[6], pending[7]]) as usize;
+                                if pending.len() < 8 + len {
+                                    break;
+                                }
+                                let stream_kind = pending[0];
+                                use bytes::Buf;
+                                pending.advance(8);
+                                let payload = pending.split_to(len);
+                                if stream_kind == 1 && !payload.is_empty() {
+                                    if output_tx.send(payload.to_vec()).await.is_err() {
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        session_clone
+            .closed
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        vnc_map.lock().await.remove(&sid_cleanup);
+    });
+
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({
+            "session_id": session_id,
+            "id": session_id,
+            "agent_id": id,
+        })),
+    ))
+}
+
+async fn start_raw_exec_unmuxed(
+    docker: &Docker,
+    cid: &str,
+    _agent_id: &str,
+) -> Result<hyper_util::rt::TokioIo<hyper::upgrade::Upgraded>, DockerError> {
+    let argv = vec![
+        "socat".to_string(),
+        "-".to_string(),
+        "TCP:127.0.0.1:5999".to_string(),
+    ];
+    let exec_id = docker.create_stream_exec(cid, &argv).await?;
+    docker.start_non_tty_stream_exec(&exec_id).await
+}
+
+async fn get_vnc_session(
+    sup: &Supervisor,
+    agent_id: &str,
+    session_id: &str,
+) -> Result<Arc<ContainerVncSession>, ApiError> {
+    let session = sup
+        .vnc_sessions
+        .lock()
+        .await
+        .get(session_id)
+        .cloned()
+        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "desktop session not found".into()))?;
+    if session.agent_id != agent_id {
+        return Err(ApiError(
+            StatusCode::NOT_FOUND,
+            "desktop session not found".into(),
+        ));
+    }
+    Ok(session)
+}
+
+async fn desktop_session_input(
+    State(sup): State<Shared>,
+    Path((id, session_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    authorize(&sup, &headers, Some(&id))?;
+    let b64 = body["data"].as_str().unwrap_or("");
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(b64.as_bytes())
+        .map_err(|_| bad("invalid base64"))?;
+    let session = get_vnc_session(&sup, &id, &session_id).await?;
+    if !bytes.is_empty() {
+        session
+            .input_tx
+            .send(bytes)
+            .await
+            .map_err(|_| ApiError(StatusCode::GONE, "desktop session closed".into()))?;
+    }
+    Ok(Json(json!({"ok": true})))
+}
+
+async fn desktop_session_read(
+    State(sup): State<Shared>,
+    Path((id, session_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    authorize(&sup, &headers, Some(&id))?;
+    let Some(session) = sup.vnc_sessions.lock().await.get(&session_id).cloned() else {
+        return Ok(Json(json!({"chunks": [], "closed": true})));
+    };
+    if session.agent_id != id {
+        return Err(ApiError(
+            StatusCode::NOT_FOUND,
+            "desktop session not found".into(),
+        ));
+    }
+
+    let mut rx = session.output_rx.lock().await;
+    let mut chunks = Vec::new();
+    match tokio::time::timeout(Duration::from_secs(10), rx.recv()).await {
+        Ok(Some(first)) => {
+            chunks.push(base64::engine::general_purpose::STANDARD.encode(&first));
+            while chunks.len() < 32 {
+                match rx.try_recv() {
+                    Ok(more) => chunks.push(base64::engine::general_purpose::STANDARD.encode(&more)),
+                    Err(_) => break,
+                }
+            }
+        }
+        Ok(None) => return Ok(Json(json!({"chunks": [], "closed": true}))),
+        Err(_) => {}
+    }
+
+    Ok(Json(json!({
+        "chunks": chunks,
+        "closed": session.closed.load(std::sync::atomic::Ordering::SeqCst),
+    })))
+}
+
+async fn destroy_desktop_session(
+    State(sup): State<Shared>,
+    Path((id, session_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    authorize(&sup, &headers, Some(&id))?;
+    if let Some(session) = sup.vnc_sessions.lock().await.remove(&session_id) {
+        if session.agent_id == id {
+            if let Some(tx) = session.abort_tx.lock().await.take() {
+                let _ = tx.send(());
+            }
+        }
+    }
+    Ok(Json(json!({"ok": true})))
 }

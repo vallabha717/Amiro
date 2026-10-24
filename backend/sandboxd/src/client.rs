@@ -200,4 +200,58 @@ impl SandboxClient {
         )
         .await
     }
+
+    pub async fn create_desktop_session(
+        &self,
+        id: &str,
+        label: &str,
+        accent_hex: &str,
+    ) -> Result<Value, ClientError> {
+        self.post(
+            id,
+            "desktop/sessions",
+            json!({"label": label, "accentHex": accent_hex}),
+        )
+        .await
+    }
+
+    pub async fn desktop_session_input(
+        &self,
+        id: &str,
+        session_id: &str,
+        base64_bytes: &str,
+    ) -> Result<Value, ClientError> {
+        self.post(
+            id,
+            &format!("desktop/sessions/{session_id}/input"),
+            json!({"data": base64_bytes}),
+        )
+        .await
+    }
+
+    pub async fn desktop_session_read(
+        &self,
+        id: &str,
+        session_id: &str,
+    ) -> Result<Value, ClientError> {
+        self.get(id, &format!("desktop/sessions/{session_id}/read"))
+            .await
+    }
+
+    pub async fn desktop_session_destroy(
+        &self,
+        id: &str,
+        session_id: &str,
+    ) -> Result<Value, ClientError> {
+        Self::finish(
+            self.agent(
+                reqwest::Method::DELETE,
+                id,
+                &format!("desktop/sessions/{session_id}"),
+            )
+            .send()
+            .await,
+        )
+        .await
+    }
 }

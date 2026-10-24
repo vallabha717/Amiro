@@ -235,7 +235,8 @@ impl Docker {
         &self,
         exec_id: &str,
     ) -> Result<TokioIo<hyper::upgrade::Upgraded>, DockerError> {
-        let stream = tokio::net::UnixStream::connect(&self.socket)
+        let stream = self
+            .connect()
             .await
             .map_err(|e| err(format!("cannot reach Docker at {}: {e}", self.socket.display())))?;
         let (mut sender, conn) = hyper::client::conn::http1::handshake(TokioIo::new(stream))
@@ -291,6 +292,75 @@ impl Docker {
         } else {
             Err(Self::fail(status, &value, "exec resize failed"))
         }
+    }
+
+    /// Create a raw non-TTY bidirectional stream exec (`AttachStdin: true,
+    /// AttachStdout: true, AttachStderr: false, Tty: false`) and return its `exec_id`.
+    pub async fn create_stream_exec(
+        &self,
+        id: &str,
+        argv: &[String],
+    ) -> Result<String, DockerError> {
+        let create = json!({
+            "AttachStdout": true,
+            "AttachStderr": false,
+            "AttachStdin": true,
+            "Tty": false,
+            "WorkingDir": "/home/agent",
+            "Cmd": argv,
+        });
+        let (status, value) = self
+            .call(Method::POST, &format!("/containers/{id}/exec"), Some(&create))
+            .await?;
+        if !status.is_success() {
+            return Err(Self::fail(status, &value, "stream exec create failed"));
+        }
+        value["Id"]
+            .as_str()
+            .map(str::to_string)
+            .ok_or_else(|| err("exec returned no id"))
+    }
+
+    /// Upgrade `/exec/{exec_id}/start` with `Tty: false` into a raw bidirectional
+    /// stream (`TokioIo<hyper::upgrade::Upgraded>`).
+    pub async fn start_non_tty_stream_exec(
+        &self,
+        exec_id: &str,
+    ) -> Result<TokioIo<hyper::upgrade::Upgraded>, DockerError> {
+        let stream = self
+            .connect()
+            .await
+            .map_err(|e| err(format!("cannot reach Docker at {}: {e}", self.socket.display())))?;
+        let (mut sender, conn) = hyper::client::conn::http1::handshake(TokioIo::new(stream))
+            .await
+            .map_err(|e| err(format!("Docker handshake failed: {e}")))?;
+        tokio::spawn(async move {
+            let _ = conn.with_upgrades().await;
+        });
+        let payload = Bytes::from(json!({"Detach": false, "Tty": false}).to_string());
+        let request = Request::builder()
+            .method(Method::POST)
+            .uri(format!("/exec/{exec_id}/start"))
+            .header("host", "docker")
+            .header("content-type", "application/json")
+            .header("connection", "Upgrade")
+            .header("upgrade", "tcp")
+            .body(Full::new(payload))
+            .map_err(|e| err(format!("bad Docker request: {e}")))?;
+        let response = sender
+            .send_request(request)
+            .await
+            .map_err(|e| err(format!("Docker exec start failed: {e}")))?;
+        if response.status() != StatusCode::SWITCHING_PROTOCOLS && !response.status().is_success() {
+            return Err(DockerError {
+                status: Some(response.status().as_u16()),
+                message: format!("exec stream start failed ({})", response.status()),
+            });
+        }
+        let upgraded = hyper::upgrade::on(response)
+            .await
+            .map_err(|e| err(format!("Docker exec upgrade failed: {e}")))?;
+        Ok(TokioIo::new(upgraded))
     }
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
@@ -18,26 +18,15 @@ import {
 } from "ui/dialog";
 import { MAIN_AGENT_ID, useAgents } from "@/lib/backend/agents-api";
 import { useAgentScope } from "@/lib/backend/agent-scope";
-import { AmiroOsDesktop, type OsAppId } from "./amiro-os-desktop";
-import {
-  useDesktopPreviewStore,
-  type DesktopSurfaceTab,
-} from "./desktop-preview-store";
+import { DesktopViewer } from "./desktop-viewer";
+import { useDesktopPreviewStore } from "./desktop-preview-store";
 import { useDesktopPreviewDrag } from "./use-desktop-preview-drag";
-
-function mapSurfaceToOsApp(surface: DesktopSurfaceTab | null): OsAppId | null {
-  if (!surface) return null;
-  if (surface === "files") return "files";
-  if (surface === "terminal") return "terminal";
-  return "chrome";
-}
 
 export function AssistantDesktopPreview() {
   const t = useTranslations("AssistantDesktop");
   const scope = useAgentScope();
   const { data: agentsData } = useAgents();
   const session = useDesktopPreviewStore((s) => s.session);
-  const activeSurface = useDesktopPreviewStore((s) => s.activeSurface);
   const close = useDesktopPreviewStore((s) => s.close);
   const setFullscreen = useDesktopPreviewStore((s) => s.setFullscreen);
   const reduce = useReducedMotion();
@@ -64,15 +53,55 @@ export function AssistantDesktopPreview() {
     ...dragProps
   } = useDesktopPreviewDrag();
 
-  if (!mounted || !session) {
+  // Stable portal host so the live noVNC RFB session stays mounted when
+  // toggling between the floating 16:9 TV screen and the fullscreen modal.
+  const previewRef = useRef<HTMLDivElement | null>(null);
+  const [host] = useState<HTMLDivElement | null>(() => {
+    if (typeof document === "undefined") return null;
+    const el = document.createElement("div");
+    el.className = "h-full w-full";
+    return el;
+  });
+
+  const fullscreen = session?.view === "fullscreen";
+
+  const attachPreview = useCallback(
+    (node: HTMLDivElement | null) => {
+      previewRef.current = node;
+      if (!fullscreen && node && host) {
+        node.appendChild(host);
+      }
+    },
+    [fullscreen, host],
+  );
+
+  const attachFullscreen = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (!host) return;
+      (node ?? previewRef.current)?.appendChild(host);
+    },
+    [host],
+  );
+
+  if (!mounted || !session || !host) {
     return null;
   }
 
-  const fullscreen = session.view === "fullscreen";
   const titleText = `${agentName} OS`;
 
   return createPortal(
     <>
+      {createPortal(
+        <DesktopViewer
+          key={activeAgentId}
+          agentId={activeAgentId}
+          agent={resolvedAgent}
+          viewOnly={!fullscreen}
+          onExpandRequest={() => setFullscreen(true)}
+        />,
+        host,
+      )}
+
       <AnimatePresence initial={false}>
         <div
           key={activeAgentId}
@@ -146,35 +175,17 @@ export function AssistantDesktopPreview() {
                 </Button>
               </div>
 
-              {/* 16:9 Live Amiro OS Viewport inside the TV Screen */}
-              <div
-                data-testid="desktop-panel-viewport"
-                className="group relative aspect-video w-full overflow-hidden bg-[#10171c]"
-              >
-                <AmiroOsDesktop
-                  key={`preview-${activeAgentId}`}
-                  agentId={activeAgentId}
-                  agent={resolvedAgent}
-                  compact
-                  onExpandRequest={(appId) => {
-                    if (appId === "files") {
-                      useDesktopPreviewStore.getState().setActiveSurface("files");
-                    } else if (appId === "terminal") {
-                      useDesktopPreviewStore.getState().setActiveSurface("terminal");
-                    } else if (appId === "chrome") {
-                      useDesktopPreviewStore.getState().setActiveSurface("browser");
-                    }
-                    setFullscreen(true);
-                  }}
-                />
+              {/* 16:9 Live VNC TV Viewport */}
+              <div className="group relative aspect-video w-full overflow-hidden bg-[#10171c]">
+                <div ref={attachPreview} className="h-full w-full" />
 
-                {/* Click overlay on the wallpaper to expand into fullscreen interactive Amiro OS */}
+                {/* Click/tap overlay on the floating TV screen to expand into fullscreen interactive desktop */}
                 <button
                   type="button"
                   aria-label={t("expandAria")}
                   data-testid="desktop-preview-expand"
                   onClick={() => setFullscreen(true)}
-                  className="absolute inset-x-0 top-6 bottom-12 z-20 flex cursor-zoom-in items-center justify-center bg-black/15 opacity-0 transition-opacity group-hover:opacity-100"
+                  className="absolute inset-x-0 top-6 bottom-12 z-20 flex cursor-zoom-in items-center justify-center bg-black/15 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 [@media(hover:none)]:bg-transparent"
                 >
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-black/75 px-3 py-1.5 text-xs font-medium text-white shadow-lg">
                     <Maximize2 className="size-3.5" />
@@ -187,9 +198,9 @@ export function AssistantDesktopPreview() {
         </div>
       </AnimatePresence>
 
-      {/* Fullscreen Interactive Amiro OS Desktop Modal */}
+      {/* Fullscreen Interactive Desktop Modal */}
       <Dialog
-        open={fullscreen}
+        open={Boolean(fullscreen)}
         onOpenChange={(open) => {
           if (!open) setFullscreen(false);
         }}
@@ -197,11 +208,15 @@ export function AssistantDesktopPreview() {
         <DialogContent
           id="assistant-desktop-modal"
           data-testid="assistant-desktop-modal"
+          onInteractOutside={(event) => {
+            if (event.target instanceof Node && host.contains(event.target)) {
+              event.preventDefault();
+            }
+          }}
           className="flex h-[94dvh] max-h-[94dvh] w-[96vw] max-w-[96vw] sm:max-w-[96vw] flex-col gap-0 overflow-hidden rounded-2xl border border-white/15 bg-[#10171c] p-0 shadow-2xl [&>button]:hidden"
         >
           <DialogTitle className="sr-only">{titleText}</DialogTitle>
 
-          {/* Vellum-style floating modal header bar */}
           <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-[#141c22] px-4 py-2 text-white">
             <div className="flex items-center gap-2">
               <Monitor className="size-4 text-sky-400" />
@@ -233,15 +248,10 @@ export function AssistantDesktopPreview() {
             </div>
           </div>
 
-          {/* Full Interactive Amiro OS Desktop (Wallpaper + Topbar + Window Manager + Plank Dock) */}
-          <div className="relative min-h-0 flex-1 overflow-hidden">
-            <AmiroOsDesktop
-              key={`full-${activeAgentId}`}
-              agentId={activeAgentId}
-              agent={resolvedAgent}
-              initialOpenApp={mapSurfaceToOsApp(activeSurface)}
-            />
-          </div>
+          <div
+            ref={attachFullscreen}
+            className="relative min-h-0 flex-1 overflow-hidden"
+          />
         </DialogContent>
       </Dialog>
     </>,

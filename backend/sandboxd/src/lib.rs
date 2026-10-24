@@ -15,10 +15,11 @@ pub mod paths;
 pub mod server;
 pub mod spec;
 
-/// Agent ids are the registry's: 32 lowercase hex characters. Checked before
-/// an id is used in a container name, a label or a mount path.
+/// Agent ids are the registry's: 32 lowercase hex characters, or `"main"` for
+/// the primary agent's virtual desktop container. Checked before an id is used
+/// in a container name, a label or a mount path.
 pub fn valid_agent_id(id: &str) -> bool {
-    id.len() == 32 && id.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    id == "main" || (id.len() == 32 && id.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)))
 }
 
 /// Header carrying the per-agent credential on agent-scoped routes.
@@ -31,7 +32,7 @@ mod tests {
     #[test]
     fn agent_ids_are_32_lowercase_hex() {
         assert!(valid_agent_id("0123456789abcdef0123456789abcdef"));
-        assert!(!valid_agent_id("main"));
+        assert!(valid_agent_id("main"));
         assert!(!valid_agent_id("0123456789ABCDEF0123456789abcdef"));
         assert!(!valid_agent_id("../../etc/passwd0123456789abcdef0"));
         assert!(!valid_agent_id(""));

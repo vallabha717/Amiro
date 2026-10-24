@@ -17,11 +17,16 @@
 //! - `GET    /api/terminal/sessions/{session_id}/events` (SSE stream of `{seq, data}`)
 
 use std::collections::HashMap;
-use std::os::fd::RawFd;
-use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
+
+#[cfg(unix)]
+use std::os::fd::RawFd;
+#[cfg(unix)]
+use std::path::Path;
+#[cfg(not(unix))]
+type RawFd = i32;
 
 use axum::body::Body;
 use axum::extract::{Path as UrlPath, State};
@@ -225,6 +230,14 @@ fn terminate_host_pty(master_fd: RawFd, child_pid: i32, closed: &AtomicBool) {
     }
 }
 
+#[cfg(not(unix))]
+fn resize_fd(_fd: RawFd, _cols: u16, _rows: u16) {}
+
+#[cfg(not(unix))]
+fn terminate_host_pty(_master_fd: RawFd, _child_pid: i32, closed: &AtomicBool) {
+    closed.store(true, Ordering::SeqCst);
+}
+
 async fn create_session(
     State(state): State<AppState>,
     user: AuthUser,
@@ -301,6 +314,27 @@ async fn create_session(
     }
 
     // Main agent ("main" / "amiro"): host PTY rooted in `state.workspace`.
+    create_host_pty_session(&state, cols, rows).await
+}
+
+#[cfg(not(unix))]
+async fn create_host_pty_session(
+    _state: &AppState,
+    _cols: u16,
+    _rows: u16,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    Err(ApiError(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "Host PTY requires a Unix host; use the container terminal on Windows.".into(),
+    ))
+}
+
+#[cfg(unix)]
+async fn create_host_pty_session(
+    state: &AppState,
+    cols: u16,
+    rows: u16,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
     let (master_fd, child_pid) = spawn_host_pty(&state.workspace, MAIN_AGENT_ID, cols, rows)?;
     let write_fd = unsafe { libc::dup(master_fd) };
     if write_fd < 0 {

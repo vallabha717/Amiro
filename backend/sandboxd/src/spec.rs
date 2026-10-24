@@ -172,7 +172,10 @@ fn base_spec(cfg: &SandboxConfig, agent_id: &str) -> Value {
         "SecurityOpt": if cfg.no_new_privileges { json!(["no-new-privileges:true"]) } else { json!([]) },
         "Privileged": false,
         "ReadonlyRootfs": true,
-        "Tmpfs": {"/tmp": "rw,nosuid,nodev,size=64m"},
+        "Tmpfs": {
+            "/tmp": "rw,nosuid,nodev,exec,size=256m",
+            "/dev/shm": "rw,nosuid,nodev,size=256m"
+        },
         // Memory and MemorySwap together: an unset MemorySwap lets the
         // container swap up to twice Memory.
         "Memory": cfg.memory_bytes,
