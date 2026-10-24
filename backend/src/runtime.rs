@@ -1008,6 +1008,19 @@ pub fn expose_tools() -> bool {
     !matches!(std::env::var("AMIRO_TOOL_PROFILE").as_deref(), Ok("none"))
 }
 
+/// Derive a session's todo/plan title from `<runtime_home>/todos/<session_id>*.json`
+/// using jcode's exact `amiro_todo_policy::derive_session_title` rule (active
+/// todo group -> `plan.user_intention` -> active/latest todo content).
+pub fn todo_session_title(state: &AppState, session_id: &str) -> Option<String> {
+    if !amiro_sdk::todo::store::is_safe_session_id(session_id) {
+        return None;
+    }
+    let snapshot = amiro_sdk::todo::store::load_snapshot(&runtime_home(state), session_id);
+    amiro_sdk::todo::derive_session_title(&snapshot.todos, &snapshot.plan)
+        .map(|t| t.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|t| !t.is_empty())
+}
+
 /// Runtime history for a session, as the frontend message shape's source rows.
 pub async fn session_titles(
     state: &AppState,
@@ -1020,7 +1033,10 @@ pub async fn session_titles(
             .list_sessions()
             .map_err(runtime_error)?
             .into_iter()
-            .filter_map(|session| session.title.map(|title| (session.session_id, title)))
+            .filter_map(|session| {
+                let title = todo_session_title(&state, &session.session_id).or(session.title);
+                title.map(|t| (session.session_id, t))
+            })
             .collect())
     })
     .await
@@ -1038,15 +1054,24 @@ pub async fn list_sessions(state: &AppState) -> Result<Vec<Value>, ApiError> {
             .list_sessions()
             .map_err(runtime_error)?
             .into_iter()
-            .map(|session| serde_json::to_value(session).unwrap_or(Value::Null))
+            .map(|mut session| {
+                if let Some(todo_title) = todo_session_title(&state, &session.session_id) {
+                    session.title = Some(todo_title);
+                }
+                serde_json::to_value(session).unwrap_or(Value::Null)
+            })
             .collect())
     })
     .await
 }
 
-/// Read the runtime's effective title, which already honors explicit renames.
+/// Read the runtime's effective title, which already honors explicit renames
+/// and jcode's todo/plan title (`derive_session_title`).
 /// Attaching reads session metadata, it does not submit an inference turn.
 pub async fn session_title(state: &AppState, session_id: &str) -> Result<Option<String>, ApiError> {
+    if let Some(todo_title) = todo_session_title(state, session_id) {
+        return Ok(Some(todo_title));
+    }
     ensure_bridge(state).await?;
     let state = state.clone();
     let session_id = session_id.to_string();

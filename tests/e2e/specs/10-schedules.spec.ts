@@ -189,6 +189,9 @@ test.describe("schedules", () => {
         .filter({ hasText: "·" })
         .first();
       await expect(sidebarTitle).toBeVisible({ timeout: 15000 });
+      await expect(sidebarTitle).toHaveAttribute("data-slot", "marquee-text");
+      await sidebarTitle.hover();
+      await page.waitForTimeout(1500);
       await expect(headerTitle).toBeVisible({ timeout: 15000 });
       await expect(headerTitle).toContainText("·");
     });

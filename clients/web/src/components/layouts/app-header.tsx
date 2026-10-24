@@ -27,6 +27,7 @@ import { useVoiceStore } from "@/lib/voice/voice-store";
 import { cn } from "@/lib/utils";
 import { matchSubPath } from "@/components/team/team-paths";
 import { formatThreadAnimalTitle } from "@/lib/backend/swarm-api";
+import { MarqueeText } from "ui/marquee-text";
 
 export function AppHeader() {
   const t = useTranslations();
@@ -267,9 +268,9 @@ function ThreadDropdownComponent() {
                     {displayTitle}
                   </TextShimmer>
                 ) : (
-                  <p className="truncate max-w-60 min-w-0 mr-1">
+                  <MarqueeText className="max-w-60 min-w-0 mr-1">
                     {displayTitle}
-                  </p>
+                  </MarqueeText>
                 )}
 
                 <ChevronDown size={14} />

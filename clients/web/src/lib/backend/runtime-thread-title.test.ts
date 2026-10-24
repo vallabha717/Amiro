@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { appStore } from "@/app/store";
+import { MarqueeText } from "ui/marquee-text";
 import { applyRuntimeThreadTitle } from "./runtime-thread-title";
 import {
   extractSessionShortName,
@@ -82,5 +85,19 @@ describe("runtime thread title mapping", () => {
         userConnected: false,
       }),
     ).toBe("🐳 humpback · mars-researcher");
+  });
+
+  it("renders Vellum-style MarqueeText with static truncate and animated hover sibling", () => {
+    const html = renderToStaticMarkup(
+      createElement(MarqueeText, {
+        "data-testid": "sidebar-thread-title",
+        children: "🐙 octopus · Inbox Cleanup Schedule Studio Setup",
+      }),
+    );
+    expect(html).toContain('data-slot="marquee-text"');
+    expect(html).toContain('data-slot="marquee-text-animated"');
+    expect(html).toContain("motion-safe:group-hover/thread:invisible");
+    expect(html).toContain("motion-safe:group-hover/thread:visible");
+    expect(html).toContain("🐙 octopus · Inbox Cleanup Schedule Studio Setup");
   });
 });

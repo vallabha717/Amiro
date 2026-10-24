@@ -46,6 +46,7 @@ import {
 } from "@/lib/notifications/thread-activity";
 import { ThreadStatusMark } from "./thread-status-mark";
 import { formatThreadAnimalTitle } from "@/lib/backend/swarm-api";
+import { MarqueeText } from "ui/marquee-text";
 
 type ThreadGroup = {
   label: string;
@@ -287,9 +288,12 @@ export function AppSidebarThreads() {
                                         {formatThreadAnimalTitle(thread, "New Chat")}
                                       </TextShimmer>
                                     ) : (
-                                      <p data-testid="sidebar-thread-title" className="truncate min-w-0">
+                                      <MarqueeText
+                                        data-testid="sidebar-thread-title"
+                                        className="min-w-0 flex-1"
+                                      >
                                         {formatThreadAnimalTitle(thread, "New Chat")}
-                                      </p>
+                                      </MarqueeText>
                                     )}
                                     <ThreadStatusMark
                                       status={threadStatusOf(
