@@ -120,10 +120,165 @@ async fn remembered_members(
     out
 }
 
+/// Session/client names with their icons (mirrored from `amiro_core::id`).
+const SESSION_NAMES: &[(&str, &str)] = &[
+    ("ant", "🐜"),
+    ("bat", "🦇"),
+    ("bird", "🐦"),
+    ("bug", "🐛"),
+    ("cat", "🐱"),
+    ("chicken", "🐔"),
+    ("chick", "🐥"),
+    ("chipmunk", "🌰"),
+    ("cow", "🐄"),
+    ("crocodile", "🐊"),
+    ("cricket", "🦗"),
+    ("dog", "🐕"),
+    ("dove", "🤍"),
+    ("eagle", "🦅"),
+    ("fish", "🐟"),
+    ("fox", "🦊"),
+    ("giraffe", "🦒"),
+    ("hamster", "🐹"),
+    ("ladybug", "🐞"),
+    ("lobster", "🦞"),
+    ("mosquito", "🦟"),
+    ("owl", "🦉"),
+    ("ox", "🐂"),
+    ("pig", "🐷"),
+    ("rat", "🐀"),
+    ("ram", "🐏"),
+    ("rooster", "🐓"),
+    ("shrimp", "🦐"),
+    ("sauropod", "🦕"),
+    ("blowfish", "🐡"),
+    ("buffalo", "🐃"),
+    ("butterfly", "🦋"),
+    ("badger", "🦡"),
+    ("bear", "🐻"),
+    ("crab", "🦀"),
+    ("deer", "🦌"),
+    ("duck", "🦆"),
+    ("frog", "🐸"),
+    ("goat", "🐐"),
+    ("lion", "🦁"),
+    ("wolf", "🐺"),
+    ("horse", "🐴"),
+    ("koala", "🐨"),
+    ("llama", "🦙"),
+    ("mouse", "🐭"),
+    ("otter", "🦦"),
+    ("panda", "🐼"),
+    ("peacock", "🦚"),
+    ("penguin", "🐧"),
+    ("shark", "🦈"),
+    ("sheep", "🐑"),
+    ("sloth", "🦥"),
+    ("snail", "🐌"),
+    ("snake", "🐍"),
+    ("spider", "🧶"),
+    ("squid", "🦑"),
+    ("swan", "🦢"),
+    ("t-rex", "🦖"),
+    ("tiger", "🐯"),
+    ("turkey", "🦃"),
+    ("whale", "🐋"),
+    ("turtle", "🐢"),
+    ("rabbit", "🐰"),
+    ("parrot", "🦜"),
+    ("jaguar", "🐆"),
+    ("lizard", "🦎"),
+    ("monkey", "🐒"),
+    ("gorilla", "🦍"),
+    ("orangutan", "🦧"),
+    ("camel", "🐫"),
+    ("elephant", "🐘"),
+    ("rhino", "🦏"),
+    ("hippo", "🦛"),
+    ("boar", "🐗"),
+    ("unicorn", "🦄"),
+    ("kangaroo", "🦘"),
+    ("hedgehog", "🦔"),
+    ("skunk", "🦨"),
+    ("raccoon", "🦝"),
+    ("flamingo", "🦩"),
+    ("dolphin", "🐬"),
+    ("octopus", "🐙"),
+    ("scorpion", "🦂"),
+    ("zebra", "🦓"),
+    ("stallion", "🐎"),
+    ("dromedary", "🐪"),
+    ("hog", "🐖"),
+    ("kitten", "🐈"),
+    ("poodle", "🐩"),
+    ("hare", "🐇"),
+    ("vole", "🐁"),
+    ("dragon", "🐉"),
+    ("humpback", "🐳"),
+    ("guppy", "🐠"),
+    ("nautilus", "🐚"),
+    ("hatchling", "🐣"),
+    ("wyvern", "🐲"),
+    ("calf", "🐮"),
+    ("macaque", "🐵"),
+    ("tigress", "🐅"),
+    ("puppy", "🐶"),
+    ("duckling", "🐤"),
+    ("mizaru", "🙈"),
+    ("kikazaru", "🙉"),
+    ("iwazaru", "🙊"),
+    ("retriever", "🦮"),
+    ("pawprint", "🐾"),
+    ("piglet", "🐽"),
+    ("bonehound", "🦴"),
+    ("sabertooth", "🦷"),
+    ("microbe", "🦠"),
+    ("mushroom", "🍄"),
+    ("cactus", "🌵"),
+    ("clover", "🍀"),
+    ("sunflower", "🌻"),
+    ("hibiscus", "🌺"),
+    ("blossom", "🌸"),
+    ("daisy", "🌼"),
+    ("tulip", "🌷"),
+    ("rose", "🌹"),
+    ("maple", "🍁"),
+    ("seedling", "🌱"),
+    ("evergreen", "🌲"),
+    ("palmtree", "🌴"),
+    ("herb", "🌿"),
+];
+
+/// Extract the memorable animal/entity name from a runtime session ID
+/// (e.g. `session_octopus_1792835224856_be32b6294e9062e8` -> `Some("octopus")`).
+pub fn extract_session_name(session_id: &str) -> Option<&str> {
+    let rest = session_id.strip_prefix("session_")?;
+    let pos = rest.find('_')?;
+    let name = &rest[..pos];
+    (!name.is_empty()).then_some(name)
+}
+
+/// Look up the emoji icon for a session short name (e.g. `"octopus"` -> `"🐙"`).
+pub fn session_icon(name: &str) -> &'static str {
+    SESSION_NAMES
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, icon)| *icon)
+        .unwrap_or("💫")
+}
+
 fn member_json(s: &Value, thread_by_session: &std::collections::HashMap<String, String>) -> Value {
     let sid = s.get("session_id").and_then(Value::as_str).unwrap_or("");
+    let short_name = s
+        .get("short_name")
+        .and_then(Value::as_str)
+        .filter(|n| !n.is_empty())
+        .or_else(|| extract_session_name(sid));
+    let icon = short_name.map(session_icon);
     json!({
         "sessionId": sid,
+        "shortName": short_name,
+        "icon": icon,
         "parentSessionId": s.get("parent_session_id"),
         "label": s.get("agent_label"),
         "title": s.get("title"),
@@ -379,5 +534,16 @@ mod tests {
             .map(|s| s["session_id"].as_str().unwrap().to_string())
             .collect();
         assert_eq!(ids, vec!["a", "d", "b"]);
+    }
+
+    #[test]
+    fn member_json_includes_animal_short_name_and_emoji_icon() {
+        let s = json!({
+            "session_id": "session_octopus_1792835224856_be32b6294e9062e8",
+            "status": "idle",
+        });
+        let m = member_json(&s, &std::collections::HashMap::new());
+        assert_eq!(m["shortName"], json!("octopus"));
+        assert_eq!(m["icon"], json!("🐙"));
     }
 }

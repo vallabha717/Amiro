@@ -3824,6 +3824,31 @@
   }
 }
 
+/* Vellum PanelItem marquee — scrolls overflowing single-line labels
+ * horizontally when the parent row (`.group` / `.group/thread`) or title is hovered.
+ */
+@utility animate-panelitem-marquee {
+  animation: panelitem-marquee var(--panelitem-marquee-duration, 4s) linear infinite;
+}
+
+@keyframes panelitem-marquee {
+  0% {
+    transform: translateX(0);
+  }
+  10% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(calc(-1 * var(--panelitem-marquee-distance, 0px)));
+  }
+  60% {
+    transform: translateX(calc(-1 * var(--panelitem-marquee-distance, 0px)));
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
 /* Reduced-motion accessibility overrides */
 @media (prefers-reduced-motion: reduce) {
   *,

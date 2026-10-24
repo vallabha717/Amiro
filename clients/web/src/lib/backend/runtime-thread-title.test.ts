@@ -1,6 +1,15 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { appStore } from "@/app/store";
+import { MarqueeText } from "ui/marquee-text";
 import { applyRuntimeThreadTitle } from "./runtime-thread-title";
+import {
+  extractSessionShortName,
+  formatThreadAnimalTitle,
+  memberName,
+  sessionAnimalIcon,
+} from "./swarm-api";
 
 describe("runtime thread title mapping", () => {
   beforeEach(() => {
@@ -39,8 +48,56 @@ describe("runtime thread title mapping", () => {
     expect(appStore.getState().threadList[0].title).toBe("New Chat");
   });
   it("does not resurrect a deleted sidebar row", () => {
-    appStore.setState({ threadList: [] });
+    appStore.setState({ threadList: [], currentThreadId: null });
     applyRuntimeThreadTitle({ threadId: "one", title: "Late title" }, "one");
     expect(appStore.getState().threadList).toEqual([]);
+  });
+
+  it("extracts animal short names and emojis for chat titles and coordinator/swarm agents", () => {
+    expect(
+      extractSessionShortName("session_octopus_1792835224856_be32b6294e9062e8"),
+    ).toBe("octopus");
+    expect(sessionAnimalIcon("octopus")).toBe("🐙");
+    expect(sessionAnimalIcon("humpback")).toBe("🐳");
+    expect(sessionAnimalIcon("peacock")).toBe("🦚");
+
+    expect(
+      formatThreadAnimalTitle({
+        title: "Inbox Cleanup Setup",
+        sessionId: "session_octopus_1792835224856_be32b6294e9062e8",
+      }),
+    ).toBe("🐙 octopus · Inbox Cleanup Setup");
+
+    expect(
+      memberName(
+        {
+          sessionId: "session_octopus_1792835224856_be32b6294e9062e8",
+          userConnected: true,
+        },
+        true,
+      ),
+    ).toBe("🐙 octopus");
+
+    expect(
+      memberName({
+        sessionId: "session_humpback_1792835392474_9e7032ff1b40edf0",
+        label: "mars-researcher",
+        userConnected: false,
+      }),
+    ).toBe("🐳 humpback · mars-researcher");
+  });
+
+  it("renders Vellum-style MarqueeText with static truncate and animated hover sibling", () => {
+    const html = renderToStaticMarkup(
+      createElement(MarqueeText, {
+        "data-testid": "sidebar-thread-title",
+        children: "🐙 octopus · Inbox Cleanup Schedule Studio Setup",
+      }),
+    );
+    expect(html).toContain('data-slot="marquee-text"');
+    expect(html).toContain('data-slot="marquee-text-animated"');
+    expect(html).toContain("motion-safe:group-hover/thread:invisible");
+    expect(html).toContain("motion-safe:group-hover/thread:visible");
+    expect(html).toContain("🐙 octopus · Inbox Cleanup Schedule Studio Setup");
   });
 });

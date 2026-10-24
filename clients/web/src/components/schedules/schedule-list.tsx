@@ -13,19 +13,25 @@ import type {
 import { cn } from "lib/utils";
 import {
   Activity,
+  ArrowRight,
   Brain,
+  CheckCircle2,
   ChevronRight,
   Loader2,
   MoreHorizontal,
   Pencil,
   Play,
   Plus,
+  ShieldCheck,
+  Sparkles,
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import useSWR from "swr";
+import { Badge } from "ui/badge";
 import { Button } from "ui/button";
 import {
   DropdownMenu,
@@ -36,7 +42,7 @@ import {
 import { Switch } from "ui/switch";
 
 // ---------------------------------------------------------------------------
-// Suggested recipes (Vellum offers these instead of seeding schedules)
+// Interactive Schedule Playbooks (Agent-Guided Chat Setup + 1-Click Drafts)
 // ---------------------------------------------------------------------------
 
 export interface ScheduleRecipe {
@@ -46,10 +52,56 @@ export interface ScheduleRecipe {
   cadence: string;
   blurb: string;
   needs?: string;
+  badge?: string;
+  featured?: boolean;
+  /** Rules that are kept/protected by default (rendered as visual chips) */
+  keepDefaults?: string[];
+  /** Clutter categories swept/removed by default (rendered as visual chips) */
+  cleanDefaults?: string[];
+  /** CTA label for interactive setup in chat */
+  setupCta?: string;
+  /** Initial prompt sent to Amiro in Chat when the user clicks interactive setup */
+  interactivePrompt: string;
   draft: ScheduleDraft;
 }
 
 export const SCHEDULE_RECIPES: ScheduleRecipe[] = [
+  {
+    id: "inbox-cleanup",
+    emoji: "🧹",
+    title: "Inbox cleanup",
+    cadence: "Every day at 7:30 AM",
+    blurb:
+      "Automatically sweep away promotions, noisy alerts, and expired codes while protecting your travel reservations, bills, and VIP threads.",
+    needs: "Checks Gmail or mail connector · Interactive Keep vs. Clean rules",
+    badge: "Interactive Studio",
+    featured: true,
+    cleanDefaults: [
+      "Promotions & flash sales",
+      "Unwanted notifications",
+      "Social & cold outreach",
+      "Expired OTPs & old newsletters",
+    ],
+    keepDefaults: [
+      "Reservations this month",
+      "Bills from last 2 months",
+      "Active deliveries & receipts",
+      "Starred & VIP senders",
+    ],
+    setupCta: "Set up this schedule for me",
+    interactivePrompt:
+      "I want to set up the Inbox Cleanup schedule interactively. First, check if my Gmail or mail connector is connected (using mcp_connectors_list on the amiro server). If it isn't connected yet, let me know how I can connect Gmail or my mail provider. Second, call ui_render_openui on the amiro MCP server with preset=\"inbox_cleanup_setup\" so I can interactively select what to clean up (default: clear all promotions, unwanted notifications, social updates, and expired OTPs) and what to keep (default: keep reservations from this month and bills/statements from the last 2 months), and then create the schedule for me.",
+    draft: {
+      name: "Inbox cleanup",
+      description:
+        "Clear promotions and unwanted notifications while keeping this month's reservations and the last 2 months of bills",
+      mode: "agent",
+      cadence: "daily",
+      time: "07:30",
+      prompt:
+        "Inbox cleanup. Using my connected Gmail or mail connector: 1) CLEAN UP (archive/remove from Inbox): all promotional emails, marketing deals, unwanted automated notifications, social media alerts, and expired OTPs/newsletters older than 14 days. 2) KEEP & PROTECT in Inbox: all travel/dining/event reservations for this month, all utility bills, bank statements, and invoices from the last 2 months, active package deliveries, receipts, and starred/VIP threads. Post a concise summary of how many clutter threads were cleaned and highlight any upcoming reservations or due bills.",
+    },
+  },
   {
     id: "morning-briefing",
     emoji: "☀️",
@@ -57,6 +109,12 @@ export const SCHEDULE_RECIPES: ScheduleRecipe[] = [
     cadence: "Weekdays at 8:00 AM",
     blurb: "Today's meetings, the emails that matter, the weather, and your focus.",
     needs: "Best with Gmail and Calendar connected",
+    badge: "Daily Digest",
+    keepDefaults: ["Today's calendar events", "Top 3 priority emails", "NOW.md focus"],
+    cleanDefaults: ["Low-priority CC threads"],
+    setupCta: "Use this schedule",
+    interactivePrompt:
+      "Help me set up the Morning briefing schedule interactively. Check my connected calendar and mail connectors first, then ask me what sections and delivery time I want before creating the schedule.",
     draft: {
       name: "Morning briefing",
       mode: "agent",
@@ -72,6 +130,11 @@ export const SCHEDULE_RECIPES: ScheduleRecipe[] = [
     title: "Evening wrap-up",
     cadence: "Weekdays at 6:00 PM",
     blurb: "What got done, what's still open, and what comes first tomorrow.",
+    badge: "Journal & Memory",
+    keepDefaults: ["Completed wins", "Open blockers", "Tomorrow's #1 priority"],
+    setupCta: "Use this schedule",
+    interactivePrompt:
+      "Help me set up the Evening wrap-up schedule interactively. Ask me what time I wrap up work and what I want tracked in NOW.md and my daily journal, then create the schedule.",
     draft: {
       name: "Evening wrap-up",
       mode: "agent",
@@ -87,6 +150,11 @@ export const SCHEDULE_RECIPES: ScheduleRecipe[] = [
     title: "Daily focus",
     cadence: "Every day at 9:00 AM",
     blurb: "Three concrete focus lines for the day, from what your agent knows.",
+    badge: "Zero Tools",
+    keepDefaults: ["3 concrete focus sentences", "Aligned with USER.md & NOW.md"],
+    setupCta: "Use this schedule",
+    interactivePrompt:
+      "Help me set up the Daily focus schedule interactively. Ask me what time I start my day and what current goals to prioritize, then create the schedule.",
     draft: {
       name: "Daily focus",
       mode: "execute",
@@ -101,45 +169,210 @@ export const SCHEDULE_RECIPES: ScheduleRecipe[] = [
 export function SuggestedSchedules({
   schedules,
   onAdd,
+  onSetupInChat,
 }: {
   schedules: Schedule[];
   onAdd: (draft: ScheduleDraft) => void;
+  onSetupInChat?: (recipe: ScheduleRecipe) => void;
 }) {
+  const t = useTranslations("Schedules");
   const taken = new Set(schedules.map((s) => s.name.trim().toLowerCase()));
   const open = SCHEDULE_RECIPES.filter((r) => !taken.has(r.draft.name.toLowerCase()));
   if (!open.length) return null;
+
+  const featured = open.find((r) => r.featured);
+  const others = open.filter((r) => !r.featured);
+
   return (
-    <section className="flex flex-col gap-3" data-testid="schedules-suggested">
-      <div>
-        <h2 className="text-sm font-semibold">Suggested</h2>
-        <p className="text-xs text-muted-foreground">One click to add. Nothing runs until you do.</p>
+    <section className="flex flex-col gap-4" data-testid="schedules-suggested">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold">{t("playbooksTitle")}</h2>
+            <Badge
+              variant="secondary"
+              className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+            >
+              <Sparkles className="mr-1 size-3 text-primary" />
+              {t("playbooksBadge")}
+            </Badge>
+          </div>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {t("playbooksSubtitle")}
+          </p>
+        </div>
       </div>
-      <div className="grid gap-3 sm:grid-cols-3">
-        {open.map((r) => (
-          <button
-            key={r.id}
-            type="button"
-            onClick={() => onAdd(r.draft)}
-            data-testid={`schedule-recipe-${r.id}`}
-            className="group flex flex-col gap-2 rounded-2xl border border-border/60 bg-card p-4 text-left transition-all hover:border-foreground/20 hover:shadow-sm"
-          >
-            <div className="flex items-center justify-between">
-              <span className="grid size-9 place-items-center rounded-xl bg-primary/10 text-lg" aria-hidden>
-                {r.emoji}
-              </span>
-              <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors group-hover:border-primary/40 group-hover:text-primary">
-                <Plus className="size-3" /> Add
-              </span>
+
+      {featured ? (
+        <div
+          data-testid={`schedule-playbook-${featured.id}`}
+          className="relative overflow-hidden rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/[0.06] via-card to-card p-5 shadow-xs transition-all hover:border-primary/50"
+        >
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0 flex-1 space-y-3">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <span
+                  className="grid size-10 place-items-center rounded-xl bg-primary/15 text-xl shadow-2xs"
+                  aria-hidden
+                >
+                  {featured.emoji}
+                </span>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-base font-semibold tracking-tight text-foreground">
+                      {featured.title}
+                    </h3>
+                    {featured.badge ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-medium text-primary">
+                        <Sparkles className="size-3" />
+                        {featured.badge}
+                      </span>
+                    ) : null}
+                    <span className="rounded-full border border-border/70 bg-background/60 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                      {featured.cadence}
+                    </span>
+                  </div>
+                  {featured.needs ? (
+                    <p className="text-[11px] text-muted-foreground">
+                      {featured.needs}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+
+              <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">
+                {featured.blurb}
+              </p>
+
+              <div className="grid gap-2.5 sm:grid-cols-2">
+                {featured.cleanDefaults && featured.cleanDefaults.length > 0 ? (
+                  <div
+                    data-testid="playbook-clean-defaults"
+                    className="rounded-xl border border-rose-500/20 bg-rose-500/[0.04] p-3"
+                  >
+                    <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-rose-600 dark:text-rose-400">
+                      <Trash2 className="size-3.5" />
+                      <span>{t("cleanByDefaultLabel")}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {featured.cleanDefaults.map((item) => (
+                        <span
+                          key={item}
+                          className="inline-flex items-center rounded-md border border-rose-500/20 bg-background/80 px-2 py-0.5 text-[11px] text-foreground"
+                        >
+                          {item}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {featured.keepDefaults && featured.keepDefaults.length > 0 ? (
+                  <div
+                    data-testid="playbook-keep-defaults"
+                    className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3"
+                  >
+                    <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                      <ShieldCheck className="size-3.5" />
+                      <span>{t("keepByDefaultLabel")}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {featured.keepDefaults.map((item) => (
+                        <span
+                          key={item}
+                          className="inline-flex items-center gap-1 rounded-md border border-emerald-500/20 bg-background/80 px-2 py-0.5 text-[11px] text-foreground"
+                        >
+                          <CheckCircle2 className="size-3 text-emerald-500" />
+                          {item}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-semibold">{r.title}</p>
-              <p className="text-[11px] font-medium text-muted-foreground">{r.cadence}</p>
+
+            <div className="flex shrink-0 flex-col gap-2 sm:flex-row lg:flex-col lg:items-stretch">
+              {onSetupInChat ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => onSetupInChat(featured)}
+                  data-testid={`schedule-setup-chat-${featured.id}`}
+                  className="gap-1.5 rounded-full px-4 font-medium shadow-xs"
+                >
+                  <Sparkles className="size-3.5" />
+                  <span>{featured.setupCta || t("setupWithAmiro")}</span>
+                  <ArrowRight className="size-3.5" />
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => onAdd(featured.draft)}
+                data-testid={`schedule-recipe-${featured.id}`}
+                aria-label={`Add ${featured.title}`}
+                className="gap-1.5 rounded-full px-4 text-xs"
+              >
+                <Plus className="size-3.5" />
+                <span>{t("quickAddButton")}</span>
+              </Button>
             </div>
-            <p className="text-xs leading-relaxed text-muted-foreground">{r.blurb}</p>
-            {r.needs && <p className="mt-auto text-[11px] text-muted-foreground/80">{r.needs}</p>}
-          </button>
-        ))}
-      </div>
+          </div>
+        </div>
+      ) : null}
+
+      {others.length > 0 ? (
+        <div className="grid gap-3 sm:grid-cols-3">
+          {others.map((r) => (
+            <div
+              key={r.id}
+              data-testid={`schedule-playbook-${r.id}`}
+              className="group flex flex-col gap-2.5 rounded-2xl border border-border/60 bg-card p-4 text-left transition-all hover:border-foreground/20 hover:shadow-sm"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span
+                  className="grid size-9 place-items-center rounded-xl bg-primary/10 text-lg"
+                  aria-hidden
+                >
+                  {r.emoji}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  {onSetupInChat ? (
+                    <button
+                      type="button"
+                      onClick={() => onSetupInChat(r)}
+                      data-testid={`schedule-setup-chat-${r.id}`}
+                      className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20 cursor-pointer"
+                    >
+                      <Sparkles className="size-3" />
+                      <span>{r.setupCta || t("useThisSchedule")}</span>
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => onAdd(r.draft)}
+                    data-testid={`schedule-recipe-${r.id}`}
+                    aria-label={`Add ${r.title}`}
+                    className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary cursor-pointer"
+                  >
+                    <Plus className="size-3" /> Add
+                  </button>
+                </div>
+              </div>
+              <div>
+                <p className="text-sm font-semibold">{r.title}</p>
+                <p className="text-[11px] font-medium text-muted-foreground">{r.cadence}</p>
+              </div>
+              <p className="text-xs leading-relaxed text-muted-foreground">{r.blurb}</p>
+              {r.needs ? (
+                <p className="mt-auto text-[11px] text-muted-foreground/80">{r.needs}</p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }

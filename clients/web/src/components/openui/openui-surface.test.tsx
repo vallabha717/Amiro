@@ -105,6 +105,19 @@ describe("OpenUISurface and OpenUI Lang integration", () => {
     expect(intakeHtml).toContain('data-testid="openui-textarea-config_snippet"');
     expect(intakeHtml).toContain('data-testid="secret-prompt-card"');
     expect(intakeHtml).toContain("AMIRO_CRED_RELEASE_WEBHOOK_SIGNING_SECRET");
+
+    const inboxCleanupHtml = render(
+      createElement(OpenUISurface, {
+        code: "",
+        preset: "inbox_cleanup_setup",
+      }),
+    );
+    expect(inboxCleanupHtml).toContain("Inbox Cleanup Schedule Studio");
+    expect(inboxCleanupHtml).toContain('data-testid="openui-switch-clean_promotions"');
+    expect(inboxCleanupHtml).toContain('data-testid="openui-switch-clean_notifications"');
+    expect(inboxCleanupHtml).toContain('data-testid="openui-switch-keep_reservations_month"');
+    expect(inboxCleanupHtml).toContain('data-testid="openui-switch-keep_bills_2_months"');
+    expect(inboxCleanupHtml).toContain("Create Inbox Cleanup Schedule");
   });
 
   it("extracts OpenUI payloads from tool inputs and MCP text outputs", () => {

@@ -412,8 +412,14 @@ async fn list_threads(crate::routes::agents::AgentState(state): crate::routes::a
             Some(scoped) => if agent != Some(scoped) { return None; },
             None => if agent.is_some_and(|a| team.iter().any(|t| t == a)) { return None; },
         }
+        let sid = e.get("sessionId").and_then(Value::as_str).unwrap_or("");
+        let short_name = crate::swarm::extract_session_name(sid);
+        let icon = short_name.map(crate::swarm::session_icon);
         Some(json!({
             "id": id,
+            "sessionId": (!sid.is_empty()).then_some(sid),
+            "shortName": short_name,
+            "icon": icon,
             "title": e.get("title").and_then(|v| v.as_str()).unwrap_or("New Chat"),
             "userId": e.get("userId").and_then(|v| v.as_str()).unwrap_or(""),
             "createdAt": e.get("createdAt").cloned().unwrap_or(json!(crate::state::now_iso())),
@@ -463,9 +469,14 @@ async fn get_thread(State(state): State<AppState>, user: AuthUser, Path(id): Pat
     if entry.get("unread").and_then(Value::as_bool) == Some(true) {
         let _ = upsert_entry(&state, &id, json!({"unread": false})).await;
     }
+    let short_name = crate::swarm::extract_session_name(session_id);
+    let icon = short_name.map(crate::swarm::session_icon);
     Ok(Json(json!({
         "heartbeat": entry.get("heartbeat").and_then(Value::as_bool).unwrap_or(false),
         "id": id,
+        "sessionId": (!session_id.is_empty()).then_some(session_id),
+        "shortName": short_name,
+        "icon": icon,
         "title": entry.get("title").and_then(|v| v.as_str()).unwrap_or("New Chat"),
         "userId": entry.get("userId").and_then(|v| v.as_str()).unwrap_or(""),
         "createdAt": entry.get("createdAt").cloned().unwrap_or(json!(crate::state::now_iso())),

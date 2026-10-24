@@ -162,7 +162,11 @@ export function AgentSwitcher({
   // An ordinary chat has no swarm; leave it looking exactly as before.
   if (!coordinator && members.length === 0) return null;
 
-  const label = currentMember ? memberName(currentMember) : "Coordinator";
+  const label = currentMember
+    ? memberName(currentMember)
+    : coordinator
+      ? memberName(coordinator, true)
+      : "Coordinator";
   const memberIds = new Set(members.map((m) => m.sessionId));
   const rows: { m: SwarmMember; isCoordinator: boolean; depth: number }[] = [
     ...(coordinator ? [{ m: coordinator, isCoordinator: true, depth: 0 }] : []),
@@ -222,7 +226,7 @@ export function AgentSwitcher({
                   )}
                   <ActivityDot activity={activity} />
                   <span className="min-w-0 flex-1 truncate">
-                    {isCoordinator ? "Coordinator" : memberName(m)}
+                    {memberName(m, isCoordinator)}
                   </span>
                   <span className="text-[11px] text-muted-foreground">
                     {ACTIVITY_LABEL[activity]}
@@ -281,7 +285,7 @@ export function MemberThreadBanner({ threadId }: { threadId: string }) {
         ) : (
           <ArrowLeftIcon className="size-3" />
         )}
-        Back to coordinator
+        Back to {memberName(coordinator, true)}
       </Button>
     </div>
   );

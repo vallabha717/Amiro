@@ -15,11 +15,7 @@ work identically to Vellum. Recurring schedules also support
 
 ## User guide
 
-Create a schedule from the Schedules page: give it a name, write the prompt,
-pick `notify` or `execute`, choose once, cron, or interval timing, and set
-the timezone the wall time belongs to. Use Preview before saving. A once
-preview returns exactly ONE time. A cron or interval preview returns exactly
-5 upcoming runs in ascending order, so you can confirm the cadence.
+From the **Schedules** page you can either pick a **Suggested Schedule Playbook** (such as the featured **Inbox cleanup** studio) to set it up interactively with Amiro in chat, or create a schedule directly: give it a name, write the prompt, pick `notify`, `execute`, `agent`, or `script`, choose once, cron, or interval timing, and set the timezone the wall time belongs to. Clicking **"Set up this schedule for me"** on the Inbox cleanup playbook takes you straight to Chat, where Amiro checks your Gmail / mail connector readiness, renders the interactive **Inbox Cleanup Schedule Studio** (`inbox_cleanup_setup` OpenUI surface) with toggles for what to clear by default (promotions, unwanted notifications, social clutter, expired OTPs) and what to keep & protect by default (this month's reservations, last 2 months' bills and statements, active deliveries, and VIPs), and creates the recurring schedule once confirmed. Use Preview before saving when creating manually. A once preview returns exactly ONE time. A cron or interval preview returns exactly 5 upcoming runs in ascending order, so you can confirm the cadence.
 
 The browser sends the wall time you typed plus the selected timezone, and
 the backend owns the conversion to UTC. For example 09:00 in Asia/Kolkata is

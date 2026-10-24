@@ -8,6 +8,7 @@ import {
   type SwarmMember,
   memberName,
   openSwarmMember,
+  resolveSessionIdentity,
   swarmActivity,
   useAgentTranscript,
 } from "@/lib/backend/swarm-api";
@@ -161,7 +162,8 @@ export function AgentPane({
     }
   }, [member.sessionId, threadId, router]);
 
-  const name = coordinator ? "Coordinator" : memberName(member);
+  const name = memberName(member, coordinator);
+  const { icon } = resolveSessionIdentity(member);
   const todos = summary.todos ?? [];
   const done = todos.filter((t) => t.status === "completed").length;
 
@@ -172,8 +174,14 @@ export function AgentPane({
       className="flex h-full min-w-0 flex-col bg-background"
     >
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
-        <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-          {coordinator ? <CrownIcon className="size-3.5" /> : <BotIcon className="size-3.5" />}
+        <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground text-xs">
+          {icon ? (
+            <span aria-hidden>{icon}</span>
+          ) : coordinator ? (
+            <CrownIcon className="size-3.5" />
+          ) : (
+            <BotIcon className="size-3.5" />
+          )}
         </span>
         <div className="flex min-w-0 flex-1 flex-col leading-tight">
           <span className="flex items-center gap-1.5 text-sm font-medium">

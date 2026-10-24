@@ -621,6 +621,28 @@ async fn chat_handler(
             yield done_frame();
             return;
         }
+        {
+            let initial_title = entry
+                .as_ref()
+                .and_then(|e| e.get("title"))
+                .and_then(Value::as_str)
+                .filter(|t| !t.trim().is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| derive_title(&user_text));
+            let short_name = crate::swarm::extract_session_name(&session.session_id);
+            let icon = short_name.map(crate::swarm::session_icon);
+            yield frame(json!({
+                "type": "data-thread-title",
+                "data": {
+                    "threadId": thread_id,
+                    "title": initial_title,
+                    "sessionId": &session.session_id,
+                    "shortName": short_name,
+                    "icon": icon
+                },
+                "transient": true
+            }));
+        }
         if session.created {
             if let Some(previous) = previous_session.as_deref() {
                 // Archive the session left behind by a folder change. Best
@@ -759,6 +781,16 @@ async fn chat_handler(
                                 yield frame(json!({"type": "tool-output-error", "toolCallId": call_id, "errorText": error, "providerExecuted": true}));
                             } else {
                                 yield frame(json!({"type": "tool-output-available", "toolCallId": call_id, "output": parsed_output, "providerExecuted": true}));
+                                let resolved_tool = tool_names.get(&call_id).map(|s| s.as_str()).unwrap_or(name.as_str());
+                                if matches!(resolved_tool, "todo" | "todo_write") {
+                                    if let Some(todo_title) = runtime::todo_session_title(&state_for_stream, &session.session_id) {
+                                        if let Ok(Some(title)) = threads::sync_runtime_title(&state_for_stream, &thread_id, &uid, &session.session_id, &todo_title).await {
+                                            let short_name = crate::swarm::extract_session_name(&session.session_id);
+                                            let icon = short_name.map(crate::swarm::session_icon);
+                                            yield frame(json!({"type":"data-thread-title","data":{"threadId":thread_id,"title":title,"sessionId":&session.session_id,"shortName":short_name,"icon":icon},"transient":true}));
+                                        }
+                                    }
+                                }
                             }
                         }
                         ApiEvent::TokenUsage { input, output, cache_read_input, .. } => {
@@ -775,7 +807,9 @@ async fn chat_handler(
                         ApiEvent::SessionRenamed { session_id, display_title, .. } => {
                             if session_id == session.session_id {
                                 if let Ok(Some(title)) = threads::sync_runtime_title(&state_for_stream, &thread_id, &uid, &session_id, &display_title).await {
-                                    yield frame(json!({"type":"data-thread-title","data":{"threadId":thread_id,"title":title},"transient":true}));
+                                    let short_name = crate::swarm::extract_session_name(&session_id);
+                                    let icon = short_name.map(crate::swarm::session_icon);
+                                    yield frame(json!({"type":"data-thread-title","data":{"threadId":thread_id,"title":title,"sessionId":session_id,"shortName":short_name,"icon":icon},"transient":true}));
                                 }
                             }
                         }
@@ -817,7 +851,9 @@ async fn chat_handler(
             resolved_title = title.clone();
             if let Ok(Some(title)) = threads::sync_runtime_title(&state_for_stream, &thread_id, &uid, &session.session_id, &title).await {
                 resolved_title = title.clone();
-                yield frame(json!({"type":"data-thread-title","data":{"threadId":thread_id,"title":title},"transient":true}));
+                let short_name = crate::swarm::extract_session_name(&session.session_id);
+                let icon = short_name.map(crate::swarm::session_icon);
+                yield frame(json!({"type":"data-thread-title","data":{"threadId":thread_id,"title":title,"sessionId":&session.session_id,"shortName":short_name,"icon":icon},"transient":true}));
             }
         }
         // Whether the user is watching this chat right now, read once so the

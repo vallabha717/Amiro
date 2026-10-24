@@ -15,6 +15,7 @@ import {
   type SwarmActivity,
   type SwarmMember,
   memberName,
+  resolveSessionIdentity,
   swarmActivity,
   useSwarm,
 } from "@/lib/backend/swarm-api";
@@ -318,7 +319,8 @@ function AgentRow({
       ? "working"
       : "idle"
     : swarmActivity(member);
-  const name = coordinator ? "Coordinator" : memberName(member);
+  const name = memberName(member, coordinator);
+  const { icon } = resolveSessionIdentity(member);
   const sub = coordinator
     ? member.title
     : member.title && member.title !== member.label
@@ -329,6 +331,7 @@ function AgentRow({
       type="button"
       onClick={onOpen}
       disabled={current}
+      data-testid={coordinator ? "session-agent-coordinator" : "session-agent-member"}
       className={cn(
         "group/agent flex items-center gap-2 rounded-lg px-1.5 py-1.5 text-left transition-colors",
         current
@@ -347,8 +350,10 @@ function AgentRow({
             : `Open ${name} beside this chat`
       }
     >
-      <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-        {coordinator ? (
+      <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground text-xs">
+        {icon ? (
+          <span aria-hidden>{icon}</span>
+        ) : coordinator ? (
           <CrownIcon className="size-3.5" />
         ) : (
           <BotIcon className="size-3.5" />
@@ -357,6 +362,11 @@ function AgentRow({
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex items-center gap-1.5 text-[13px] leading-5">
           <span className="truncate font-medium">{name}</span>
+          {coordinator && (
+            <span className="shrink-0 rounded bg-muted px-1 py-0.2 text-[10px] font-normal text-muted-foreground">
+              Coordinator
+            </span>
+          )}
           <ActivityDot activity={activity} />
         </span>
         <span className="truncate text-[11px] text-muted-foreground">

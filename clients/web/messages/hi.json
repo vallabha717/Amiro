@@ -1840,7 +1840,15 @@
     "pastToggle": "पिछले ({count})",
     "cancelOneTime": "रिमाइंडर रद्द करें",
     "costLabel": "30 दिन की लागत",
-    "runsLabel": "30 दिन के रन"
+    "runsLabel": "30 दिन के रन",
+    "playbooksTitle": "सुझाए गए शेड्यूल प्लेबुक",
+    "playbooksBadge": "इंटरैक्टिव चैट सेटअप",
+    "playbooksSubtitle": "चैट में Amiro के साथ इंटरैक्टिव रूप से सेट करने के लिए कोई शेड्यूल चुनें, या एक क्लिक में जोड़ें।",
+    "cleanByDefaultLabel": "डिफ़ॉल्ट रूप से साफ़ किए जाने वाले",
+    "keepByDefaultLabel": "डिफ़ॉल्ट रूप से सुरक्षित रखे जाने वाले",
+    "setupWithAmiro": "मेरे लिए यह शेड्यूल सेट करें",
+    "useThisSchedule": "इस शेड्यूल का उपयोग करें",
+    "quickAddButton": "त्वरित फ़ॉर्म"
   },
   "Devices": {
     "title": "डिवाइस",
