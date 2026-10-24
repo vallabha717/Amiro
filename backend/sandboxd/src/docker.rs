@@ -1,4 +1,5 @@
-//! Minimal Docker Engine API client over the unix socket.
+//! Minimal Docker Engine API client over the daemon's local socket: the unix
+//! socket on Linux and macOS, the `docker_engine` named pipe on Windows.
 //!
 //! Only what the supervisor needs: inspect, create, start, stop, remove and a
 //! non-interactive exec. One HTTP/1.1 connection per request; no TLS, no
@@ -47,13 +48,31 @@ pub struct Docker {
     socket: PathBuf,
 }
 
+/// Where the Docker daemon listens unless `DOCKER_SOCKET` says otherwise.
+#[cfg(unix)]
+pub const DEFAULT_SOCKET: &str = "/var/run/docker.sock";
+/// Where the Docker daemon listens unless `DOCKER_SOCKET` says otherwise.
+#[cfg(windows)]
+pub const DEFAULT_SOCKET: &str = r"\\.\pipe\docker_engine";
+
 impl Docker {
     pub fn new(socket: impl Into<PathBuf>) -> Self {
         Docker { socket: socket.into() }
     }
 
+    #[cfg(unix)]
+    async fn connect(&self) -> std::io::Result<tokio::net::UnixStream> {
+        tokio::net::UnixStream::connect(&self.socket).await
+    }
+
+    #[cfg(windows)]
+    async fn connect(&self) -> std::io::Result<tokio::net::windows::named_pipe::NamedPipeClient> {
+        tokio::net::windows::named_pipe::ClientOptions::new().open(&self.socket)
+    }
+
     async fn send(&self, method: Method, path: &str, body: Option<&Value>) -> Result<hyper::Response<hyper::body::Incoming>, DockerError> {
-        let stream = tokio::net::UnixStream::connect(&self.socket)
+        let stream = self
+            .connect()
             .await
             .map_err(|e| err(format!("cannot reach Docker at {}: {e}", self.socket.display())))?;
         let (mut sender, conn) = hyper::client::conn::http1::handshake(TokioIo::new(stream))

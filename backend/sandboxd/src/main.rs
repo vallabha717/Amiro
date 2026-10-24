@@ -28,7 +28,7 @@ async fn run() -> Result<(), String> {
     let cfg = SandboxConfig::from_lookup(env)?;
     let token = env("AMIRO_SANDBOX_TOKEN").unwrap_or_default().trim().to_string();
     let master = env("AMIRO_SANDBOX_MASTER").unwrap_or_default().trim().to_string();
-    let socket = env("DOCKER_SOCKET").unwrap_or_else(|| "/var/run/docker.sock".into());
+    let socket = env("DOCKER_SOCKET").unwrap_or_else(|| sandboxd::docker::DEFAULT_SOCKET.into());
     let listen = env("AMIRO_SANDBOX_LISTEN").unwrap_or_else(|| "127.0.0.1:4313".into());
     let docker = Docker::new(socket);
     let supervisor = Supervisor::new(cfg, docker, token, master)?;
