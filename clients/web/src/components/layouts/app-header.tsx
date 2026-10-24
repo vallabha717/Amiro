@@ -37,6 +37,8 @@ export function AppHeader() {
   const currentPaths = usePathname();
   const searchParams = useSearchParams();
 
+  const currentThreadId = appStore((state) => state.currentThreadId);
+
   const showActionButtons = useMemo(() => {
     if (matchSubPath(currentPaths, "/admin")) {
       return false;
@@ -47,7 +49,7 @@ export function AppHeader() {
   const componentByPage = useMemo(() => {
     if (
       matchSubPath(currentPaths, "/") &&
-      (searchParams.get("thread") || appStore.getState().currentThreadId)
+      (searchParams.get("thread") || currentThreadId)
     ) {
       return <ThreadDropdownComponent />;
     }

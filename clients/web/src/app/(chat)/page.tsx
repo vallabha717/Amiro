@@ -1,6 +1,7 @@
 "use client";
 
 import ChatBot from "@/components/chat-bot";
+import { appStore } from "@/app/store";
 import { fetcher, generateUUID } from "lib/utils";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo } from "react";
@@ -56,6 +57,42 @@ function HomePageContent() {
   useEffect(() => {
     if (error) router.replace("/");
   }, [error, router]);
+
+  useEffect(() => {
+    if (!thread?.id) return;
+    appStore.setState((prev) => {
+      const exists = prev.threadList.some((t) => t.id === thread.id);
+      if (exists) {
+        return {
+          threadList: prev.threadList.map((t) =>
+            t.id === thread.id
+              ? {
+                  ...t,
+                  title: thread.title || t.title,
+                  sessionId: thread.sessionId ?? t.sessionId,
+                  shortName: thread.shortName ?? t.shortName,
+                  icon: thread.icon ?? t.icon,
+                }
+              : t,
+          ),
+        };
+      }
+      return {
+        threadList: [
+          {
+            id: thread.id,
+            title: thread.title || "New Chat",
+            userId: thread.userId || "",
+            createdAt: thread.createdAt ? new Date(thread.createdAt) : new Date(),
+            sessionId: thread.sessionId,
+            shortName: thread.shortName,
+            icon: thread.icon,
+          },
+          ...prev.threadList,
+        ],
+      };
+    });
+  }, [thread]);
 
   if (!threadId || isOwnNewThread) {
     return <ChatBot initialMessages={[]} threadId={newId} key={newId} />;

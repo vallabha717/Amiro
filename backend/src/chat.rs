@@ -621,6 +621,28 @@ async fn chat_handler(
             yield done_frame();
             return;
         }
+        {
+            let initial_title = entry
+                .as_ref()
+                .and_then(|e| e.get("title"))
+                .and_then(Value::as_str)
+                .filter(|t| !t.trim().is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| derive_title(&user_text));
+            let short_name = crate::swarm::extract_session_name(&session.session_id);
+            let icon = short_name.map(crate::swarm::session_icon);
+            yield frame(json!({
+                "type": "data-thread-title",
+                "data": {
+                    "threadId": thread_id,
+                    "title": initial_title,
+                    "sessionId": &session.session_id,
+                    "shortName": short_name,
+                    "icon": icon
+                },
+                "transient": true
+            }));
+        }
         if session.created {
             if let Some(previous) = previous_session.as_deref() {
                 // Archive the session left behind by a folder change. Best
