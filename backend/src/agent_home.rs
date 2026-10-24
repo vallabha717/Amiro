@@ -70,12 +70,41 @@ pub fn fill_placeholders(template: &str, name: &str, email: &str, timezone: &str
         .replace("{{user_timezone}}", timezone)
 }
 
-/// The single owner: first admin, else first user.
+/// The active owner account: prefers the user with the most recent active chat
+/// thread (or most recent login session), falling back to the first admin, else first user.
 pub async fn owner_user(state: &AppState) -> Option<Value> {
     let doc = read_json(&state.home.join("users.json"), json!({"users": []}))
         .await
         .ok()?;
     let users = doc.get("users")?.as_array()?;
+    if users.len() > 1 {
+        if let Ok(threads) = read_json(&state.home.join("threads.json"), json!({})).await {
+            if let Some(obj) = threads.as_object() {
+                if let Some(latest_uid) = obj
+                    .values()
+                    .filter(|e| e.get("heartbeat").and_then(Value::as_bool) != Some(true))
+                    .filter_map(|e| {
+                        let uid = e.get("userId").and_then(Value::as_str)?;
+                        let ts = e
+                            .get("lastMessageAt")
+                            .or_else(|| e.get("createdAt"))
+                            .and_then(Value::as_str)
+                            .unwrap_or("");
+                        Some((ts, uid))
+                    })
+                    .max_by(|a, b| a.0.cmp(b.0))
+                    .map(|(_, uid)| uid)
+                {
+                    if let Some(u) = users
+                        .iter()
+                        .find(|u| u.get("id").and_then(Value::as_str) == Some(latest_uid))
+                    {
+                        return Some(u.clone());
+                    }
+                }
+            }
+        }
+    }
     users
         .iter()
         .find(|u| u.get("role").and_then(Value::as_str) == Some("admin"))

@@ -45,6 +45,7 @@ import {
   useThreadActivity,
 } from "@/lib/notifications/thread-activity";
 import { ThreadStatusMark } from "./thread-status-mark";
+import { formatThreadAnimalTitle } from "@/lib/backend/swarm-api";
 
 type ThreadGroup = {
   label: string;
@@ -283,11 +284,11 @@ export function AppSidebarThreads() {
                                       thread.id,
                                     ) ? (
                                       <TextShimmer data-testid="sidebar-thread-title" className="truncate min-w-0">
-                                        {thread.title || "New Chat"}
+                                        {formatThreadAnimalTitle(thread, "New Chat")}
                                       </TextShimmer>
                                     ) : (
                                       <p data-testid="sidebar-thread-title" className="truncate min-w-0">
-                                        {thread.title || "New Chat"}
+                                        {formatThreadAnimalTitle(thread, "New Chat")}
                                       </p>
                                     )}
                                     <ThreadStatusMark
@@ -302,7 +303,7 @@ export function AppSidebarThreads() {
                                 </SidebarMenuButton>
                               </TooltipTrigger>
                               <TooltipContent className="max-w-[200px] p-4 break-all overflow-y-auto max-h-[200px]">
-                                {thread.title || "New Chat"}
+                                {formatThreadAnimalTitle(thread, "New Chat")}
                               </TooltipContent>
                             </Tooltip>
 

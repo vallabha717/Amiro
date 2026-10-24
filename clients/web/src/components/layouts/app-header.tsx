@@ -26,6 +26,7 @@ import { AssistantDesktopAffordance } from "@/components/desktop-preview/assista
 import { useVoiceStore } from "@/lib/voice/voice-store";
 import { cn } from "@/lib/utils";
 import { matchSubPath } from "@/components/team/team-paths";
+import { formatThreadAnimalTitle } from "@/lib/backend/swarm-api";
 
 export function AppHeader() {
   const t = useTranslations();
@@ -44,7 +45,10 @@ export function AppHeader() {
   }, [currentPaths]);
 
   const componentByPage = useMemo(() => {
-    if (currentPaths === "/" && searchParams.get("thread")) {
+    if (
+      matchSubPath(currentPaths, "/") &&
+      (searchParams.get("thread") || appStore.getState().currentThreadId)
+    ) {
       return <ThreadDropdownComponent />;
     }
     if (currentPaths === "/admin/usage/detail") {
@@ -225,11 +229,16 @@ function ThreadDropdownComponent() {
     return threadList.find((thread) => thread.id === currentThreadId);
   }, [threadList, currentThreadId]);
 
+  const displayTitle = useMemo(
+    () => formatThreadAnimalTitle(currentThread, "New Chat"),
+    [currentThread],
+  );
+
   useEffect(() => {
     if (currentThread?.id) {
-      document.title = currentThread.title || "New Chat";
+      document.title = displayTitle;
     }
-  }, [currentThread?.id]);
+  }, [currentThread?.id, displayTitle]);
 
   if (!currentThread) return null;
 
@@ -248,15 +257,16 @@ function ThreadDropdownComponent() {
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
+                data-testid="header-thread-title"
                 className="data-[state=open]:bg-input! hover:text-foreground cursor-pointer flex gap-1 items-center px-2 py-1 rounded-md hover:bg-accent"
               >
                 {generatingTitleThreadIds.includes(currentThread.id) ? (
                   <TextShimmer className="truncate max-w-60 min-w-0 mr-1">
-                    {currentThread.title || "New Chat"}
+                    {displayTitle}
                   </TextShimmer>
                 ) : (
                   <p className="truncate max-w-60 min-w-0 mr-1">
-                    {currentThread.title || "New Chat"}
+                    {displayTitle}
                   </p>
                 )}
 
@@ -264,7 +274,7 @@ function ThreadDropdownComponent() {
               </Button>
             </TooltipTrigger>
             <TooltipContent className="max-w-[200px] p-4 break-all overflow-y-auto max-h-[200px]">
-              {currentThread.title || "New Chat"}
+              {displayTitle}
             </TooltipContent>
           </Tooltip>
         </div>

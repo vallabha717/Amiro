@@ -35,6 +35,9 @@ export type ChatThread = {
   title: string;
   userId: string;
   createdAt: Date;
+  sessionId?: string | null;
+  shortName?: string | null;
+  icon?: string | null;
 };
 
 export type ChatMessage = {

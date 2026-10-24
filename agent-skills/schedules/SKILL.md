@@ -56,7 +56,7 @@ Pass one of: `{"daily":{"time":"08:00"}}`, `{"weekdays":{"time":"08:00"}}`, `{"w
 
 ## After creating
 
-Say it in one line: name, cadence, next run, and that it's on the Schedules page. Offer `schedule_run_now` once if they'd like to see a sample now.
+Say it in one line: name, cadence, next run, and that it's on the Schedules page. Offer `schedule_run_now` once if they'd like to see a sample now. If `schedule_run_now` returns `"running"`, tell the user it is running in the background and will notify them when finished — **never** run `bash sleep` or poll `schedule_runs` in a loop.
 
 ## Logs and troubleshooting
 

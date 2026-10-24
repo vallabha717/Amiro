@@ -36,7 +36,7 @@ pub const TOKEN_HEADER: &str = "x-amiro-agent-token";
 pub const TOKEN_ENV_VAR: &str = "AMIRO_AGENT_MCP_TOKEN";
 pub const SERVER_NAME: &str = "amiro";
 const DEFAULT_PROTOCOL: &str = "2025-03-26";
-const RUN_NOW_WAIT_SECS: u64 = 30;
+const RUN_NOW_WAIT_SECS: u64 = 5;
 
 // ---------------------------------------------------------------------------
 // Token
@@ -896,7 +896,7 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<(String
             let view = run_view(&current);
             let status = view["status"].as_str().unwrap_or("").to_string();
             let text = if status == "running" {
-                "Run started and is still in progress; check schedule_runs for the result."
+                "Run started and is executing in the background (runs can take several minutes on large inboxes). Do NOT sleep or poll in a loop; tell the user the run has started and will appear in their Schedules page run history and Bell notifications when complete."
                     .to_string()
             } else {
                 format!(

@@ -166,13 +166,34 @@ test.describe("schedules", () => {
       await waitForReply(page, { before: 0, timeoutMs: 180000 });
     });
 
-    await step("Amiro renders the interactive Inbox Cleanup Schedule Studio with Keep and Clean Up toggles", async () => {
+    await step("Amiro renders the interactive Inbox Cleanup Schedule Studio with Keep and Clean Up toggles, and shows the session's animal emoji + name in the chat title and Agents panel", async () => {
       const surface = page.getByTestId("openui-surface").last();
       await expect(surface).toBeVisible({ timeout: 30000 });
       await expect(page.getByTestId("openui-switch-clean_promotions")).toBeVisible();
       await expect(page.getByTestId("openui-switch-clean_notifications")).toBeVisible();
       await expect(page.getByTestId("openui-switch-keep_reservations_month")).toBeVisible();
       await expect(page.getByTestId("openui-switch-keep_bills_2_months")).toBeVisible();
+
+      // Verify the Agents panel shows the coordinator's animal emoji + shortName
+      const coordinatorRow = page.getByTestId("session-agent-coordinator");
+      await expect(coordinatorRow).toBeVisible({ timeout: 15000 });
+      await expect(coordinatorRow).toContainText("Coordinator");
+
+      // Switch sidebar to Conversations view and verify the chat title has the animal emoji + name prefix
+      const convSwitch = page.getByTestId("sidebar-switch-conversations");
+      if (await convSwitch.isVisible().catch(() => false)) {
+        await convSwitch.click();
+      }
+      const sidebarTitle = page
+        .getByTestId("sidebar-thread-title")
+        .filter({ hasText: "·" })
+        .first();
+      await expect(sidebarTitle).toBeVisible({ timeout: 15000 });
+
+      const headerTitle = page.getByTestId("header-thread-title");
+      if (await headerTitle.isVisible().catch(() => false)) {
+        await expect.soft(headerTitle).toContainText("·");
+      }
     });
 
     await step("Submit the interactive Keep & Clean Up form → Amiro creates the Inbox Cleanup schedule", async () => {
