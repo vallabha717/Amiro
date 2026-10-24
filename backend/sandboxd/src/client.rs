@@ -132,13 +132,16 @@ impl SandboxClient {
         self.post(id, "files/list", json!({"path": path})).await
     }
 
+    /// Attach a terminal to the agent's shared shell; `label` is the agent's
+    /// name for its prompt.
     pub async fn create_terminal_session(
         &self,
         id: &str,
         cols: u16,
         rows: u16,
+        label: &str,
     ) -> Result<Value, ClientError> {
-        self.post(id, "terminal/sessions", json!({"cols": cols, "rows": rows}))
+        self.post(id, "terminal/sessions", json!({"cols": cols, "rows": rows, "label": label}))
             .await
     }
 
@@ -201,57 +204,47 @@ impl SandboxClient {
         .await
     }
 
-    pub async fn create_desktop_session(
-        &self,
-        id: &str,
-        label: &str,
-        accent_hex: &str,
-    ) -> Result<Value, ClientError> {
-        self.post(
-            id,
-            "desktop/sessions",
-            json!({"label": label, "accentHex": accent_hex}),
-        )
-        .await
+    /// Open `app` (browser, files, terminal) at `target` on the agent's desktop;
+    /// returns the desktop state afterwards.
+    pub async fn desktop_open(&self, id: &str, app: &str, target: &str, label: &str, accent_hex: &str) -> Result<Value, ClientError> {
+        self.post(id, "desktop/open", json!({"app": app, "target": target, "label": label, "accent": accent_hex})).await
     }
 
-    pub async fn desktop_session_input(
-        &self,
-        id: &str,
-        session_id: &str,
-        base64_bytes: &str,
-    ) -> Result<Value, ClientError> {
-        self.post(
-            id,
-            &format!("desktop/sessions/{session_id}/input"),
-            json!({"data": base64_bytes}),
-        )
-        .await
+    /// What is open on the agent's desktop (`running: false` when it is off).
+    pub async fn desktop_state(&self, id: &str) -> Result<Value, ClientError> {
+        self.get(id, "desktop/state").await
     }
 
-    pub async fn desktop_session_read(
-        &self,
-        id: &str,
-        session_id: &str,
-    ) -> Result<Value, ClientError> {
-        self.get(id, &format!("desktop/sessions/{session_id}/read"))
-            .await
-    }
-
-    pub async fn desktop_session_destroy(
-        &self,
-        id: &str,
-        session_id: &str,
-    ) -> Result<Value, ClientError> {
-        Self::finish(
-            self.agent(
-                reqwest::Method::DELETE,
-                id,
-                &format!("desktop/sessions/{session_id}"),
-            )
+    /// Open the tunnel to the agent's virtual desktop (`desktop/connect`),
+    /// starting it if needed. The returned stream carries raw RFB bytes.
+    pub async fn desktop_connect(&self, id: &str, label: &str, accent_hex: &str) -> Result<reqwest::Upgraded, ClientError> {
+        // The tunnel stays open as long as someone watches, so no overall timeout.
+        let http = reqwest::Client::builder()
+            .no_proxy()
+            .connect_timeout(Duration::from_secs(3))
+            .build()
+            .unwrap_or_default();
+        let response = http
+            .get(format!("{}/v1/agents/{id}/desktop/connect", self.base))
+            .query(&[("label", label), ("accent", accent_hex)])
+            .bearer_auth(&self.token)
+            .header(CREDENTIAL_HEADER, agent_credential(&self.master, id))
+            .header("connection", "upgrade")
+            .header("upgrade", crate::DESKTOP_UPGRADE)
             .send()
-            .await,
-        )
-        .await
+            .await
+            .map_err(|_| ClientError { status: None, message: "the sandbox supervisor is not reachable".into() })?;
+        if response.status() != reqwest::StatusCode::SWITCHING_PROTOCOLS {
+            let status = response.status().as_u16();
+            let body: Value = response.json().await.unwrap_or(Value::Null);
+            return Err(ClientError {
+                status: Some(status),
+                message: body["error"].as_str().unwrap_or("the sandbox supervisor refused the desktop").to_string(),
+            });
+        }
+        response
+            .upgrade()
+            .await
+            .map_err(|e| ClientError { status: None, message: format!("desktop tunnel failed: {e}") })
     }
 }

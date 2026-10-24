@@ -117,12 +117,23 @@ async fn container_runs_non_root_without_capabilities_and_sees_only_its_folder()
     assert_eq!(check["dockerSocket"], false);
     assert_eq!(check["readOnlyRoot"], true);
     assert_eq!(check["homeWritable"], true);
-    assert_eq!(check["homeMounts"], json!(["/home/agent"]));
+    // Its own folder, at /home/agent and (for its desktop) at its host path.
+    let mut expected = vec!["/home/agent".to_string()];
+    if let Some(mirror) = sandboxd::spec::mirror_target(&live.cfg.agent_folder(id)) {
+        if mirror.starts_with("/home/") {
+            expected.push(mirror.to_string());
+        }
+    }
+    let mut mounts: Vec<String> =
+        check["homeMounts"].as_array().unwrap().iter().map(|m| m.as_str().unwrap().to_string()).collect();
+    mounts.sort();
+    expected.sort();
+    assert_eq!(mounts, expected, "{check}");
 
     let host = &inspect.unwrap()["HostConfig"];
     assert_eq!(host["CapDrop"], json!(["ALL"]));
     assert_eq!(host["Privileged"], false);
-    assert_eq!(host["PidsLimit"], 256);
+    assert_eq!(host["PidsLimit"], 1024);
     assert_eq!(host["Memory"], 256 * 1024 * 1024);
 }
 
@@ -146,7 +157,12 @@ async fn files_round_trip_and_one_agent_cannot_see_anothers() {
             b,
             "exec",
             // Every writable or mounted place a sibling's file could show up.
-            Some(json!({"command": format!("grep -rs {secret} /home /tmp /mnt /srv /var /opt /root 2>/dev/null | head -1; ls /home"), "timeoutSecs": 100})),
+            // B's own folder also appears at its host path (for its desktop);
+            // A's host path must not exist in B's container.
+            Some(json!({"command": format!(
+                "grep -rs {secret} /home /tmp /mnt /srv /var /opt /root 2>/dev/null | head -1; test -e {} && echo SEES_A_FOLDER; ls /home",
+                live.cfg.agent_folder(a)
+            ), "timeoutSecs": 100})),
         )
         .await;
         (w, r, wb, rb, la, lb, rb_other, grep)
@@ -169,7 +185,14 @@ async fn files_round_trip_and_one_agent_cannot_see_anothers() {
     assert_eq!(rb_other.0, 404, "B cannot read A's file: {}", rb_other.1);
     let out = grep.1["stdout"].as_str().unwrap();
     assert!(!out.contains(&secret), "B found A's secret: {out}");
-    assert_eq!(out.trim(), "agent", "B's /home holds only its own folder: {out}");
+    assert!(!out.contains("SEES_A_FOLDER"), "B can see A's folder: {out}");
+    // /home holds B's own folder: at /home/agent, and at its host path when
+    // that is under /home (its first part).
+    let b_folder = live.cfg.agent_folder(b);
+    let mirror_top = b_folder.strip_prefix("/home/").and_then(|rest| rest.split('/').next());
+    for name in out.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        assert!(name == "agent" || Some(name) == mirror_top, "B's /home holds only its own folder: {out}");
+    }
 }
 
 #[tokio::test]

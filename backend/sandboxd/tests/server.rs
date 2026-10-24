@@ -124,3 +124,55 @@ fn supervisor_refuses_short_or_equal_secrets() {
     assert!(Supervisor::new(cfg.clone(), Docker::new("/nonexistent"), TOKEN.into(), "short".into()).is_err());
     assert!(Supervisor::new(cfg, Docker::new("/nonexistent"), MASTER.into(), MASTER.into()).is_err());
 }
+
+#[tokio::test]
+async fn desktop_connect_needs_auth_and_an_upgrade_before_touching_docker() {
+    let (app, seen) = app().await;
+    let path = format!("/v1/agents/{A}/desktop/connect");
+    let (status, _) = call(&app, Call { method: Method::GET, path: path.clone(), token: None, as_agent: Some(A), body: None }).await;
+    assert_eq!(status, 401, "no supervisor token");
+    let (status, _) = call(&app, Call { method: Method::GET, path, token: Some(TOKEN), as_agent: Some(B), body: None }).await;
+    assert_eq!(status, 403, "another agent's credential");
+    let (status, body) = agent(&app, Method::GET, A, "desktop/connect", None).await;
+    assert_eq!(status, 426, "a plain GET is not a tunnel: {body}");
+    assert!(seen.lock().unwrap().is_empty(), "nothing reached Docker: {:?}", seen.lock().unwrap());
+}
+
+#[tokio::test]
+async fn desktop_open_refuses_unknown_apps_and_unusable_targets_before_touching_docker() {
+    let (app, seen) = app().await;
+    for body in [
+        json!({"app": "xterm"}),
+        json!({}),
+        json!({"app": "files", "target": "a\nb"}),
+        json!({"app": "browser", "target": "x".repeat(5000)}),
+    ] {
+        let (status, out) = agent(&app, Method::POST, A, "desktop/open", Some(body.clone())).await;
+        assert_eq!(status, 400, "{body}: {out}");
+    }
+    assert!(seen.lock().unwrap().is_empty(), "nothing reached Docker: {:?}", seen.lock().unwrap());
+}
+
+#[tokio::test]
+async fn desktop_state_without_a_container_is_off_and_creates_nothing() {
+    let (app, seen) = app().await;
+    let (status, body) = agent(&app, Method::GET, A, "desktop/state", None).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body, json!({"running": false, "active": null, "windows": []}));
+    let calls = seen.lock().unwrap().clone();
+    assert!(calls.iter().all(|c| c.starts_with("GET /containers/")), "only an inspect: {calls:?}");
+}
+
+#[test]
+fn desktop_label_and_accent_only_pass_safe_values() {
+    use sandboxd::server::{desktop_accent, desktop_label};
+    assert_eq!(desktop_label(Some("Scout")), "Scout");
+    assert_eq!(desktop_label(Some("$(rm -rf /); Scout")), "rm -rf  Scout");
+    assert_eq!(desktop_label(Some("   ")), "Amiro");
+    assert_eq!(desktop_label(None), "Amiro");
+    assert_eq!(desktop_label(Some(&"x".repeat(40))).len(), 28);
+    assert_eq!(desktop_accent(Some("#38bdf8")), "#38bdf8");
+    assert_eq!(desktop_accent(Some("#38bdf8\"/><script>")), "#E9642F");
+    assert_eq!(desktop_accent(Some("red")), "#E9642F");
+    assert_eq!(desktop_accent(None), "#E9642F");
+}

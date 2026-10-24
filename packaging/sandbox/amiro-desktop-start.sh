@@ -11,14 +11,19 @@ set -euo pipefail
 
 AGENT_LABEL="${1:-Amiro}"
 ACCENT_HEX="${2:-#E9642F}"
-export DISPLAY=":99"
-export HOME="/home/agent"
-export XDG_RUNTIME_DIR="/tmp/xdg-runtime"
-export XDG_CONFIG_HOME="/tmp/desktop-config"
-export XDG_DATA_HOME="/tmp/desktop-data"
-export XDG_CACHE_HOME="/tmp/desktop-cache"
+# Where /home/agent lives on the owner's computer (the supervisor's agents
+# root + this agent's id). Shown in the terminal and by amiro-desktop-state.
+HOST_HOME="${3:-}"
+. /usr/local/share/amiro/desktop-env
 mkdir -p "$XDG_RUNTIME_DIR" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME" "$HOME/.browser"
 chmod 700 "$XDG_RUNTIME_DIR"
+
+# Who this desktop belongs to; refreshed on every start so a rename shows.
+/usr/local/bin/amiro-desktop-identity "$AGENT_LABEL" "${HOST_HOME:-/home/agent}"
+# desktop-env picks the folder the desktop opens from what was just recorded.
+. /usr/local/share/amiro/desktop-env
+mkdir -p "$XDG_CONFIG_HOME/gtk-3.0"
+printf 'file://%s %s%s workspace\n' "$AMIRO_DESKTOP_HOME" "$AGENT_LABEL" "'s" > "$XDG_CONFIG_HOME/gtk-3.0/bookmarks"
 
 # If VNC server is already listening on 5999, exit 0 immediately
 if (echo > /dev/tcp/127.0.0.1/5999) >/dev/null 2>&1; then
@@ -29,10 +34,8 @@ fi
 rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 2>/dev/null || true
 
 # 1. Start session D-Bus
-DBUS_ADDR="unix:path=/tmp/dbus-session.sock"
 rm -f /tmp/dbus-session.sock
-dbus-daemon --session --fork --address="$DBUS_ADDR"
-export DBUS_SESSION_BUS_ADDRESS="$DBUS_ADDR"
+dbus-daemon --session --fork --address="$DBUS_SESSION_BUS_ADDRESS"
 
 # 2. Start Xtigervnc on :99 (port 5999, 1440x810, 24-bit)
 nohup Xtigervnc :99 \
@@ -155,24 +158,18 @@ EOF
 nohup openbox --sm-disable --config-file "$XDG_CONFIG_HOME/openbox/rc.xml" </dev/null >/tmp/openbox.log 2>&1 &
 nohup xcompmgr </dev/null >/tmp/xcompmgr.log 2>&1 &
 
-# 5. Create desktop launcher script for Chromium, Files (Thunar), and Terminal
-cat > /tmp/launch-chrome.sh <<'EOF'
-#!/usr/bin/env bash
-export DISPLAY=":99"
-export HOME="/home/agent"
-exec chromium \
-  --no-sandbox \
-  --no-first-run \
-  --no-default-browser-check \
-  --disable-dev-shm-usage \
-  --disable-gpu \
-  --password-store=basic \
-  --user-data-dir="/home/agent/.browser" \
-  --window-size=1280,700 \
-  --window-position=80,28 \
-  "$@"
+# 5. Files shows the full folder path in its title (read by amiro-desktop-state
+#    and shown on the TV). Thunar reads this through xfconf.
+XFCONF_DIR="$XDG_CONFIG_HOME/xfce4/xfconf/xfce-perchannel-xml"
+mkdir -p "$XFCONF_DIR"
+cat > "$XFCONF_DIR/thunar.xml" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="thunar" version="1.0">
+  <property name="misc-full-path-in-window-title" type="bool" value="true"/>
+  <property name="misc-full-path-in-tab-title" type="bool" value="true"/>
+  <property name="last-view" type="string" value="ThunarDetailsView"/>
+</channel>
 EOF
-chmod +x /tmp/launch-chrome.sh
 
 APPS_DIR="$XDG_DATA_HOME/applications"
 mkdir -p "$APPS_DIR"
@@ -182,7 +179,7 @@ cat > "$APPS_DIR/google-chrome.desktop" <<'EOF'
 Version=1.0
 Type=Application
 Name=Google Chrome
-Exec=/tmp/launch-chrome.sh
+Exec=/usr/local/bin/amiro-desktop-chrome
 Icon=chromium
 Terminal=false
 StartupWMClass=Chromium
@@ -193,7 +190,7 @@ cat > "$APPS_DIR/thunar.desktop" <<'EOF'
 Version=1.0
 Type=Application
 Name=Files
-Exec=thunar /home/agent
+Exec=/usr/local/bin/amiro-desktop-open files
 Icon=system-file-manager
 Terminal=false
 StartupWMClass=Thunar
@@ -204,7 +201,7 @@ cat > "$APPS_DIR/xterm.desktop" <<'EOF'
 Version=1.0
 Type=Application
 Name=Terminal
-Exec=xfce4-terminal --working-directory=/home/agent
+Exec=/usr/local/bin/amiro-desktop-terminal
 Icon=utilities-terminal
 Terminal=false
 StartupWMClass=Xfce4-terminal
@@ -243,6 +240,6 @@ GSETTINGS_BACKEND=keyfile nohup plank </dev/null >/tmp/plank.log 2>&1 &
 
 # 7. Launch real Chromium on the desktop by default so it is immediately visible
 if ! pgrep -f "/home/agent/.browser" >/dev/null 2>&1; then
-  nohup /tmp/launch-chrome.sh "https://example.com" </dev/null >/tmp/chrome.log 2>&1 &
+  nohup /usr/local/bin/amiro-desktop-chrome "https://example.com" </dev/null >/tmp/chrome.log 2>&1 &
 fi
 

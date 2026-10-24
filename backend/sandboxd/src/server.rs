@@ -43,8 +43,6 @@ pub struct Supervisor {
     locks: Mutex<HashMap<String, Arc<Mutex<()>>>>,
     /// Active interactive terminal sessions keyed by `session_id`.
     terminals: Arc<Mutex<HashMap<String, Arc<ContainerTerminalSession>>>>,
-    /// Active VNC desktop bridge sessions keyed by `session_id`.
-    vnc_sessions: Arc<Mutex<HashMap<String, Arc<ContainerVncSession>>>>,
 }
 
 #[derive(Clone, Debug)]
@@ -60,14 +58,6 @@ pub struct ContainerTerminalSession {
     pub input_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
     pub output_tx: tokio::sync::broadcast::Sender<TerminalChunk>,
     pub history: Mutex<Vec<TerminalChunk>>,
-    pub closed: std::sync::atomic::AtomicBool,
-    pub abort_tx: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
-}
-
-pub struct ContainerVncSession {
-    pub agent_id: String,
-    pub input_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
-    pub output_rx: Mutex<tokio::sync::mpsc::Receiver<Vec<u8>>>,
     pub closed: std::sync::atomic::AtomicBool,
     pub abort_tx: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
 }
@@ -90,7 +80,6 @@ impl Supervisor {
             master,
             locks: Mutex::new(HashMap::new()),
             terminals: Arc::new(Mutex::new(HashMap::new())),
-            vnc_sessions: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -425,10 +414,23 @@ async fn create_terminal_session(
     let rows = body["rows"].as_u64().unwrap_or(24).clamp(1, 1000) as u16;
 
     let cid = sup.ensure(&id).await?;
+    // Attach to the agent's shared shell (the same tmux session as the
+    // terminal on its desktop), named for the agent and its real folder.
+    // Images without it get a plain shell.
+    if body.get("label").is_some() {
+        let identity = vec![
+            "/usr/local/bin/amiro-desktop-identity".to_string(),
+            desktop_label(body["label"].as_str()),
+            sup.cfg.agent_folder(&id),
+        ];
+        let _ = sup.docker.exec(&cid, &identity, 1024, Duration::from_secs(5)).await;
+    }
     let argv = vec![
         "/bin/sh".to_string(),
         "-c".to_string(),
-        "if [ -x /bin/bash ]; then exec /bin/bash -i; else exec /bin/sh -i; fi".to_string(),
+        "if [ -x /usr/local/bin/amiro-shell ]; then exec /usr/local/bin/amiro-shell; \
+         elif [ -x /bin/bash ]; then exec /bin/bash -i; else exec /bin/sh -i; fi"
+            .to_string(),
     ];
     let exec_id = sup
         .docker
@@ -685,246 +687,200 @@ pub fn router(sup: Arc<Supervisor>) -> Router {
             "/v1/agents/{id}/terminal/sessions/{session_id}/events",
             get(terminal_session_events),
         )
-        .route("/v1/agents/{id}/desktop/sessions", post(create_desktop_session))
-        .route(
-            "/v1/agents/{id}/desktop/sessions/{session_id}",
-            axum::routing::delete(destroy_desktop_session),
-        )
-        .route(
-            "/v1/agents/{id}/desktop/sessions/{session_id}/input",
-            post(desktop_session_input),
-        )
-        .route(
-            "/v1/agents/{id}/desktop/sessions/{session_id}/read",
-            get(desktop_session_read),
-        )
+        .route("/v1/agents/{id}/desktop/connect", get(desktop_connect))
+        .route("/v1/agents/{id}/desktop/open", post(desktop_open))
+        .route("/v1/agents/{id}/desktop/state", get(desktop_state))
         .with_state(sup)
 }
 
-async fn create_desktop_session(
+/// What the desktop wallpaper and window title call the agent: letters,
+/// digits, spaces, `-` and `_`, at most 28 of them, `Amiro` when empty.
+pub fn desktop_label(raw: Option<&str>) -> String {
+    let label: String = raw
+        .unwrap_or("")
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == ' ' || *c == '-' || *c == '_')
+        .take(28)
+        .collect();
+    let label = label.trim();
+    if label.is_empty() { "Amiro".into() } else { label.to_string() }
+}
+
+/// A `#rrggbb` accent, or Amiro orange.
+pub fn desktop_accent(raw: Option<&str>) -> String {
+    raw.filter(|s| s.len() == 7 && s.starts_with('#') && s[1..].bytes().all(|b| b.is_ascii_hexdigit()))
+        .unwrap_or("#E9642F")
+        .to_string()
+}
+
+/// Start the agent's virtual desktop unless it is already running.
+async fn start_desktop(sup: &Supervisor, id: &str, label: Option<&str>, accent: Option<&str>) -> Result<(), ApiError> {
+    // The folder mounted at /home/agent, as the owner sees it on their
+    // computer; from the supervisor's own settings, never from the request.
+    let host_home = sup.cfg.agent_folder(id);
+    let start = vec![
+        "/usr/local/bin/amiro-desktop-start".to_string(),
+        desktop_label(label),
+        desktop_accent(accent),
+        host_home,
+    ];
+    let started = sup.exec(id, start, 16 * 1024, Duration::from_secs(30)).await?;
+    if started.timed_out || started.exit_code != Some(0) {
+        let detail = text(&started.stderr);
+        let detail = detail.trim();
+        return Err(ApiError(
+            StatusCode::SERVICE_UNAVAILABLE,
+            if detail.is_empty() { "the desktop did not start".into() } else { format!("the desktop did not start: {detail}") },
+        ));
+    }
+    Ok(())
+}
+
+/// The JSON a desktop helper printed, or why there is none.
+fn desktop_json(out: &ExecOutput) -> Result<Value, ApiError> {
+    match out.exit_code {
+        Some(0) => serde_json::from_slice(&out.stdout)
+            .map_err(|_| ApiError(StatusCode::BAD_GATEWAY, "the desktop helper printed no state".into())),
+        // The usage errors amiro-desktop-open reports (bad URL, missing folder).
+        Some(2) => Err(bad(text(&out.stderr).trim().to_string())),
+        Some(126) | Some(127) => Err(ApiError(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "the agent image has no desktop helpers; rebuild it with scripts/sandbox.sh up".into(),
+        )),
+        _ if out.timed_out => Err(ApiError(StatusCode::GATEWAY_TIMEOUT, "the desktop did not answer in time".into())),
+        _ => Err(ApiError(StatusCode::BAD_GATEWAY, format!("the desktop helper failed: {}", text(&out.stderr).trim()))),
+    }
+}
+
+/// Apps `desktop/open` can open.
+pub const DESKTOP_APPS: [&str; 3] = ["browser", "files", "terminal"];
+
+/// `POST /v1/agents/{id}/desktop/open` `{app, target, label?, accent?}`:
+/// open a browser tab, a Files window or a terminal on the agent's desktop
+/// (starting it if needed) and return the desktop state afterwards.
+async fn desktop_open(
     State(sup): State<Shared>,
     Path(id): Path<String>,
     headers: HeaderMap,
     Json(body): Json<Value>,
-) -> Result<(StatusCode, Json<Value>), ApiError> {
+) -> Result<Json<Value>, ApiError> {
     authorize(&sup, &headers, Some(&id))?;
-    let label = body["label"]
-        .as_str()
-        .unwrap_or("Amiro")
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == ' ' || *c == '-' || *c == '_')
-        .take(28)
-        .collect::<String>();
-    let accent = body["accentHex"]
-        .as_str()
-        .filter(|s| s.len() == 7 && s.starts_with('#') && s[1..].bytes().all(|b| b.is_ascii_hexdigit()))
-        .unwrap_or("#E9642F")
-        .to_string();
+    let app = body["app"].as_str().unwrap_or("");
+    if !DESKTOP_APPS.contains(&app) {
+        return Err(bad("app must be browser, files or terminal"));
+    }
+    let target = body["target"].as_str().unwrap_or("").trim();
+    if target.len() > 4096 || target.contains('\0') || target.contains('\n') {
+        return Err(bad("target is not a usable URL or folder"));
+    }
+    start_desktop(&sup, &id, body["label"].as_str(), body["accent"].as_str()).await?;
+    let argv = vec!["/usr/local/bin/amiro-desktop-open".to_string(), app.to_string(), target.to_string()];
+    let out = sup.exec(&id, argv, SHELL_OUTPUT_CAP, Duration::from_secs(20)).await?;
+    Ok(Json(desktop_json(&out)?))
+}
 
-    // Ensure container and start the Xtigervnc + Openbox + Plank + Chromium desktop
-    let start_argv = vec![
-        "/usr/local/bin/amiro-desktop-start".to_string(),
-        if label.is_empty() { "Amiro".to_string() } else { label },
-        accent,
-    ];
-    let _ = sup.exec(&id, start_argv, 16 * 1024, Duration::from_secs(25)).await?;
+/// `GET /v1/agents/{id}/desktop/state`: what is open on the agent's desktop,
+/// with each Files and Terminal window's folder and each browser tab's URL.
+/// Never starts the desktop or creates the container: the TV polls this.
+async fn desktop_state(
+    State(sup): State<Shared>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    authorize(&sup, &headers, Some(&id))?;
+    let off = || Json(json!({"running": false, "active": null, "windows": []}));
+    let Some(info) = sup.docker.inspect(&sup.cfg.container_name(&id)).await.map_err(docker_error)? else {
+        return Ok(off());
+    };
+    if info["State"]["Running"].as_bool() != Some(true) {
+        return Ok(off());
+    }
+    let cid = info["Id"].as_str().unwrap_or_default().to_string();
+    let out = sup
+        .docker
+        .exec(&cid, &args(&["/usr/local/bin/amiro-desktop-state"]), SHELL_OUTPUT_CAP, Duration::from_secs(10))
+        .await
+        .map_err(docker_error)?;
+    Ok(Json(desktop_json(&out)?))
+}
+
+#[derive(serde::Deserialize, Default)]
+struct DesktopQuery {
+    label: Option<String>,
+    accent: Option<String>,
+}
+
+/// `GET /v1/agents/{id}/desktop/connect` with `Upgrade: amiro-rfb`: start the
+/// agent's virtual desktop if it is not running, then switch protocols and
+/// tunnel raw RFB bytes between the caller and the VNC server on the
+/// container's loopback (`127.0.0.1:5999`, reached through `socat`).
+async fn desktop_connect(
+    State(sup): State<Shared>,
+    Path(id): Path<String>,
+    axum::extract::Query(query): axum::extract::Query<DesktopQuery>,
+    headers: HeaderMap,
+    mut request: axum::extract::Request,
+) -> Result<axum::response::Response, ApiError> {
+    authorize(&sup, &headers, Some(&id))?;
+    let wants_tunnel = headers
+        .get("upgrade")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.eq_ignore_ascii_case(crate::DESKTOP_UPGRADE));
+    if !wants_tunnel {
+        return Err(ApiError(StatusCode::UPGRADE_REQUIRED, format!("send Upgrade: {}", crate::DESKTOP_UPGRADE)));
+    }
+
+    start_desktop(&sup, &id, query.label.as_deref(), query.accent.as_deref()).await?;
 
     let cid = sup.ensure(&id).await?;
-    let stream = start_raw_exec_unmuxed(&sup.docker, &cid, &id).await.map_err(docker_error)?;
-
-    let session_id = uuid::Uuid::new_v4().simple().to_string();
-    let (input_tx, mut input_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(256);
-    let (output_tx, output_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(256);
-    let (abort_tx, mut abort_rx) = tokio::sync::oneshot::channel::<()>();
-
-    let session = Arc::new(ContainerVncSession {
-        agent_id: id.clone(),
-        input_tx,
-        output_rx: Mutex::new(output_rx),
-        closed: std::sync::atomic::AtomicBool::new(false),
-        abort_tx: Mutex::new(Some(abort_tx)),
-    });
-
-    sup.vnc_sessions
-        .lock()
-        .await
-        .insert(session_id.clone(), session.clone());
-
-    let vnc_map = sup.vnc_sessions.clone();
-    let sid_cleanup = session_id.clone();
-    let session_clone = session.clone();
+    let argv = args(&["socat", "-", "TCP:127.0.0.1:5999"]);
+    let exec_id = sup.docker.create_stream_exec(&cid, &argv).await.map_err(docker_error)?;
+    let vnc = sup.docker.start_non_tty_stream_exec(&exec_id).await.map_err(docker_error)?;
+    let on_upgrade = hyper::upgrade::on(&mut request);
 
     tokio::spawn(async move {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        let (mut reader, mut writer) = tokio::io::split(stream);
-        let mut buf = [0u8; 32768];
-        let mut pending = bytes::BytesMut::new();
+        let Ok(upgraded) = on_upgrade.await else { return };
+        let caller = hyper_util::rt::TokioIo::new(upgraded);
+        let (mut caller_rx, mut caller_tx) = tokio::io::split(caller);
+        let (mut vnc_rx, mut vnc_tx) = tokio::io::split(vnc);
 
-        loop {
-            tokio::select! {
-                biased;
-                _ = &mut abort_rx => {
-                    break;
-                }
-                maybe_in = input_rx.recv() => {
-                    match maybe_in {
-                        Some(bytes) => {
-                            if writer.write_all(&bytes).await.is_err() {
-                                break;
-                            }
-                            let _ = writer.flush().await;
-                        }
-                        None => break,
+        // Caller -> VNC: the exec's stdin is raw.
+        let up = async {
+            let _ = tokio::io::copy(&mut caller_rx, &mut vnc_tx).await;
+            let _ = vnc_tx.shutdown().await;
+        };
+        // VNC -> caller: the exec's stdout arrives in Docker's multiplexed frames.
+        let down = async {
+            let mut buf = vec![0u8; 64 * 1024];
+            let mut pending = bytes::BytesMut::new();
+            loop {
+                let n = match vnc_rx.read(&mut buf).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => n,
+                };
+                pending.extend_from_slice(&buf[..n]);
+                while let Some((stream, payload)) = crate::docker::next_frame(&mut pending) {
+                    if stream == 1 && caller_tx.write_all(&payload).await.is_err() {
+                        return;
                     }
                 }
-                read_res = reader.read(&mut buf) => {
-                    match read_res {
-                        Ok(0) | Err(_) => break,
-                        Ok(n) => {
-                            pending.extend_from_slice(&buf[..n]);
-                            while pending.len() >= 8 {
-                                let len = u32::from_be_bytes([pending[4], pending[5], pending[6], pending[7]]) as usize;
-                                if pending.len() < 8 + len {
-                                    break;
-                                }
-                                let stream_kind = pending[0];
-                                use bytes::Buf;
-                                pending.advance(8);
-                                let payload = pending.split_to(len);
-                                if stream_kind == 1 && !payload.is_empty() {
-                                    if output_tx.send(payload.to_vec()).await.is_err() {
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }
+                if caller_tx.flush().await.is_err() {
+                    return;
                 }
             }
+            let _ = caller_tx.shutdown().await;
+        };
+        tokio::select! {
+            _ = up => {}
+            _ = down => {}
         }
-        session_clone
-            .closed
-            .store(true, std::sync::atomic::Ordering::SeqCst);
-        vnc_map.lock().await.remove(&sid_cleanup);
     });
 
-    Ok((
-        StatusCode::CREATED,
-        Json(json!({
-            "session_id": session_id,
-            "id": session_id,
-            "agent_id": id,
-        })),
-    ))
-}
-
-async fn start_raw_exec_unmuxed(
-    docker: &Docker,
-    cid: &str,
-    _agent_id: &str,
-) -> Result<hyper_util::rt::TokioIo<hyper::upgrade::Upgraded>, DockerError> {
-    let argv = vec![
-        "socat".to_string(),
-        "-".to_string(),
-        "TCP:127.0.0.1:5999".to_string(),
-    ];
-    let exec_id = docker.create_stream_exec(cid, &argv).await?;
-    docker.start_non_tty_stream_exec(&exec_id).await
-}
-
-async fn get_vnc_session(
-    sup: &Supervisor,
-    agent_id: &str,
-    session_id: &str,
-) -> Result<Arc<ContainerVncSession>, ApiError> {
-    let session = sup
-        .vnc_sessions
-        .lock()
-        .await
-        .get(session_id)
-        .cloned()
-        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "desktop session not found".into()))?;
-    if session.agent_id != agent_id {
-        return Err(ApiError(
-            StatusCode::NOT_FOUND,
-            "desktop session not found".into(),
-        ));
-    }
-    Ok(session)
-}
-
-async fn desktop_session_input(
-    State(sup): State<Shared>,
-    Path((id, session_id)): Path<(String, String)>,
-    headers: HeaderMap,
-    Json(body): Json<Value>,
-) -> Result<Json<Value>, ApiError> {
-    authorize(&sup, &headers, Some(&id))?;
-    let b64 = body["data"].as_str().unwrap_or("");
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(b64.as_bytes())
-        .map_err(|_| bad("invalid base64"))?;
-    let session = get_vnc_session(&sup, &id, &session_id).await?;
-    if !bytes.is_empty() {
-        session
-            .input_tx
-            .send(bytes)
-            .await
-            .map_err(|_| ApiError(StatusCode::GONE, "desktop session closed".into()))?;
-    }
-    Ok(Json(json!({"ok": true})))
-}
-
-async fn desktop_session_read(
-    State(sup): State<Shared>,
-    Path((id, session_id)): Path<(String, String)>,
-    headers: HeaderMap,
-) -> Result<Json<Value>, ApiError> {
-    authorize(&sup, &headers, Some(&id))?;
-    let Some(session) = sup.vnc_sessions.lock().await.get(&session_id).cloned() else {
-        return Ok(Json(json!({"chunks": [], "closed": true})));
-    };
-    if session.agent_id != id {
-        return Err(ApiError(
-            StatusCode::NOT_FOUND,
-            "desktop session not found".into(),
-        ));
-    }
-
-    let mut rx = session.output_rx.lock().await;
-    let mut chunks = Vec::new();
-    match tokio::time::timeout(Duration::from_secs(10), rx.recv()).await {
-        Ok(Some(first)) => {
-            chunks.push(base64::engine::general_purpose::STANDARD.encode(&first));
-            while chunks.len() < 32 {
-                match rx.try_recv() {
-                    Ok(more) => chunks.push(base64::engine::general_purpose::STANDARD.encode(&more)),
-                    Err(_) => break,
-                }
-            }
-        }
-        Ok(None) => return Ok(Json(json!({"chunks": [], "closed": true}))),
-        Err(_) => {}
-    }
-
-    Ok(Json(json!({
-        "chunks": chunks,
-        "closed": session.closed.load(std::sync::atomic::Ordering::SeqCst),
-    })))
-}
-
-async fn destroy_desktop_session(
-    State(sup): State<Shared>,
-    Path((id, session_id)): Path<(String, String)>,
-    headers: HeaderMap,
-) -> Result<Json<Value>, ApiError> {
-    authorize(&sup, &headers, Some(&id))?;
-    if let Some(session) = sup.vnc_sessions.lock().await.remove(&session_id) {
-        if session.agent_id == id {
-            if let Some(tx) = session.abort_tx.lock().await.take() {
-                let _ = tx.send(());
-            }
-        }
-    }
-    Ok(Json(json!({"ok": true})))
+    axum::response::Response::builder()
+        .status(StatusCode::SWITCHING_PROTOCOLS)
+        .header("connection", "upgrade")
+        .header("upgrade", crate::DESKTOP_UPGRADE)
+        .body(axum::body::Body::empty())
+        .map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }

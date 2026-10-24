@@ -484,6 +484,12 @@ pub fn tool_definitions() -> Vec<Value> {
         json!({"name":"ui_navigate","description":"Emit an interactive navigation card or open a specific Amiro settings/admin/superpowers page for the user.","inputSchema":{"type":"object","properties":{
             "page":{"type":"string","enum":["providers","voice","search","connectors","credentials","integrations","general","notifications","usage","schedules","superpowers","personality","memory","workspace"],"description":"Target Amiro page to open or link to"}
         },"required":["page"],"additionalProperties":false}}),
+        // --- Your desktop (the TV) ---
+        json!({"name":"desktop_open","description":"Open something on your own Linux desktop, which the user watches live on the TV screen (shown in the chat): a Chromium tab at a URL, a Files window at a folder, or a terminal in a folder. Starts the desktop if it is off. Folders are absolute or relative to /home/agent and must exist. Returns every open window with its exact folder or URL.","inputSchema":{"type":"object","properties":{
+            "app":{"type":"string","enum":["browser","files","terminal"],"description":"What to open"},
+            "target":{"type":"string","description":"browser: an http(s) URL. files/terminal: a folder (default /home/agent)."}
+        },"required":["app"],"additionalProperties":false}}),
+        json!({"name":"desktop_state","description":"See what is open on your desktop (the TV): each window, which one is in front, the exact folder each Files and Terminal window shows, and the URL of each browser tab.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}}),
         json!({"name":"ui_render_openui","description":"Render a live interactive OpenUI Generative UI surface inline in the chat transcript (KPI metric cards, interactive Recharts bar/line/pie charts, sortable status tables, interactive Q&A QuestionCard, value-pasting FormInput/FormTextarea/FormSlider/FormSwitch, encrypted SecretVaultCard for API keys/passwords, tabbed comparisons, step trackers, and clickable follow-up chips). Pass an OpenUI Lang program (`root = Stack([...])`) in `code` or pick a built-in daily-use `preset` (`daily_brief`, `budget_planner`, `sprint_tracker`, `agent_data_intake`). Never include raw secret values in OpenUI code; use SecretVaultCard to prompt the user into the encrypted vault.","inputSchema":{"type":"object","properties":{
             "title":{"type":"string","description":"Short card title displayed in the OpenUI surface header"},
             "code":{"type":"string","description":"OpenUI Lang program starting with `root = ...` (optional when `preset` is specified)"},
@@ -1861,6 +1867,19 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<(String
             let text = format!("Opened [**{}**]({}) in Amiro.", title, path);
             Ok((text, json!({"page": page, "title": title, "path": path})))
         }
+        "desktop_open" => {
+            use crate::routes::agent_browser::{describe_desktop, open_on_desktop};
+            let app = require_str(args, "app")?;
+            let target = arg_str(args, "target")?.unwrap_or("");
+            let desktop = open_on_desktop(state, crate::routes::agents::MAIN_AGENT_ID, app, target).await?;
+            let text = format!("Opened {app} on your desktop.\n{}", describe_desktop(&desktop));
+            Ok((text, json!({"agentId": crate::routes::agents::MAIN_AGENT_ID, "desktop": desktop})))
+        }
+        "desktop_state" => {
+            use crate::routes::agent_browser::{describe_desktop, read_desktop};
+            let desktop = read_desktop(state, crate::routes::agents::MAIN_AGENT_ID).await?;
+            Ok((describe_desktop(&desktop), json!({"agentId": crate::routes::agents::MAIN_AGENT_ID, "desktop": desktop})))
+        }
         "ui_render_openui" => {
             let preset = arg_str(args, "preset")?;
             let raw_code = arg_str(args, "code")?;
@@ -2665,5 +2684,23 @@ mod tests {
         )
         .await
         .is_err());
+    }
+
+    #[tokio::test]
+    async fn desktop_tools_are_listed_and_say_plainly_when_there_is_no_sandbox() {
+        let names: Vec<String> = tool_definitions()
+            .iter()
+            .filter_map(|t| t["name"].as_str().map(str::to_string))
+            .collect();
+        assert!(names.contains(&"desktop_open".to_string()));
+        assert!(names.contains(&"desktop_state".to_string()));
+
+        let h = harness().await;
+        let state = h.state.clone();
+        let err = call_tool(&state, "desktop_state", &json!({})).await.unwrap_err();
+        assert!(err.contains("scripts/sandbox.sh up"), "{err}");
+        let err = call_tool(&state, "desktop_open", &json!({"app": "files"})).await.unwrap_err();
+        assert!(err.contains("scripts/sandbox.sh up"), "{err}");
+        assert!(call_tool(&state, "desktop_open", &json!({})).await.is_err(), "app is required");
     }
 }

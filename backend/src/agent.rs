@@ -442,6 +442,13 @@ pub fn build_capability_guidance_block(home: &Path) -> String {
            `OAUTH_CONNECT {\"type\":\"provider\"|\"mcp\"|\"composio\",\"provider\":\"...\",\"authorizationUrl\":\"...\"}`\n\
            Tell the user to click the link or complete the device code in the rendered card, then call the status tool to confirm."
             .to_string(),
+        "## Your Computer (the TV)\n\
+         You have your own Linux desktop (Chromium, Files, a terminal) in your sandbox container. The user watches it live on the TV screen: \
+         the Monitor button in the chat header, and a live TV card in the chat whenever you use a desktop tool.\n\
+         - To show the user something on it, call `desktop_open` (team agents: `agent_desktop_open`) with `app` browser + an http(s) URL, or files/terminal + a folder.\n\
+         - To see what is open, call `desktop_state` (team agents: `agent_desktop_state`). It names the exact folder of each Files and Terminal window and the URL of each tab; quote those exactly instead of guessing.\n\
+         - If a desktop tool says the sandbox is not available, tell the user it starts with `bash scripts/sandbox.sh up`; never pretend a window opened."
+            .to_string(),
         "## Inline Visuals (`visualize` skill)\n\
          The \"Visualize\" skill (`visualize`) is available to render polished interactive SVG diagrams, charts, comparisons, or explainers inline in the chat transcript. \
          When asked to visualize something or when a diagram/chart explains a concept better than prose, use the `applet` tool with `placement: \"inline\"` and `view: { \"type\": \"html\", \"source\": \"<self-contained HTML/SVG fragment using CSS variables like var(--surface-lift), var(--content-default), var(--border-element)>\", \"height\": 320 }` (or load the `visualize` skill for full design-token and layout rules)."

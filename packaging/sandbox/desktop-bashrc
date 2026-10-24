@@ -1,0 +1,23 @@
+# bash in the agent's shared shell (amiro-shell). The prompt reads like a
+# shell on the owner's own computer, with the agent as the user and the folder
+# shown where it really is:
+#   amiro@amiro-os:/home/owner/.amiro/workspace/projects$
+# The window title is "<agent> — <that folder>" (read by amiro-desktop-state
+# and shown on the TV).
+[ -f /etc/bash.bashrc ] && . /etc/bash.bashrc
+[ -f "$HOME/.bashrc" ] && . "$HOME/.bashrc"
+AMIRO_AGENT_NAME="$(cat /tmp/desktop-agent-name 2>/dev/null || echo Agent)"
+AMIRO_HOST_HOME="$(cat /tmp/desktop-agent-home 2>/dev/null || echo /home/agent)"
+AMIRO_AGENT_USER="$(printf '%s' "$AMIRO_AGENT_NAME" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9\n' '-')"
+AMIRO_AGENT_USER="${AMIRO_AGENT_USER:-agent}"
+
+amiro_host_pwd() {
+  case "$PWD" in
+    /home/agent) printf '%s' "$AMIRO_HOST_HOME" ;;
+    /home/agent/*) printf '%s%s' "$AMIRO_HOST_HOME" "${PWD#/home/agent}" ;;
+    *) printf '%s' "$PWD" ;;
+  esac
+}
+
+PROMPT_COMMAND='AMIRO_HOST_PWD="$(amiro_host_pwd)"; printf "\033]0;%s — %s\007" "$AMIRO_AGENT_NAME" "$AMIRO_HOST_PWD"'
+PS1='\[\e[1;32m\]${AMIRO_AGENT_USER}@${AMIRO_AGENT_USER}-os\[\e[0m\]:\[\e[1;34m\]${AMIRO_HOST_PWD}\[\e[0m\]\$ '

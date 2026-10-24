@@ -28,6 +28,10 @@ pub struct SandboxConfig {
     pub gid: u32,
     /// Host path holding one folder per agent (`~/.amiro/agents`).
     pub agents_root: String,
+    /// The main agent's own workspace (`~/.amiro/workspace`), mounted for
+    /// the `main` desktop container so the TV shows the files Amiro works on.
+    /// Empty means `workspace` next to the agents root.
+    pub main_workspace: String,
     pub memory_bytes: i64,
     pub nano_cpus: i64,
     pub pids_limit: i64,
@@ -51,9 +55,11 @@ impl SandboxConfig {
             uid,
             gid,
             agents_root: agents_root.into(),
+            main_workspace: String::new(),
             memory_bytes: 1024 * 1024 * 1024,
             nano_cpus: 1_000_000_000,
-            pids_limit: 256,
+            // The desktop (Xtigervnc, Chromium, Thunar, a terminal) needs ~300 threads.
+            pids_limit: 1024,
             network: "bridge".into(),
             runtime: None,
             no_new_privileges: true,
@@ -71,6 +77,12 @@ impl SandboxConfig {
             return Err("AMIRO_SANDBOX_AGENTS_ROOT must be an absolute path without '..'".into());
         }
         let mut cfg = SandboxConfig::new(uid, gid, root.trim_end_matches('/'));
+        if let Some(main) = var("AMIRO_SANDBOX_MAIN_WORKSPACE") {
+            if !main.starts_with('/') || main.split('/').any(|part| part == "..") {
+                return Err("AMIRO_SANDBOX_MAIN_WORKSPACE must be an absolute path without '..'".into());
+            }
+            cfg.main_workspace = main.trim_end_matches('/').to_string();
+        }
         if let Some(ns) = var("AMIRO_SANDBOX_NAMESPACE") {
             if ns.len() > 32 || !ns.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-') {
                 return Err("AMIRO_SANDBOX_NAMESPACE must be up to 32 of a-z, 0-9 and '-'".into());
@@ -123,6 +135,22 @@ impl SandboxConfig {
         Ok(cfg)
     }
 
+    /// The host folder mounted at /home/agent for one agent: the main
+    /// agent's workspace for `main`, else `<agents root>/<id>`.
+    pub fn agent_folder(&self, agent_id: &str) -> String {
+        if agent_id == "main" {
+            if !self.main_workspace.is_empty() {
+                return self.main_workspace.clone();
+            }
+            if let Some((parent, _)) = self.agents_root.rsplit_once('/') {
+                if !parent.is_empty() {
+                    return format!("{parent}/workspace");
+                }
+            }
+        }
+        format!("{}/{agent_id}", self.agents_root)
+    }
+
     /// The container name for one agent.
     pub fn container_name(&self, agent_id: &str) -> String {
         format!("{}-agent-{agent_id}", self.namespace)
@@ -157,17 +185,47 @@ pub fn spec_hash(spec: &Value) -> String {
     hex::encode(Sha256::digest(spec.to_string().as_bytes()))[..16].to_string()
 }
 
+/// Where else the agent's folder may appear inside its container: at its own
+/// host path, so its desktop (Files, the terminal) shows where it really is.
+/// `None` when that path would shadow part of the container's system or its
+/// tmpfs, or is already /home/agent.
+pub fn mirror_target(folder: &str) -> Option<&str> {
+    const SYSTEM: [&str; 14] = [
+        "/bin", "/boot", "/dev", "/etc", "/lib", "/lib64", "/opt", "/proc", "/run", "/sbin", "/sys", "/tmp", "/usr",
+        "/var",
+    ];
+    let shadows = |root: &str| folder == root || folder.starts_with(&format!("{root}/"));
+    let ok = folder.starts_with('/')
+        && folder.len() > 1
+        && !folder.split('/').any(|part| part == "..")
+        && folder != AGENT_HOME
+        && !folder.starts_with(&format!("{AGENT_HOME}/"))
+        && !AGENT_HOME.starts_with(&format!("{folder}/"))
+        && !SYSTEM.iter().any(|root| shadows(root));
+    ok.then_some(folder)
+}
+
 fn base_spec(cfg: &SandboxConfig, agent_id: &str) -> Value {
-    let mut host = json!({
-        // The only mount: this agent's folder. `bind` (not `Binds`) so Docker
-        // refuses a missing folder instead of creating one as root.
-        "Mounts": [{
+    let folder = cfg.agent_folder(agent_id);
+    let mount = |target: &str| {
+        json!({
             "Type": "bind",
-            "Source": format!("{}/{agent_id}", cfg.agents_root),
-            "Target": AGENT_HOME,
+            "Source": folder,
+            "Target": target,
             "ReadOnly": false,
             "BindOptions": {"Propagation": "rprivate"}
-        }],
+        })
+    };
+    // Only this agent's folder is mounted. `bind` (not `Binds`) so Docker
+    // refuses a missing folder instead of creating one as root. It appears at
+    // /home/agent (what the agent's tools use) and, when safe, at its own host
+    // path too, so the desktop shows the folder where it really is.
+    let mut mounts = vec![mount(AGENT_HOME)];
+    if let Some(target) = mirror_target(&folder) {
+        mounts.push(mount(target));
+    }
+    let mut host = json!({
+        "Mounts": mounts,
         "CapDrop": ["ALL"],
         "SecurityOpt": if cfg.no_new_privileges { json!(["no-new-privileges:true"]) } else { json!([]) },
         "Privileged": false,
@@ -235,17 +293,28 @@ mod tests {
         assert_eq!(host["Memory"], 1024 * 1024 * 1024);
         assert_eq!(host["MemorySwap"], host["Memory"]);
         assert_eq!(host["NanoCpus"], 1_000_000_000);
-        assert_eq!(host["PidsLimit"], 256);
+        assert_eq!(host["PidsLimit"], 1024);
         assert_eq!(host["NetworkMode"], "bridge");
         assert!(host.get("Runtime").is_none());
         assert!(host.get("Binds").is_none());
         assert!(host.get("Devices").is_none());
         assert!(host.get("PortBindings").is_none());
         let mounts = host["Mounts"].as_array().unwrap();
-        assert_eq!(mounts.len(), 1, "only the agent's own folder is mounted");
-        assert_eq!(mounts[0]["Source"], format!("/home/owner/.amiro/agents/{ID}"));
+        let folder = format!("/home/owner/.amiro/agents/{ID}");
+        assert!(
+            mounts.iter().all(|m| m["Source"] == folder.as_str() && m["Type"] == "bind"),
+            "only the agent's own folder is mounted: {mounts:?}"
+        );
         assert_eq!(mounts[0]["Target"], AGENT_HOME);
-        assert_eq!(mounts[0]["Type"], "bind");
+        assert_eq!(mounts[1]["Target"], folder.as_str(), "and at its own path, for the desktop");
+        assert_eq!(mounts.len(), 2);
+        // The main agent's desktop shows its own workspace, not an agents/ folder.
+        let main = container_spec(&cfg(), "main");
+        assert_eq!(main["HostConfig"]["Mounts"][0]["Source"], "/home/owner/.amiro/workspace");
+        let mut moved = cfg();
+        moved.main_workspace = "/srv/amiro/workspace".into();
+        assert_eq!(container_spec(&moved, "main")["HostConfig"]["Mounts"][0]["Source"], "/srv/amiro/workspace");
+        assert_eq!(moved.agent_folder(ID), format!("/home/owner/.amiro/agents/{ID}"));
         let env = spec["Env"].as_array().unwrap();
         assert!(env.iter().all(|e| {
             let e = e.as_str().unwrap();
@@ -253,6 +322,21 @@ mod tests {
         }));
         assert_eq!(spec["Labels"][LABEL_AGENT], ID);
         assert_eq!(spec["Labels"][LABEL_SPEC].as_str().unwrap().len(), 16);
+    }
+
+    #[test]
+    fn the_folder_is_mirrored_at_its_own_path_only_where_that_is_safe() {
+        assert_eq!(mirror_target("/home/owner/.amiro/workspace"), Some("/home/owner/.amiro/workspace"));
+        assert_eq!(mirror_target("/srv/amiro/agents/x"), Some("/srv/amiro/agents/x"));
+        for unsafe_path in [
+            "/", "/home/agent", "/home/agent/x", "/home", "/tmp/amiro/workspace", "/etc/amiro", "/usr/local/x",
+            "/proc/1", "/var/lib/amiro", "relative/path", "/home/o/../etc",
+        ] {
+            assert_eq!(mirror_target(unsafe_path), None, "{unsafe_path}");
+        }
+        let mut c = cfg();
+        c.agents_root = "/tmp/amiro/agents".into();
+        assert_eq!(container_spec(&c, ID)["HostConfig"]["Mounts"].as_array().unwrap().len(), 1);
     }
 
     #[test]

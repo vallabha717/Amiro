@@ -60,6 +60,7 @@ import {
   getToolPresenter,
   presenterPropsFromToolPart,
 } from "./tool-presenters";
+import { isDesktopToolCall } from "./tool-presenters/desktop-presenters";
 import {
   WebSearchGlanceRow,
   WebSearchSourcesBar,
@@ -508,6 +509,8 @@ const PurePreviewMessage = ({
               preset?: string;
               pending: boolean;
             }[] = [];
+            // The latest desktop tool call's TV card (one live stream per reply).
+            let inlineDesktop: { id: string; node: ReactNode } | null = null;
             const secretPrompts: SecretPromptRequest[] = [];
             for (let i = 0; i < workParts.length; i++) {
               const part = workParts[i];
@@ -577,6 +580,14 @@ const PurePreviewMessage = ({
                     preset: openuiPayload.preset,
                     pending: !part.state.startsWith("output"),
                   });
+                }
+              }
+              if (isDesktopToolCall(toolName, partInput)) {
+                const card = getToolPresenter(toolName)?.Expanded?.(
+                  presenterPropsFromToolPart(part),
+                );
+                if (card) {
+                  inlineDesktop = { id: part.toolCallId, node: card as ReactNode };
                 }
               }
               if (toolName === "applet") {
@@ -956,6 +967,9 @@ const PurePreviewMessage = ({
                       }
                     />
                   ))}
+                {inlineDesktop && (
+                  <div key={inlineDesktop.id}>{inlineDesktop.node}</div>
+                )}
                 {inlineVisuals.map((vis) =>
                   vis.pending ? (
                     <VisualPlaceholder

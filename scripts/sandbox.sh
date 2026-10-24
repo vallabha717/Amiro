@@ -19,6 +19,8 @@ export AMIRO_SANDBOX_PORT="${AMIRO_SANDBOX_PORT:-4313}"
 export AMIRO_SANDBOX_NAMESPACE="${AMIRO_SANDBOX_NAMESPACE:-amiro}"
 export AMIRO_SANDBOX_ENV_FILE="${AMIRO_SANDBOX_ENV_FILE:-${AMIRO_HOME}/sandbox/supervisor.env}"
 export AMIRO_SANDBOX_AGENTS_ROOT="${AMIRO_SANDBOX_AGENTS_ROOT:-${AMIRO_HOME}/agents}"
+# The main agent's own workspace: its desktop (the TV) shows these files.
+export AMIRO_SANDBOX_MAIN_WORKSPACE="${AMIRO_SANDBOX_MAIN_WORKSPACE:-${AMIRO_HOME}/workspace}"
 export DOCKER_SOCKET="${DOCKER_SOCKET:-/var/run/docker.sock}"
 PROJECT="amiro-sandbox-${AMIRO_SANDBOX_NAMESPACE}"
 
@@ -92,7 +94,7 @@ case "${1:-}" in
       export AMIRO_SANDBOX_NO_NEW_PRIVILEGES="${AMIRO_SANDBOX_NO_NEW_PRIVILEGES:-false}"
     fi
     export AMIRO_SANDBOX_NO_NEW_PRIVILEGES="${AMIRO_SANDBOX_NO_NEW_PRIVILEGES:-true}"
-    mkdir -p "${AMIRO_SANDBOX_AGENTS_ROOT}"
+    mkdir -p "${AMIRO_SANDBOX_AGENTS_ROOT}" "${AMIRO_SANDBOX_MAIN_WORKSPACE}"
     ensure_secrets
     load_secrets
     # AMIRO_SANDBOX_SKIP_BUILD=1 reuses existing images (the E2E runner does).

@@ -1,7 +1,12 @@
 //! Admin Debug Terminal sessions, scoped per agent (`main` or team agent `<id>`).
 //!
-//! - For the main agent (`agent_id: "main"` or absent), spawns a host PTY
-//!   (`openpty`) rooted at `state.workspace` (`~/.amiro/workspace`).
+//! - Every container terminal attaches to the agent's shared shell (the tmux
+//!   session `agent`, see `packaging/sandbox/amiro-shell.sh`), so Debug and
+//!   the terminal on the agent's desktop (the TV) are one synced shell.
+//! - For the main agent (`agent_id: "main"` or absent): that shared shell in
+//!   Amiro's desktop container, which mounts its workspace, when the sandbox
+//!   is up; otherwise a host PTY (`openpty`) rooted at `state.workspace`
+//!   (`~/.amiro/workspace`).
 //! - For a team agent (`32-hex` id), follows the OpenDots / `sandboxd`
 //!   architecture: delegates the interactive PTY session to `amiro-sandboxd`
 //!   using that agent's derived `HMAC-SHA256` credential inside its isolated
@@ -262,14 +267,39 @@ async fn create_session(
             ));
         }
         let _ = agents::working_dir_for(&state, &agent_id).await?;
-        let client = sandbox::client(&state).await.ok_or_else(|| {
+        return create_container_session(&state, &agent_id, cols, rows).await;
+    }
+
+    // Main agent ("main" / "amiro"): with the sandbox up, the same shared
+    // shell as the terminal on Amiro's desktop (the TV), in its workspace;
+    // otherwise a host PTY rooted in `state.workspace`.
+    if sandbox::client(&state).await.is_some() {
+        if let Ok(created) = create_container_session(&state, MAIN_AGENT_ID, cols, rows).await {
+            return Ok(created);
+        }
+    }
+    create_host_pty_session(&state, cols, rows).await
+}
+
+/// A terminal attached to the agent's shared shell in its container (the
+/// tmux session its desktop's terminal windows also show).
+async fn create_container_session(
+    state: &AppState,
+    agent_id: &str,
+    cols: u16,
+    rows: u16,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    let agent_id = agent_id.to_string();
+    {
+        let client = sandbox::client(state).await.ok_or_else(|| {
             ApiError(
                 StatusCode::SERVICE_UNAVAILABLE,
                 sandbox::UNAVAILABLE.into(),
             )
         })?;
+        let (label, _) = crate::routes::agent_browser::resolve_agent_label_and_accent(state, &agent_id).await;
         let created = client
-            .create_terminal_session(&agent_id, cols, rows)
+            .create_terminal_session(&agent_id, cols, rows, &label)
             .await
             .map_err(|e| match e.status {
                 None => ApiError(StatusCode::SERVICE_UNAVAILABLE, sandbox::UNAVAILABLE.into()),
@@ -310,11 +340,8 @@ async fn create_session(
                 "isolation": "container",
                 "cwd": "/home/agent",
             })),
-        ));
+        ))
     }
-
-    // Main agent ("main" / "amiro"): host PTY rooted in `state.workspace`.
-    create_host_pty_session(&state, cols, rows).await
 }
 
 #[cfg(not(unix))]

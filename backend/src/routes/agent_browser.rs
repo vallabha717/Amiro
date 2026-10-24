@@ -104,7 +104,7 @@ async fn desktop_stream_ws(
         .on_upgrade(move |socket| handle_desktop_ws(state, agent_id, socket))
 }
 
-async fn resolve_agent_label_and_accent(state: &AppState, agent_id: &str) -> (String, String) {
+pub(crate) async fn resolve_agent_label_and_accent(state: &AppState, agent_id: &str) -> (String, String) {
     if agent_id == MAIN_AGENT_ID {
         let _ = tokio::fs::create_dir_all(state.home.join("agents").join(MAIN_AGENT_ID)).await;
         let id_doc = get_agent_identity(state, None).await.unwrap_or_else(|_| json!({}));
@@ -122,89 +122,148 @@ async fn resolve_agent_label_and_accent(state: &AppState, agent_id: &str) -> (St
     ("Agent".to_string(), "#38bdf8".to_string())
 }
 
+// ---------------------------------------------------------------------------
+// What is on the desktop, and opening things on it (TV header + agent tools)
+// ---------------------------------------------------------------------------
+
+fn sandbox_error(error: sandboxd::client::ClientError) -> String {
+    match error.status {
+        None => sandbox::UNAVAILABLE.to_string(),
+        Some(_) => error.message,
+    }
+}
+
+/// Open `app` (`browser` with an http(s) URL, `files` or `terminal` with a
+/// folder) on the agent's desktop, starting it if needed. Returns the desktop
+/// state afterwards.
+pub async fn open_on_desktop(state: &AppState, agent_id: &str, app: &str, target: &str) -> Result<Value, String> {
+    let client = sandbox::client(state).await.ok_or(sandbox::UNAVAILABLE)?;
+    let (label, accent) = resolve_agent_label_and_accent(state, agent_id).await;
+    client.desktop_open(agent_id, app, target, &label, &accent).await.map_err(sandbox_error)
+}
+
+/// What is open on the agent's desktop: `{running, active, windows}`.
+pub async fn read_desktop(state: &AppState, agent_id: &str) -> Result<Value, String> {
+    let client = sandbox::client(state).await.ok_or(sandbox::UNAVAILABLE)?;
+    client.desktop_state(agent_id).await.map_err(sandbox_error)
+}
+
+/// One line per window, for the model: `Files — /home/agent/docs (in front)`.
+pub fn describe_desktop(desktop: &Value) -> String {
+    if desktop["running"].as_bool() != Some(true) {
+        return "Your desktop is not running. Opening something on it starts it.".into();
+    }
+    let windows = desktop["windows"].as_array().cloned().unwrap_or_default();
+    if windows.is_empty() {
+        return "Your desktop is running with no windows open.".into();
+    }
+    let mut lines = Vec::new();
+    if let Some(host) = desktop["agent"]["hostHome"].as_str().filter(|h| *h != "/home/agent") {
+        lines.push(format!(
+            "Your home /home/agent is {host} on the owner's computer; the TV shows paths there."
+        ));
+    }
+    lines.push("Open on your desktop (the user watches it on the TV):".to_string());
+    for w in &windows {
+        let title = w["title"].as_str().unwrap_or("");
+        let what = match w["app"].as_str() {
+            Some("browser") => format!("Browser — {} ({title})", w["url"].as_str().unwrap_or("?")),
+            Some("files") => format!("Files — {}", w["path"].as_str().unwrap_or(title)),
+            Some("terminal") => format!("Terminal — {}", w["path"].as_str().unwrap_or(title)),
+            _ => title.to_string(),
+        };
+        let front = if w["active"].as_bool() == Some(true) { " (in front)" } else { "" };
+        lines.push(format!("- {what}{front}"));
+    }
+    lines.join("\n")
+}
+
+#[derive(Deserialize, Default)]
+struct DesktopStateQuery {
+    #[serde(rename = "agentId")]
+    agent_id: Option<String>,
+}
+
+/// `GET /api/desktop/state?agentId=`: the TV header's "what's in front" line.
+async fn get_desktop_state(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Query(query): Query<DesktopStateQuery>,
+) -> Result<Json<Value>, ApiError> {
+    agents::require_admin(&user)?;
+    let agent_id = match query.agent_id.as_deref().map(str::trim) {
+        None | Some("") | Some("amiro") => MAIN_AGENT_ID.to_string(),
+        Some(id) => id.to_string(),
+    };
+    if agent_id != MAIN_AGENT_ID && agents::agent_tools(&state, &agent_id).await?.is_none() {
+        return Err(agents::not_found());
+    }
+    read_desktop(&state, &agent_id)
+        .await
+        .map(Json)
+        .map_err(|e| ApiError(StatusCode::SERVICE_UNAVAILABLE, e))
+}
+
+/// Close codes the desktop viewer maps to a message.
+pub const DESKTOP_CLOSE_UNAVAILABLE: u16 = 4008;
+pub const DESKTOP_CLOSE_FAILED: u16 = 4011;
+
+async fn close_desktop(mut socket: WebSocket, code: u16, reason: &str) {
+    let frame = axum::extract::ws::CloseFrame { code, reason: reason.chars().take(120).collect::<String>().into() };
+    let _ = socket.send(Message::Close(Some(frame))).await;
+}
+
+/// Pipe the viewer's RFB WebSocket frames to the agent's VNC server through
+/// the supervisor's byte tunnel, and the server's bytes back as binary frames.
 async fn handle_desktop_ws(state: AppState, agent_id: String, socket: WebSocket) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
     let Some(client) = sandbox::client(&state).await else {
-        return;
+        return close_desktop(socket, DESKTOP_CLOSE_UNAVAILABLE, "the sandbox is not set up").await;
     };
     let (label, accent) = resolve_agent_label_and_accent(&state, &agent_id).await;
-    let created = match client.create_desktop_session(&agent_id, &label, &accent).await {
-        Ok(v) => v,
-        Err(_) => return,
+    let tunnel = match client.desktop_connect(&agent_id, &label, &accent).await {
+        Ok(tunnel) => tunnel,
+        Err(e) => {
+            let code = if e.status.is_none() { DESKTOP_CLOSE_UNAVAILABLE } else { DESKTOP_CLOSE_FAILED };
+            return close_desktop(socket, code, &e.message).await;
+        }
     };
-    let Some(session_id) = created["session_id"]
-        .as_str()
-        .or_else(|| created["id"].as_str())
-        .map(str::to_string)
-    else {
-        return;
-    };
-
+    let (mut vnc_rx, mut vnc_tx) = tokio::io::split(tunnel);
     let (mut ws_tx, mut ws_rx) = socket.split();
-    let client_in = client.clone();
-    let agent_in = agent_id.clone();
-    let sid_in = session_id.clone();
 
-    let mut in_task = tokio::spawn(async move {
+    let up = async {
         while let Some(Ok(msg)) = ws_rx.next().await {
             match msg {
                 Message::Binary(bytes) => {
-                    if !bytes.is_empty() {
-                        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                        if client_in
-                            .desktop_session_input(&agent_in, &sid_in, &b64)
-                            .await
-                            .is_err()
-                        {
-                            break;
-                        }
+                    if vnc_tx.write_all(&bytes).await.is_err() {
+                        break;
                     }
                 }
                 Message::Close(_) => break,
                 _ => {}
             }
         }
-    });
-
-    let client_out = client.clone();
-    let agent_out = agent_id.clone();
-    let sid_out = session_id.clone();
-
-    let mut out_task = tokio::spawn(async move {
+        let _ = vnc_tx.shutdown().await;
+    };
+    let down = async {
+        let mut buf = vec![0u8; 64 * 1024];
         loop {
-            match client_out.desktop_session_read(&agent_out, &sid_out).await {
-                Ok(resp) => {
-                    if let Some(chunks) = resp["chunks"].as_array() {
-                        for chunk in chunks {
-                            if let Some(b64) = chunk.as_str() {
-                                if let Ok(bytes) =
-                                    base64::engine::general_purpose::STANDARD.decode(b64.as_bytes())
-                                {
-                                    if ws_tx.send(Message::Binary(bytes.into())).await.is_err() {
-                                        return;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if resp["closed"].as_bool() == Some(true) {
-                        break;
+            match vnc_rx.read(&mut buf).await {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    if ws_tx.send(Message::Binary(buf[..n].to_vec().into())).await.is_err() {
+                        return;
                     }
                 }
-                Err(_) => break,
             }
         }
-    });
-
+        let _ = ws_tx.send(Message::Close(None)).await;
+    };
     tokio::select! {
-        _ = &mut in_task => {
-            out_task.abort();
-        }
-        _ = &mut out_task => {
-            in_task.abort();
-        }
+        _ = up => {}
+        _ = down => {}
     }
-
-    let _ = client.desktop_session_destroy(&agent_id, &session_id).await;
 }
 
 // ---------------------------------------------------------------------------
@@ -615,6 +674,38 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/desktop/ticket", post(issue_desktop_ticket))
         .route("/api/desktop/stream", get(desktop_stream_ws))
+        .route("/api/desktop/state", get(get_desktop_state))
         .route("/api/debug/browser", get(get_browser_state))
         .route("/api/debug/browser/navigate", post(navigate_browser))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn describe_desktop_names_each_window_with_its_exact_folder_or_url() {
+        let desktop = json!({"running": true, "windows": [
+            {"app": "browser", "title": "Example Domain", "url": "https://example.com/", "active": false},
+            {"app": "files", "title": "/home/agent/docs - Thunar", "path": "/home/agent/docs", "active": true},
+            {"app": "terminal", "title": "/home/agent", "path": "/home/agent", "active": false},
+        ]});
+        assert_eq!(
+            describe_desktop(&desktop),
+            "Open on your desktop (the user watches it on the TV):\n\
+             - Browser — https://example.com/ (Example Domain)\n\
+             - Files — /home/agent/docs (in front)\n\
+             - Terminal — /home/agent"
+        );
+        let with_home = json!({"running": true, "agent": {"name": "Amiro", "hostHome": "/home/o/.amiro/agents/main"},
+            "windows": [{"app": "terminal", "title": "Amiro — /home/o/.amiro/agents/main", "path": "/home/agent", "active": true}]});
+        assert_eq!(
+            describe_desktop(&with_home),
+            "Your home /home/agent is /home/o/.amiro/agents/main on the owner's computer; the TV shows paths there.\n\
+             Open on your desktop (the user watches it on the TV):\n\
+             - Terminal — /home/agent (in front)"
+        );
+        assert!(describe_desktop(&json!({"running": false})).contains("not running"));
+        assert!(describe_desktop(&json!({"running": true, "windows": []})).contains("no windows"));
+    }
 }

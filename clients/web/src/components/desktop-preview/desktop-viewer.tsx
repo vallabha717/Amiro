@@ -1,11 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, RotateCw } from "lucide-react";
+import { Loader2, MonitorOff, RotateCw } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Button } from "ui/button";
-import { AmiroOsDesktop } from "./amiro-os-desktop";
-import type { TeamAgent } from "@/lib/backend/agents-api";
 import {
   openDesktopSession,
   type DesktopSession,
@@ -14,23 +12,20 @@ import {
 
 export interface DesktopViewerProps {
   agentId: string;
-  agent?: TeamAgent;
+  agentName: string;
   viewOnly?: boolean;
-  onExpandRequest?: () => void;
 }
 
 /**
- * Vellum's interactive noVNC DesktopViewer:
- * Connects via `@novnc/novnc` RFB WebSocket to the agent's real X11 virtual
- * desktop (`Xtigervnc :99` + `openbox` + `plank` + real `Chromium` + `Thunar` +
- * `Terminal`). If the sandbox container is not running in unit/CI fixtures,
- * gracefully renders the interactive `AmiroOsDesktop` fallback.
+ * The agent's real X11 desktop (Xtigervnc + Openbox + Plank with Chromium,
+ * Thunar and a terminal, inside its sandbox container), drawn by noVNC. Until
+ * the stream connects, or when it ends, it says why instead of showing a
+ * picture of a desktop.
  */
 export function DesktopViewer({
   agentId,
-  agent,
+  agentName,
   viewOnly = false,
-  onExpandRequest,
 }: DesktopViewerProps) {
   const t = useTranslations("AssistantDesktop");
   const sessionRef = useRef<DesktopSession | null>(null);
@@ -76,44 +71,48 @@ export function DesktopViewer({
       data-testid="desktop-panel"
     >
       <div className="relative min-h-0 flex-1">
-        {/* Live noVNC RFB Canvas */}
         <div
           ref={containerRef}
           className="h-full w-full overflow-hidden"
           data-testid="desktop-panel-viewport"
         />
 
-        {/* While connecting or when VNC ends/falls back, show the Amiro OS desktop layer */}
         {state.kind !== "connected" && (
           <div
-            className="absolute inset-0 flex flex-col bg-[#10171c]"
+            className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-[#10171c] p-4 text-center text-white"
             data-testid="desktop-panel-status"
             data-state={state.kind === "ended" ? state.reason : state.kind}
+            role="status"
           >
-            <AmiroOsDesktop
-              agentId={agentId}
-              agent={agent}
-              compact={viewOnly}
-              onExpandRequest={onExpandRequest}
-            />
-            {state.kind === "connecting" && (
-              <div className="pointer-events-none absolute top-10 right-3 z-30 inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/70 px-2.5 py-1 text-[11px] text-white/85 backdrop-blur-md">
-                <Loader2 className="size-3 animate-spin text-sky-400" />
-                <span>{t("connecting")}</span>
-              </div>
-            )}
-            {state.kind === "ended" && !viewOnly && (
-              <div className="pointer-events-auto absolute top-10 right-3 z-30">
+            {state.kind === "connecting" ? (
+              <>
+                <Loader2 className="size-6 animate-spin text-sky-400" />
+                <p className="text-sm text-white/85">
+                  {t("starting", { name: agentName })}
+                </p>
+              </>
+            ) : (
+              <>
+                <MonitorOff className="size-6 text-white/60" />
+                <div className="max-w-sm space-y-1">
+                  <p className="text-sm font-medium">
+                    {t(`ended.${state.reason}.title`)}
+                  </p>
+                  <p className="text-xs text-white/65">
+                    {t(`ended.${state.reason}.body`)}
+                  </p>
+                </div>
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={reconnect}
-                  className="h-7 gap-1.5 border-white/20 bg-black/70 text-xs text-white hover:bg-white/20"
+                  data-testid="desktop-panel-reconnect"
+                  className="h-7 gap-1.5 border-white/20 bg-black/40 text-xs text-white hover:bg-white/15 hover:text-white"
                 >
                   <RotateCw className="size-3" />
                   <span>{t("reconnectButton")}</span>
                 </Button>
-              </div>
+              </>
             )}
           </div>
         )}

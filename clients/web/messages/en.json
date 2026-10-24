@@ -751,13 +751,45 @@
     "resizeAria": "Resize virtual desktop preview (arrow keys)",
     "expandAria": "Expand virtual desktop",
     "minimizeButton": "Minimize to TV window",
-    "connecting": "Connecting to the virtual desktop…",
-    "reconnectButton": "Refresh screen",
-    "tabs": {
+    "reconnectButton": "Reconnect",
+    "starting": "Starting {name}'s desktop…",
+    "ended": {
+      "unavailable": {
+        "title": "The desktop isn't running",
+        "body": "It runs in the agent's sandbox. Start the sandbox with bash scripts/sandbox.sh up, then reconnect."
+      },
+      "failed": {
+        "title": "The desktop didn't start",
+        "body": "The sandbox couldn't start this agent's desktop. Check the sandbox log, then reconnect."
+      },
+      "busy": {
+        "title": "The desktop is busy",
+        "body": "Someone else is connected to it. Try again in a moment."
+      },
+      "lost": {
+        "title": "Connection lost",
+        "body": "The stream to the desktop stopped. Reconnect to pick up where it left off."
+      }
+    },
+    "apps": {
       "browser": "Browser",
-      "files": "File System",
-      "terminal": "Terminal"
-    }
+      "files": "Files",
+      "terminal": "Terminal",
+      "other": "Window"
+    },
+    "copyLocation": "Copy {location}",
+    "noWindows": "No windows open",
+    "moreWindows": "{count, plural, one {+# window} other {+# windows}}",
+    "chatCard": {
+      "title": "{name}'s desktop",
+      "live": "Live",
+      "onTv": "Showing on the TV",
+      "openTv": "Open TV",
+      "fullscreen": "Full screen",
+      "workspace": "{name}'s workspace: {path}"
+    },
+    "appOf": "{name}'s {app}",
+    "pathBoth": "On your computer: {host}\nIn the agent's sandbox: {container}"
   },
   "Admin": {
     "title": "Admin",
@@ -787,8 +819,8 @@
       "shellToggleError": "Could not update shell access",
       "terminalPanel": {
         "title": "Debug Terminal · {agent}",
-        "mainSubtitle": "Interactive shell rooted in Amiro's host workspace (~/.amiro/workspace)",
-        "teamSubtitle": "Interactive shell inside this team agent's isolated container (/home/agent)"
+        "mainSubtitle": "Shell in Amiro's workspace (~/.amiro/workspace). With the sandbox running it is the same shell as the terminal on Amiro's TV.",
+        "teamSubtitle": "Shell in this agent's own container (its workspace at /home/agent), the same shell as the terminal on its TV."
       },
       "browser": {
         "title": "Browser & Screen · {agent}",
