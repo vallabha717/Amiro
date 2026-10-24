@@ -183,8 +183,8 @@ importers:
         specifier: ^0.486.0
         version: 0.486.0(react@19.2.8)
       mammoth:
-        specifier: 1.8.0
-        version: 1.8.0
+        specifier: 1.11.0
+        version: 1.11.0
       mermaid:
         specifier: ^11.12.2
         version: 11.16.1
@@ -3528,6 +3528,7 @@ packages:
   eslint@9.39.5:
     resolution: {integrity: sha512-DgZS62aPLXKlnxILS/AYCoRvHaZeXceIzlXPkkGGzJWSow1aEk0lbTlxUSlyjC8jcaKxAdOnTDz+o1JFSBsyjw==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    deprecated: This version is no longer supported. Please see https://eslint.org/version-support for other options.
     hasBin: true
     peerDependencies:
       jiti: '*'
@@ -4318,8 +4319,8 @@ packages:
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
 
-  mammoth@1.8.0:
-    resolution: {integrity: sha512-pJNfxSk9IEGVpau+tsZFz22ofjUsl2mnA5eT8PjPs2n0BP+rhVte4Nez6FdgEuxv3IGI3afiV46ImKqTGDVlbA==}
+  mammoth@1.11.0:
+    resolution: {integrity: sha512-BcEqqY/BOwIcI1iR5tqyVlqc3KIaMRa4egSoK83YAVrBf6+yqdAAbtUcFDCWX8Zef8/fgNZ6rl4VUv+vVX8ddQ==}
     engines: {node: '>=12.0.0'}
     hasBin: true
 
@@ -9962,7 +9963,7 @@ snapshots:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  mammoth@1.8.0:
+  mammoth@1.11.0:
     dependencies:
       '@xmldom/xmldom': 0.8.15
       argparse: 1.0.10
