@@ -785,8 +785,11 @@
       "live": "Live",
       "onTv": "Showing on the TV",
       "openTv": "Open TV",
-      "fullscreen": "Full screen"
-    }
+      "fullscreen": "Full screen",
+      "workspace": "{name}'s workspace: {path}"
+    },
+    "appOf": "{name}'s {app}",
+    "pathBoth": "On your computer: {host}\nIn the agent's sandbox: {container}"
   },
   "Admin": {
     "title": "Admin",
@@ -816,8 +819,8 @@
       "shellToggleError": "Could not update shell access",
       "terminalPanel": {
         "title": "Debug Terminal · {agent}",
-        "mainSubtitle": "Interactive shell rooted in Amiro's host workspace (~/.amiro/workspace)",
-        "teamSubtitle": "Interactive shell inside this team agent's isolated container (/home/agent)"
+        "mainSubtitle": "Shell in Amiro's workspace (~/.amiro/workspace). With the sandbox running it is the same shell as the terminal on Amiro's TV.",
+        "teamSubtitle": "Shell in this agent's own container (its workspace at /home/agent), the same shell as the terminal on its TV."
       },
       "browser": {
         "title": "Browser & Screen · {agent}",

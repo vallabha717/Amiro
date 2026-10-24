@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   desktopStateKey,
+  toHostPath,
   windowLocation,
   windowsFromToolText,
 } from "./desktop-api";
@@ -46,7 +47,19 @@ describe("desktop-api", () => {
     expect(windowsFromToolText("")).toEqual([]);
   });
 
-  it("prefers the folder, then the address, then the title", () => {
+  it("maps the agent's home to its workspace on the owner's computer", () => {
+    const host = "/home/o/.amiro/agents/main";
+    expect(toHostPath("/home/agent", host)).toBe(host);
+    expect(toHostPath("/home/agent/projects/x", host)).toBe(`${host}/projects/x`);
+    expect(toHostPath("/home/agentx", host)).toBe("/home/agentx");
+    expect(toHostPath("/tmp", host)).toBe("/tmp");
+    expect(toHostPath("/home/agent/a", undefined)).toBe("/home/agent/a");
+  });
+
+  it("prefers the folder on the owner's computer, then the address, then the title", () => {
+    expect(
+      windowLocation({ app: "files", title: "x", path: "/home/agent", hostPath: "/h/main", active: false }),
+    ).toBe("/h/main");
     expect(windowLocation({ app: "files", title: "x", path: "/a", active: false })).toBe("/a");
     expect(windowLocation({ app: "browser", title: "T", url: "https://u/", active: false })).toBe("https://u/");
     expect(windowLocation({ app: "other", title: "T", active: false })).toBe("T");

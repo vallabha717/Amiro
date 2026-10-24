@@ -6,14 +6,18 @@ export interface DesktopWindow {
   app: "browser" | "files" | "terminal" | "other";
   title: string;
   active: boolean;
-  /** The exact folder a Files or Terminal window shows. */
+  /** The exact folder a Files or Terminal window shows, in the container. */
   path?: string;
+  /** The same folder on the owner's computer (the agent's workspace). */
+  hostPath?: string;
   /** The address of the page a browser window shows. */
   url?: string;
 }
 
 export interface DesktopState {
   running: boolean;
+  /** Whose desktop, and where its home (/home/agent) is on the owner's computer. */
+  agent?: { name: string; home: string; hostHome: string };
   active: DesktopWindow | null;
   windows: DesktopWindow[];
 }
@@ -41,9 +45,24 @@ export function useDesktopState(agentId: string | null, refreshMs = 2000) {
   );
 }
 
-/** The folder or address a window shows, else its title. */
+/**
+ * The folder (as it is on the owner's computer) or address a window shows,
+ * else its title.
+ */
 export function windowLocation(window: DesktopWindow): string {
-  return window.path || window.url || window.title;
+  return window.hostPath || window.path || window.url || window.title;
+}
+
+/**
+ * A container path as it is on the owner's computer, given where /home/agent
+ * lives there. Paths outside the agent's home are returned as they are.
+ */
+export function toHostPath(path: string, hostHome: string | undefined): string {
+  if (!hostHome) return path;
+  const home = "/home/agent";
+  if (path === home) return hostHome;
+  if (path.startsWith(`${home}/`)) return `${hostHome}${path.slice(home.length)}`;
+  return path;
 }
 
 const TOOL_LINE = /^- (Browser|Files|Terminal) — (.+?)( \(in front\))?$/;

@@ -34,14 +34,25 @@ export function DesktopWindowIcon({
  */
 export function DesktopWindowRow({
   window,
+  agentName,
   tone = "dark",
 }: {
   window: DesktopWindow;
+  /** Whose window: "Amiro's Files". */
+  agentName?: string;
   tone?: "dark" | "card";
 }) {
   const t = useTranslations("AssistantDesktop");
   const [copied, setCopied] = useState(false);
   const location = windowLocation(window);
+  const app = t(`apps.${window.app}`);
+  const label = agentName ? t("appOf", { name: agentName, app }) : app;
+  // Hover shows the folder both ways: on the owner's computer and inside the
+  // agent's container (what its tools use).
+  const tooltip =
+    window.hostPath && window.path && window.hostPath !== window.path
+      ? t("pathBoth", { host: window.hostPath, container: window.path })
+      : location;
   const copy = () => {
     void navigator.clipboard?.writeText(location).then(
       () => {
@@ -65,13 +76,15 @@ export function DesktopWindowRow({
         app={window.app}
         className={tone === "dark" ? "text-sky-300" : "text-primary"}
       />
-      <span className="shrink-0 font-medium">{t(`apps.${window.app}`)}</span>
+      <span className="shrink-0 font-medium" data-testid="desktop-window-label">
+        {label}
+      </span>
       <span
         className={cn(
           "min-w-0 truncate font-mono [direction:rtl] text-left",
           tone === "dark" ? "text-white/70" : "text-muted-foreground",
         )}
-        title={location}
+        title={tooltip}
         data-testid="desktop-window-location"
       >
         {/* rtl on the box cuts long paths from the left; bdi keeps the text itself ltr. */}
@@ -119,7 +132,7 @@ export function DesktopWindowBar({
       data-testid="desktop-window-bar"
     >
       {front ? (
-        <DesktopWindowRow window={front} />
+        <DesktopWindowRow window={front} agentName={data.agent?.name} />
       ) : (
         <span className="text-[11px] text-white/60">{t("noWindows")}</span>
       )}
@@ -129,7 +142,7 @@ export function DesktopWindowBar({
             key={`${w.app}-${i}`}
             className="hidden min-w-0 max-w-64 opacity-70 lg:flex"
           >
-            <DesktopWindowRow window={w} />
+            <DesktopWindowRow window={w} agentName={data.agent?.name} />
           </div>
         ))}
       {!full && others.length > 0 && (

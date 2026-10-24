@@ -785,8 +785,11 @@
       "live": "लाइव",
       "onTv": "टीवी पर दिख रहा है",
       "openTv": "टीवी खोलें",
-      "fullscreen": "पूरी स्क्रीन"
-    }
+      "fullscreen": "पूरी स्क्रीन",
+      "workspace": "{name} का वर्कस्पेस: {path}"
+    },
+    "appOf": "{name} का {app}",
+    "pathBoth": "आपके कंप्यूटर पर: {host}\nएजेंट के सैंडबॉक्स में: {container}"
   },
   "Admin": {
     "title": "व्यवस्थापक",
@@ -816,8 +819,8 @@
       "shellToggleError": "शेल एक्सेस अपडेट नहीं हो सका",
       "terminalPanel": {
         "title": "डीबग टर्मिनल · {agent}",
-        "mainSubtitle": "Amiro के होस्ट वर्कस्पेस (~/.amiro/workspace) में इंटरैक्टिव शेल",
-        "teamSubtitle": "इस टीम एजेंट के अलग कंटेनर (/home/agent) के अंदर इंटरैक्टिव शेल"
+        "mainSubtitle": "Amiro के वर्कस्पेस (~/.amiro/workspace) में शेल। सैंडबॉक्स चलने पर यह Amiro के टीवी वाले टर्मिनल जैसा ही शेल है।",
+        "teamSubtitle": "इस एजेंट के अपने कंटेनर (/home/agent पर इसका वर्कस्पेस) में शेल, इसके टीवी वाले टर्मिनल जैसा ही।"
       },
       "browser": {
         "title": "ब्राउज़र और स्क्रीन · {agent}",

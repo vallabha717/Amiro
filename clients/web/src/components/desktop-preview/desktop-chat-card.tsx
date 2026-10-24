@@ -6,7 +6,11 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "ui/button";
 import { cn } from "@/lib/utils";
 import { MAIN_AGENT_ID, useAgents } from "@/lib/backend/agents-api";
-import type { DesktopWindow } from "@/lib/backend/desktop-api";
+import {
+  type DesktopWindow,
+  toHostPath,
+  useDesktopState,
+} from "@/lib/backend/desktop-api";
 import { DesktopViewer } from "./desktop-viewer";
 import { useDesktopPreviewStore } from "./desktop-preview-store";
 import { DesktopWindowRow } from "./desktop-window-bar";
@@ -60,6 +64,18 @@ export function DesktopChatCard({
   const onScreen = useOnScreen(frameRef);
   // The floating TV already streams this desktop; don't open a second stream.
   const live = onScreen && !tvOpen && !pending && !error;
+  // While on screen, list what is open now (with each folder on the owner's
+  // computer); otherwise what the tool reported, mapped the same way.
+  const { data: now } = useDesktopState(
+    onScreen && !pending && !error ? agentId : null,
+  );
+  const hostHome = now?.agent?.hostHome;
+  const shown =
+    now?.running && now.windows.length > 0
+      ? now.windows
+      : windows.map((w) =>
+          w.path && !w.hostPath ? { ...w, hostPath: toHostPath(w.path, hostHome) } : w,
+        );
 
   return (
     <div
@@ -102,17 +118,22 @@ export function DesktopChatCard({
         )}
       </div>
 
-      {windows.length > 0 && (
+      {shown.length > 0 && (
         <div
           className="space-y-1 border-t px-3 py-2"
           data-testid="desktop-chat-card-windows"
         >
-          {[...windows.filter((w) => w.active), ...windows.filter((w) => !w.active)].map((w, i) => (
+          {hostHome && (
+            <p className="truncate text-[11px] text-muted-foreground" title={hostHome}>
+              {t("chatCard.workspace", { name, path: hostHome })}
+            </p>
+          )}
+          {[...shown.filter((w) => w.active), ...shown.filter((w) => !w.active)].map((w, i) => (
             <div
               key={`${w.app}-${i}`}
               className={cn(!w.active && "opacity-70")}
             >
-              <DesktopWindowRow window={w} tone="card" />
+              <DesktopWindowRow window={w} agentName={name} tone="card" />
             </div>
           ))}
         </div>
