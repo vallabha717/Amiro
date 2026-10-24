@@ -25,6 +25,19 @@ and subsequent work will accumulate under a fresh `Unreleased` section.
   the TV says so and offers Reconnect; the drawn stand-in desktop is gone.
   Agent containers now allow 1024 processes by default (was 256), since the
   desktop alone runs ~300 threads.
+- The TV names the exact folder or address on screen: Files windows title
+  themselves with the full path, the terminal with its working folder, and the
+  TV header shows the window in front (full screen lists every window) from
+  `GET /api/desktop/state`. Browser tabs are read from Chromium's DevTools on
+  the container's loopback.
+- Agents know their desktop: `desktop_open` / `desktop_state` (main agent, on
+  the `amiro` server) and `agent_desktop_open` / `agent_desktop_state` (team
+  agents with Shell on) open a URL, a folder in Files or a terminal in a
+  folder, and report every window with its exact path or URL. Each call shows
+  a live TV card in the chat with Open TV and Full screen.
+- Fixed the agent desktop's D-Bus: the container's uid now has a name (via
+  nss_wrapper), so Files settings and Chromium's bus calls work. The agent
+  image adds CJK and emoji fonts.
 - Connect phones and other desktop apps with a device code, the way the GitHub
   CLI signs in: the device enters the Amiro's address once and shows a short
   code, and the owner approves it at `/device` from any signed-in browser or in

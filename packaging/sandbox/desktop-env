@@ -1,0 +1,32 @@
+# Sourced by every amiro-desktop-* script: the environment the agent's desktop
+# programs share.
+export DISPLAY=":99"
+export HOME="/home/agent"
+export USER="agent"
+export XDG_RUNTIME_DIR="/tmp/xdg-runtime"
+export XDG_CONFIG_HOME="/tmp/desktop-config"
+export XDG_DATA_HOME="/tmp/desktop-data"
+export XDG_CACHE_HOME="/tmp/desktop-cache"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=/tmp/dbus-session.sock"
+
+# The container runs as the owner's host uid, which /etc/passwd (read-only)
+# does not list. D-Bus refuses clients it cannot name, which breaks Files'
+# settings and Chromium's bus calls, so name the uid "agent" through
+# nss_wrapper.
+if ! getent passwd "$(id -u)" >/dev/null 2>&1; then
+  if [ ! -s /tmp/nss/passwd ]; then
+    mkdir -p /tmp/nss
+    cp /etc/passwd /tmp/nss/passwd
+    cp /etc/group /tmp/nss/group
+    echo "agent:x:$(id -u):$(id -g):Agent:/home/agent:/bin/bash" >> /tmp/nss/passwd
+    echo "agent:x:$(id -g):" >> /tmp/nss/group
+  fi
+  for lib in /usr/lib/x86_64-linux-gnu/libnss_wrapper.so /usr/lib/aarch64-linux-gnu/libnss_wrapper.so; do
+    if [ -f "$lib" ]; then
+      export LD_PRELOAD="$lib"
+      export NSS_WRAPPER_PASSWD="/tmp/nss/passwd"
+      export NSS_WRAPPER_GROUP="/tmp/nss/group"
+      break
+    fi
+  done
+fi

@@ -201,6 +201,17 @@ impl SandboxClient {
         .await
     }
 
+    /// Open `app` (browser, files, terminal) at `target` on the agent's desktop;
+    /// returns the desktop state afterwards.
+    pub async fn desktop_open(&self, id: &str, app: &str, target: &str, label: &str, accent_hex: &str) -> Result<Value, ClientError> {
+        self.post(id, "desktop/open", json!({"app": app, "target": target, "label": label, "accent": accent_hex})).await
+    }
+
+    /// What is open on the agent's desktop (`running: false` when it is off).
+    pub async fn desktop_state(&self, id: &str) -> Result<Value, ClientError> {
+        self.get(id, "desktop/state").await
+    }
+
     /// Open the tunnel to the agent's virtual desktop (`desktop/connect`),
     /// starting it if needed. The returned stream carries raw RFB bytes.
     pub async fn desktop_connect(&self, id: &str, label: &str, accent_hex: &str) -> Result<reqwest::Upgraded, ClientError> {

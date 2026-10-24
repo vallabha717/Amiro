@@ -1,0 +1,6 @@
+# bash in the agent desktop's terminal. Keeps the window title equal to the
+# current folder (read by amiro-desktop-state and shown on the TV).
+[ -f /etc/bash.bashrc ] && . /etc/bash.bashrc
+[ -f "$HOME/.bashrc" ] && . "$HOME/.bashrc"
+PROMPT_COMMAND='printf "\033]0;%s\007" "$PWD"'
+PS1='\[\e[1;32m\]agent\[\e[0m\]:\[\e[1;34m\]\w\[\e[0m\]\$ '

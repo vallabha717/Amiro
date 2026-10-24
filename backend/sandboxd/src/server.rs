@@ -675,6 +675,8 @@ pub fn router(sup: Arc<Supervisor>) -> Router {
             get(terminal_session_events),
         )
         .route("/v1/agents/{id}/desktop/connect", get(desktop_connect))
+        .route("/v1/agents/{id}/desktop/open", post(desktop_open))
+        .route("/v1/agents/{id}/desktop/state", get(desktop_state))
         .with_state(sup)
 }
 
@@ -696,6 +698,89 @@ pub fn desktop_accent(raw: Option<&str>) -> String {
     raw.filter(|s| s.len() == 7 && s.starts_with('#') && s[1..].bytes().all(|b| b.is_ascii_hexdigit()))
         .unwrap_or("#E9642F")
         .to_string()
+}
+
+/// Start the agent's virtual desktop unless it is already running.
+async fn start_desktop(sup: &Supervisor, id: &str, label: Option<&str>, accent: Option<&str>) -> Result<(), ApiError> {
+    let start = vec!["/usr/local/bin/amiro-desktop-start".to_string(), desktop_label(label), desktop_accent(accent)];
+    let started = sup.exec(id, start, 16 * 1024, Duration::from_secs(30)).await?;
+    if started.timed_out || started.exit_code != Some(0) {
+        let detail = text(&started.stderr);
+        let detail = detail.trim();
+        return Err(ApiError(
+            StatusCode::SERVICE_UNAVAILABLE,
+            if detail.is_empty() { "the desktop did not start".into() } else { format!("the desktop did not start: {detail}") },
+        ));
+    }
+    Ok(())
+}
+
+/// The JSON a desktop helper printed, or why there is none.
+fn desktop_json(out: &ExecOutput) -> Result<Value, ApiError> {
+    match out.exit_code {
+        Some(0) => serde_json::from_slice(&out.stdout)
+            .map_err(|_| ApiError(StatusCode::BAD_GATEWAY, "the desktop helper printed no state".into())),
+        // The usage errors amiro-desktop-open reports (bad URL, missing folder).
+        Some(2) => Err(bad(text(&out.stderr).trim().to_string())),
+        Some(126) | Some(127) => Err(ApiError(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "the agent image has no desktop helpers; rebuild it with scripts/sandbox.sh up".into(),
+        )),
+        _ if out.timed_out => Err(ApiError(StatusCode::GATEWAY_TIMEOUT, "the desktop did not answer in time".into())),
+        _ => Err(ApiError(StatusCode::BAD_GATEWAY, format!("the desktop helper failed: {}", text(&out.stderr).trim()))),
+    }
+}
+
+/// Apps `desktop/open` can open.
+pub const DESKTOP_APPS: [&str; 3] = ["browser", "files", "terminal"];
+
+/// `POST /v1/agents/{id}/desktop/open` `{app, target, label?, accent?}`:
+/// open a browser tab, a Files window or a terminal on the agent's desktop
+/// (starting it if needed) and return the desktop state afterwards.
+async fn desktop_open(
+    State(sup): State<Shared>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    authorize(&sup, &headers, Some(&id))?;
+    let app = body["app"].as_str().unwrap_or("");
+    if !DESKTOP_APPS.contains(&app) {
+        return Err(bad("app must be browser, files or terminal"));
+    }
+    let target = body["target"].as_str().unwrap_or("").trim();
+    if target.len() > 4096 || target.contains('\0') || target.contains('\n') {
+        return Err(bad("target is not a usable URL or folder"));
+    }
+    start_desktop(&sup, &id, body["label"].as_str(), body["accent"].as_str()).await?;
+    let argv = vec!["/usr/local/bin/amiro-desktop-open".to_string(), app.to_string(), target.to_string()];
+    let out = sup.exec(&id, argv, SHELL_OUTPUT_CAP, Duration::from_secs(20)).await?;
+    Ok(Json(desktop_json(&out)?))
+}
+
+/// `GET /v1/agents/{id}/desktop/state`: what is open on the agent's desktop,
+/// with each Files and Terminal window's folder and each browser tab's URL.
+/// Never starts the desktop or creates the container: the TV polls this.
+async fn desktop_state(
+    State(sup): State<Shared>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    authorize(&sup, &headers, Some(&id))?;
+    let off = || Json(json!({"running": false, "active": null, "windows": []}));
+    let Some(info) = sup.docker.inspect(&sup.cfg.container_name(&id)).await.map_err(docker_error)? else {
+        return Ok(off());
+    };
+    if info["State"]["Running"].as_bool() != Some(true) {
+        return Ok(off());
+    }
+    let cid = info["Id"].as_str().unwrap_or_default().to_string();
+    let out = sup
+        .docker
+        .exec(&cid, &args(&["/usr/local/bin/amiro-desktop-state"]), SHELL_OUTPUT_CAP, Duration::from_secs(10))
+        .await
+        .map_err(docker_error)?;
+    Ok(Json(desktop_json(&out)?))
 }
 
 #[derive(serde::Deserialize, Default)]
@@ -724,20 +809,7 @@ async fn desktop_connect(
         return Err(ApiError(StatusCode::UPGRADE_REQUIRED, format!("send Upgrade: {}", crate::DESKTOP_UPGRADE)));
     }
 
-    let start = vec![
-        "/usr/local/bin/amiro-desktop-start".to_string(),
-        desktop_label(query.label.as_deref()),
-        desktop_accent(query.accent.as_deref()),
-    ];
-    let started = sup.exec(&id, start, 16 * 1024, Duration::from_secs(30)).await?;
-    if started.timed_out || started.exit_code != Some(0) {
-        let detail = text(&started.stderr);
-        let detail = detail.trim();
-        return Err(ApiError(
-            StatusCode::SERVICE_UNAVAILABLE,
-            if detail.is_empty() { "the desktop did not start".into() } else { format!("the desktop did not start: {detail}") },
-        ));
-    }
+    start_desktop(&sup, &id, query.label.as_deref(), query.accent.as_deref()).await?;
 
     let cid = sup.ensure(&id).await?;
     let argv = args(&["socat", "-", "TCP:127.0.0.1:5999"]);

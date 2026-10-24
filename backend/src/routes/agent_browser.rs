@@ -122,6 +122,82 @@ async fn resolve_agent_label_and_accent(state: &AppState, agent_id: &str) -> (St
     ("Agent".to_string(), "#38bdf8".to_string())
 }
 
+// ---------------------------------------------------------------------------
+// What is on the desktop, and opening things on it (TV header + agent tools)
+// ---------------------------------------------------------------------------
+
+fn sandbox_error(error: sandboxd::client::ClientError) -> String {
+    match error.status {
+        None => sandbox::UNAVAILABLE.to_string(),
+        Some(_) => error.message,
+    }
+}
+
+/// Open `app` (`browser` with an http(s) URL, `files` or `terminal` with a
+/// folder) on the agent's desktop, starting it if needed. Returns the desktop
+/// state afterwards.
+pub async fn open_on_desktop(state: &AppState, agent_id: &str, app: &str, target: &str) -> Result<Value, String> {
+    let client = sandbox::client(state).await.ok_or(sandbox::UNAVAILABLE)?;
+    let (label, accent) = resolve_agent_label_and_accent(state, agent_id).await;
+    client.desktop_open(agent_id, app, target, &label, &accent).await.map_err(sandbox_error)
+}
+
+/// What is open on the agent's desktop: `{running, active, windows}`.
+pub async fn read_desktop(state: &AppState, agent_id: &str) -> Result<Value, String> {
+    let client = sandbox::client(state).await.ok_or(sandbox::UNAVAILABLE)?;
+    client.desktop_state(agent_id).await.map_err(sandbox_error)
+}
+
+/// One line per window, for the model: `Files — /home/agent/docs (in front)`.
+pub fn describe_desktop(desktop: &Value) -> String {
+    if desktop["running"].as_bool() != Some(true) {
+        return "Your desktop is not running. Opening something on it starts it.".into();
+    }
+    let windows = desktop["windows"].as_array().cloned().unwrap_or_default();
+    if windows.is_empty() {
+        return "Your desktop is running with no windows open.".into();
+    }
+    let mut lines = vec!["Open on your desktop (the user watches it on the TV):".to_string()];
+    for w in &windows {
+        let title = w["title"].as_str().unwrap_or("");
+        let what = match w["app"].as_str() {
+            Some("browser") => format!("Browser — {} ({title})", w["url"].as_str().unwrap_or("?")),
+            Some("files") => format!("Files — {}", w["path"].as_str().unwrap_or(title)),
+            Some("terminal") => format!("Terminal — {}", w["path"].as_str().unwrap_or(title)),
+            _ => title.to_string(),
+        };
+        let front = if w["active"].as_bool() == Some(true) { " (in front)" } else { "" };
+        lines.push(format!("- {what}{front}"));
+    }
+    lines.join("\n")
+}
+
+#[derive(Deserialize, Default)]
+struct DesktopStateQuery {
+    #[serde(rename = "agentId")]
+    agent_id: Option<String>,
+}
+
+/// `GET /api/desktop/state?agentId=`: the TV header's "what's in front" line.
+async fn get_desktop_state(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Query(query): Query<DesktopStateQuery>,
+) -> Result<Json<Value>, ApiError> {
+    agents::require_admin(&user)?;
+    let agent_id = match query.agent_id.as_deref().map(str::trim) {
+        None | Some("") | Some("amiro") => MAIN_AGENT_ID.to_string(),
+        Some(id) => id.to_string(),
+    };
+    if agent_id != MAIN_AGENT_ID && agents::agent_tools(&state, &agent_id).await?.is_none() {
+        return Err(agents::not_found());
+    }
+    read_desktop(&state, &agent_id)
+        .await
+        .map(Json)
+        .map_err(|e| ApiError(StatusCode::SERVICE_UNAVAILABLE, e))
+}
+
 /// Close codes the desktop viewer maps to a message.
 pub const DESKTOP_CLOSE_UNAVAILABLE: u16 = 4008;
 pub const DESKTOP_CLOSE_FAILED: u16 = 4011;
@@ -592,6 +668,30 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/desktop/ticket", post(issue_desktop_ticket))
         .route("/api/desktop/stream", get(desktop_stream_ws))
+        .route("/api/desktop/state", get(get_desktop_state))
         .route("/api/debug/browser", get(get_browser_state))
         .route("/api/debug/browser/navigate", post(navigate_browser))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn describe_desktop_names_each_window_with_its_exact_folder_or_url() {
+        let desktop = json!({"running": true, "windows": [
+            {"app": "browser", "title": "Example Domain", "url": "https://example.com/", "active": false},
+            {"app": "files", "title": "/home/agent/docs - Thunar", "path": "/home/agent/docs", "active": true},
+            {"app": "terminal", "title": "/home/agent", "path": "/home/agent", "active": false},
+        ]});
+        assert_eq!(
+            describe_desktop(&desktop),
+            "Open on your desktop (the user watches it on the TV):\n\
+             - Browser — https://example.com/ (Example Domain)\n\
+             - Files — /home/agent/docs (in front)\n\
+             - Terminal — /home/agent"
+        );
+        assert!(describe_desktop(&json!({"running": false})).contains("not running"));
+        assert!(describe_desktop(&json!({"running": true, "windows": []})).contains("no windows"));
+    }
 }

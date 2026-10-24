@@ -26,11 +26,13 @@ pub const SHELL_TOOL: &str = "agent_shell";
 pub const READ_TOOL: &str = "agent_read_file";
 pub const WRITE_TOOL: &str = "agent_write_file";
 pub const LIST_TOOL: &str = "agent_list_files";
+pub const DESKTOP_OPEN_TOOL: &str = "agent_desktop_open";
+pub const DESKTOP_STATE_TOOL: &str = "agent_desktop_state";
 
 /// Every tool name this module answers. The chat stream marks these as run
 /// by the server so the UI never tries to answer them itself.
 pub fn is_agent_tool(name: &str) -> bool {
-    matches!(name, SHELL_TOOL | READ_TOOL | WRITE_TOOL | LIST_TOOL)
+    matches!(name, SHELL_TOOL | READ_TOOL | WRITE_TOOL | LIST_TOOL | DESKTOP_OPEN_TOOL | DESKTOP_STATE_TOOL)
 }
 
 /// Shown to the model (and the owner) when the container can't be used.
@@ -109,6 +111,28 @@ pub fn tool_definitions(tools: &Value) -> Vec<SessionToolDefinition> {
                 "required": ["command"]
             }),
         ));
+        // The desktop runs in the same container, so it comes with the shell.
+        defs.push(definition(
+            DESKTOP_OPEN_TOOL,
+            "Open something on your own Linux desktop, which the user watches live on the TV screen: a Chromium \
+             tab at an http(s) URL, a Files window at a folder, or a terminal in a folder. Starts the desktop if \
+             it is off. Folders are absolute or relative to /home/agent and must exist. Returns every open window \
+             with its exact folder or URL.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "app": {"type": "string", "enum": ["browser", "files", "terminal"], "description": "What to open."},
+                    "target": {"type": "string", "description": "browser: an http(s) URL. files/terminal: a folder (default /home/agent)."}
+                },
+                "required": ["app"]
+            }),
+        ));
+        defs.push(definition(
+            DESKTOP_STATE_TOOL,
+            "See what is open on your desktop (the TV): each window, which one is in front, the exact folder \
+             each Files and Terminal window shows, and the URL of each browser tab.",
+            json!({"type": "object", "properties": {}}),
+        ));
     }
     if on("files") {
         let path = json!({"type": "string", "description": "Path relative to your home folder, e.g. notes/today.md."});
@@ -137,7 +161,7 @@ pub fn tool_definitions(tools: &Value) -> Vec<SessionToolDefinition> {
 }
 
 fn switch_for(name: &str) -> &'static str {
-    if name == SHELL_TOOL {
+    if matches!(name, SHELL_TOOL | DESKTOP_OPEN_TOOL | DESKTOP_STATE_TOOL) {
         "shell"
     } else {
         "files"
@@ -166,8 +190,18 @@ pub async fn run_tool(state: &AppState, agent_id: &str, name: &str, input: &Valu
     if !tools[switch].as_bool().unwrap_or(false) {
         return Err(format!("The owner has switched {switch} off for this agent."));
     }
-    let sandbox = client(state).await.ok_or(UNAVAILABLE)?;
     let text = |key: &str| input.get(key).and_then(Value::as_str).unwrap_or("").to_string();
+    if name == DESKTOP_OPEN_TOOL {
+        use crate::routes::agent_browser::{describe_desktop, open_on_desktop};
+        let app = text("app");
+        let desktop = open_on_desktop(state, agent_id, &app, &text("target")).await?;
+        return Ok(format!("Opened {app} on your desktop.\n{}", describe_desktop(&desktop)));
+    }
+    if name == DESKTOP_STATE_TOOL {
+        use crate::routes::agent_browser::{describe_desktop, read_desktop};
+        return Ok(describe_desktop(&read_desktop(state, agent_id).await?));
+    }
+    let sandbox = client(state).await.ok_or(UNAVAILABLE)?;
     let path = || clean_relative(&text("path"));
     match name {
         SHELL_TOOL => {
@@ -381,9 +415,9 @@ mod tests {
         assert!(tool_definitions(&json!({})).is_empty());
         assert!(tool_definitions(&json!({"shell": false, "files": false, "browser": true})).is_empty());
         let names = |v: Value| tool_definitions(&v).into_iter().map(|d| d.name).collect::<Vec<_>>();
-        assert_eq!(names(json!({"shell": true})), vec![SHELL_TOOL]);
+        assert_eq!(names(json!({"shell": true})), vec![SHELL_TOOL, DESKTOP_OPEN_TOOL, DESKTOP_STATE_TOOL]);
         assert_eq!(names(json!({"files": true})), vec![READ_TOOL, WRITE_TOOL, LIST_TOOL]);
-        assert_eq!(names(json!({"shell": true, "files": true})).len(), 4);
+        assert_eq!(names(json!({"shell": true, "files": true})).len(), 6);
         for def in tool_definitions(&json!({"shell": true, "files": true})) {
             assert!(is_agent_tool(&def.name));
             assert_eq!(def.parameters["type"], "object");
