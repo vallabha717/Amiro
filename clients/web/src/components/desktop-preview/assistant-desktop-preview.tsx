@@ -19,6 +19,7 @@ import {
 import { MAIN_AGENT_ID, useAgents } from "@/lib/backend/agents-api";
 import { useAgentScope } from "@/lib/backend/agent-scope";
 import { DesktopViewer } from "./desktop-viewer";
+import { DesktopWindowBar } from "./desktop-window-bar";
 import { useDesktopPreviewStore } from "./desktop-preview-store";
 import { useDesktopPreviewDrag } from "./use-desktop-preview-drag";
 
@@ -118,7 +119,7 @@ export function AssistantDesktopPreview() {
               aria-label={titleText}
               className="pointer-events-auto absolute flex max-w-full touch-none select-none flex-col overflow-hidden rounded-xl border border-border/80 bg-card shadow-2xl"
               style={{
-                width: `min(${width}px, 100cqw, calc((100cqh - 2.625rem) * 16 / 9))`,
+                width: `min(${width}px, 100cqw, calc((100cqh - 4.375rem) * 16 / 9))`,
                 left: position?.x,
                 top: position?.y,
                 right: position ? undefined : 0,
@@ -174,6 +175,10 @@ export function AssistantDesktopPreview() {
                 </Button>
               </div>
 
+              <div className="flex h-7 shrink-0 items-center border-b border-white/10 bg-[#141c22] px-2.5">
+                <DesktopWindowBar agentId={activeAgentId} />
+              </div>
+
               {/* 16:9 Live VNC TV Viewport */}
               <div className="group relative aspect-video w-full overflow-hidden bg-[#10171c]">
                 <div ref={attachPreview} className="h-full w-full" />
@@ -217,14 +222,18 @@ export function AssistantDesktopPreview() {
           <DialogTitle className="sr-only">{titleText}</DialogTitle>
 
           <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-[#141c22] px-4 py-2 text-white">
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2">
               <Monitor className="size-4 text-sky-400" />
               <span className="text-sm font-semibold tracking-tight">
                 {t("title")} · {titleText}
               </span>
             </div>
 
-            <div className="flex items-center gap-1.5">
+            <div className="min-w-0 flex-1 px-2">
+              <DesktopWindowBar agentId={activeAgentId} full />
+            </div>
+
+            <div className="flex shrink-0 items-center gap-1.5">
               <Button
                 variant="ghost"
                 size="sm"

@@ -770,6 +770,22 @@
         "title": "Connection lost",
         "body": "The stream to the desktop stopped. Reconnect to pick up where it left off."
       }
+    },
+    "apps": {
+      "browser": "Browser",
+      "files": "Files",
+      "terminal": "Terminal",
+      "other": "Window"
+    },
+    "copyLocation": "Copy {location}",
+    "noWindows": "No windows open",
+    "moreWindows": "{count, plural, one {+# window} other {+# windows}}",
+    "chatCard": {
+      "title": "{name}'s desktop",
+      "live": "Live",
+      "onTv": "Showing on the TV",
+      "openTv": "Open TV",
+      "fullscreen": "Full screen"
     }
   },
   "Admin": {

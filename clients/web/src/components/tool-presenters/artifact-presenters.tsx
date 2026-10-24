@@ -50,7 +50,7 @@ function asRecord(value: unknown): ArtifactRef | undefined {
   return undefined;
 }
 
-function textsOf(value: unknown, into: string[]): void {
+export function textsOf(value: unknown, into: string[]): void {
   if (typeof value === "string") {
     into.push(value);
     return;

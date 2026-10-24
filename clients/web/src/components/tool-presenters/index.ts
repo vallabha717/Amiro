@@ -4,6 +4,7 @@ import {
   withArtifactMcpCard,
 } from "./artifact-presenters";
 import { codeIntelPresenters } from "./code-intel-presenters";
+import { desktopPresenters, withDesktopMcpCard } from "./desktop-presenters";
 import { filePresenters } from "./file-presenters";
 import { jcodePresenters } from "./jcode-presenters";
 import { planPresenters } from "./plan-presenters";
@@ -37,9 +38,11 @@ export const toolPresenters: ToolPresenterRegistry = {
   ...planPresenters,
   ...jcodePresenters,
   ...artifactPresenters,
+  ...desktopPresenters,
   // Artifact operations dispatched through the runtime's mcp_call wrapper
-  // render the file card; every other MCP call keeps the generic card.
-  mcp_call: withArtifactMcpCard(jcodePresenters["mcp_call"]),
+  // render the file card, desktop ones the TV card; every other MCP call
+  // keeps the generic card.
+  mcp_call: withDesktopMcpCard(withArtifactMcpCard(jcodePresenters["mcp_call"])),
 };
 
 export function getToolPresenter(
