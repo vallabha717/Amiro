@@ -157,6 +157,7 @@ export default function ChatBot({
     threadList,
     threadMentions,
     pendingThreadMention,
+    pendingChatPrompt,
     threadImageToolModel,
     artifactView,
   ] = appStore(
@@ -171,6 +172,7 @@ export default function ChatBot({
       state.threadList,
       state.threadMentions,
       state.pendingThreadMention,
+      state.pendingChatPrompt,
       state.threadImageToolModel,
       state.artifactView,
     ]),
@@ -908,6 +910,24 @@ export default function ChatBot({
       }));
     }
   }, [pendingThreadMention, threadId, appStoreMutate]);
+
+  const dispatchedPromptRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!pendingChatPrompt || !threadId) return;
+    if (status !== "ready") return;
+    const promptToSend = pendingChatPrompt.trim();
+    if (!promptToSend) {
+      appStoreMutate({ pendingChatPrompt: undefined });
+      return;
+    }
+    if (dispatchedPromptRef.current === `${threadId}:${promptToSend}`) return;
+    dispatchedPromptRef.current = `${threadId}:${promptToSend}`;
+    appStoreMutate({ pendingChatPrompt: undefined });
+    void handleComposerSend({
+      role: "user",
+      parts: [{ type: "text", text: promptToSend }],
+    });
+  }, [pendingChatPrompt, threadId, status, appStoreMutate, handleComposerSend]);
 
   useEffect(() => {
     if (isInitialThreadEntry)

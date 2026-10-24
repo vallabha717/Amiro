@@ -40,6 +40,7 @@ import {
 import { useChatModels } from "@/hooks/queries/use-chat-models";
 import { appStore } from "@/app/store";
 import { useTranslations } from "next-intl";
+import { useRouter } from "next/navigation";
 import { handleErrorWithToast } from "ui/shared-toast";
 import { toast } from "sonner";
 import {
@@ -53,7 +54,13 @@ import {
   AlertDialogTitle,
 } from "ui/alert-dialog";
 import { ScheduleCardSkeleton } from "@/components/schedules/schedule-row";
-import { RecentRuns, ScheduleListRow, SuggestedSchedules, SystemTasks } from "@/components/schedules/schedule-list";
+import {
+  RecentRuns,
+  ScheduleListRow,
+  type ScheduleRecipe,
+  SuggestedSchedules,
+  SystemTasks,
+} from "@/components/schedules/schedule-list";
 import { ScheduleDialog, type ScheduleDraft } from "@/components/schedules/schedule-dialog";
 import { ScheduleDetailSheet } from "@/components/schedules/schedule-detail";
 
@@ -62,6 +69,7 @@ type StatusFilter = "all" | "active" | "paused" | "failed";
 export default function SchedulesPage() {
   const { data: session } = useSession();
   const t = useTranslations("Schedules");
+  const router = useRouter();
   const { data: modelProviders } = useChatModels();
   const chatModel = appStore((s) => s.chatModel);
   const [schedules, setSchedules] = useState<Schedule[] | null>(null);
@@ -267,6 +275,18 @@ export default function SchedulesPage() {
     setDraft(draft);
     setDialogOpen(true);
   };
+  const handleSetupInChat = (recipe: ScheduleRecipe) => {
+    appStore.setState({
+      pendingThreadMention: {
+        type: "skill",
+        name: "schedules",
+        description:
+          "Create, change, pause, run and troubleshoot the user's schedules.",
+      },
+      pendingChatPrompt: recipe.interactivePrompt,
+    });
+    router.push("/");
+  };
   const canWrite = session.user.role === "admin";
   const showSearch = (schedules?.length ?? 0) > 0;
 
@@ -304,7 +324,13 @@ export default function SchedulesPage() {
         </Alert>
       ) : null}
 
-      {schedules ? <SuggestedSchedules schedules={schedules} onAdd={(d) => openCreate(d)} /> : null}
+      {schedules ? (
+        <SuggestedSchedules
+          schedules={schedules}
+          onAdd={(d) => openCreate(d)}
+          onSetupInChat={handleSetupInChat}
+        />
+      ) : null}
 
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">

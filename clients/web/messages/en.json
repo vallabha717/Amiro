@@ -1840,7 +1840,15 @@
     "pastToggle": "Past ({count})",
     "cancelOneTime": "Cancel reminder",
     "costLabel": "30 Day Cost",
-    "runsLabel": "30 Day Runs"
+    "runsLabel": "30 Day Runs",
+    "playbooksTitle": "Suggested Schedule Playbooks",
+    "playbooksBadge": "Interactive Chat Setup",
+    "playbooksSubtitle": "Select a schedule to set it up interactively with Amiro in chat, or add it in one click.",
+    "cleanByDefaultLabel": "Cleared by default",
+    "keepByDefaultLabel": "Kept & protected by default",
+    "setupWithAmiro": "Set up this schedule for me",
+    "useThisSchedule": "Use this schedule",
+    "quickAddButton": "Quick add form"
   },
   "Devices": {
     "title": "Devices",

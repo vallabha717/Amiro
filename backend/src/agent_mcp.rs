@@ -490,10 +490,10 @@ pub fn tool_definitions() -> Vec<Value> {
             "target":{"type":"string","description":"browser: an http(s) URL. files/terminal: a folder (default /home/agent)."}
         },"required":["app"],"additionalProperties":false}}),
         json!({"name":"desktop_state","description":"See what is open on your desktop (the TV): each window, which one is in front, the exact folder each Files and Terminal window shows, and the URL of each browser tab.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}}),
-        json!({"name":"ui_render_openui","description":"Render a live interactive OpenUI Generative UI surface inline in the chat transcript (KPI metric cards, interactive Recharts bar/line/pie charts, sortable status tables, interactive Q&A QuestionCard, value-pasting FormInput/FormTextarea/FormSlider/FormSwitch, encrypted SecretVaultCard for API keys/passwords, tabbed comparisons, step trackers, and clickable follow-up chips). Pass an OpenUI Lang program (`root = Stack([...])`) in `code` or pick a built-in daily-use `preset` (`daily_brief`, `budget_planner`, `sprint_tracker`, `agent_data_intake`). Never include raw secret values in OpenUI code; use SecretVaultCard to prompt the user into the encrypted vault.","inputSchema":{"type":"object","properties":{
+        json!({"name":"ui_render_openui","description":"Render a live interactive OpenUI Generative UI surface inline in the chat transcript (KPI metric cards, interactive Recharts bar/line/pie charts, sortable status tables, interactive Q&A QuestionCard, value-pasting FormInput/FormTextarea/FormSlider/FormSwitch, encrypted SecretVaultCard for API keys/passwords, tabbed comparisons, step trackers, and clickable follow-up chips). Pass an OpenUI Lang program (`root = Stack([...])`) in `code` or pick a built-in daily-use `preset` (`daily_brief`, `budget_planner`, `sprint_tracker`, `agent_data_intake`, `inbox_cleanup_setup`). Never include raw secret values in OpenUI code; use SecretVaultCard to prompt the user into the encrypted vault.","inputSchema":{"type":"object","properties":{
             "title":{"type":"string","description":"Short card title displayed in the OpenUI surface header"},
             "code":{"type":"string","description":"OpenUI Lang program starting with `root = ...` (optional when `preset` is specified)"},
-            "preset":{"type":"string","enum":["daily_brief","budget_planner","sprint_tracker","agent_data_intake"],"description":"Optional built-in daily-use interactive OpenUI template when `code` is omitted"}
+            "preset":{"type":"string","enum":["daily_brief","budget_planner","sprint_tracker","agent_data_intake","inbox_cleanup_setup"],"description":"Optional built-in daily-use interactive OpenUI template when `code` is omitted"}
         },"additionalProperties":false}}),
     ]
 }
@@ -1889,9 +1889,10 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<(String
                 (None, Some("budget_planner")) => openui_preset_code("budget_planner").to_string(),
                 (None, Some("sprint_tracker")) => openui_preset_code("sprint_tracker").to_string(),
                 (None, Some("agent_data_intake")) => openui_preset_code("agent_data_intake").to_string(),
+                (None, Some("inbox_cleanup_setup")) => openui_preset_code("inbox_cleanup_setup").to_string(),
                 (None, Some(other)) => {
                     return Err(format!(
-                        "unknown preset \"{other}\"; use daily_brief, budget_planner, sprint_tracker, or agent_data_intake"
+                        "unknown preset \"{other}\"; use daily_brief, budget_planner, sprint_tracker, agent_data_intake, or inbox_cleanup_setup"
                     ))
                 }
                 (None, None) => {
@@ -1903,6 +1904,7 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<(String
                 Some("budget_planner") => "Cloud AI Cost & Capacity Planner",
                 Some("sprint_tracker") => "Sprint Release Readiness & Triage",
                 Some("agent_data_intake") => "Interactive Deployment & Credential Intake",
+                Some("inbox_cleanup_setup") => "Inbox Cleanup Schedule Studio",
                 _ => "Interactive OpenUI Surface",
             };
             let title = arg_str(args, "title")?
@@ -1926,6 +1928,30 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<(String
 
 fn openui_preset_code(preset: &str) -> &'static str {
     match preset {
+        "inbox_cleanup_setup" => r##"root = Stack([header, steps, question, rulesForm, followUps])
+header = CardHeader("Inbox Cleanup Schedule Studio", "Select what to sweep away and what to protect before Amiro activates your automated inbox schedule", "Interactive Setup")
+steps = Steps([stMail, stRules, stSchedule])
+stMail = StepItem("1. Mail Provider Check (Gmail / IMAP)", "completed", "Checked connected mail toolkits and MCP connectors")
+stRules = StepItem("2. Keep vs. Clean Up Rules", "in_progress", "Toggle what to remove and what to always protect")
+stSchedule = StepItem("3. Activate Schedule on Cadence", "pending", "Creates your recurring schedule on the Schedules page")
+question = QuestionCard("How should Amiro handle emails that match your cleanup rules?", [optArchive, optLabel, optDigest], "Confirm Cleanup Mode")
+optArchive = QuestionOption("Smart Archive & Mute Clutter (Recommended)", "Remove promotions and noisy notifications from Inbox while keeping them searchable in All Mail", "Safest")
+optLabel = QuestionOption("Move to Cleanup Review Label", "Tag matched clutter as Amiro/Cleaned and archive after 7 days", "Reviewable")
+optDigest = QuestionOption("Clean + Daily Summary Digest", "Archive clutter and post a 3-bullet summary of protected bills and reservations", "Popular")
+rulesForm = InteractiveForm("Configure What to Clean Up vs. What to Keep", [swPromo, swNotif, swSocial, swOtp, swKeepRes, swKeepBills, swKeepReceipts, selCadence, inCustomKeep], "Create Inbox Cleanup Schedule", "Create my Inbox Cleanup schedule with these rules")
+swPromo = FormSwitch("clean_promotions", "Clear all promotions, marketing deals & flash sales", true)
+swNotif = FormSwitch("clean_notifications", "Clear unwanted automated notifications & system alerts", true)
+swSocial = FormSwitch("clean_social", "Clear social media updates & cold outreach clutter", true)
+swOtp = FormSwitch("clean_expired_otps", "Clear expired OTPs, login codes & old newsletters (>14 days)", true)
+swKeepRes = FormSwitch("keep_reservations_month", "Keep reservations, flights, hotels & event bookings from this month", true)
+swKeepBills = FormSwitch("keep_bills_2_months", "Keep utility bills, invoices, bank statements & tax docs from the last 2 months", true)
+swKeepReceipts = FormSwitch("keep_active_deliveries", "Keep active package tracking, order receipts & starred VIP threads", true)
+selCadence = FormSelect("cleanup_cadence", "Cleanup Schedule Cadence", ["Every day at 7:30 AM", "Every evening at 8:00 PM", "Weekdays at 8:00 AM", "Every Sunday at 6:00 PM"], "Every day at 7:30 AM")
+inCustomKeep = FormInput("custom_keep_senders", "Always Keep Senders / Keywords (Optional)", "e.g. @mycompany.com, landlord, school, airline", "flights, hotel, booking, invoice, statement, receipt")
+followUps = FollowUpBlock([fuDefault, fuConnectGmail, fuDryRun])
+fuDefault = FollowUpItem("Activate now with recommended defaults (Daily 7:30 AM)", "Create my Inbox Cleanup schedule now with the default rules: clear promotions and unwanted notifications, keep this month's reservations and last 2 months' bills, running daily at 07:30.")
+fuConnectGmail = FollowUpItem("Connect Gmail or another mail account first", "Help me connect my Gmail or mail account so the Inbox Cleanup schedule can run on my inbox.")
+fuDryRun = FollowUpItem("Create schedule & run a test preview now", "Create the Inbox Cleanup schedule with these defaults and trigger a sample run right now.")"##,
         "agent_data_intake" => r##"root = Stack([header, question, intakeForm, secretVault, followUps])
 header = CardHeader("Interactive Deployment & Credential Intake", "Answer the agent's rollout question, paste your service configuration values, and store your API key in the encrypted vault", "Action Needed")
 question = QuestionCard("Which rollout strategy should Amiro execute for the v1.27 service cutover?", [optCanary, optBlueGreen, optShadow], "Confirm Strategy")
@@ -2662,6 +2688,20 @@ mod tests {
                 .contains("SecretVaultCard"),
             "expected agent_data_intake code: {intake_data}"
         );
+
+        let (_, inbox_data) = call_tool(
+            &state,
+            "ui_render_openui",
+            &json!({"preset": "inbox_cleanup_setup"}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(inbox_data["preset"], json!("inbox_cleanup_setup"));
+        assert_eq!(inbox_data["title"], json!("Inbox Cleanup Schedule Studio"));
+        let inbox_code = inbox_data["code"].as_str().unwrap_or("");
+        assert!(inbox_code.contains("clean_promotions"));
+        assert!(inbox_code.contains("keep_reservations_month"));
+        assert!(inbox_code.contains("keep_bills_2_months"));
 
         let custom = "root = Stack([h])\nh = CardHeader(\"Custom Brief\", \"Live\")";
         let (_, custom_data) = call_tool(

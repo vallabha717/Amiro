@@ -58,9 +58,40 @@ import { z } from "zod/v4";
 // ---------------------------------------------------------------------------
 
 export const OPENUI_PRESETS: Record<
-  "daily_brief" | "budget_planner" | "sprint_tracker" | "agent_data_intake",
+  | "daily_brief"
+  | "budget_planner"
+  | "sprint_tracker"
+  | "agent_data_intake"
+  | "inbox_cleanup_setup",
   { title: string; code: string }
 > = {
+  inbox_cleanup_setup: {
+    title: "Inbox Cleanup Schedule Studio",
+    code: `root = Stack([header, steps, question, rulesForm, followUps])
+header = CardHeader("Inbox Cleanup Schedule Studio", "Select what to sweep away and what to protect before Amiro activates your automated inbox schedule", "Interactive Setup")
+steps = Steps([stMail, stRules, stSchedule])
+stMail = StepItem("1. Mail Provider Check (Gmail / IMAP)", "completed", "Checked connected mail toolkits and MCP connectors")
+stRules = StepItem("2. Keep vs. Clean Up Rules", "in_progress", "Toggle what to remove and what to always protect")
+stSchedule = StepItem("3. Activate Schedule on Cadence", "pending", "Creates your recurring schedule on the Schedules page")
+question = QuestionCard("How should Amiro handle emails that match your cleanup rules?", [optArchive, optLabel, optDigest], "Confirm Cleanup Mode")
+optArchive = QuestionOption("Smart Archive & Mute Clutter (Recommended)", "Remove promotions and noisy notifications from Inbox while keeping them searchable in All Mail", "Safest")
+optLabel = QuestionOption("Move to Cleanup Review Label", "Tag matched clutter as Amiro/Cleaned and archive after 7 days", "Reviewable")
+optDigest = QuestionOption("Clean + Daily Summary Digest", "Archive clutter and post a 3-bullet summary of protected bills and reservations", "Popular")
+rulesForm = InteractiveForm("Configure What to Clean Up vs. What to Keep", [swPromo, swNotif, swSocial, swOtp, swKeepRes, swKeepBills, swKeepReceipts, selCadence, inCustomKeep], "Create Inbox Cleanup Schedule", "Create my Inbox Cleanup schedule with these rules")
+swPromo = FormSwitch("clean_promotions", "Clear all promotions, marketing deals & flash sales", true)
+swNotif = FormSwitch("clean_notifications", "Clear unwanted automated notifications & system alerts", true)
+swSocial = FormSwitch("clean_social", "Clear social media updates & cold outreach clutter", true)
+swOtp = FormSwitch("clean_expired_otps", "Clear expired OTPs, login codes & old newsletters (>14 days)", true)
+swKeepRes = FormSwitch("keep_reservations_month", "Keep reservations, flights, hotels & event bookings from this month", true)
+swKeepBills = FormSwitch("keep_bills_2_months", "Keep utility bills, invoices, bank statements & tax docs from the last 2 months", true)
+swKeepReceipts = FormSwitch("keep_active_deliveries", "Keep active package tracking, order receipts & starred VIP threads", true)
+selCadence = FormSelect("cleanup_cadence", "Cleanup Schedule Cadence", ["Every day at 7:30 AM", "Every evening at 8:00 PM", "Weekdays at 8:00 AM", "Every Sunday at 6:00 PM"], "Every day at 7:30 AM")
+inCustomKeep = FormInput("custom_keep_senders", "Always Keep Senders / Keywords (Optional)", "e.g. @mycompany.com, landlord, school, airline", "flights, hotel, booking, invoice, statement, receipt")
+followUps = FollowUpBlock([fuDefault, fuConnectGmail, fuDryRun])
+fuDefault = FollowUpItem("Activate now with recommended defaults (Daily 7:30 AM)", "Create my Inbox Cleanup schedule now with the default rules: clear promotions and unwanted notifications, keep this month's reservations and last 2 months' bills, running daily at 07:30.")
+fuConnectGmail = FollowUpItem("Connect Gmail or another mail account first", "Help me connect my Gmail or mail account so the Inbox Cleanup schedule can run on my inbox.")
+fuDryRun = FollowUpItem("Create schedule & run a test preview now", "Create the Inbox Cleanup schedule with these defaults and trigger a sample run right now.")`,
+  },
   agent_data_intake: {
     title: "Interactive Deployment & Credential Intake",
     code: `root = Stack([header, question, intakeForm, secretVault, followUps])

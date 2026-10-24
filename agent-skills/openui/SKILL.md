@@ -24,6 +24,7 @@ For common daily workflows, invoke `amiro` MCP's `ui_render_openui` tool with a 
 - `preset: "budget_planner"` — **Cloud AI Cost & Capacity Planner** (KPIs, interactive workload sliders + smart-routing switch with live recalculation, monthly spend bar chart, and follow-up chips).
 - `preset: "sprint_tracker"` — **Sprint Release Command Center** (KPIs, release readiness step tracker, tabbed priority PR table + burnup line chart + risk callout, and follow-up chips).
 - `preset: "agent_data_intake"` — **Interactive Deployment & Credential Intake** (Vellum-style interactive `QuestionCard` where the user picks an answer + custom note, an `InteractiveForm` where the user pastes endpoints/JSON/ENV values, and a `SecretVaultCard` where the user pastes an API key or password into the encrypted vault).
+- `preset: "inbox_cleanup_setup"` — **Inbox Cleanup Schedule Studio** (step tracker for mail connection + rules + schedule activation, `QuestionCard` for cleanup action mode, `InteractiveForm` with toggles for clearing promotions/unwanted notifications/social clutter while keeping this month's reservations and the last 2 months' bills, plus 1-click activation chips).
 
 ## 2. Authoring Custom ```` ```openui ```` Blocks Inline
 

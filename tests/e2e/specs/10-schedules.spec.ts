@@ -3,6 +3,7 @@
  * pause, delete; the built-in heartbeat can be run on demand.
  */
 import type { Page } from "@playwright/test";
+import { assistantMessages, waitForReply } from "../support/chat";
 import { expect, test } from "../support/fixtures";
 
 /** Adding a suggestion opens the Create schedule form pre-filled; confirm it. */
@@ -146,6 +147,46 @@ test.describe("schedules", () => {
       await expect(cancelBtn).toBeVisible();
       await cancelBtn.click();
       await expect.soft(page.getByText(/Cancelled/i).first()).toBeVisible({ timeout: 15000 });
+    });
+  });
+
+  test("interactive inbox cleanup schedule playbook sets up keep and clean rules in chat", async ({ page, step }) => {
+    await step("Schedules page displays the featured 'Inbox cleanup' playbook with default Keep and Clean Up rules", async () => {
+      const card = page.getByTestId("schedule-playbook-inbox-cleanup");
+      await expect(card).toBeVisible();
+      await expect(page.getByTestId("playbook-clean-defaults")).toContainText(/Promotions/i);
+      await expect(page.getByTestId("playbook-clean-defaults")).toContainText(/Unwanted notifications/i);
+      await expect(page.getByTestId("playbook-keep-defaults")).toContainText(/Reservations this month/i);
+      await expect(page.getByTestId("playbook-keep-defaults")).toContainText(/Bills from last 2 months/i);
+    });
+
+    await step("Click 'Set up this schedule for me' → routes to Chat and starts interactive setup with Amiro", async () => {
+      await page.getByTestId("schedule-setup-chat-inbox-cleanup").click();
+      await expect(page).toHaveURL(/\/(amiro)?(\?thread=|$)/, { timeout: 15000 });
+      await waitForReply(page, { before: 0, timeoutMs: 180000 });
+    });
+
+    await step("Amiro renders the interactive Inbox Cleanup Schedule Studio with Keep and Clean Up toggles", async () => {
+      const surface = page.getByTestId("openui-surface").last();
+      await expect(surface).toBeVisible({ timeout: 30000 });
+      await expect(page.getByTestId("openui-switch-clean_promotions")).toBeVisible();
+      await expect(page.getByTestId("openui-switch-clean_notifications")).toBeVisible();
+      await expect(page.getByTestId("openui-switch-keep_reservations_month")).toBeVisible();
+      await expect(page.getByTestId("openui-switch-keep_bills_2_months")).toBeVisible();
+    });
+
+    await step("Submit the interactive Keep & Clean Up form → Amiro creates the Inbox Cleanup schedule", async () => {
+      const before = await assistantMessages(page).count();
+      await page.getByTestId("openui-form-submit").last().click();
+      await expect(page.getByTestId("openui-form-submitted-badge").last()).toBeVisible({ timeout: 10000 });
+      await waitForReply(page, { before, timeoutMs: 180000 });
+    });
+
+    await step("Return to the Schedules page → 'Inbox cleanup' is listed under Your schedules (Created in chat)", async () => {
+      await page.goto("/schedules");
+      const row = page.getByTestId("schedule-row").filter({ hasText: /Inbox cleanup/i }).last();
+      await expect(row).toBeVisible({ timeout: 30000 });
+      await expect.soft(row.getByTestId("schedule-created-in-chat")).toBeVisible();
     });
   });
 });

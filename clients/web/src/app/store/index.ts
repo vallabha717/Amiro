@@ -100,6 +100,7 @@ export interface AppState {
    */
   modeBeforePlan?: "manual" | "interactive" | "edit" | "auto";
   pendingThreadMention?: ChatMention;
+  pendingChatPrompt?: string;
 }
 
 export interface AppDispatch {
@@ -153,6 +154,7 @@ const initialState: AppState = {
   },
   modeBeforePlan: undefined,
   pendingThreadMention: undefined,
+  pendingChatPrompt: undefined,
 };
 
 export const appStore = create<AppState & AppDispatch>()(
