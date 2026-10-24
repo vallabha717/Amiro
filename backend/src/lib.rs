@@ -6,6 +6,7 @@ pub mod chat;
 pub mod composio_config;
 pub mod config;
 pub mod credentials;
+pub mod devices;
 pub mod heartbeat;
 pub mod models;
 pub mod notify;

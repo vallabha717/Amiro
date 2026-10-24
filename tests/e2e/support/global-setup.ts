@@ -139,6 +139,11 @@ export default async function globalSetup() {
     AMIRO_OUT_DIR: outDir,
     AMIRO_PORT: String(cfg.target.port),
     AMIRO_HOST: "127.0.0.1",
+    // Devices journey: the phone-access listener's port, and the main
+    // listener's own origin allowed to call it (the desktop-switch step plays
+    // a desktop app connecting to "another Amiro" on that listener).
+    AMIRO_REMOTE_PORT: String(cfg.target.port + 2),
+    AMIRO_ALLOWED_ORIGIN: `http://127.0.0.1:${cfg.target.port},http://localhost:${cfg.target.port}`,
     AMIRO_NO_TELEMETRY: "1",
     AMIRO_CONFIG: path.join(root, "amiro.toml"),
     AMIRO_ENV_FILE: path.join(root, "none.env"),

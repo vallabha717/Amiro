@@ -45,6 +45,20 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
 }
 
 /**
+ * Where to go after signing in: the page that sent the user to sign in
+ * (`?next=/device?code=…`), when it is a path on this site, else Team.
+ * Anything that could leave the site (`//host`, `/\\host`, a scheme) is ignored.
+ */
+export function pathAfterSignIn(): string {
+  if (typeof window === "undefined") return "/team";
+  const next = new URLSearchParams(window.location.search).get("next");
+  if (next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\")) {
+    return next;
+  }
+  return "/team";
+}
+
+/**
  * Used by the (auth) route group. Signed-in users skip the auth pages; a
  * fresh instance is forced onto /setup, and a configured instance cannot
  * reach /setup.
@@ -58,7 +72,7 @@ export function RedirectIfAuthed({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (isPending || isLoading) return;
     if (session) {
-      router.replace("/team");
+      router.replace(pathAfterSignIn());
       return;
     }
     if (status?.needsSetup) {

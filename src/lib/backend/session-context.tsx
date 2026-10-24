@@ -2,7 +2,7 @@
 
 import { useEffect, useSyncExternalStore, useMemo } from "react";
 import { ApiError, apiJson } from "./client";
-import { getSessionToken, setSessionToken } from "./config";
+import { getRemoteOrigin, getSessionToken, setSessionToken } from "./config";
 
 export type BackendUser = {
   id: string;
@@ -66,7 +66,9 @@ let refreshed = false;
 function adoptInjectedSessionToken() {
   if (typeof window === "undefined") return;
   const injected = window.__BACKEND_SESSION_TOKEN__;
-  if (injected) {
+  // The injected token belongs to this app's own backend, not to another
+  // Amiro the app is connected to.
+  if (injected && !getRemoteOrigin()) {
     setSessionToken(injected);
   }
 }

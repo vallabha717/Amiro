@@ -17,6 +17,20 @@ and subsequent work will accumulate under a fresh `Unreleased` section.
 
 ### Added
 
+- Connect phones and other desktop apps with a device code, the way the GitHub
+  CLI signs in: the device enters the Amiro's address once and shows a short
+  code, and the owner approves it at `/device` from any signed-in browser or in
+  Settings → Devices. Each device gets its own sign-in, listed under Paired
+  devices and removable at any time.
+  - Optional phone access over Wi-Fi for the desktop app (a second listener,
+    port 8790 by default, `AMIRO_REMOTE_PORT`) that only answers approved
+    devices and never accepts a password sign-in.
+  - The desktop app can connect to an Amiro on a server instead of its own and
+    switch back to this computer without signing in again.
+  - Web app manifest so a phone can add Amiro to its home screen.
+  - English and Hindi strings, backend tests in `backend/tests/devices.rs` and
+    the recorded `devices` E2E journey. See `docs/DEVICES.md`.
+
 - Native Channels & Contacts integration ported from Vellum:
   - Channels readiness endpoints, multi-channel admission policies (trust floors: `no_one`, `guardian_only`, `trusted_contacts`, `any_contact`, `strangers`), conversation-tier Slack permissions, and secure vault storage for Slack, Telegram, Discord, and Phone (Twilio) credentials.
   - Contacts graph CRUD, search, channel linking, account verification and revocation, contact merging with donor cleanup, and A2A invite links.

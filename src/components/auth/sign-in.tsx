@@ -11,8 +11,15 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useObjectState } from "@/hooks/use-object-state";
+import {
+  disconnectRemote,
+  getRemoteOrigin,
+  hasLocalBackend,
+} from "@/lib/backend/config";
+import { pathAfterSignIn } from "@/lib/backend/auth-gate";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { authClient } from "auth/client";
 import { Loader } from "lucide-react";
@@ -29,6 +36,14 @@ export default function SignIn() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(false);
+  // Signed out of another Amiro (a cloud server, or the desktop a phone was
+  // paired with): offer the way back instead of a password form for it.
+  const [remote, setRemote] = useState<string | null>(null);
+  const [desktop, setDesktop] = useState(false);
+  useEffect(() => {
+    setRemote(getRemoteOrigin());
+    setDesktop(hasLocalBackend());
+  }, []);
 
   const [formData, setFormData] = useObjectState({
     email: "",
@@ -47,9 +62,10 @@ export default function SignIn() {
         },
       );
       if (res?.data) {
-        // Team is home. An owner who has not finished setup is sent on to
+        // Back to the page that asked for sign-in (/device), else Team.
+        // An owner who has not finished setup is sent on to
         // onboarding by the Team page's RequireAuth gate.
-        router.push("/team");
+        router.push(pathAfterSignIn());
       }
       return res;
     }).watch(() => setLoading(false));
@@ -129,6 +145,25 @@ export default function SignIn() {
                 asks for a new password and signs out every session.
               </p>
             </details>
+            <Link
+              href="/pair"
+              className="text-center text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+              data-testid="signin-pair-link"
+            >
+              {t("Devices.SignInLink")}
+            </Link>
+            {remote && desktop && (
+              <Button
+                variant="outline"
+                data-testid="signin-switch-back"
+                onClick={() => {
+                  disconnectRemote();
+                  window.location.assign("/");
+                }}
+              >
+                {t("Devices.Connection.switchBack")}
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>

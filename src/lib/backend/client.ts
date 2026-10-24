@@ -2,6 +2,7 @@ import { agentScopeHeaders } from "./agent-scope";
 import {
   backendUrl,
   getBackendSharedSecret,
+  getRemoteOrigin,
   getSessionToken,
   isSameOriginBackend,
 } from "./config";
@@ -32,7 +33,8 @@ function authHeaders(): HeadersInit {
   // token"). With no secret on a same-origin page (AMIRO_TOKEN unset), send
   // nothing -- an empty header would fail the constant-time compare.
   const secret = getBackendSharedSecret();
-  if (secret || !isSameOriginBackend()) {
+  // Connected to another Amiro: the device session is the only credential.
+  if (secret || (!isSameOriginBackend() && !getRemoteOrigin())) {
     headers["X-Amiro-Token"] = secret;
     headers["X-BetterChatbot-Token"] = secret;
   }

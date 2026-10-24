@@ -27,6 +27,8 @@ pub const TOML_KEYS: &[(&str, &str, &str)] = &[
     ("server", "allowed_origin", "AMIRO_ALLOWED_ORIGIN"),
     ("server", "home", "AMIRO_HOME"),
     ("server", "session_ttl_days", "AMIRO_SESSION_TTL_DAYS"),
+    ("server", "device_session_ttl_days", "AMIRO_DEVICE_SESSION_TTL_DAYS"),
+    ("server", "remote_port", "AMIRO_REMOTE_PORT"),
     ("owner", "email", "AMIRO_OWNER_EMAIL"),
     ("owner", "password", "AMIRO_OWNER_PASSWORD"),
     ("owner", "password_file", "AMIRO_OWNER_PASSWORD_FILE"),

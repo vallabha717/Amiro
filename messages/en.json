@@ -1697,5 +1697,104 @@
     "cancelOneTime": "Cancel reminder",
     "costLabel": "30 Day Cost",
     "runsLabel": "30 Day Runs"
+  },
+  "Devices": {
+    "title": "Devices",
+    "loading": "Loading devices",
+    "Connection": {
+      "title": "This app is connected to",
+      "description": "The desktop app runs Amiro on this computer. You can connect it to an Amiro on a server instead, and switch back at any time.",
+      "local": "This computer",
+      "remote": "Another Amiro",
+      "connectOther": "Connect to another Amiro",
+      "switchBack": "Switch back to this computer"
+    },
+    "PhoneAccess": {
+      "title": "Phone access",
+      "description": "Let paired phones reach this computer over your Wi-Fi network. Only devices you approve can use it.",
+      "switch": "Allow phones on my network",
+      "port": "Port",
+      "badPort": "Choose a port from 1024 to 65535",
+      "listening": "Listening on port {port}",
+      "off": "Off. Phones cannot reach this computer.",
+      "turnedOn": "Phone access is on",
+      "turnedOff": "Phone access is off",
+      "warning": "Traffic on your network is not encrypted. Use this on a network you trust, or reach this computer through a private network such as Tailscale."
+    },
+    "List": {
+      "title": "Paired devices",
+      "description": "Each device has its own sign-in. Remove one to sign it out at once.",
+      "empty": "No devices paired yet.",
+      "pairedOn": "Paired {date}",
+      "revoke": "Remove {name}",
+      "confirm": "Remove {name}? It is signed out at once and has to be paired again.",
+      "revoked": "{name} removed"
+    },
+    "Pair": {
+      "title": "Connect to Amiro",
+      "description": "Enter the address of the Amiro you want to use. You only do this once on this device.",
+      "waitingDescription": "Approve this device on your Amiro to finish connecting.",
+      "serverLabel": "Server address",
+      "serverHint": "For example https://amiro.example.com, or the Wi-Fi address shown in Settings → Devices.",
+      "nameLabel": "Name for this device",
+      "submit": "Get a code",
+      "yourCode": "Your code",
+      "openApproval": "Open the approval page",
+      "approveAt": "Or go to {address} in any browser, sign in, and enter this code.",
+      "approveOnComputer": "On the computer running Amiro, you can also approve it in Settings → Devices.",
+      "waiting": "Waiting for approval · code expires in {time}",
+      "cancel": "Cancel",
+      "denied": "This device was denied. Ask again if that was a mistake.",
+      "expired": "The code expired before it was approved. Get a new one.",
+      "switchBack": "Switch back to this computer",
+      "badAddress": "Enter an address like https://amiro.example.com or http://192.168.1.5:8790",
+      "httpsNeeded": "Use an https:// address. Plain http:// only works on your own network (Wi-Fi, Tailscale).",
+      "unreachable": "Could not reach that address. Check it, and that Amiro is running there (on Wi-Fi: that phone access is on).",
+      "defaultName": {
+        "ios": "iPhone",
+        "android": "Android phone",
+        "desktop": "Desktop app",
+        "web": "Web browser"
+      }
+    },
+    "SignInLink": "Connect to another Amiro",
+    "Approve": {
+      "title": "Connect a device",
+      "description": "Enter the code shown on the device that wants to use your Amiro.",
+      "codeLabel": "Code from the device",
+      "needCode": "Enter the code shown on the device",
+      "continue": "Continue",
+      "ownerOnly": "Only the owner of this Amiro can approve devices.",
+      "from": "from {address}",
+      "asked": "Asked {when}",
+      "warning": "Approve only if this code is on a device you are holding right now. If someone sent you this code, deny it: approving gives that device full access to your Amiro.",
+      "approve": "Approve",
+      "deny": "Deny",
+      "approved": "{name} is connected",
+      "denied": "{name} was denied",
+      "closeHint": "You can close this page and go back to the device.",
+      "platform": {
+        "ios": "iPhone or iPad",
+        "android": "Android",
+        "desktop": "Desktop app",
+        "web": "Web browser"
+      }
+    },
+    "Requests": {
+      "title": "Waiting for approval",
+      "description": "Devices that asked to connect in the last 10 minutes.",
+      "empty": "No device is waiting. Open Amiro on the device, enter this Amiro's address, and its request appears here."
+    },
+    "ConnectCard": {
+      "title": "Connect a device",
+      "description": "Open this address on your phone or in the Amiro app on another device.",
+      "addressLabel": "Address",
+      "step1": "Scan the QR code with your phone's camera, or type the address.",
+      "step2": "The device shows a short code.",
+      "step3": "Approve that code under Waiting for approval, or at /device from any browser.",
+      "turnOnFirst": "Turn on phone access first, so your phone can reach this computer.",
+      "noAddress": "No network address found for this Amiro. Use the address you use to reach it.",
+      "qrAlt": "QR code with this Amiro's address"
+    }
   }
 }

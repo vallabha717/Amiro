@@ -172,6 +172,36 @@ fn request_token(headers: &axum::http::HeaderMap, uri: &axum::http::Uri) -> Stri
         .unwrap_or_default()
 }
 
+/// How the browser reached this listener: `(host, proto, origin)`.
+///
+/// `host` is the Host header, corrected by a reverse proxy's
+/// X-Forwarded-Host/X-Forwarded-Proto when one is in front (an nginx/caddy TLS
+/// proxy forwards to 127.0.0.1:<port> while the browser's origin names the
+/// public host, so the raw Host would never match).
+fn request_view(headers: &axum::http::HeaderMap) -> (String, String, Option<String>) {
+    let forwarded_host = first_forwarded(headers.get("x-forwarded-host"));
+    let forwarded_proto = first_forwarded(headers.get("x-forwarded-proto"));
+    let host = if forwarded_host.is_empty() {
+        headers
+            .get("host")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("")
+            .to_string()
+    } else {
+        forwarded_host
+    };
+    let proto = if forwarded_proto.is_empty() {
+        "http".to_string()
+    } else {
+        forwarded_proto
+    };
+    let origin = headers
+        .get("origin")
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string);
+    (host, proto, origin)
+}
+
 /// Boundary for every request.
 ///
 /// - Rejects an Origin that is neither this listener nor an allowlisted dev
@@ -191,33 +221,10 @@ async fn sidecar_and_origin_middleware(
     let path = req.uri().path().to_string();
     let headers = req.headers().clone();
     let uri = req.uri().clone();
-    // The listener's view of itself: the Host header, corrected by a reverse
-    // proxy's X-Forwarded-Host/X-Forwarded-Proto when one is in front (an
-    // nginx/caddy TLS proxy forwards to 127.0.0.1:<port> while the browser's
-    // origin names the public host, so the raw Host would never match).
-    let forwarded_host = first_forwarded(headers.get("x-forwarded-host"));
-    let forwarded_proto = first_forwarded(headers.get("x-forwarded-proto"));
-    let host = if forwarded_host.is_empty() {
-        headers
-            .get("host")
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or("")
-            .to_string()
-    } else {
-        forwarded_host
-    };
-    let proto = if forwarded_proto.is_empty() {
-        "http"
-    } else {
-        forwarded_proto.as_str()
-    };
-    let origin = headers
-        .get("origin")
-        .and_then(|value| value.to_str().ok())
-        .map(str::to_string);
+    let (host, proto, origin) = request_view(&headers);
 
     if let Some(origin) = origin.as_deref() {
-        if !origin_allowed(origin, &host, proto) {
+        if !origin_allowed(origin, &host, &proto) {
             return forbidden("origin not allowed").into_response();
         }
     }
@@ -238,7 +245,12 @@ async fn sidecar_and_origin_middleware(
 
     if needs_secret && !agent_mcp_ok {
         let token = std::env::var("AMIRO_TOKEN").unwrap_or_default();
-        if !token.is_empty() && !constant_time_eq(&token, &request_token(&headers, &uri)) {
+        // A paired device (phone, or a desktop app connected to this server)
+        // cannot know the sidecar secret; its own session stands in for it.
+        if !token.is_empty()
+            && !constant_time_eq(&token, &request_token(&headers, &uri))
+            && !backend::devices::bypasses_sidecar(&state, &method, &path, &headers, &uri).await
+        {
             return add_cors(
                 unauthorized("invalid or missing sidecar token").into_response(),
                 origin.as_deref(),
@@ -250,11 +262,60 @@ async fn sidecar_and_origin_middleware(
     add_cors(response, origin.as_deref())
 }
 
+/// Boundary for the phone-access listener (`backend::devices`).
+///
+/// It faces the local network, so it is stricter than the loopback listener:
+/// the static UI, the auth-status read and the device's two steps of the
+/// device code flow are public (the device code is the credential), and
+/// everything else needs a paired device's session. Password sign-in, and so
+/// approving at `/device`, is not accepted here: on Wi-Fi the owner approves on
+/// the computer itself, so no password ever crosses the network in plain HTTP.
+async fn remote_device_middleware(
+    State(state): State<AppState>,
+    req: Request,
+    next: Next,
+) -> Response {
+    let method = req.method().clone();
+    let path = req.uri().path().to_string();
+    let (host, proto, origin) = request_view(req.headers());
+    if let Some(origin) = origin.as_deref() {
+        if !origin_allowed(origin, &host, &proto) {
+            return forbidden("origin not allowed").into_response();
+        }
+    }
+    if method == Method::OPTIONS {
+        return add_cors(StatusCode::NO_CONTENT.into_response(), origin.as_deref());
+    }
+    let is_read = matches!(method, Method::GET | Method::HEAD);
+    let public = (is_read && !path.starts_with("/api") && path != "/health" && path != "/agent-mcp")
+        || (is_read && path == "/api/auth/status")
+        || backend::devices::is_device_flow(&method, &path);
+    if !public && !backend::devices::is_device_request(&state, req.headers(), req.uri()).await {
+        return add_cors(
+            unauthorized("pair this device with Amiro first").into_response(),
+            origin.as_deref(),
+        );
+    }
+    let response = next.run(req).await;
+    add_cors(response, origin.as_deref())
+}
+
 /// Hand a page served by this backend the same two globals Tauri injects:
 /// the listener's port and the sidecar secret. The frontend then talks to this
 /// backend with the same authenticated path it uses inside the desktop shell,
 /// instead of falling back to the development port.
 async fn inject_backend_origin(req: Request, next: Next) -> Response {
+    let secret = std::env::var("AMIRO_TOKEN").unwrap_or_default();
+    inject_bootstrap(req, next, secret).await
+}
+
+/// The phone-access listener's pages get the same bootstrap with no sidecar
+/// secret: they are served to anyone on the network.
+async fn inject_remote_origin(req: Request, next: Next) -> Response {
+    inject_bootstrap(req, next, String::new()).await
+}
+
+async fn inject_bootstrap(req: Request, next: Next, secret: String) -> Response {
     let host = req
         .headers()
         .get("host")
@@ -272,7 +333,6 @@ async fn inject_backend_origin(req: Request, next: Next) -> Response {
         .and_then(|(_, port)| port.parse::<u16>().ok())
         .or(configured_port)
         .unwrap_or(8787);
-    let secret = std::env::var("AMIRO_TOKEN").unwrap_or_default();
     let response = next.run(req).await;
     let is_html = response
         .headers()
@@ -592,6 +652,7 @@ async fn serve() -> anyhow::Result<()> {
         .merge(backend::agent::router())
         .merge(backend::heartbeat::router())
         .merge(backend::onboarding::router())
+        .merge(backend::devices::router())
         .merge(backend::routes::router())
         // Unknown API paths answer as JSON, never as the UI shell.
         .route(
@@ -612,6 +673,18 @@ async fn serve() -> anyhow::Result<()> {
         tracing::warn!(out_dir=%out_dir.display(), "out dir missing, static serving disabled");
     }
 
+    let remote_app = app
+        .clone()
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            resolve_static_route,
+        ))
+        .layer(middleware::from_fn(inject_remote_origin))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            remote_device_middleware,
+        ))
+        .with_state(state.clone());
     let app = app
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -651,13 +724,71 @@ async fn serve() -> anyhow::Result<()> {
         });
     }
     // A process that cannot bind its listener must never start background work.
+    backend::devices::load_remote_access(&state).await;
+    let remote = spawn_remote_access(remote_app);
     let heartbeat = backend::heartbeat::spawn_heartbeat(state.clone());
     let scheduler = backend::schedules::spawn_scheduler(state);
     tracing::info!(addr=%addr, "listening");
-    axum::serve(listener, app).await?;
+    // Peer addresses feed the device approval screen (backend::devices).
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await?;
     scheduler.abort();
     heartbeat.abort();
+    remote.abort();
     Ok(())
+}
+
+/// Run the phone-access listener while the owner has it switched on, and move
+/// it when they change the port. Each bind result is reported back so
+/// Settings → Devices can say whether it worked.
+fn spawn_remote_access(app: Router) -> tokio::task::JoinHandle<()> {
+    use backend::devices::{remote_access_config, report_remote_status, RemoteStatus};
+    let mut config = remote_access_config();
+    tokio::spawn(async move {
+        let mut running: Option<(u16, tokio::task::JoinHandle<()>)> = None;
+        loop {
+            let wanted = config.borrow_and_update().clone();
+            let target = wanted.enabled.then_some(wanted.port);
+            if running.as_ref().map(|(port, _)| *port) != target {
+                if let Some((_, task)) = running.take() {
+                    task.abort();
+                }
+                match target {
+                    None => report_remote_status(RemoteStatus::default()),
+                    Some(port) => match tokio::net::TcpListener::bind(("0.0.0.0", port)).await {
+                        Ok(listener) => {
+                            tracing::info!(port, "phone access listening on the local network");
+                            let app = app.clone();
+                            running = Some((
+                                port,
+                                tokio::spawn(async move {
+                                    let app = app
+                                        .into_make_service_with_connect_info::<std::net::SocketAddr>();
+                                    if let Err(error) = axum::serve(listener, app).await {
+                                        tracing::warn!(%error, "phone access listener stopped");
+                                    }
+                                }),
+                            ));
+                            report_remote_status(RemoteStatus {
+                                listening: Some(port),
+                                error: None,
+                            });
+                        }
+                        Err(error) => report_remote_status(RemoteStatus {
+                            listening: None,
+                            error: Some(format!("could not listen on port {port}: {error}")),
+                        }),
+                    },
+                }
+            }
+            if config.changed().await.is_err() {
+                break;
+            }
+        }
+    })
 }
 
 #[cfg(test)]

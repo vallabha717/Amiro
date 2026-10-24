@@ -340,11 +340,19 @@ fn bearer(headers: &HeaderMap) -> Option<&str> {
 }
 
 fn expired(session: &Value) -> bool {
-    let days = std::env::var("AMIRO_SESSION_TTL_DAYS")
+    // A paired device (crate::devices) stays signed in until it is unpaired,
+    // unless the operator sets a lifetime for device sessions.
+    let ttl_var = if session["deviceId"].is_string() {
+        "AMIRO_DEVICE_SESSION_TTL_DAYS"
+    } else {
+        "AMIRO_SESSION_TTL_DAYS"
+    };
+    let default_days = if session["deviceId"].is_string() { 0.0 } else { 7.0 };
+    let days = std::env::var(ttl_var)
         .ok()
         .and_then(|value| value.parse::<f64>().ok())
         .filter(|n| n.is_finite())
-        .unwrap_or(7.0);
+        .unwrap_or(default_days);
     expired_with_ttl(session, days)
 }
 
