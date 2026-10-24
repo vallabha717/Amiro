@@ -10,6 +10,7 @@
  *    TV says the desktop isn't running.
  */
 import { execFileSync } from "node:child_process";
+import { ask, newChat, selectModel } from "../support/chat";
 import { readInstance } from "../support/config";
 import { expect, test } from "../support/fixtures";
 
@@ -106,9 +107,15 @@ test.describe.serial("debug-terminal-and-tv-screen", () => {
 
       // Auto-reconnect (or manual connect if still in error/idle) connects Scout's isolated Container PTY terminal
       const connectBtn = page.getByTestId("terminal-connect-button");
-      if (await connectBtn.isVisible().catch(() => false)) {
-        // The auto-reconnect may win the race and remove the button first.
-        await connectBtn.click({ timeout: 3000 }).catch(() => {});
+      // Turning Shell on makes the panel reconnect by itself. Clicking Connect
+      // while that is in flight opens a second session that ends the first,
+      // so give it a moment and click only if it did not connect.
+      const status = page.getByTestId("terminal-status-badge");
+      const autoConnected = await expect(status)
+        .toHaveAttribute("data-status", "connected", { timeout: 10000 })
+        .then(() => true, () => false);
+      if (!autoConnected && (await connectBtn.isVisible().catch(() => false))) {
+        await connectBtn.click();
       }
       await expect(page.getByTestId("terminal-status-badge")).toHaveAttribute(
         "data-status",
@@ -160,6 +167,11 @@ test.describe.serial("debug-terminal-and-tv-screen", () => {
         await expect
           .poll(() => desktopProcesses(sandbox.namespace), { timeout: 20000 })
           .toEqual(expect.arrayContaining(["Xtigervnc", "openbox", "plank", "chromium"]));
+        // The TV names what is in front: Chromium at its exact address.
+        const bar = page.getByTestId("assistant-desktop-preview").getByTestId("desktop-window-bar");
+        await expect(bar.getByTestId("desktop-window-location")).toContainText("https://example.com", {
+          timeout: 20000,
+        });
         await page.waitForTimeout(2500);
       },
     );
@@ -183,12 +195,16 @@ test.describe.serial("debug-terminal-and-tv-screen", () => {
       await expect
         .poll(() => desktopProcesses(sandbox!.namespace), { timeout: 20000 })
         .toContain("thunar");
+      // The header shows the exact folder Files has open.
+      const bar = modal.getByTestId("desktop-window-bar");
+      await expect(bar.locator('[data-app="files"]').first()).toContainText("/home/agent", { timeout: 15000 });
       await page.waitForTimeout(2000);
       const terminal = at(778, 784);
       await page.mouse.click(terminal.x, terminal.y);
       await expect
         .poll(() => desktopProcesses(sandbox!.namespace), { timeout: 20000 })
         .toContain("xfce4-terminal");
+      await expect(bar.locator('[data-app="terminal"]').first()).toContainText("/home/agent", { timeout: 15000 });
       await page.waitForTimeout(2500);
     });
 
@@ -208,6 +224,48 @@ test.describe.serial("debug-terminal-and-tv-screen", () => {
       await expect(page.getByTestId("assistant-desktop-preview")).toHaveCount(
         0,
       );
+    });
+  });
+
+  test("TV in chat: the agent opens Files on its desktop and the chat shows the live TV with the exact folder", async ({
+    page,
+    step,
+  }) => {
+    const sandbox = readInstance().sandbox;
+    test.skip(!sandbox, "needs the run's sandbox (Docker + amiro-agent:local)");
+    const folder = "/home/agent/projects/tv-demo";
+    execFileSync("docker", ["exec", `${sandbox!.namespace}-agent-main`, "mkdir", "-p", folder]);
+
+    await step("Ask Amiro to open the folder on its desktop → it calls desktop_open", async () => {
+      await newChat(page);
+      await selectModel(page);
+      await ask(
+        page,
+        `Use your desktop_open tool to open Files at ${folder} on your desktop, then tell me which folder is open.`,
+        { timeoutMs: 120000 },
+      );
+    });
+
+    await step("The chat shows the TV card: live desktop and Files at the exact folder", async () => {
+      const card = page.getByTestId("desktop-chat-card").last();
+      await expect(card).toBeVisible({ timeout: 30000 });
+      await expect(card.getByTestId("desktop-chat-card-screen").locator("canvas")).toBeVisible({ timeout: 45000 });
+      // Files at the exact folder, listed first because it is in front.
+      const rows = card.getByTestId("desktop-window-row");
+      await expect(rows.filter({ hasText: folder }).first()).toHaveAttribute("data-app", "files");
+      await expect(rows.first()).toContainText(folder);
+      await page.waitForTimeout(2500);
+    });
+
+    await step("Full screen from the card → the TV header names the same folder", async () => {
+      await page.getByTestId("desktop-chat-card").last().getByTestId("desktop-chat-card-fullscreen").click();
+      const modal = page.getByTestId("assistant-desktop-modal");
+      await expect(modal).toBeVisible();
+      await expect(modal.getByTestId("desktop-panel-viewport").locator("canvas")).toBeVisible({ timeout: 45000 });
+      await expect(modal.getByTestId("desktop-window-bar")).toContainText(folder, { timeout: 15000 });
+      await page.waitForTimeout(2500);
+      await page.getByTestId("desktop-modal-close").click();
+      await expect(modal).toBeHidden();
     });
   });
 });
