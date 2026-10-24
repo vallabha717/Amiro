@@ -4,10 +4,28 @@
  *    isolated Container PTY for team agents).
  * 2) Vellum-style TV Screen (`AssistantDesktopAffordance` Monitor icon in the
  *    header -> floating 16:9 draggable/resizable `#assistant-desktop-preview`
- *    TV window -> expandable fullscreen `#assistant-desktop-modal` with
- *    Browser, File System, and Terminal).
+ *    TV window -> expandable fullscreen `#assistant-desktop-modal`) streaming
+ *    the agent's real X11 desktop from its sandbox container: Chromium, Files
+ *    (Thunar) and a terminal, clickable through noVNC. Without a sandbox the
+ *    TV says the desktop isn't running.
  */
+import { execFileSync } from "node:child_process";
+import { readInstance } from "../support/config";
 import { expect, test } from "../support/fixtures";
+
+/** Names of the programs running in the main agent's desktop container. */
+function desktopProcesses(namespace: string): string[] {
+  try {
+    const out = execFileSync(
+      "docker",
+      ["exec", `${namespace}-agent-main`, "ps", "-eo", "comm="],
+      { encoding: "utf8" },
+    );
+    return [...new Set(out.split("\n").map((l) => l.trim()).filter(Boolean))];
+  } catch {
+    return [];
+  }
+}
 
 interface TeamAgent {
   id: string;
@@ -89,7 +107,8 @@ test.describe.serial("debug-terminal-and-tv-screen", () => {
       // Auto-reconnect (or manual connect if still in error/idle) connects Scout's isolated Container PTY terminal
       const connectBtn = page.getByTestId("terminal-connect-button");
       if (await connectBtn.isVisible().catch(() => false)) {
-        await connectBtn.click();
+        // The auto-reconnect may win the race and remove the button first.
+        await connectBtn.click({ timeout: 3000 }).catch(() => {});
       }
       await expect(page.getByTestId("terminal-status-badge")).toHaveAttribute(
         "data-status",
@@ -107,35 +126,78 @@ test.describe.serial("debug-terminal-and-tv-screen", () => {
       );
     });
 
-    await step("Open chat header TV Screen (Monitor button) → connects live noVNC X11 Desktop (Xtigervnc + Openbox + Plank + Chromium)", async () => {
-      await page.goto("/amiro");
-      await expect(
-        page.getByTestId("assistant-desktop-affordance"),
-      ).toBeVisible();
+    const sandbox = readInstance().sandbox;
 
-      // Click the TV Monitor icon in the header -> floating 16:9 TV screen appears
-      await page.getByTestId("assistant-desktop-affordance").click();
-      const preview = page.getByTestId("assistant-desktop-preview");
-      await expect(preview).toBeVisible();
-      await expect(page.getByTestId("desktop-panel-viewport")).toBeVisible();
+    await step(
+      sandbox
+        ? "TV screen: open it from the chat header → it streams Amiro's real desktop (Chromium open, Files and Terminal in the dock)"
+        : "TV screen: open it from the chat header with no sandbox → it says the desktop isn't running, no fake desktop",
+      async () => {
+        await page.goto("/amiro");
+        await expect(page.getByTestId("assistant-desktop-affordance")).toBeVisible();
+        await page.getByTestId("assistant-desktop-affordance").click();
+        await expect(page.getByTestId("assistant-desktop-preview")).toBeVisible();
+        await expect(page.getByTestId("desktop-panel-viewport")).toBeVisible();
 
-      // Wait for real noVNC RFB canvas to connect (desktop-panel-status disappears once connected)
-      await expect(page.getByTestId("desktop-panel-status")).toHaveCount(0, {
-        timeout: 30000,
-      });
-      await expect(
-        page.getByTestId("desktop-panel-viewport").locator("canvas"),
-      ).toBeVisible({ timeout: 15000 });
+        if (!sandbox) {
+          await expect(page.getByTestId("desktop-panel-status")).toHaveAttribute(
+            "data-state",
+            "unavailable",
+            { timeout: 30000 },
+          );
+          await expect(page.getByTestId("desktop-panel-reconnect")).toBeVisible();
+          return;
+        }
 
-      // Expand the floating TV screen into the fullscreen Desktop modal (keeps same live VNC canvas!)
+        // The stream connects (status overlay gone) and noVNC draws the frame buffer.
+        await expect(page.getByTestId("desktop-panel-status")).toHaveCount(0, {
+          timeout: 45000,
+        });
+        await expect(
+          page.getByTestId("desktop-panel-viewport").locator("canvas"),
+        ).toBeVisible({ timeout: 15000 });
+        // Those pixels come from real programs in Amiro's container.
+        await expect
+          .poll(() => desktopProcesses(sandbox.namespace), { timeout: 20000 })
+          .toEqual(expect.arrayContaining(["Xtigervnc", "openbox", "plank", "chromium"]));
+        await page.waitForTimeout(2500);
+      },
+    );
+
+    await step("TV screen: expand to fullscreen → click Files, then Terminal in the dock → both open on the live desktop", async () => {
+      if (!sandbox) return;
       await page.getByTestId("desktop-preview-title-button").click();
       const modal = page.getByTestId("assistant-desktop-modal");
       await expect(modal).toBeVisible();
-      await expect(
-        modal.getByTestId("desktop-panel-viewport").locator("canvas"),
-      ).toBeVisible();
+      const canvas = modal.getByTestId("desktop-panel-viewport").locator("canvas");
+      await expect(canvas).toBeVisible();
 
-      // Minimize back to the floating TV window, then close
+      // Plank's dock sits bottom-centre of the 1440x810 desktop: Chrome, Files, Terminal.
+      const box = (await canvas.boundingBox())!;
+      const at = (x: number, y: number) => ({
+        x: box.x + (x / 1440) * box.width,
+        y: box.y + (y / 810) * box.height,
+      });
+      const files = at(720, 784);
+      await page.mouse.click(files.x, files.y);
+      await expect
+        .poll(() => desktopProcesses(sandbox!.namespace), { timeout: 20000 })
+        .toContain("thunar");
+      await page.waitForTimeout(2000);
+      const terminal = at(778, 784);
+      await page.mouse.click(terminal.x, terminal.y);
+      await expect
+        .poll(() => desktopProcesses(sandbox!.namespace), { timeout: 20000 })
+        .toContain("xfce4-terminal");
+      await page.waitForTimeout(2500);
+    });
+
+    await step("TV screen: minimize back to the floating TV, then close it", async () => {
+      if (!sandbox) {
+        await page.getByTestId("desktop-preview-close").click();
+        await expect(page.getByTestId("assistant-desktop-preview")).toHaveCount(0);
+        return;
+      }
       await page.getByTestId("desktop-modal-minimize").click();
       await expect(page.getByTestId("assistant-desktop-modal")).toBeHidden();
       await expect(
