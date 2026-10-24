@@ -751,12 +751,25 @@
     "resizeAria": "Resize virtual desktop preview (arrow keys)",
     "expandAria": "Expand virtual desktop",
     "minimizeButton": "Minimize to TV window",
-    "connecting": "Connecting to the virtual desktop…",
-    "reconnectButton": "Refresh screen",
-    "tabs": {
-      "browser": "Browser",
-      "files": "File System",
-      "terminal": "Terminal"
+    "reconnectButton": "Reconnect",
+    "starting": "Starting {name}'s desktop…",
+    "ended": {
+      "unavailable": {
+        "title": "The desktop isn't running",
+        "body": "It runs in the agent's sandbox. Start the sandbox with bash scripts/sandbox.sh up, then reconnect."
+      },
+      "failed": {
+        "title": "The desktop didn't start",
+        "body": "The sandbox couldn't start this agent's desktop. Check the sandbox log, then reconnect."
+      },
+      "busy": {
+        "title": "The desktop is busy",
+        "body": "Someone else is connected to it. Try again in a moment."
+      },
+      "lost": {
+        "title": "Connection lost",
+        "body": "The stream to the desktop stopped. Reconnect to pick up where it left off."
+      }
     }
   },
   "Admin": {

@@ -95,9 +95,8 @@ export function AssistantDesktopPreview() {
         <DesktopViewer
           key={activeAgentId}
           agentId={activeAgentId}
-          agent={resolvedAgent}
+          agentName={agentName}
           viewOnly={!fullscreen}
-          onExpandRequest={() => setFullscreen(true)}
         />,
         host,
       )}
