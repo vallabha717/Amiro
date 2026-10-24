@@ -11,12 +11,8 @@ import { cn } from "lib/utils";
 
 /**
  * Single-line text wrapper that scrolls (marquee-style) when the parent row
- * (`.group` or `.group/thread`) is hovered AND the text overflows its container
- * — matching Vellum's `MarqueeText` (`packages/design-library/src/components/panel-item/marquee-text.tsx`).
- *
- * Renders two sibling spans inside the overflow container so the idle /
- * reduced-motion state gets a real ellipsis truncation, and hovering smoothly
- * slides the overflowing text horizontally and back without layout shift.
+ * (`.group`, `.group/thread`) or the label itself is hovered AND the text
+ * overflows its container — matching Vellum's `MarqueeText`.
  */
 export interface MarqueeTextProps {
   children: ReactNode;
@@ -36,6 +32,7 @@ export function MarqueeText({
   const containerRef = useRef<HTMLSpanElement | null>(null);
   const innerRef = useRef<HTMLSpanElement | null>(null);
   const [overflowPx, setOverflowPx] = useState(0);
+  const [hovered, setHovered] = useState(false);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -43,8 +40,8 @@ export function MarqueeText({
     if (!container || !inner) return;
 
     const measure = () => {
-      const overflow = inner.scrollWidth - container.clientWidth;
-      setOverflowPx(overflow > 0 ? overflow : 0);
+      const overflow = Math.ceil(inner.scrollWidth - container.clientWidth);
+      setOverflowPx(overflow > 1 ? overflow : 0);
     };
 
     measure();
@@ -66,6 +63,11 @@ export function MarqueeText({
     ? ({
         "--panelitem-marquee-distance": `${overflowPx}px`,
         "--panelitem-marquee-duration": `${totalMs}ms`,
+        ...(hovered
+          ? {
+              animation: `panelitem-marquee ${totalMs}ms linear infinite`,
+            }
+          : {}),
       } as CSSProperties)
     : undefined;
 
@@ -74,13 +76,30 @@ export function MarqueeText({
       data-slot="marquee-text"
       data-testid={testId}
       data-can-scroll={canScroll ? "true" : "false"}
+      data-hovered={hovered ? "true" : "false"}
       ref={containerRef}
+      onMouseEnter={() => {
+        const container = containerRef.current;
+        const inner = innerRef.current;
+        if (container && inner) {
+          const overflow = Math.ceil(inner.scrollWidth - container.clientWidth);
+          setOverflowPx(overflow > 1 ? overflow : 0);
+        }
+        setHovered(true);
+      }}
+      onMouseLeave={() => setHovered(false)}
       className={cn(
         "group/marquee relative block min-w-0 flex-1 overflow-hidden",
         className,
       )}
     >
-      <span className="block truncate motion-safe:group-hover/thread:invisible motion-safe:group-hover/marquee:invisible">
+      <span
+        className={cn(
+          "block truncate",
+          "motion-safe:group-hover/thread:invisible motion-safe:group-hover/marquee:invisible",
+          hovered && canScroll && "invisible",
+        )}
+      >
         {children}
       </span>
       <span
@@ -92,6 +111,7 @@ export function MarqueeText({
           "motion-safe:group-hover/thread:visible motion-safe:group-hover/marquee:visible",
           canScroll &&
             "motion-safe:group-hover/thread:animate-panelitem-marquee motion-safe:group-hover/marquee:animate-panelitem-marquee",
+          hovered && canScroll && "visible animate-panelitem-marquee",
         )}
         style={scrollStyle}
       >
