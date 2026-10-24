@@ -2,12 +2,14 @@
 """Print what is on the agent's virtual desktop as JSON.
 
 {"running": true,
- "active": {"app": "files", "title": "...", "path": "/home/agent/docs"},
+ "agent": {"name": "Amiro", "home": "/home/agent", "hostHome": "/home/owner/.amiro/agents/main"},
+ "active": {"app": "files", "title": "...", "path": "/home/agent/docs",
+            "hostPath": "/home/owner/.amiro/agents/main/docs"},
  "windows": [{"app": "browser", "title": "Example Domain", "url": "https://example.com/", "active": false}, ...]}
 
 `app` is browser, files, terminal or other. Files and Terminal windows carry
-the exact folder they show (`path`), the browser the address of the page it
-shows (`url`). With `--wait-for <app>` it prints nothing and exits 0 only once
+the exact folder they show, inside the container (`path`) and on the owner's
+computer (`hostPath`); the browser the address of the page it shows (`url`). With `--wait-for <app>` it prints nothing and exits 0 only once
 a window of that app is open.
 """
 
@@ -54,6 +56,34 @@ def browser_tabs():
     return [p for p in pages if p.get("type") == "page"]
 
 
+AGENT_HOME = "/home/agent"
+
+
+def read_line(path, default):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.readline().strip() or default
+    except OSError:
+        return default
+
+
+AGENT_NAME = read_line("/tmp/desktop-agent-name", "Agent")
+# Where /home/agent is on the owner's computer.
+HOST_HOME = read_line("/tmp/desktop-agent-home", AGENT_HOME).rstrip("/") or AGENT_HOME
+
+
+def to_host(path):
+    if path == AGENT_HOME or path.startswith(AGENT_HOME + "/"):
+        return HOST_HOME + path[len(AGENT_HOME):]
+    return path
+
+
+def from_host(path):
+    if path == HOST_HOME or path.startswith(HOST_HOME + "/"):
+        return AGENT_HOME + path[len(HOST_HOME):]
+    return path
+
+
 def describe(wid, active, tabs):
     cls = wm_class(wid)
     title = run("xdotool", "getwindowname", wid).strip()
@@ -70,12 +100,17 @@ def describe(wid, active, tabs):
         window["app"] = "files"
         match = THUNAR_TITLE.match(title)
         if match:
-            window["path"] = match.group(1)
+            # Files may show the folder either way (/home/agent/… or its real path).
+            window["hostPath"] = to_host(match.group(1))
+            window["path"] = from_host(match.group(1))
     elif cls in ("xfce4-terminal", "terminal"):
         window["app"] = "terminal"
-        # The desktop's bashrc titles the window with the shell's folder.
-        if title.startswith("/"):
-            window["path"] = title
+        # The desktop's bashrc titles the window "<agent> — <folder on the
+        # owner's computer>".
+        shown = title.split(" — ", 1)[-1]
+        if shown.startswith("/"):
+            window["hostPath"] = shown
+            window["path"] = from_host(shown)
     return window
 
 
@@ -92,7 +127,8 @@ def main():
     if len(sys.argv) == 3 and sys.argv[1] == "--wait-for":
         return 0 if any(w["app"] == sys.argv[2] for w in windows) else 1
     current = next((w for w in windows if w["active"]), None)
-    print(json.dumps({"running": True, "active": current, "windows": windows}))
+    agent = {"name": AGENT_NAME, "home": AGENT_HOME, "hostHome": HOST_HOME}
+    print(json.dumps({"running": True, "agent": agent, "active": current, "windows": windows}))
     return 0
 
 

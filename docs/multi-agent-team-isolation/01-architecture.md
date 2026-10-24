@@ -98,7 +98,7 @@ can assert every hardening field:
 | `Cmd` | `sleep infinity` (an idle shell host; `Init: true` reaps children) |
 | `WorkingDir` / `HOME` | `/home/agent` |
 | `Env` | `HOME`, `AMIRO_AGENT_ID` only — no credential, no token |
-| `HostConfig.Binds` | `<AMIRO_SANDBOX_AGENTS_ROOT>/<id>:/home/agent:rw` — the only mount |
+| `HostConfig.Mounts` (bind) | `<AMIRO_SANDBOX_AGENTS_ROOT>/<id>` → `/home/agent` — the only mount. For `main` (Amiro's desktop) it is Amiro's own workspace, `AMIRO_SANDBOX_MAIN_WORKSPACE` (default `<AMIRO_HOME>/workspace`) |
 | `CapDrop` / `SecurityOpt` | `["ALL"]` / `["no-new-privileges:true"]` (off only on snap-packaged Docker, see 03) |
 | `ReadonlyRootfs` + `Tmpfs` | `true` + `/tmp: rw,nosuid,nodev,size=64m` |
 | `Memory` = `MemorySwap`, `NanoCpus`, `PidsLimit` | 1 GiB, 1 CPU, 1024 (env-overridable; the virtual desktop needs ~300) |

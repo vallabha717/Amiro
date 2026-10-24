@@ -104,7 +104,7 @@ async fn desktop_stream_ws(
         .on_upgrade(move |socket| handle_desktop_ws(state, agent_id, socket))
 }
 
-async fn resolve_agent_label_and_accent(state: &AppState, agent_id: &str) -> (String, String) {
+pub(crate) async fn resolve_agent_label_and_accent(state: &AppState, agent_id: &str) -> (String, String) {
     if agent_id == MAIN_AGENT_ID {
         let _ = tokio::fs::create_dir_all(state.home.join("agents").join(MAIN_AGENT_ID)).await;
         let id_doc = get_agent_identity(state, None).await.unwrap_or_else(|_| json!({}));
@@ -157,7 +157,13 @@ pub fn describe_desktop(desktop: &Value) -> String {
     if windows.is_empty() {
         return "Your desktop is running with no windows open.".into();
     }
-    let mut lines = vec!["Open on your desktop (the user watches it on the TV):".to_string()];
+    let mut lines = Vec::new();
+    if let Some(host) = desktop["agent"]["hostHome"].as_str().filter(|h| *h != "/home/agent") {
+        lines.push(format!(
+            "Your home /home/agent is {host} on the owner's computer; the TV shows paths there."
+        ));
+    }
+    lines.push("Open on your desktop (the user watches it on the TV):".to_string());
     for w in &windows {
         let title = w["title"].as_str().unwrap_or("");
         let what = match w["app"].as_str() {
@@ -690,6 +696,14 @@ mod tests {
              - Browser — https://example.com/ (Example Domain)\n\
              - Files — /home/agent/docs (in front)\n\
              - Terminal — /home/agent"
+        );
+        let with_home = json!({"running": true, "agent": {"name": "Amiro", "hostHome": "/home/o/.amiro/agents/main"},
+            "windows": [{"app": "terminal", "title": "Amiro — /home/o/.amiro/agents/main", "path": "/home/agent", "active": true}]});
+        assert_eq!(
+            describe_desktop(&with_home),
+            "Your home /home/agent is /home/o/.amiro/agents/main on the owner's computer; the TV shows paths there.\n\
+             Open on your desktop (the user watches it on the TV):\n\
+             - Terminal — /home/agent (in front)"
         );
         assert!(describe_desktop(&json!({"running": false})).contains("not running"));
         assert!(describe_desktop(&json!({"running": true, "windows": []})).contains("no windows"));

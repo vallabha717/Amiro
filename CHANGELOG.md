@@ -35,6 +35,17 @@ and subsequent work will accumulate under a fresh `Unreleased` section.
   agents with Shell on) open a URL, a folder in Files or a terminal in a
   folder, and report every window with its exact path or URL. Each call shows
   a live TV card in the chat with Open TV and Full screen.
+- Amiro's desktop container mounts Amiro's real workspace
+  (`AMIRO_SANDBOX_MAIN_WORKSPACE`, default `<AMIRO_HOME>/workspace`), so the
+  TV shows the files Amiro works on. The terminal prompt reads like a shell on
+  the owner's computer (`amiro@amiro-os:/home/you/.amiro/workspace$`), Files
+  has a "<agent>'s workspace" bookmark, and the TV and chat card name each
+  window as "<agent>'s Files/Terminal" with the folder's real path (both paths
+  on hover).
+- Admin → Debug's terminal and the terminal on the TV are one shared shell (a
+  tmux session in the agent's container): what is typed in one shows in the
+  other. Amiro's Debug terminal uses it whenever the sandbox is up and falls
+  back to the host PTY otherwise.
 - Fixed the agent desktop's D-Bus: the container's uid now has a name (via
   nss_wrapper), so Files settings and Chromium's bus calls work. The agent
   image adds CJK and emoji fonts.

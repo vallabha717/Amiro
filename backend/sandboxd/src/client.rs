@@ -132,13 +132,16 @@ impl SandboxClient {
         self.post(id, "files/list", json!({"path": path})).await
     }
 
+    /// Attach a terminal to the agent's shared shell; `label` is the agent's
+    /// name for its prompt.
     pub async fn create_terminal_session(
         &self,
         id: &str,
         cols: u16,
         rows: u16,
+        label: &str,
     ) -> Result<Value, ClientError> {
-        self.post(id, "terminal/sessions", json!({"cols": cols, "rows": rows}))
+        self.post(id, "terminal/sessions", json!({"cols": cols, "rows": rows, "label": label}))
             .await
     }
 

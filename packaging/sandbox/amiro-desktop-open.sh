@@ -18,14 +18,18 @@ fail() {
   exit 2
 }
 
+# A folder as the desktop shows it: under the agent's real path when that is
+# mounted (see desktop-env), so Files and the terminal name it exactly.
 folder() {
-  local dir="${1:-/home/agent}"
+  local dir="${1:-$AMIRO_DESKTOP_HOME}"
   case "$dir" in
+    /home/agent) dir="$AMIRO_DESKTOP_HOME" ;;
+    /home/agent/*) dir="$AMIRO_DESKTOP_HOME/${dir#/home/agent/}" ;;
     /*) ;;
-    *) dir="/home/agent/$dir" ;;
+    *) dir="$AMIRO_DESKTOP_HOME/$dir" ;;
   esac
   [ -d "$dir" ] || fail "no such folder: $dir"
-  (cd "$dir" && pwd -P)
+  (cd "$dir" && pwd -L)
 }
 
 case "$APP" in

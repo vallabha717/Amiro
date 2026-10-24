@@ -8,6 +8,17 @@ export XDG_CONFIG_HOME="/tmp/desktop-config"
 export XDG_DATA_HOME="/tmp/desktop-data"
 export XDG_CACHE_HOME="/tmp/desktop-cache"
 export DBUS_SESSION_BUS_ADDRESS="unix:path=/tmp/dbus-session.sock"
+# Where the desktop opens folders: the agent's folder at its real path on the
+# owner's computer when the sandbox mounts it there too, else /home/agent.
+AMIRO_DESKTOP_HOME="$(cat /tmp/desktop-agent-home 2>/dev/null || true)"
+if [ -z "$AMIRO_DESKTOP_HOME" ] || [ ! -d "$AMIRO_DESKTOP_HOME" ]; then
+  AMIRO_DESKTOP_HOME="/home/agent"
+fi
+export AMIRO_DESKTOP_HOME
+
+# UTF-8 everywhere: tmux otherwise mangles the "—" in window titles.
+export LANG="C.UTF-8"
+export LC_ALL="C.UTF-8"
 
 # The container runs as the owner's host uid, which /etc/passwd (read-only)
 # does not list. D-Bus refuses clients it cannot name, which breaks Files'

@@ -11,9 +11,19 @@ set -euo pipefail
 
 AGENT_LABEL="${1:-Amiro}"
 ACCENT_HEX="${2:-#E9642F}"
+# Where /home/agent lives on the owner's computer (the supervisor's agents
+# root + this agent's id). Shown in the terminal and by amiro-desktop-state.
+HOST_HOME="${3:-}"
 . /usr/local/share/amiro/desktop-env
 mkdir -p "$XDG_RUNTIME_DIR" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME" "$HOME/.browser"
 chmod 700 "$XDG_RUNTIME_DIR"
+
+# Who this desktop belongs to; refreshed on every start so a rename shows.
+/usr/local/bin/amiro-desktop-identity "$AGENT_LABEL" "${HOST_HOME:-/home/agent}"
+# desktop-env picks the folder the desktop opens from what was just recorded.
+. /usr/local/share/amiro/desktop-env
+mkdir -p "$XDG_CONFIG_HOME/gtk-3.0"
+printf 'file://%s %s%s workspace\n' "$AMIRO_DESKTOP_HOME" "$AGENT_LABEL" "'s" > "$XDG_CONFIG_HOME/gtk-3.0/bookmarks"
 
 # If VNC server is already listening on 5999, exit 0 immediately
 if (echo > /dev/tcp/127.0.0.1/5999) >/dev/null 2>&1; then
@@ -180,7 +190,7 @@ cat > "$APPS_DIR/thunar.desktop" <<'EOF'
 Version=1.0
 Type=Application
 Name=Files
-Exec=thunar /home/agent
+Exec=/usr/local/bin/amiro-desktop-open files
 Icon=system-file-manager
 Terminal=false
 StartupWMClass=Thunar
@@ -191,7 +201,7 @@ cat > "$APPS_DIR/xterm.desktop" <<'EOF'
 Version=1.0
 Type=Application
 Name=Terminal
-Exec=/usr/local/bin/amiro-desktop-terminal /home/agent
+Exec=/usr/local/bin/amiro-desktop-terminal
 Icon=utilities-terminal
 Terminal=false
 StartupWMClass=Xfce4-terminal

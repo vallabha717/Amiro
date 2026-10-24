@@ -414,10 +414,23 @@ async fn create_terminal_session(
     let rows = body["rows"].as_u64().unwrap_or(24).clamp(1, 1000) as u16;
 
     let cid = sup.ensure(&id).await?;
+    // Attach to the agent's shared shell (the same tmux session as the
+    // terminal on its desktop), named for the agent and its real folder.
+    // Images without it get a plain shell.
+    if body.get("label").is_some() {
+        let identity = vec![
+            "/usr/local/bin/amiro-desktop-identity".to_string(),
+            desktop_label(body["label"].as_str()),
+            sup.cfg.agent_folder(&id),
+        ];
+        let _ = sup.docker.exec(&cid, &identity, 1024, Duration::from_secs(5)).await;
+    }
     let argv = vec![
         "/bin/sh".to_string(),
         "-c".to_string(),
-        "if [ -x /bin/bash ]; then exec /bin/bash -i; else exec /bin/sh -i; fi".to_string(),
+        "if [ -x /usr/local/bin/amiro-shell ]; then exec /usr/local/bin/amiro-shell; \
+         elif [ -x /bin/bash ]; then exec /bin/bash -i; else exec /bin/sh -i; fi"
+            .to_string(),
     ];
     let exec_id = sup
         .docker
@@ -702,7 +715,15 @@ pub fn desktop_accent(raw: Option<&str>) -> String {
 
 /// Start the agent's virtual desktop unless it is already running.
 async fn start_desktop(sup: &Supervisor, id: &str, label: Option<&str>, accent: Option<&str>) -> Result<(), ApiError> {
-    let start = vec!["/usr/local/bin/amiro-desktop-start".to_string(), desktop_label(label), desktop_accent(accent)];
+    // The folder mounted at /home/agent, as the owner sees it on their
+    // computer; from the supervisor's own settings, never from the request.
+    let host_home = sup.cfg.agent_folder(id);
+    let start = vec![
+        "/usr/local/bin/amiro-desktop-start".to_string(),
+        desktop_label(label),
+        desktop_accent(accent),
+        host_home,
+    ];
     let started = sup.exec(id, start, 16 * 1024, Duration::from_secs(30)).await?;
     if started.timed_out || started.exit_code != Some(0) {
         let detail = text(&started.stderr);

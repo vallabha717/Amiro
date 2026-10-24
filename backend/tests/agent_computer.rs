@@ -369,12 +369,14 @@ async fn terminal_sessions_support_main_host_pty_and_enforce_team_agent_sandbox_
     let (status, _) = call(&app, Some(MEMBER_TOKEN), Method::POST, "/api/terminal/sessions", Some(json!({"agentId": "main"}))).await;
     assert_eq!(status, StatusCode::FORBIDDEN);
 
-    // Main agent ("main") opens a host PTY in state.workspace.
+    // Main agent ("main") with the sandbox up: the shared shell in Amiro's
+    // desktop container (the same one as the terminal on its TV).
     let (status, main_sess) = call(&app, Some(OWNER_TOKEN), Method::POST, "/api/terminal/sessions", Some(json!({"agentId": "main", "cols": 100, "rows": 30}))).await;
     assert_eq!(status, StatusCode::CREATED, "{main_sess}");
     assert_eq!(main_sess["agent_id"], "main");
-    assert_eq!(main_sess["isolation"], "host");
+    assert_eq!(main_sess["isolation"], "container");
     let main_sid = main_sess["session_id"].as_str().unwrap().to_string();
+    assert!(log.lock().unwrap().contains(&"terminal-create main".to_string()));
 
     let (status, _) = call(&app, Some(OWNER_TOKEN), Method::POST, &format!("/api/terminal/sessions/{main_sid}/resize"), Some(json!({"cols": 120, "rows": 40}))).await;
     assert_eq!(status, StatusCode::OK);
@@ -411,6 +413,18 @@ async fn terminal_sessions_support_main_host_pty_and_enforce_team_agent_sandbox_
     assert!(seen.contains(&format!("terminal-input {scout}")), "{seen:?}");
     assert!(seen.contains(&format!("terminal-resize {scout}")), "{seen:?}");
     assert!(seen.contains(&format!("terminal-destroy {scout}")), "{seen:?}");
+}
+
+#[tokio::test]
+async fn main_terminal_is_a_host_pty_when_there_is_no_sandbox() {
+    let fx = fixture();
+    let app = app(&fx);
+    let (status, sess) = call(&app, Some(OWNER_TOKEN), Method::POST, "/api/terminal/sessions", Some(json!({"agentId": "main", "cols": 100, "rows": 30}))).await;
+    assert_eq!(status, StatusCode::CREATED, "{sess}");
+    assert_eq!(sess["isolation"], "host");
+    let sid = sess["session_id"].as_str().unwrap().to_string();
+    let (status, _) = call(&app, Some(OWNER_TOKEN), Method::DELETE, &format!("/api/terminal/sessions/{sid}"), None).await;
+    assert_eq!(status, StatusCode::OK);
 }
 
 #[tokio::test]
