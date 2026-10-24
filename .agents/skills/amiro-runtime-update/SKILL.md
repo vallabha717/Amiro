@@ -25,7 +25,7 @@ Record full `AMIRO_BASE`, `UPSTREAM_OLD` from provenance, approved full `UPSTREA
 | Phase | Gate |
 | --- | --- |
 | Inventory | Account for all initial and subsequent Amiro runtime patches. Coordinate uncommitted owner work rather than stashing or overwriting it. |
-| Isolation | Separate clone/build outputs, homes, sockets and ports. Never use live `out/` or production credentials. |
+| Isolation | Separate clone/build outputs, homes, sockets and ports. Never use live `clients/web/out/` or production credentials. |
 | Normalize | Bootstrap a versioned deterministic rebrand/exclusion transform. Prove old baseline and complete local delta match the current tracked runtime exactly. No importer is already provided. |
 | Merge | Three-way merge old-normalized/current-runtime/new-normalized in a disposable snapshot repository. Review each conflict/deletion. Never choose wholesale ours/theirs. |
 | Compatibility | Preserve legal/service identities, default-deny updater/telemetry, homes/storage, configured search, streaming/titles, SDK and MCP. Adapt backend consumers deliberately. |

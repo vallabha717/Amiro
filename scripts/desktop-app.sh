@@ -52,10 +52,10 @@ get_target_triple() {
 # Locate compiled native desktop binary
 find_native_tauri_binary() {
   local candidates=(
-    "$REPO_ROOT/src-tauri/target/release/bundle/macos/Amiro.app/Contents/MacOS/amiro"
-    "$REPO_ROOT/src-tauri/target/debug/bundle/macos/Amiro.app/Contents/MacOS/amiro"
-    "$REPO_ROOT/src-tauri/target/release/amiro"
-    "$REPO_ROOT/src-tauri/target/debug/amiro"
+    "$REPO_ROOT/clients/desktop/target/release/bundle/macos/Amiro.app/Contents/MacOS/amiro"
+    "$REPO_ROOT/clients/desktop/target/debug/bundle/macos/Amiro.app/Contents/MacOS/amiro"
+    "$REPO_ROOT/clients/desktop/target/release/amiro"
+    "$REPO_ROOT/clients/desktop/target/debug/amiro"
   )
   for candidate in "${candidates[@]}"; do
     if [ -x "$candidate" ]; then
@@ -185,7 +185,7 @@ launch_desktop_window() {
 
 cmd_stage_sidecars() {
   say "Staging Tauri sidecars..."
-  bash "$REPO_ROOT/src-tauri/build-sidecar.sh"
+  bash "$REPO_ROOT/clients/desktop/build-sidecar.sh"
 }
 
 cmd_build() {
@@ -194,7 +194,7 @@ cmd_build() {
   if command -v cargo-tauri >/dev/null 2>&1; then
     cargo tauri build
   else
-    cargo build --manifest-path "$REPO_ROOT/src-tauri/Cargo.toml" --release
+    cargo build --manifest-path "$REPO_ROOT/clients/desktop/Cargo.toml" --release
   fi
 }
 
@@ -227,10 +227,10 @@ cmd_status() {
   fi
 
   local staged_triple="$(get_target_triple)"
-  local staged_backend="$REPO_ROOT/src-tauri/binaries/backend-$staged_triple"
-  local staged_runtime="$REPO_ROOT/src-tauri/binaries/runtime-$staged_triple"
+  local staged_backend="$REPO_ROOT/clients/desktop/binaries/backend-$staged_triple"
+  local staged_runtime="$REPO_ROOT/clients/desktop/binaries/runtime-$staged_triple"
   if [ -f "$staged_backend" ] && [ -f "$staged_runtime" ]; then
-    say "Staged Sidecars: Yes (backend & runtime staged in src-tauri/binaries)"
+    say "Staged Sidecars: Yes (backend & runtime staged in clients/desktop/binaries)"
   else
     say "Staged Sidecars: Not fully staged (run: scripts/desktop-app.sh stage-sidecars)"
   fi

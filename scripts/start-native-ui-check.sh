@@ -16,7 +16,7 @@ REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 ROOT=${AMIRO_UI_CHECK_ROOT:-$REPO_ROOT/backend/target/ui-check/$(date +%s)}
 BACKEND_BIN=${AMIRO_BACKEND_BIN:-$REPO_ROOT/backend/target/debug/amiro-backend}
 RUNTIME_BIN=${AMIRO_RUNTIME_BIN:-$REPO_ROOT/runtime/target/debug/amiro-runtime}
-OUT_DIR=${AMIRO_OUT_DIR:-$REPO_ROOT/out}
+OUT_DIR=${AMIRO_OUT_DIR:-$REPO_ROOT/clients/web/out}
 STUB_PORT=${STUB_PORT:-38951}
 BACKEND_PORT=${BACKEND_PORT:-38952}
 SOCKET=$ROOT/run/amiro-api.sock
@@ -37,7 +37,7 @@ fail() {
   exit 1
 }
 
-[ -f "$REPO_ROOT/out/index.html" ] || fail "out/index.html missing; run 'pnpm build' first"
+[ -f "$REPO_ROOT/clients/web/out/index.html" ] || fail "clients/web/out/index.html missing; run 'pnpm build' first"
 [ -x "$BACKEND_BIN" ] || fail "backend binary missing; run 'cargo build --manifest-path backend/Cargo.toml --bin amiro-backend'"
 [ -x "$RUNTIME_BIN" ] || fail "runtime binary missing; run 'cargo build --manifest-path runtime/Cargo.toml --bin amiro-runtime'"
 

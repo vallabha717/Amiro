@@ -15,7 +15,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$RepoRoot = Split-Path -Parent $ScriptDir
+$RepoRoot = Split-Path -Parent (Split-Path -Parent $ScriptDir)
 $OutDir = Join-Path $ScriptDir "binaries"
 
 if (-not $TargetTriple) {

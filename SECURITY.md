@@ -15,7 +15,7 @@ Please include:
 
 - A description of the issue and the impact you believe it has.
 - Steps to reproduce, ideally a minimal proof of concept.
-- The Amiro version (`package.json` and `src-tauri/tauri.conf.json`), your OS and
+- The Amiro version (`package.json` and `clients/desktop/tauri.conf.json`), your OS and
   architecture, and whether you ran from a release build or from source.
 - Any relevant logs, with secrets removed.
 
@@ -41,7 +41,7 @@ There are no tagged releases yet. Security fixes are made on `main`, and only
 the tip of `main` is supported. Once releases are tagged, this section will list
 the supported release lines and their support windows.
 
-The version field in `package.json` and `src-tauri/tauri.conf.json` is not a
+The version field in `package.json` and `clients/desktop/tauri.conf.json` is not a
 support promise by itself.
 
 ## Single-owner, and the VM or sandbox is the boundary
@@ -88,7 +88,7 @@ What that means in practice:
   and tell us here so we can track the pinned revision.
 - `adapter/` is a retired compatibility harness. It is not the backend and
   nothing starts it in production. Reports about it are accepted but are handled
-  at lower priority than issues in `backend/`, `src-tauri/`, or `src/`.
+  at lower priority than issues in `backend/`, `clients/desktop/`, or `clients/web/src/`.
 - The adapter's optional dependency on the upstream `@1jehuang/jcode-sdk` package
   is a separately installed upstream component. It is not bundled with Amiro.
 

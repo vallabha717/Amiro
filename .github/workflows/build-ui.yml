@@ -1,6 +1,6 @@
 name: Build UI
 
-# Reusable: builds the static web UI (out/) once and uploads it as the `ui`
+# Reusable: builds the static web UI (clients/web/out/) once and uploads it as the `ui`
 # artifact for the jobs that package it.
 on:
   workflow_call:
@@ -33,5 +33,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.artifact || 'ui' }}
-          path: out
+          path: clients/web/out
           retention-days: 3

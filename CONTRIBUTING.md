@@ -18,15 +18,15 @@ Upstream: <https://github.com/vallabha717/Amiro>
 
 | Path | What it is | Language |
 | --- | --- | --- |
-| `src/` | Statically exported Next.js frontend, builds to `out/` | TypeScript / React |
-| `src-tauri/` | Tauri 2 desktop shell, product name `Amiro` | Rust |
+| `clients/web/src/` | Statically exported Next.js frontend, builds to `clients/web/out/` | TypeScript / React |
+| `clients/desktop/` | Tauri 2 desktop shell, product name `Amiro` | Rust |
 | `backend/` | Native HTTP backend, binary `amiro-backend`, library crate `backend` | Rust (axum) |
 | `runtime/` | Vendored Amiro-owned runtime, binary `amiro-runtime` | Rust |
 | `tests/rust/` | Std-only contract test harness, `amiro-testkit` | Rust |
 | `tests/e2e/` | Recorded Playwright journeys (video + review report) | TypeScript |
 | `adapter/` | Retired compatibility harness, see below | Node / ESM |
 | `scripts/` | Build and verification entrypoints | Bash / Node |
-| `messages/` | UI translations: `en.json` and `hi.json` only | JSON |
+| `clients/web/messages/` | UI translations: `en.json` and `hi.json` only | JSON |
 | `.agents/skills/` | Agent skills; start with `amiro-standards` | Markdown |
 
 ### `adapter/` is a retired compatibility harness, not the backend
@@ -56,7 +56,7 @@ For open-ended questions, ideas, or design discussion, open an issue with the
 feature template and mark it clearly as discussion.
 
 A good bug report includes the Amiro version (`package.json`,
-`src-tauri/tauri.conf.json`), your OS and architecture, how you launched Amiro
+`clients/desktop/tauri.conf.json`), your OS and architecture, how you launched Amiro
 (desktop shell, local dev, or the preview server), exact steps to reproduce, and
 what you expected versus what you saw. Include the relevant log lines, but
 redact API keys, tokens, email addresses, and file paths that identify you.
@@ -120,7 +120,7 @@ gh pr merge --auto --squash      # merges by itself when CI is green
 ```
 
 Other workflows run on PRs only when relevant files change: **Desktop app**
-(`src-tauri/`), **Install smoke** (`install.sh`, `packaging/`) and
+(`clients/desktop/`), **Install smoke** (`install.sh`, `packaging/`) and
 **Workflow lint** (`.github/workflows/`, shell scripts). They are not
 required checks, but don't merge while one of them is red.
 
@@ -219,7 +219,7 @@ close to rustfmt defaults and consistent with the file you are editing.
 | Runtime check | `cargo check --manifest-path runtime/Cargo.toml --bin amiro-runtime --no-default-features` | Must match `pnpm runtime:check` |
 | Vendored runtime suite | `cd runtime && cargo test` | Large. The vendored tree has its own `runtime/CONTRIBUTING.md` |
 | Rust testkit | `cd tests/rust && cargo test --offline` | Std-only, no network |
-| Tauri shell check | `cd src-tauri && cargo check --offline` | Shell only |
+| Tauri shell check | `cd clients/desktop && cargo check --offline` | Shell only |
 | E2E journeys (recorded) | `pnpm --dir tests install-browsers` then `pnpm test:e2e` | Playwright. Boots an isolated Amiro, records video. See `tests/e2e/README.md` |
 | Native UI verification | `pnpm verify:native-ui` | `scripts/start-native-ui-check.sh` |
 | Schedules UI verification | `pnpm verify:schedules-ui` | `scripts/verify-schedules-ui.mjs` |
@@ -265,7 +265,7 @@ configured in `biome.json`:
   `pnpm lint` is a narrow check. Passing it does not mean the file is otherwise
   clean. Match the style of the surrounding code.
 
-**Rust** uses rustfmt defaults, edition 2021 for `backend/`, `src-tauri/`, and
+**Rust** uses rustfmt defaults, edition 2021 for `backend/`, `clients/desktop/`, and
 `tests/rust/`, and edition 2024 for the vendored `runtime/` workspace. Keep
 public items documented and avoid adding dependencies to `backend/` or
 `runtime/` without saying why in the pull request.
@@ -275,9 +275,9 @@ Staged files are formatted and lint-fixed by the `lint-staged` configuration in
 hooks are scaffolding only in a fresh checkout, so do not rely on them. Run the
 pre-PR checks yourself.
 
-Do not commit build output. `out/`, `node_modules`, `*.tsbuildinfo`,
-`backend/target/`, `runtime/target/`, `src-tauri/target/`, and
-`src-tauri/binaries/` are ignored.
+Do not commit build output. `clients/web/out/`, `node_modules`, `*.tsbuildinfo`,
+`backend/target/`, `runtime/target/`, `clients/desktop/target/`, and
+`clients/desktop/binaries/` are ignored.
 
 ## Scope and product honesty
 

@@ -19,7 +19,7 @@ journeys against the real model, and writes a captioned video + `REVIEW.md`.
 | One journey (+ its onboarding/provider deps) | `pnpm --dir tests e2e --project connectors` |
 | Several | `pnpm --dir tests e2e --project chat --project agent-driven` |
 | Watch it live | add `--headed` (or `AMIRO_E2E_HEADLESS=false`) |
-| Prereqs | `out/index.html` (`pnpm build`), `backend/target/{release,debug}/amiro-backend`, a runtime binary (`src-tauri/binaries/runtime-*` or `runtime/target/*/amiro-runtime`), `ffmpeg` for stitching |
+| Prereqs | `clients/web/out/index.html` (`pnpm build`), `backend/target/{release,debug}/amiro-backend`, a runtime binary (`clients/desktop/binaries/runtime-*` or `runtime/target/*/amiro-runtime`), `ffmpeg` for stitching |
 
 Output (gitignored): `tests/recordings/<stamp>/` → `full-run.mp4` (title card +
 chapters per test), `suites/<journey>.mp4`, `videos/*.webm`, `REVIEW.md`,
@@ -41,7 +41,7 @@ reviewing agent; it already contains the review instructions.
    `tests/e2e.config.example.json` + the `E2EConfig` type + an `AMIRO_E2E_*`
    env mapping in `support/config.ts`. Guard with `need(cfg.x, "x")` → skipped with a reason, never failed.
 5. Selectors: `getByRole`/`getByLabel`/`getByTestId`. If a control has no
-   accessible name, add `aria-label`/`data-testid` in `src/` rather than
+   accessible name, add `aria-label`/`data-testid` in `clients/web/src/` rather than
    using CSS paths.
 6. Model output varies: hard-assert the mechanism (tool call shown, card
    rendered, API state changed); `expect.soft` the wording.

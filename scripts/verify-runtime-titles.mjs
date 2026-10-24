@@ -60,7 +60,7 @@ const child = spawn(backendBin, [], {
     AMIRO_RUNTIME_BIN: runtimeBin,
     AMIRO_OPENAI_COMPAT_API_BASE: providerBase,
     OPENAI_COMPAT_API_KEY: "fixture-not-real",
-    AMIRO_OUT_DIR: path.resolve("out"),
+    AMIRO_OUT_DIR: path.resolve("clients/web/out"),
     AMIRO_HOST: "127.0.0.1",
     AMIRO_PORT: String(port),
     AMIRO_OWNER_EMAIL: "title@amiro.test",

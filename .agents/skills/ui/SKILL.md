@@ -1,12 +1,12 @@
 ---
 name: ui
-description: Amiro's UI standards for the Next.js frontend in src/ (statically exported to out/ and served by the Rust backend and the Tauri desktop shell). Covers folder structure, where a page/component/hook/API client goes, the static-export rules, data fetching via src/lib/backend/<area>-api.ts and SWR, state (zustand), styling tokens and shadcn ui/ primitives, English+Hindi i18n with next-intl, accessibility and test ids, and secret handling in the composer. Use whenever adding or changing a page, route, React component, hook, form, toast, translation string, client-side API call or anything under src/** or messages/**, when deciding where UI belongs, and when reviewing UI work.
+description: Amiro's UI standards for the Next.js frontend in clients/web/src/ (statically exported to clients/web/out/ and served by the Rust backend and the Tauri desktop shell). Covers folder structure, where a page/component/hook/API client goes, the static-export rules, data fetching via clients/web/src/lib/backend/<area>-api.ts and SWR, state (zustand), styling tokens and shadcn ui/ primitives, English+Hindi i18n with next-intl, accessibility and test ids, and secret handling in the composer. Use whenever adding or changing a page, route, React component, hook, form, toast, translation string, client-side API call or anything under clients/web/src/** or clients/web/messages/**, when deciding where UI belongs, and when reviewing UI work.
 ---
 
 # Amiro UI standards
 
-`src/` is a Next.js App Router app, **statically exported** (`output: "export"`
-in `next.config.ts`) to `out/`. The Rust backend serves `out/` and the API on
+`clients/web/src/` is a Next.js App Router app, **statically exported** (`output: "export"`
+in `next.config.ts`) to `clients/web/out/`. The Rust backend serves `clients/web/out/` and the API on
 the same origin; the Tauri desktop shell loads the same build. Everything runs
 in the browser: no server components fetching data, no Next API routes, no
 server actions, nothing that needs a Node server at runtime.
@@ -14,7 +14,7 @@ server actions, nothing that needs a Node server at runtime.
 ## Folder structure
 
 ```
-src/
+clients/web/src/
 ├── app/
 │   ├── (auth)/setup, (auth)/sign-in     first-run account + sign-in
 │   ├── onboarding/                      first-run wizard
@@ -34,16 +34,16 @@ src/
 │   └── <domain>/                        hooks, helpers, stores (voice/, chat/, security/…)
 ├── i18n/                                locale resolution (cookie → browser → en)
 └── types/                               shared types (alias app-types/*)
-messages/en.json, messages/hi.json       the only two UI languages
+clients/web/messages/en.json, clients/web/messages/hi.json       the only two UI languages
 ```
 
-**Where does it go?** New page → `src/app/(chat)/<route>/page.tsx` (admin:
+**Where does it go?** New page → `clients/web/src/app/(chat)/<route>/page.tsx` (admin:
 `(chat)/(admin)/admin/<section>/page.tsx`) that stays thin: `"use client"`,
-session guard, render `<FeaturePage />` from `src/components/<feature>/`.
-Reusable widget → `src/components/<feature>/`; generic primitive → already in
+session guard, render `<FeaturePage />` from `clients/web/src/components/<feature>/`.
+Reusable widget → `clients/web/src/components/<feature>/`; generic primitive → already in
 `components/ui/` (add there only if truly generic). API calls →
-`src/lib/backend/<area>-api.ts`. Cross-page state → `src/app/store` or
-`src/lib/<domain>/*-store.ts` (zustand).
+`clients/web/src/lib/backend/<area>-api.ts`. Cross-page state → `clients/web/src/app/store` or
+`clients/web/src/lib/<domain>/*-store.ts` (zustand).
 
 ## Rules
 
@@ -51,7 +51,7 @@ Reusable widget → `src/components/<feature>/`; generic primitive → already i
 | --- | --- |
 | Data | Wrap endpoints as typed functions using `apiJson<T>()` from `lib/backend/client`; read with `useSWR` + `mutate` after writes, like neighbouring pages. Never `fetch("/api/…")` inline in a component |
 | Auth | Pages render nothing until `useSession()` has a session (pattern in `app/(chat)/connectors/page.tsx`). Owner-only UI checks the role and the backend enforces it too |
-| Text | `const t = useTranslations("Section")`; every string in **both** `messages/en.json` and `messages/hi.json` (same key, same `{placeholders}`). No new hardcoded English in translated components. No other locales |
+| Text | `const t = useTranslations("Section")`; every string in **both** `clients/web/messages/en.json` and `clients/web/messages/hi.json` (same key, same `{placeholders}`). No new hardcoded English in translated components. No other locales |
 | Style | Tailwind with theme tokens (`bg-background`, `text-muted-foreground`, `border`, `bg-card`, `text-primary`…) from `globals.css`; light + dark must both work. Icons: `lucide-react`. Feedback: `toast` from `sonner` |
 | Components | Compose `ui/*` (Button, Dialog, Select, Switch, Tooltip…). File names kebab-case, components PascalCase, one feature per folder. Imports via aliases `ui/*`, `lib/*`, `@/*` |
 | A11y | Every icon-only button has `aria-label`; inputs have labels; one non-empty `<h1>` per page; keyboard reachable; no colour-only meaning. The `ux-audit` E2E journey checks this |
@@ -63,12 +63,12 @@ Reusable widget → `src/components/<feature>/`; generic primitive → already i
 ## Test it (required)
 
 - **Unit/component** — Vitest, co-located `*.test.ts(x)` next to the file
-  (`src/components/search-provider-ui.test.tsx`, `src/lib/**/x.test.ts`).
+  (`clients/web/src/components/search-provider-ui.test.tsx`, `clients/web/src/lib/**/x.test.ts`).
   Run `pnpm test`.
 - **Types + lint** — `pnpm check-types` (also compiles the E2E specs) and `pnpm lint`.
 - **E2E** — any user-visible change gets a `step(...)` in the owning journey in
   `tests/e2e/specs/` (see the `test` and `e2e-journeys` skills). Run
-  `pnpm build` first so `out/` contains your change.
+  `pnpm build` first so `clients/web/out/` contains your change.
 
 ## Done checklist
 

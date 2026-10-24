@@ -32,7 +32,7 @@ That script is idempotent, so re-running it is safe. It skips anything already i
 ./scripts/setup-vm.sh --yes             # non-interactive, answer yes to prompts
 ./scripts/setup-vm.sh --skip-desktop    # headless server, skip webkit/GTK GUI libraries
 ./scripts/setup-vm.sh --skip-native     # skip Rust builds (run scripts/build-native.sh later)
-./scripts/setup-vm.sh --skip-frontend   # skip pnpm build (no out/ export yet)
+./scripts/setup-vm.sh --skip-frontend   # skip pnpm build (no clients/web/out/ export yet)
 ```
 
 What the script does, in order:
@@ -44,7 +44,7 @@ What the script does, in order:
 5. Enables `corepack` and activates `pnpm 10.2.1`, matching the `packageManager` field in `package.json`.
 6. Runs `pnpm install` and `pnpm --dir adapter install`.
 7. Calls `scripts/build-native.sh` (the owned build script, not duplicated logic). That builds `backend/target/release/amiro-backend` and `runtime/target/release/amiro-runtime`.
-8. Runs `pnpm build`, which writes the static export to `out/` (`out/index.html` is the marker file the backend and adapter both look for).
+8. Runs `pnpm build`, which writes the static export to `clients/web/out/` (`clients/web/out/index.html` is the marker file the backend and adapter both look for).
 9. Prints a colored summary with what was installed, where the binaries landed, and the exact next commands.
 
 ## Prerequisites
@@ -149,7 +149,7 @@ Debug builds go to `backend/target/debug/amiro-backend` and `runtime/target/debu
 pnpm build
 ```
 
-This writes the statically exported Next.js site to `out/` (`out/index.html` must exist). The native backend serves that directory (override with `AMIRO_OUT_DIR`). You can also build through the wrapper `bash scripts/build-ui.sh`, which runs `pnpm build` and then reports the file count, or verify an existing export with `bash scripts/build-ui.sh --check`.
+This writes the statically exported Next.js site to `clients/web/out/` (`clients/web/out/index.html` must exist). The native backend serves that directory (override with `AMIRO_OUT_DIR`). You can also build through the wrapper `bash scripts/build-ui.sh`, which runs `pnpm build` and then reports the file count, or verify an existing export with `bash scripts/build-ui.sh --check`.
 
 ## Linux notes
 
@@ -202,8 +202,8 @@ On the server, `AMIRO_HOME` defaults to `~/.amiro`. For headless provisioning, s
 | `AMIRO_API_SOCKET` | `<runtime home>/amiro-api.sock` (`backend/src/state.rs`) | Unix socket the backend uses to talk to the runtime bridge. The adapter default in `scripts/dev-backend.sh` is `$HOME/.jcode/scratch/amiro-api.sock`, with the pre-rename `JCODE_API_SOCKET` still read as a fallback |
 | `AMIRO_RUNTIME_HOME` | `<AMIRO_HOME>/runtime` (`backend/src/state.rs`) | The engine's own home, separate from the app data in `AMIRO_HOME`. See `docs/AMIRO-RUNTIME.md` for the app home versus engine home split |
 | `AMIRO_RUNTIME_BIN` | resolved in this order: explicit value, sidecar next to the backend executable, `runtime/target/release/amiro-runtime`, `runtime/target/debug/amiro-runtime` (`backend/src/state.rs`, same order documented in `bin/amiro`) | Which runtime engine binary the backend spawns and the `bin/amiro` shim delegates to. Set this when you keep the engine somewhere custom |
-| `NEXT_PUBLIC_BACKEND_URL` | `http://127.0.0.1:8787` (`src/lib/backend/config.ts`) | Backend URL the frontend talks to. Must match `AMIRO_PORT` and `AMIRO_HOST` when you move the backend |
-| `NEXT_PUBLIC_BACKEND_TOKEN` | empty (`src/lib/backend/config.ts`) | Shared secret the frontend sends. The dev adapter (`scripts/dev-backend.sh`, `AMIRO_TOKEN` empty) accepts all sidecar requests and logs a warning. Set a value in both places to exercise the shared-secret path |
+| `NEXT_PUBLIC_BACKEND_URL` | `http://127.0.0.1:8787` (`clients/web/src/lib/backend/config.ts`) | Backend URL the frontend talks to. Must match `AMIRO_PORT` and `AMIRO_HOST` when you move the backend |
+| `NEXT_PUBLIC_BACKEND_TOKEN` | empty (`clients/web/src/lib/backend/config.ts`) | Shared secret the frontend sends. The dev adapter (`scripts/dev-backend.sh`, `AMIRO_TOKEN` empty) accepts all sidecar requests and logs a warning. Set a value in both places to exercise the shared-secret path |
 
 Two behavior flags worth knowing:
 
@@ -230,7 +230,7 @@ Change the owner's email or password later from the settings popup's **Account**
 The native backend is the product. It serves the static export and the API from
 one listener and starts the runtime bridge itself.
 
-Native backend (serves `out/` and spawns the runtime bridge itself):
+Native backend (serves `clients/web/out/` and spawns the runtime bridge itself):
 
 ```sh
 ./backend/target/release/amiro-backend
@@ -242,7 +242,7 @@ Dev loop with the retired Node adapter plus Next.js (`scripts/start-local.sh`, b
 ```sh
 ./scripts/start-local.sh            # build, then serve production static bundle
 ./scripts/start-local.sh --dev      # Next.js dev server with Turbopack hot reloading
-./scripts/start-local.sh --no-build # reuse the existing out/ build
+./scripts/start-local.sh --no-build # reuse the existing clients/web/out/ build
 ```
 
 Pieces by hand:
@@ -272,10 +272,10 @@ Runtime CLI shim (delegates to the engine, try `./bin/amiro --help` for the reso
 | Adapter unit | `node --test adapter/test/*.test.mjs` | Node test runner over `adapter/test/`, includes `runtime-env.test.mjs` and `workspace-listing.test.mjs` |
 | Native backend (cargo) | `cargo test --manifest-path backend/Cargo.toml` | same as `pnpm native:test` |
 | Runtime check | `cargo check --manifest-path runtime/Cargo.toml --bin amiro-runtime --no-default-features` | same as `pnpm runtime:check` |
-| Native UI browser check | `pnpm verify:native-ui` | runs `scripts/start-native-ui-check.sh`: stub provider plus owned bridge plus native backend from `out/`, then `scripts/verify-native-ui.mjs` in a browser. Needs `out/index.html` and a debug native build (`scripts/build-native.sh --debug`) |
+| Native UI browser check | `pnpm verify:native-ui` | runs `scripts/start-native-ui-check.sh`: stub provider plus owned bridge plus native backend from `clients/web/out/`, then `scripts/verify-native-ui.mjs` in a browser. Needs `clients/web/out/index.html` and a debug native build (`scripts/build-native.sh --debug`) |
 | End to end (Playwright) | `pnpm test:e2e` | Playwright specs, `tests/` is its own package (`tests/package.json`), install browsers with `pnpm --dir tests install-browsers` |
 | Rust testkit | `cargo test --offline` run inside `tests/rust` | std-only offline harness, see `tests/README.md` and `tests/Taskfile.yml` |
-| Tauri shell check | `cargo check --offline` run inside `src-tauri` | desktop shell only |
+| Tauri shell check | `cargo check --offline` run inside `clients/desktop` | desktop shell only |
 
 Adapter live probes in `adapter/tests/` (`probe-routes.mjs`, `integration.mjs`, `password.mjs`, and friends) and `node adapter/test/live-smoke.mjs` need a running backend with real credentials, so they are not part of a fresh checkout pass.
 
@@ -342,4 +342,4 @@ pnpm --dir adapter install
 ./scripts/dev-backend.sh
 ```
 
-Backend serves an empty page or warns `out dir missing`: run `pnpm build` (or `bash scripts/build-ui.sh`) and check `out/index.html` exists. Override the served directory with `AMIRO_OUT_DIR` if you keep the export elsewhere.
+Backend serves an empty page or warns `out dir missing`: run `pnpm build` (or `bash scripts/build-ui.sh`) and check `clients/web/out/index.html` exists. Override the served directory with `AMIRO_OUT_DIR` if you keep the export elsewhere.

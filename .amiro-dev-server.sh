@@ -7,7 +7,7 @@ mkdir -p "$STATE/run"
 export AMIRO_HOME="$STATE"
 export AMIRO_RUNTIME_HOME="$STATE/rt"
 export AMIRO_API_SOCKET="$STATE/run/api.sock"
-export AMIRO_RUNTIME_BIN=/home/shrivallabha_somayaji_tyson_com/Projects/Personal/Amiro/src-tauri/binaries/runtime-x86_64-unknown-linux-gnu
+export AMIRO_RUNTIME_BIN=/home/shrivallabha_somayaji_tyson_com/Projects/Personal/Amiro/clients/desktop/binaries/runtime-x86_64-unknown-linux-gnu
 export AMIRO_OUT_DIR="$PWD/out"
 export AMIRO_HOST=0.0.0.0
 export AMIRO_PORT=3004

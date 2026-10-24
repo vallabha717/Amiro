@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="public/agent/opendots/orange.png" alt="Amiro mascot" width="120" />
+<img src="clients/web/public/agent/opendots/orange.png" alt="Amiro mascot" width="120" />
 
 # Amiro
 
@@ -289,7 +289,7 @@ cd Amiro
 
 # or by hand:
 pnpm install
-pnpm build                   # static UI into out/
+pnpm build                   # static UI into clients/web/out/
 scripts/build-native.sh      # amiro-backend + amiro-runtime (release)
 AMIRO_PORT=8787 ./backend/target/release/amiro-backend
 ```
@@ -425,10 +425,10 @@ flowchart LR
 
 | Part | Path | What it does |
 |---|---|---|
-| **Web UI** | `src/` → `out/` | Next.js, statically exported, so a running Amiro needs no Node |
+| **Web UI** | `clients/web/src/` → `clients/web/out/` | Next.js, statically exported, so a running Amiro needs no Node |
 | **Backend** | `backend/` (`amiro-backend`) | Rust (axum): auth, threads, schedules, heartbeat, connectors, vault, voice, onboarding. It serves the UI and the API from one listener, and starts and supervises the runtime |
 | **Runtime** | `runtime/` (`amiro-runtime`) | Amiro-owned Rust agent runtime (a modified fork of [jcode](https://github.com/1jehuang/jcode), MIT). It runs the models, sessions, tools, MCP and memory |
-| **Desktop shell** | `src-tauri/` | Tauri 2. Reserves a loopback port, generates a per-launch secret, runs backend and runtime as sidecars |
+| **Desktop shell** | `clients/desktop/` | Tauri 2. Reserves a loopback port, generates a per-launch secret, runs backend and runtime as sidecars |
 | **CLI** | `packaging/amiro`, `install.sh` | The server installer and the `amiro` management command |
 
 [docs/AMIRO-RUNTIME.md](docs/AMIRO-RUNTIME.md) is the source of truth for
@@ -484,7 +484,7 @@ The user guide lives in this repo root as Mintlify pages (`docs.json`, `introduc
 | [docs/settings-ui.md](docs/settings-ui.md) · [docs/search-runtime.md](docs/search-runtime.md) · [docs/chat-titles.md](docs/chat-titles.md) | Settings surfaces, configured search routing, runtime titles |
 | [docs/RUST-RUNTIME.md](docs/RUST-RUNTIME.md) · [docs/runtime-upstream-update.md](docs/runtime-upstream-update.md) | Vendored runtime: provenance, crates, guarded upstream updates |
 | [docs/testing/README.md](docs/testing/README.md) | Test architecture, config, artifacts and CI |
-| [src-tauri/SIDECAR-LIMITATIONS.md](src-tauri/SIDECAR-LIMITATIONS.md) | Desktop packaging status |
+| [clients/desktop/SIDECAR-LIMITATIONS.md](clients/desktop/SIDECAR-LIMITATIONS.md) | Desktop packaging status |
 | [docs/README.md](docs/README.md) | Full docs index |
 
 Everything else under `docs/` (including dated session notes and `progress/` /
@@ -587,7 +587,7 @@ drives the UI and ffmpeg turns the recordings into GIFs. Existing installs are
 never touched.
 
 ```bash
-pnpm build && scripts/build-native.sh   # if out/ or the binaries are missing
+pnpm build && scripts/build-native.sh   # if clients/web/out/ or the binaries are missing
 node scripts/capture-readme-media.mjs   # or: --only onboarding,chat,pages,schedules,voice
 ```
 
@@ -624,10 +624,12 @@ and failures surface as errors.
 
 ```
 .
-├── src/            Next.js app (statically exported to out/)
+├── clients/        One folder per client (see clients/README.md)
+│   ├── web/        Next.js app: src/, messages/ (next-intl), public/; exported to web/out/
+│   ├── desktop/    Tauri 2 desktop shell, sidecar staging and bundler config
+│   └── mobile/     Tauri mobile app (iOS + Android), not started yet
 ├── backend/        Native Rust backend (axum) + integration tests
 ├── runtime/        Amiro-owned Rust agent runtime (vendored fork, MIT, provenance kept)
-├── src-tauri/      Tauri 2 desktop shell, sidecar staging and bundler config
 ├── agent-home/     Templates for the agent home files (SOUL.md, NOW.md, ...)
 ├── agent-skills/   Built-in skills (visualize, mcp-setup, schedules)
 ├── packaging/      The `amiro` management CLI shipped with server releases
@@ -636,8 +638,7 @@ and failures surface as errors.
 ├── scripts/        Setup, build, packaging, acceptance and capture scripts
 ├── adapter/        Retired Node compatibility harness (contract tests only)
 ├── tests/          Retired Go harness, contract checks, fixtures
-├── docs/           Living docs (start with AMIRO-RUNTIME.md and SETUP.md)
-└── messages/       next-intl translations
+└── docs/           Living docs (start with AMIRO-RUNTIME.md and SETUP.md)
 ```
 
 </details>
@@ -683,6 +684,6 @@ Amiro is [MIT licensed](LICENSE). Full attribution is in
   original notice kept in [runtime/LICENSE](runtime/LICENSE). Upstream
   endorsement is not implied.
 - **CopilotKit/OpenDots** by Atai Barkai (MIT). The plush mascot sprites in
-  `public/agent/opendots/` are used verbatim and tinted at runtime.
+  `clients/web/public/agent/opendots/` are used verbatim and tinted at runtime.
 - **Vellum Assistant** served as an architectural reference. No code or brand
   assets are copied.

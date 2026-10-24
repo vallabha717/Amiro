@@ -91,8 +91,8 @@ page) returns to the local backend without signing in again.
 | `DELETE /api/devices/{id}` | owner | remove a device; its session stops working at once |
 
 Code: `backend/src/devices.rs`, the listeners in `backend/src/main.rs`, the UI
-in `src/components/devices/`, `src/app/pair/` (the device), `src/app/device/`
-(approving) and `src/lib/backend/config.ts`.
+in `clients/web/src/components/devices/`, `clients/web/src/app/pair/` (the device), `clients/web/src/app/device/`
+(approving) and `clients/web/src/lib/backend/config.ts`.
 
 ## Not done yet
 

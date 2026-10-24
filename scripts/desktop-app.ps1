@@ -67,8 +67,8 @@ function Get-TargetTriple {
 
 function Find-NativeTauriBinary {
     $candidates = @(
-        (Join-Path $RepoRoot "src-tauri\target\release\amiro.exe"),
-        (Join-Path $RepoRoot "src-tauri\target\debug\amiro.exe")
+        (Join-Path $RepoRoot "clients\desktop\target\release\amiro.exe"),
+        (Join-Path $RepoRoot "clients\desktop\target\debug\amiro.exe")
     )
     foreach ($cand in $candidates) {
         if (Test-Path $cand) { return $cand }
@@ -139,7 +139,7 @@ function Launch-DesktopWindow([string]$url) {
 
 function Invoke-StageSidecars {
     Write-Host "Staging Tauri sidecars..."
-    & (Join-Path $RepoRoot "src-tauri\build-sidecar.ps1")
+    & (Join-Path $RepoRoot "clients\desktop\build-sidecar.ps1")
 }
 
 function Invoke-Build {
@@ -149,7 +149,7 @@ function Invoke-Build {
     if ($cargoTauri) {
         & cargo tauri build
     } else {
-        & cargo build --manifest-path (Join-Path $RepoRoot "src-tauri\Cargo.toml") --release
+        & cargo build --manifest-path (Join-Path $RepoRoot "clients\desktop\Cargo.toml") --release
     }
 }
 
@@ -182,10 +182,10 @@ function Invoke-Status {
         Write-Host "Backend Sidecar: Missing (build with cargo build --manifest-path backend/Cargo.toml)"
     }
 
-    $stagedBackend = Join-Path $RepoRoot "src-tauri\binaries\backend-$triple.exe"
-    $stagedRuntime = Join-Path $RepoRoot "src-tauri\binaries\runtime-$triple.exe"
+    $stagedBackend = Join-Path $RepoRoot "clients\desktop\binaries\backend-$triple.exe"
+    $stagedRuntime = Join-Path $RepoRoot "clients\desktop\binaries\runtime-$triple.exe"
     if ((Test-Path $stagedBackend) -and (Test-Path $stagedRuntime)) {
-        Write-Host "Staged Sidecars: Yes (backend & runtime staged in src-tauri\binaries)"
+        Write-Host "Staged Sidecars: Yes (backend & runtime staged in clients\desktop\binaries)"
     } else {
         Write-Host "Staged Sidecars: Not staged (run: .\scripts\desktop-app.ps1 stage-sidecars)"
     }

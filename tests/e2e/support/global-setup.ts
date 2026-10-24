@@ -108,11 +108,11 @@ export default async function globalSetup() {
   );
   const runtimeBin = firstExisting(
     cfg.target.runtimeBin,
-    path.join(REPO_ROOT, `src-tauri/binaries/runtime-${triple()}`),
+    path.join(REPO_ROOT, `clients/desktop/binaries/runtime-${triple()}`),
     path.join(REPO_ROOT, "runtime/target/release/amiro-runtime"),
     path.join(REPO_ROOT, "runtime/target/debug/amiro-runtime"),
   );
-  const outDir = cfg.target.outDir || path.join(REPO_ROOT, "out");
+  const outDir = cfg.target.outDir || path.join(REPO_ROOT, "clients", "web", "out");
   if (!backendBin) throw new Error("No amiro-backend binary. Run: pnpm native:build (or cargo build --release --manifest-path backend/Cargo.toml)");
   if (!runtimeBin) throw new Error("No amiro-runtime binary. Run: pnpm desktop:sidecar or cargo build --manifest-path runtime/Cargo.toml");
   if (!fs.existsSync(path.join(outDir, "index.html"))) throw new Error(`${outDir}/index.html missing. Run: pnpm build`);

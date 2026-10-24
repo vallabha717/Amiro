@@ -69,7 +69,7 @@ Provider connection lives in the admin panel (`/admin/providers`). The chat wind
 
 ## Folder selection from the web
 
-The workspace folder picker browses the server's filesystem over HTTP without native OS dialogs. `src/components/chat/folder-browser-dialog.tsx` calls `GET /api/fs/roots|browse|stat`.
+The workspace folder picker browses the server's filesystem over HTTP without native OS dialogs. `clients/web/src/components/chat/folder-browser-dialog.tsx` calls `GET /api/fs/roots|browse|stat`.
 
 Safety rules in `backend/src/routes/fsbrowse.rs` (mirrored in `adapter/src/fsbrowse.mjs`):
 
@@ -87,7 +87,7 @@ The Agent section (`/agent`) replaces the old standalone skills page:
 - **Sidebar habitat:** the sidebar lists the Agent itself, not a list of skills. The habitat features an OpenDots mascot avatar, a playful cube, interactive hover greetings, and a pause control. Reduced-motion settings halt decorative animations.
 - **OpenDots plush mascots:** avatars are official OpenDots plush characters (blue, mint, orange, purple, and midnight black plush) vendored from `CopilotKit/OpenDots` under MIT license (`THIRD-PARTY-NOTICES.md`). Old terms like "dot-lattice" and "Vellum catalogue" are stale.
 - **Theme and accent synchronization:** the sidebar accent color persists directly to the user's agent identity (`traits.color`). Selecting an agent theme in the customizer updates the sidebar, and selecting a sidebar color theme persists the corresponding color trait to agent identity, keeping both surfaces in sync.
-- **Popup UI primitive:** modal dialogs across the application use the shared `PopupShell` primitive (`src/components/ui/popup-shell.tsx`) featuring a fixed header, scrollable body, and fixed footer.
+- **Popup UI primitive:** modal dialogs across the application use the shared `PopupShell` primitive (`clients/web/src/components/ui/popup-shell.tsx`) featuring a fixed header, scrollable body, and fixed footer.
 - **Admin workspace view:** `GET /api/agent/workspace` and `.../file` are admin-only, read-only, realpath-contained, and allowlisted by root (`runtime`, `amiro`, `project`). Secret and credential files are inaccessible; `config.toml` has sensitive values redacted.
 - **Native memory inspection:** memory view is an admin-only, read-only inspection of the runtime's memory graphs. Mutations via HTTP return 501.
 
@@ -144,7 +144,7 @@ Quotas are read from `amiro usage --json`. Account-level OpenAI OAuth token coun
 
 ## Running and verifying locally
 
-The native backend serves the production `out/` export and API together. Its source default port is 8787; the current VM deployment explicitly sets `AMIRO_PORT=3000`. Rebuild the static frontend with `pnpm build` after UI changes, then hard-refresh the browser. Changing docs alone does not require a server restart.
+The native backend serves the production `clients/web/out/` export and API together. Its source default port is 8787; the current VM deployment explicitly sets `AMIRO_PORT=3000`. Rebuild the static frontend with `pnpm build` after UI changes, then hard-refresh the browser. Changing docs alone does not require a server restart.
 
 Build and run with native tools:
 
@@ -177,4 +177,4 @@ node --test adapter/test/*.test.mjs
 
 ## Desktop packaging
 
-Amiro's Tauri v2 desktop shell (`src-tauri/`) packages `amiro-backend` and `amiro-runtime` as native sidecars using `src-tauri/build-sidecar.sh` (or `build-sidecar.ps1` on Windows). The shell passes `AMIRO_RUNTIME_BIN` and coordinates sidecar lifecycle with parent process termination.
+Amiro's Tauri v2 desktop shell (`clients/desktop/`) packages `amiro-backend` and `amiro-runtime` as native sidecars using `clients/desktop/build-sidecar.sh` (or `build-sidecar.ps1` on Windows). The shell passes `AMIRO_RUNTIME_BIN` and coordinates sidecar lifecycle with parent process termination.

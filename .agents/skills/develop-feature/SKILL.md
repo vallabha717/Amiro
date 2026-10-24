@@ -40,10 +40,10 @@ Engine behaviour (agent loop, providers, MCP client, memory)? That is
 
 Load **`ui`**. Then:
 
-- [ ] Typed client functions in `src/lib/backend/<area>-api.ts` (`apiJson`)
-- [ ] Thin page in `src/app/(chat)/…/page.tsx`; components in `src/components/<feature>/`
+- [ ] Typed client functions in `clients/web/src/lib/backend/<area>-api.ts` (`apiJson`)
+- [ ] Thin page in `clients/web/src/app/(chat)/…/page.tsx`; components in `clients/web/src/components/<feature>/`
 - [ ] `useSWR` + `mutate`; `toast` feedback; errors shown, not swallowed
-- [ ] Strings in `messages/en.json` **and** `messages/hi.json`; `pnpm check:i18n`
+- [ ] Strings in `clients/web/messages/en.json` **and** `clients/web/messages/hi.json`; `pnpm check:i18n`
 - [ ] Theme tokens (light + dark), `ui/*` primitives, aria-labels, `data-testid`s
 - [ ] Vitest test next to any non-trivial helper/component
 
@@ -54,7 +54,7 @@ recorded browser journey. Then run, in this order, and keep the output:
 
 ```bash
 pnpm check-types && pnpm lint && pnpm test                 # always
-pnpm check:i18n                                            # messages/ touched
+pnpm check:i18n                                            # clients/web/messages/ touched
 cargo test --manifest-path backend/Cargo.toml              # backend/ touched
 pnpm runtime:check                                         # runtime/ touched
 pnpm build && pnpm --dir tests e2e --project <journey>     # user-visible change

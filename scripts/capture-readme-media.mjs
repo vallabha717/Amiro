@@ -49,11 +49,11 @@ const BACKEND_BIN =
 const RUNTIME_BIN =
   process.env.AMIRO_RUNTIME_BIN ||
   [
-    path.join(ROOT, "src-tauri/binaries/runtime-x86_64-unknown-linux-gnu"),
+    path.join(ROOT, "clients/desktop/binaries/runtime-x86_64-unknown-linux-gnu"),
     path.join(ROOT, "runtime/target/release/amiro-runtime"),
     path.join(ROOT, "runtime/target/debug/amiro-runtime"),
   ].find((p) => fs.existsSync(p));
-const OUT_DIR = process.env.AMIRO_OUT_DIR || path.join(ROOT, "out");
+const OUT_DIR = process.env.AMIRO_OUT_DIR || path.join(ROOT, "clients", "web", "out");
 const SCRATCH =
   process.env.AMIRO_CAPTURE_SCRATCH ||
   fs.mkdtempSync(path.join(os.tmpdir(), "amiro-readme-"));
@@ -67,7 +67,7 @@ const BROWSER =
 for (const [what, p] of [
   ["backend", BACKEND_BIN],
   ["runtime", RUNTIME_BIN],
-  ["out/index.html", OUT_DIR && path.join(OUT_DIR, "index.html")],
+  ["clients/web/out/index.html", OUT_DIR && path.join(OUT_DIR, "index.html")],
 ]) {
   if (!p || !fs.existsSync(p)) {
     console.error(`capture: ${what} not found (${p}). Build it first.`);

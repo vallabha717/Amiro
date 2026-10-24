@@ -10,7 +10,7 @@ import path from "node:path";
 import os from "node:os";
 import { spawnSync } from "node:child_process";
 
-const root = path.resolve(import.meta.dirname, "../..");
+const root = path.resolve(import.meta.dirname, "../../../..");
 const checker = "scripts/verify-runtime-update-contract.mjs";
 const inventory = "docs/runtime-customizations.json";
 const manifest = JSON.parse(readFileSync(path.join(root, inventory), "utf8"));

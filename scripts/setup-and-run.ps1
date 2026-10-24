@@ -22,7 +22,7 @@
 #      and runtime/target/release/amiro-runtime.exe), with the same flags as
 #      scripts/build-native.sh. Uses Git Bash when present, else cargo.
 #   6. Runs `pnpm build` (static export into out/).
-#   7. Stages the Tauri Windows sidecars with src-tauri/build-sidecar.ps1.
+#   7. Stages the Tauri Windows sidecars with clients/desktop/build-sidecar.ps1.
 param(
   [switch]$SkipFrontend,
   [switch]$SkipNative,
@@ -200,7 +200,7 @@ if ($SkipFrontend) {
     Write-Error "pnpm build finished but out\index.html is missing."
     exit 1
   }
-  Write-Host ("ok: frontend export ready at " + (Join-Path $RepoRoot "out")) -ForegroundColor Green
+  Write-Host ("ok: frontend export ready at " + (Join-Path $RepoRoot "clients\web\out")) -ForegroundColor Green
 }
 
 # ---------------------------------------------------------------------------
@@ -209,7 +209,7 @@ if ($SkipFrontend) {
 Write-Host ""
 Write-Host "==> Staging Tauri Windows sidecars" -ForegroundColor Blue
 try {
-  & (Join-Path $RepoRoot "src-tauri\build-sidecar.ps1")
+  & (Join-Path $RepoRoot "clients\desktop\build-sidecar.ps1")
 } catch {
   Write-Host "warn: build-sidecar.ps1 did not finish (it needs both release binaries): $_" -ForegroundColor Yellow
 }
@@ -236,9 +236,9 @@ if (Test-Path $runtimeBin) {
   Write-Host "  runtime:      $runtimeBin (not built, see -SkipNative)"
 }
 if (Test-Path (Join-Path $RepoRoot "out\index.html")) {
-  Write-Host ("  frontend:     " + (Join-Path $RepoRoot "out"))
+  Write-Host ("  frontend:     " + (Join-Path $RepoRoot "clients\web\out"))
 } else {
-  Write-Host ("  frontend:     " + (Join-Path $RepoRoot "out") + " (not built, see -SkipFrontend)")
+  Write-Host ("  frontend:     " + (Join-Path $RepoRoot "clients\web\out") + " (not built, see -SkipFrontend)")
 }
 Write-Host ""
 Write-Host "Next commands:"

@@ -1,12 +1,12 @@
 # =============================================================================
 # Amiro Test Suite
 # =============================================================================
-# Amiro is Rust-only on native surfaces (backend/, runtime/, src-tauri/,
+# Amiro is Rust-only on native surfaces (backend/, runtime/, clients/desktop/,
 # std-only tests/rust).
 #
 # Current test surfaces:
 # - adapter unit tests: node --test adapter/test/*.test.mjs
-# - cargo tests: tests/rust (std-only Rust testkit), src-tauri
+# - cargo tests: tests/rust (std-only Rust testkit), clients/desktop
 # - vitest: frontend unit and integration tests (pnpm test)
 # - e2e: recorded Playwright journeys (pnpm test:e2e), see tests/e2e/README.md
 #
@@ -37,10 +37,10 @@ tasks:
       - "cargo test --offline"
 
   cargo:check:
-    desc: Check Rust packages (tests/rust and src-tauri)
+    desc: Check Rust packages (tests/rust and clients/desktop)
     cmds:
       - "cd tests/rust && cargo test --offline"
-      - "cd src-tauri && cargo check --offline"
+      - "cd clients/desktop && cargo check --offline"
 
   vitest:
     desc: Run frontend unit tests via vitest

@@ -157,7 +157,7 @@ the server archives and checksums are uploaded. That is when
 platform fails, the rest of the release still ships.
 
 The **Desktop app** workflow (`.github/workflows/desktop.yml`) can also run on
-its own, from the Actions tab or on PRs that touch `src-tauri/`; its
+its own, from the Actions tab or on PRs that touch `clients/desktop/`; its
 installers are workflow artifacts. Signing is optional: set the `APPLE_*`
 secrets to sign and notarize on macOS.
 
@@ -265,6 +265,6 @@ Code locations:
 
 - Backend: `backend/src/config.rs` (files), `backend/src/onboarding.rs`
   (state, config import, migration), and the CLI in `backend/src/main.rs`.
-- UI: `src/components/onboarding/` (welcome, account) and
-  `src/components/setup-chat/` (the chat; its script is
-  `src/lib/onboarding/setup-flow.ts`).
+- UI: `clients/web/src/components/onboarding/` (welcome, account) and
+  `clients/web/src/components/setup-chat/` (the chat; its script is
+  `clients/web/src/lib/onboarding/setup-flow.ts`).

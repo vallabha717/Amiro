@@ -43,7 +43,7 @@ no exit criteria and no record.
   is not the authority where the record contradicts it; that is the whole
   reason the two folders are separate.
 - **The standards skills**, always, before writing a line:
-  - `ui` — anything under `src/**` or `backend-go/internal/tui/**`
+  - `ui` — anything under `clients/web/src/**` or `backend-go/internal/tui/**`
   - `backend` — anything under `backend-go/**`
   - **`test` — always.** Every phase ships tests; there is no exception,
     and no "tests come later".
@@ -80,7 +80,7 @@ Not a follow-up, not a later phase. Per the `test` skill:
 |---|---|
 | A route, repository, migration, auth rule | `tests/suites/backend/<feature>/` |
 | A TUI screen, keybinding, launch flag | `tests/suites/tui/<feature>/` |
-| A dashboard page, component, gate | `tests/ui/specs/<feature>/` (+ `data-testid` in `src/`, + a page object) |
+| A dashboard page, component, gate | `tests/ui/specs/<feature>/` (+ `data-testid` in `clients/web/src/`, + a page object) |
 | Sidecar lifecycle, ports, packaging | `tests/suites/desktop/<feature>/` |
 | Anything two surfaces must agree on | `tests/suites/cross/<feature>/` |
 | A new contract, artifact or invariant | a guard in `tests/suites/meta/` |

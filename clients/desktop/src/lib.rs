@@ -211,8 +211,9 @@ fn desktop_runtime_info() -> serde_json::Value {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Load .env file from project root for local development
-    let _ = dotenv::from_path("../.env");
+    // Load .env file from the repo root for local development (`tauri dev`
+    // runs this binary from clients/desktop).
+    let _ = dotenv::from_path("../../.env");
     let _ = dotenv::from_path("./.env");
 
     let app = tauri::Builder::default()
