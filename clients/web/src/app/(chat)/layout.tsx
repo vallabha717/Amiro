@@ -3,6 +3,7 @@
 import { SidebarProvider } from "ui/sidebar";
 import { AppSidebar } from "@/components/layouts/app-sidebar";
 import { AppHeader } from "@/components/layouts/app-header";
+import { AssistantDesktopPreview } from "@/components/desktop-preview/assistant-desktop-preview";
 import { AgentScopeBanner } from "@/components/team/agent-scope-banner";
 import { legacyAgentRedirect } from "@/components/team/team-paths";
 import { useAgentScope } from "@/lib/backend/agent-scope";
@@ -96,6 +97,7 @@ function ChatLayoutInner({ children }: { children: React.ReactNode }) {
           >
             <AgentScopeBanner />
             <AppHeader />
+            <AssistantDesktopPreview />
             {/* Keyed by the agent scope: switching whose settings these are
                 remounts the page, so pages that load once on mount refetch
                 for the right agent (agent-scope.ts). */}

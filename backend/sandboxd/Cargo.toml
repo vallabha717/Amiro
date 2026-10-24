@@ -15,7 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "query"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "signal", "sync"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "signal", "sync", "io-util"] }
 # Docker Engine API over its unix socket. Plain HTTP/1.1, no TLS.
 hyper = { version = "1", features = ["client", "http1"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
@@ -29,6 +29,8 @@ sha2 = "0.10"
 hex = "0.4"
 subtle = "2"
 base64 = "0.22"
+libc = "0.2"
+uuid = { version = "1", features = ["v4"] }
 # Client the backend uses to reach the supervisor on loopback.
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
 tracing = "0.1"

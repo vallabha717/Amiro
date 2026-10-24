@@ -1,4 +1,5 @@
 pub mod admin;
+pub mod agent_browser;
 pub mod agent_computer;
 pub mod agents;
 pub mod agent_workspace;
@@ -25,6 +26,7 @@ pub mod search_providers;
 pub mod skills;
 pub mod storage;
 pub mod system;
+pub mod terminal;
 pub mod user;
 pub mod voice;
 pub mod workspace_trust;
@@ -36,6 +38,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .merge(user::routes())
         .merge(admin::routes())
+        .merge(agent_browser::routes())
         .merge(agents::routes())
         .merge(agent_computer::routes())
         .merge(artifacts::routes())
@@ -52,6 +55,7 @@ pub fn router() -> Router<AppState> {
         .merge(export::routes())
         .merge(storage::routes())
         .merge(system::routes())
+        .merge(terminal::routes())
         .merge(mcp::routes())
         .merge(fsbrowse::routes())
         .merge(providers_catalog::routes())

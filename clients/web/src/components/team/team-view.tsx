@@ -35,6 +35,7 @@ import { Button } from "ui/button";
 import { Skeleton } from "ui/skeleton";
 import { AgentAvatar } from "./agent-avatar";
 import { AgentChat } from "./agent-chat";
+import { AssistantDesktopAffordance } from "@/components/desktop-preview/assistant-desktop-affordance";
 import { agentSpacePath, teamThreadPath } from "./team-paths";
 
 function AgentRow({ agent, active }: { agent: TeamAgent; active: boolean }) {
@@ -121,6 +122,12 @@ function ThreadHeader({ agent, isOwner }: { agent: TeamAgent; isOwner: boolean }
         </h2>
         <p className="truncate text-xs text-muted-foreground">{t("channelSubtitle")}</p>
       </div>
+      {isOwner && (
+        <AssistantDesktopAffordance
+          agentId={agent.id}
+          agentName={agent.name}
+        />
+      )}
       {!agent.isMain && isOwner && <DeleteAgentButton agent={agent} />}
       <Button asChild size="sm" data-testid="team-open-in-amiro">
         <Link href={agentSpacePath(agent.id)}>

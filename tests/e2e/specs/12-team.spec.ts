@@ -340,6 +340,27 @@ test.describe.serial("team", () => {
       await expect(page.getByRole("heading", { name: "Schedules", level: 1 })).toBeVisible();
       await expect(page.getByText("Scout weekly digest")).toHaveCount(0);
     });
+
+    await step("Admin → Debug → Terminal connects to Amiro's host PTY and enforces Scout's container boundary", async () => {
+      await page.goto("/amiro/admin/debug");
+      await expect(page.getByTestId("admin-debug-page")).toBeVisible();
+      await expect(page.getByTestId("terminal-panel")).toBeVisible();
+      await expect(page.getByTestId("terminal-status-badge")).toHaveAttribute("data-status", "idle");
+
+      await page.getByTestId("terminal-connect-button").click();
+      await expect(page.getByTestId("terminal-status-badge")).toHaveAttribute("data-status", "connected", {
+        timeout: 15000,
+      });
+      await expect(page.getByTestId("terminal-isolation-badge")).toContainText("Host PTY");
+
+      await page.getByTestId("terminal-disconnect-button").click();
+      await expect(page.getByTestId("terminal-status-badge")).toHaveAttribute("data-status", "closed");
+
+      await page.goto(`/${scout.id}/admin/debug`);
+      await expect(page.getByTestId("debug-team-agent-banner")).toBeVisible();
+      await page.getByTestId("terminal-connect-button").click();
+      await expect(page.getByTestId("terminal-error-banner")).toContainText("Shell access is disabled");
+    });
   });
 
   test("team: delete the second agent", async ({ page, step, amiro }) => {

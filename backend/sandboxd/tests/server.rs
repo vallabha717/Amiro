@@ -89,7 +89,7 @@ async fn agent_routes_need_the_token_and_that_agents_credential() {
 #[tokio::test]
 async fn bad_ids_and_paths_are_refused_before_docker() {
     let (app, seen) = app().await;
-    let (status, _) = call(&app, Call { method: Method::GET, path: "/v1/agents/main/status".into(), token: Some(TOKEN), as_agent: Some("main"), body: None }).await;
+    let (status, _) = call(&app, Call { method: Method::GET, path: "/v1/agents/not-a-hex-id/status".into(), token: Some(TOKEN), as_agent: Some("not-a-hex-id"), body: None }).await;
     assert_eq!(status, 400);
 
     for path in ["/etc/passwd", "../other/notes.md", "a/../../b", "~/x"] {

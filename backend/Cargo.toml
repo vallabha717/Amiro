@@ -59,3 +59,6 @@ base64 = { version = "0.22", features = ["std"] }
 # Pairing QR codes for Settings → Devices (rendered to SVG by hand, so no
 # image features). Already in the runtime lockfile.
 qrcode = { version = "0.14.1", default-features = false }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

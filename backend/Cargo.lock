@@ -95,6 +95,7 @@ dependencies = [
  "futures",
  "hex",
  "http-body-util",
+ "libc",
  "mime_guess",
  "qrcode",
  "rand 0.8.8",
@@ -165,6 +166,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "libc",
  "reqwest",
  "serde",
  "serde_json",
@@ -173,6 +175,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]

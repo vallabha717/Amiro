@@ -23,7 +23,17 @@ export DOCKER_SOCKET="${DOCKER_SOCKET:-/var/run/docker.sock}"
 PROJECT="amiro-sandbox-${AMIRO_SANDBOX_NAMESPACE}"
 
 compose() {
-  docker compose -p "${PROJECT}" -f "${COMPOSE_FILE}" "$@"
+  # Snap-packaged Docker CLI cannot read files inside hidden dot-directories
+  # such as ~/.herdr/worktrees/..., so pass the compose file via stdin (-f -)
+  # with --project-directory when the path contains a dot-segment.
+  case "${COMPOSE_FILE}" in
+    */.*)
+      docker compose -p "${PROJECT}" --project-directory "$(dirname "${COMPOSE_FILE}")" -f - "$@" < "${COMPOSE_FILE}"
+      ;;
+    *)
+      docker compose -p "${PROJECT}" -f "${COMPOSE_FILE}" "$@"
+      ;;
+  esac
 }
 
 ensure_secrets() {
