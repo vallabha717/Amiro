@@ -14,6 +14,17 @@ import { ask, newChat, selectModel } from "../support/chat";
 import { readInstance } from "../support/config";
 import { expect, test } from "../support/fixtures";
 
+/** Run a tmux command against the main agent's shared shell. */
+function sharedShell(namespace: string, args: string[]): string {
+  try {
+    return execFileSync("docker", ["exec", `${namespace}-agent-main`, "tmux", ...args], {
+      encoding: "utf8",
+    });
+  } catch {
+    return "";
+  }
+}
+
 /** Names of the programs running in the main agent's desktop container. */
 function desktopProcesses(namespace: string): string[] {
   try {
@@ -69,15 +80,21 @@ test.describe.serial("debug-terminal-and-tv-screen", () => {
       );
     });
 
-    await step("Connect Amiro's Host PTY Terminal → run a command and disconnect", async () => {
+    const sandboxRun = readInstance().sandbox;
+
+    await step(
+      sandboxRun
+        ? "Connect Amiro's terminal → with the sandbox it is the shared shell in Amiro's container → run a command, disconnect"
+        : "Connect Amiro's Host PTY Terminal → run a command and disconnect",
+      async () => {
       await page.getByTestId("terminal-connect-button").click();
       await expect(page.getByTestId("terminal-status-badge")).toHaveAttribute(
         "data-status",
         "connected",
-        { timeout: 15000 },
+        { timeout: 30000 },
       );
       await expect(page.getByTestId("terminal-isolation-badge")).toContainText(
-        "Host PTY",
+        sandboxRun ? "Container PTY" : "Host PTY",
       );
 
       await page.getByTestId("terminal-console").click();
@@ -89,7 +106,8 @@ test.describe.serial("debug-terminal-and-tv-screen", () => {
         "data-status",
         "closed",
       );
-    });
+      },
+    );
 
     await step("Select team agent Scout in Admin → Debug → verify container policy & connect Container PTY", async () => {
       await page.goto(`/${scout!.id}/admin/debug`);
@@ -195,16 +213,17 @@ test.describe.serial("debug-terminal-and-tv-screen", () => {
       await expect
         .poll(() => desktopProcesses(sandbox!.namespace), { timeout: 20000 })
         .toContain("thunar");
-      // The header shows the exact folder Files has open.
+      // The header shows the exact folder Files has open, where it is on this computer:
+      // Amiro's workspace, named for Amiro.
       const bar = modal.getByTestId("desktop-window-bar");
-      await expect(bar.locator('[data-app="files"]').first()).toContainText("/home/agent", { timeout: 15000 });
+      await expect(bar.locator('[data-app="files"]').first()).toContainText(`${sandbox!.home}/workspace`, { timeout: 15000 });
       await page.waitForTimeout(2000);
       const terminal = at(778, 784);
       await page.mouse.click(terminal.x, terminal.y);
       await expect
         .poll(() => desktopProcesses(sandbox!.namespace), { timeout: 20000 })
         .toContain("xfce4-terminal");
-      await expect(bar.locator('[data-app="terminal"]').first()).toContainText("/home/agent", { timeout: 15000 });
+      await expect(bar.locator('[data-app="terminal"]').first()).toContainText(`${sandbox!.home}/workspace`, { timeout: 15000 });
       await page.waitForTimeout(2500);
     });
 
@@ -225,6 +244,39 @@ test.describe.serial("debug-terminal-and-tv-screen", () => {
         0,
       );
     });
+
+    await step("Debug terminal and the TV's terminal are one shell: type in Debug → it shows on the TV, prompt names Amiro and its real workspace", async () => {
+      if (!sandbox) return;
+      await page.goto("/amiro/admin/debug");
+      await page.getByTestId("terminal-connect-button").click();
+      await expect(page.getByTestId("terminal-isolation-badge")).toContainText("Container PTY", {
+        timeout: 30000,
+      });
+      await page.getByTestId("terminal-console").click();
+      await page.keyboard.type("echo SYNCED_WITH_TV\r");
+      // Debug and the TV's terminal window are both attached to the shared tmux session.
+      await expect
+        .poll(() => sharedShell(sandbox.namespace, ["list-clients", "-t", "agent"]).split("\n").filter(Boolean).length, {
+          timeout: 15000,
+        })
+        .toBeGreaterThanOrEqual(2);
+      await expect
+        .poll(() => sharedShell(sandbox.namespace, ["capture-pane", "-p", "-J", "-t", "agent"]), { timeout: 15000 })
+        .toContain("SYNCED_WITH_TV");
+      // The prompt reads like a shell on this computer: amiro@amiro-os:<Amiro's workspace>$
+      expect(sharedShell(sandbox.namespace, ["capture-pane", "-p", "-J", "-t", "agent"])).toContain(
+        `amiro@amiro-os:${sandbox.home}/workspace`,
+      );
+      // Show it on the TV too (the Monitor button is in the chat header).
+      await page.goto("/amiro");
+      await page.getByTestId("assistant-desktop-affordance").click();
+      await page.getByTestId("desktop-preview-title-button").click();
+      await expect(
+        page.getByTestId("assistant-desktop-modal").getByTestId("desktop-panel-viewport").locator("canvas"),
+      ).toBeVisible({ timeout: 30000 });
+      await page.waitForTimeout(3000);
+      await page.getByTestId("desktop-modal-close").click();
+    });
   });
 
   test("TV in chat: the agent opens Files on its desktop and the chat shows the live TV with the exact folder", async ({
@@ -234,6 +286,8 @@ test.describe.serial("debug-terminal-and-tv-screen", () => {
     const sandbox = readInstance().sandbox;
     test.skip(!sandbox, "needs the run's sandbox (Docker + amiro-agent:local)");
     const folder = "/home/agent/projects/tv-demo";
+    // The same folder where it really is: Amiro's workspace on this computer.
+    const onComputer = `${sandbox!.home}/workspace/projects/tv-demo`;
     execFileSync("docker", ["exec", `${sandbox!.namespace}-agent-main`, "mkdir", "-p", folder]);
 
     await step("Ask Amiro to open the folder on its desktop → it calls desktop_open", async () => {
@@ -252,8 +306,8 @@ test.describe.serial("debug-terminal-and-tv-screen", () => {
       await expect(card.getByTestId("desktop-chat-card-screen").locator("canvas")).toBeVisible({ timeout: 45000 });
       // Files at the exact folder, listed first because it is in front.
       const rows = card.getByTestId("desktop-window-row");
-      await expect(rows.filter({ hasText: folder }).first()).toHaveAttribute("data-app", "files");
-      await expect(rows.first()).toContainText(folder);
+      await expect(rows.filter({ hasText: onComputer }).first()).toHaveAttribute("data-app", "files");
+      await expect(rows.first()).toContainText(onComputer);
       await page.waitForTimeout(2500);
     });
 
@@ -262,7 +316,7 @@ test.describe.serial("debug-terminal-and-tv-screen", () => {
       const modal = page.getByTestId("assistant-desktop-modal");
       await expect(modal).toBeVisible();
       await expect(modal.getByTestId("desktop-panel-viewport").locator("canvas")).toBeVisible({ timeout: 45000 });
-      await expect(modal.getByTestId("desktop-window-bar")).toContainText(folder, { timeout: 15000 });
+      await expect(modal.getByTestId("desktop-window-bar")).toContainText(onComputer, { timeout: 15000 });
       await page.waitForTimeout(2500);
       await page.getByTestId("desktop-modal-close").click();
       await expect(modal).toBeHidden();
