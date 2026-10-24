@@ -25,6 +25,10 @@ pub fn valid_agent_id(id: &str) -> bool {
 /// Header carrying the per-agent credential on agent-scoped routes.
 pub const CREDENTIAL_HEADER: &str = "x-amiro-agent-credential";
 
+/// `Upgrade:` token for the desktop tunnel: after `101`, the connection carries
+/// raw RFB bytes to and from the agent's VNC server.
+pub const DESKTOP_UPGRADE: &str = "amiro-rfb";
+
 #[cfg(test)]
 mod tests {
     use super::*;

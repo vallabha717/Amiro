@@ -364,17 +364,25 @@ impl Docker {
     }
 }
 
-/// Move complete multiplexed frames (`[stream, 0, 0, 0, len u32 BE] payload`)
-/// from `pending` into `out`, honouring the byte cap.
+/// Take the next complete multiplexed frame (`[stream, 0, 0, 0, len u32 BE]
+/// payload`) off the front of `pending`, or `None` until one has fully arrived.
+pub fn next_frame(pending: &mut BytesMut) -> Option<(u8, BytesMut)> {
+    if pending.len() < 8 {
+        return None;
+    }
+    let len = u32::from_be_bytes([pending[4], pending[5], pending[6], pending[7]]) as usize;
+    if pending.len() < 8 + len {
+        return None;
+    }
+    let stream = pending[0];
+    pending.advance(8);
+    Some((stream, pending.split_to(len)))
+}
+
+/// Move complete multiplexed frames from `pending` into `out`, honouring the
+/// byte cap.
 fn demux(pending: &mut BytesMut, out: &mut ExecOutput, cap: usize) {
-    while pending.len() >= 8 {
-        let len = u32::from_be_bytes([pending[4], pending[5], pending[6], pending[7]]) as usize;
-        if pending.len() < 8 + len {
-            return;
-        }
-        let stream = pending[0];
-        pending.advance(8);
-        let payload = pending.split_to(len);
+    while let Some((stream, payload)) = next_frame(pending) {
         let used = out.stdout.len() + out.stderr.len();
         let room = cap.saturating_sub(used);
         let take = payload.len().min(room);

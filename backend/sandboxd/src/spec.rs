@@ -53,7 +53,8 @@ impl SandboxConfig {
             agents_root: agents_root.into(),
             memory_bytes: 1024 * 1024 * 1024,
             nano_cpus: 1_000_000_000,
-            pids_limit: 256,
+            // The desktop (Xtigervnc, Chromium, Thunar, a terminal) needs ~300 threads.
+            pids_limit: 1024,
             network: "bridge".into(),
             runtime: None,
             no_new_privileges: true,
@@ -235,7 +236,7 @@ mod tests {
         assert_eq!(host["Memory"], 1024 * 1024 * 1024);
         assert_eq!(host["MemorySwap"], host["Memory"]);
         assert_eq!(host["NanoCpus"], 1_000_000_000);
-        assert_eq!(host["PidsLimit"], 256);
+        assert_eq!(host["PidsLimit"], 1024);
         assert_eq!(host["NetworkMode"], "bridge");
         assert!(host.get("Runtime").is_none());
         assert!(host.get("Binds").is_none());

@@ -122,7 +122,7 @@ async fn container_runs_non_root_without_capabilities_and_sees_only_its_folder()
     let host = &inspect.unwrap()["HostConfig"];
     assert_eq!(host["CapDrop"], json!(["ALL"]));
     assert_eq!(host["Privileged"], false);
-    assert_eq!(host["PidsLimit"], 256);
+    assert_eq!(host["PidsLimit"], 1024);
     assert_eq!(host["Memory"], 256 * 1024 * 1024);
 }
 

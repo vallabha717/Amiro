@@ -101,7 +101,7 @@ can assert every hardening field:
 | `HostConfig.Binds` | `<AMIRO_SANDBOX_AGENTS_ROOT>/<id>:/home/agent:rw` — the only mount |
 | `CapDrop` / `SecurityOpt` | `["ALL"]` / `["no-new-privileges:true"]` (off only on snap-packaged Docker, see 03) |
 | `ReadonlyRootfs` + `Tmpfs` | `true` + `/tmp: rw,nosuid,nodev,size=64m` |
-| `Memory` = `MemorySwap`, `NanoCpus`, `PidsLimit` | 1 GiB, 1 CPU, 256 (env-overridable) |
+| `Memory` = `MemorySwap`, `NanoCpus`, `PidsLimit` | 1 GiB, 1 CPU, 1024 (env-overridable; the virtual desktop needs ~300) |
 | `NetworkMode` | `bridge` (default) or `none` (`AMIRO_SANDBOX_NETWORK`) |
 | `Runtime` | unset, or `runsc` (`AMIRO_SANDBOX_RUNTIME`) |
 | `Privileged`, `Devices`, `PortBindings` | never set |

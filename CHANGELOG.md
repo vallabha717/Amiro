@@ -17,6 +17,14 @@ and subsequent work will accumulate under a fresh `Unreleased` section.
 
 ### Added
 
+- The TV screen (Monitor button in the chat header) streams the agent's real
+  desktop from its sandbox container: Chromium, Files (Thunar) and a terminal
+  in a Plank dock, all clickable. Frames go over one raw RFB tunnel
+  (noVNC WebSocket → backend → supervisor `desktop/connect` upgrade → the
+  container's VNC server) instead of base64 polling. Without a running sandbox
+  the TV says so and offers Reconnect; the drawn stand-in desktop is gone.
+  Agent containers now allow 1024 processes by default (was 256), since the
+  desktop alone runs ~300 threads.
 - Connect phones and other desktop apps with a device code, the way the GitHub
   CLI signs in: the device enters the Amiro's address once and shows a short
   code, and the owner approves it at `/device` from any signed-in browser or in

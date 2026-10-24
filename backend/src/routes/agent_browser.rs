@@ -122,89 +122,66 @@ async fn resolve_agent_label_and_accent(state: &AppState, agent_id: &str) -> (St
     ("Agent".to_string(), "#38bdf8".to_string())
 }
 
+/// Close codes the desktop viewer maps to a message.
+pub const DESKTOP_CLOSE_UNAVAILABLE: u16 = 4008;
+pub const DESKTOP_CLOSE_FAILED: u16 = 4011;
+
+async fn close_desktop(mut socket: WebSocket, code: u16, reason: &str) {
+    let frame = axum::extract::ws::CloseFrame { code, reason: reason.chars().take(120).collect::<String>().into() };
+    let _ = socket.send(Message::Close(Some(frame))).await;
+}
+
+/// Pipe the viewer's RFB WebSocket frames to the agent's VNC server through
+/// the supervisor's byte tunnel, and the server's bytes back as binary frames.
 async fn handle_desktop_ws(state: AppState, agent_id: String, socket: WebSocket) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
     let Some(client) = sandbox::client(&state).await else {
-        return;
+        return close_desktop(socket, DESKTOP_CLOSE_UNAVAILABLE, "the sandbox is not set up").await;
     };
     let (label, accent) = resolve_agent_label_and_accent(&state, &agent_id).await;
-    let created = match client.create_desktop_session(&agent_id, &label, &accent).await {
-        Ok(v) => v,
-        Err(_) => return,
+    let tunnel = match client.desktop_connect(&agent_id, &label, &accent).await {
+        Ok(tunnel) => tunnel,
+        Err(e) => {
+            let code = if e.status.is_none() { DESKTOP_CLOSE_UNAVAILABLE } else { DESKTOP_CLOSE_FAILED };
+            return close_desktop(socket, code, &e.message).await;
+        }
     };
-    let Some(session_id) = created["session_id"]
-        .as_str()
-        .or_else(|| created["id"].as_str())
-        .map(str::to_string)
-    else {
-        return;
-    };
-
+    let (mut vnc_rx, mut vnc_tx) = tokio::io::split(tunnel);
     let (mut ws_tx, mut ws_rx) = socket.split();
-    let client_in = client.clone();
-    let agent_in = agent_id.clone();
-    let sid_in = session_id.clone();
 
-    let mut in_task = tokio::spawn(async move {
+    let up = async {
         while let Some(Ok(msg)) = ws_rx.next().await {
             match msg {
                 Message::Binary(bytes) => {
-                    if !bytes.is_empty() {
-                        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                        if client_in
-                            .desktop_session_input(&agent_in, &sid_in, &b64)
-                            .await
-                            .is_err()
-                        {
-                            break;
-                        }
+                    if vnc_tx.write_all(&bytes).await.is_err() {
+                        break;
                     }
                 }
                 Message::Close(_) => break,
                 _ => {}
             }
         }
-    });
-
-    let client_out = client.clone();
-    let agent_out = agent_id.clone();
-    let sid_out = session_id.clone();
-
-    let mut out_task = tokio::spawn(async move {
+        let _ = vnc_tx.shutdown().await;
+    };
+    let down = async {
+        let mut buf = vec![0u8; 64 * 1024];
         loop {
-            match client_out.desktop_session_read(&agent_out, &sid_out).await {
-                Ok(resp) => {
-                    if let Some(chunks) = resp["chunks"].as_array() {
-                        for chunk in chunks {
-                            if let Some(b64) = chunk.as_str() {
-                                if let Ok(bytes) =
-                                    base64::engine::general_purpose::STANDARD.decode(b64.as_bytes())
-                                {
-                                    if ws_tx.send(Message::Binary(bytes.into())).await.is_err() {
-                                        return;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if resp["closed"].as_bool() == Some(true) {
-                        break;
+            match vnc_rx.read(&mut buf).await {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    if ws_tx.send(Message::Binary(buf[..n].to_vec().into())).await.is_err() {
+                        return;
                     }
                 }
-                Err(_) => break,
             }
         }
-    });
-
+        let _ = ws_tx.send(Message::Close(None)).await;
+    };
     tokio::select! {
-        _ = &mut in_task => {
-            out_task.abort();
-        }
-        _ = &mut out_task => {
-            in_task.abort();
-        }
+        _ = up => {}
+        _ = down => {}
     }
-
-    let _ = client.desktop_session_destroy(&agent_id, &session_id).await;
 }
 
 // ---------------------------------------------------------------------------
