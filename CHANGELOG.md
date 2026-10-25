@@ -7,13 +7,17 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Release status
 
-The repository has no release tags yet, so nothing below has been released.
-`package.json` and `src-tauri/tauri.conf.json` both currently declare version
-`1.26.0`, and that version is still in development. When the first release is
-tagged, the `Unreleased` heading will be renamed to that version with its date,
-and subsequent work will accumulate under a fresh `Unreleased` section.
+Releases are cut by pushing a `vX.Y.Z` tag, which runs
+`.github/workflows/release.yml` (server archives, `install.sh`, `SHA256SUMS`).
+`v1.26.0` and `v1.26.1` were tagged before this file tracked releases, so
+**1.27.0 below lists everything shipped up to and including it**. Versions
+live in `package.json`, `clients/desktop/tauri.conf.json`,
+`clients/desktop/Cargo.toml` and `backend/Cargo.toml` (the server reports the
+last one as its own version). New work accumulates under `Unreleased`.
 
 ## [Unreleased]
+
+## [1.27.0] - 2026-10-25
 
 ### Documentation
 
@@ -27,6 +31,27 @@ and subsequent work will accumulate under a fresh `Unreleased` section.
   exported to `docs/assets/showcase/*.{mp4,gif,jpg}`.
 
 ### Added
+
+- **Inbox cleanup playbook** on the Schedules page: *Set up this schedule for
+  me* opens a chat with the keep and clean-up rules as switches, and saves the
+  schedule (marked *Created in chat*) (#34).
+- Chats and the Agents panel show each runtime session's animal name and emoji,
+  and long chat titles slide on hover (#34).
+- Generative UI in chat (OpenUI): interactive question cards, value intake
+  forms, a secret vault card and starter surfaces (#25).
+- **Set default** on each model of a provider card in Admin → Models &
+  Providers (#26).
+- Built-in superpowers ported from Vellum: Frontend Design, GEO Article Writer
+  and CLI Discovery (#24).
+- Schedule conversations and capabilities aligned with Vellum: model rebase,
+  descriptions, session-scoped dedup (#23).
+- 2.5D concept graph on the Memory page, a redesigned Superpowers page and a
+  sidebar switch between Admin and Conversations (#22).
+- Queue a follow-up while the agent is still answering; the tray sits on top
+  of the composer, paste goes to the tray, PDFs get thumbnails.
+- Sign in to OAuth MCP servers from the connector card.
+- Check for updates and update in one click from Admin → General.
+- Keyboard shortcuts (Ctrl+/ lists them).
 
 - The TV screen (Monitor button in the chat header) streams the agent's real
   desktop from its sandbox container: Chromium, Files (Thunar) and a terminal
@@ -124,6 +149,11 @@ and subsequent work will accumulate under a fresh `Unreleased` section.
 
 ### Changed
 
+- The web app and the desktop shell moved into `clients/` (`clients/web`,
+  `clients/desktop`, formerly `src-tauri/`) (#29).
+- UI typography follows Vellum (DM Sans, DM Mono, Instrument Serif) (#22).
+- The vendored runtime is updated to upstream jcode 48aa83e9.
+
 - The launchers were first retargeted from the removed Go backend to a Node
   compatibility adapter, and then to the native Rust backend. The native backend
   is now the only thing that serves the product.
@@ -149,6 +179,15 @@ and subsequent work will accumulate under a fresh `Unreleased` section.
   setting `hiddenToolCategories` is replaced by `onlyToolCategories`.
 
 ### Fixed
+
+- The server reports its real version. `amiro-backend` was versioned `0.1.0`,
+  so Admin → General always offered an "update" to the latest release, even on
+  it, and the System page showed 0.1.0.
+- `amiro-sandboxd` builds on Windows (Docker over the named pipe) (#30).
+- The agent-URL redirect no longer hijacks navigation (#21).
+- "Set my default model" in chat changes the runtime default; a turn stays
+  alive through a quiet tool call; the sidebar drops "Connect an AI provider"
+  once one is connected.
 
 - Password changes now take effect without a stale write-back, and the admin
   add-provider menu lists every provider instead of a subset.
@@ -188,6 +227,9 @@ and subsequent work will accumulate under a fresh `Unreleased` section.
 - Removed the user-authored Workflow feature completely.
 - Removed the chat Workflow View, including its toggle.
 - Removed manual agent runs, which native schedules replace.
+
+[Unreleased]: https://github.com/vallabha717/Amiro/compare/v1.27.0...HEAD
+[1.27.0]: https://github.com/vallabha717/Amiro/compare/v1.26.1...v1.27.0
 
 ## Prior development
 

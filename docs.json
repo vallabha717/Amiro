@@ -54,7 +54,7 @@
     ]
   },
   "banner": {
-    "content": "**New on main:** the agent's live desktop (TV), Team agents, phone pairing with a code, and the Inbox cleanup playbook. [See it in action \u2192](/showcase) \u00b7 [Latest release \u2192](https://github.com/vallabha717/Amiro/releases/latest)",
+    "content": "**Amiro v1.27.0 is out:** the agent's live desktop (TV), Team agents, phone pairing with a code, and the Inbox cleanup playbook. [See it in action \u2192](/showcase) \u00b7 [Download \u2192](https://github.com/vallabha717/Amiro/releases/latest)",
     "dismissible": true,
     "color": {
       "light": "#E9642F",
