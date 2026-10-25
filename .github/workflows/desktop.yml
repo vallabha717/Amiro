@@ -1,9 +1,10 @@
 name: Desktop app
 
 # Builds the Tauri desktop app natively on macOS (Apple silicon and Intel),
-# Windows and Linux. Paused: Amiro ships as the web/server (VM) build only, so
-# this runs only when started by hand from the Actions tab — not on PRs and not
-# from release.yml. One installer per platform, amiro-desktop-<os>-<arch>.<ext>.
+# Windows and Linux: one installer per platform, amiro-desktop-<os>-<arch>.<ext>,
+# plus signed update bundles (.sig) for the app's self-update. release.yml runs
+# it for every release; start it by hand (Actions tab) to rebuild one release's
+# desktop files or to try a build without a tag.
 on:
   workflow_call:
     inputs:
@@ -117,13 +118,33 @@ jobs:
             echo "No APPLE_CERTIFICATE secret: ad-hoc signing."
           fi
 
+      # Self-update: with the updater key the build also writes signed update
+      # bundles (.sig) that latest.json points at (scripts/updater-manifest.mjs).
+      # Without it (forks), turn the updater artifacts off so the build still works.
+      - name: Updater signing
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            { echo "TAURI_SIGNING_PRIVATE_KEY<<__AMIRO_EOF__"; echo "$TAURI_SIGNING_PRIVATE_KEY"; echo "__AMIRO_EOF__"; } >> "$GITHUB_ENV"
+            { echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD<<__AMIRO_EOF__"; echo "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD"; echo "__AMIRO_EOF__"; } >> "$GITHUB_ENV"
+            echo "Signing update bundles."
+          else
+            conf="$RUNNER_TEMP/no-updater.json"
+            echo '{"bundle":{"createUpdaterArtifacts":false}}' > "$conf"
+            echo "TAURI_EXTRA_ARGS=--config $conf" >> "$GITHUB_ENV"
+            echo "No TAURI_SIGNING_PRIVATE_KEY secret: building without update bundles."
+          fi
+
       - name: Build the app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tauriScript: npx --yes @tauri-apps/cli@^2
-          args: --target ${{ matrix.target }}
+          args: --target ${{ matrix.target }} ${{ env.TAURI_EXTRA_ARGS }}
 
       - name: Collect installers
         shell: bash
@@ -131,11 +152,24 @@ jobs:
           bundle="clients/desktop/target/${{ matrix.target }}/release/bundle"
           arch="${{ matrix.target }}"; arch="${arch%%-*}"
           mkdir -p dist
+          # Signatures (.sig) sign the file's content, so they stay valid
+          # under the stable names below.
+          sig() { for f in "$@"; do [ -f "$f" ] && return 0; done; return 1; }
           case "${{ matrix.family }}" in
-            macos)   cp "$bundle"/dmg/*.dmg "dist/amiro-desktop-macos-$arch.dmg" ;;
-            windows) cp "$bundle"/nsis/*-setup.exe "dist/amiro-desktop-windows-$arch-setup.exe" ;;
+            macos)   cp "$bundle"/dmg/*.dmg "dist/amiro-desktop-macos-$arch.dmg"
+                     if sig "$bundle"/macos/*.app.tar.gz.sig; then
+                       cp "$bundle"/macos/*.app.tar.gz "dist/amiro-desktop-macos-$arch.app.tar.gz"
+                       cp "$bundle"/macos/*.app.tar.gz.sig "dist/amiro-desktop-macos-$arch.app.tar.gz.sig"
+                     fi ;;
+            windows) cp "$bundle"/nsis/*-setup.exe "dist/amiro-desktop-windows-$arch-setup.exe"
+                     if sig "$bundle"/nsis/*-setup.exe.sig; then
+                       cp "$bundle"/nsis/*-setup.exe.sig "dist/amiro-desktop-windows-$arch-setup.exe.sig"
+                     fi ;;
             linux)   cp "$bundle"/appimage/*.AppImage "dist/amiro-desktop-linux-$arch.AppImage"
-                     cp "$bundle"/deb/*.deb "dist/amiro-desktop-linux-$arch.deb" ;;
+                     cp "$bundle"/deb/*.deb "dist/amiro-desktop-linux-$arch.deb"
+                     if sig "$bundle"/appimage/*.AppImage.sig; then
+                       cp "$bundle"/appimage/*.AppImage.sig "dist/amiro-desktop-linux-$arch.AppImage.sig"
+                     fi ;;
           esac
           ls -la dist
 
@@ -152,3 +186,32 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "${{ inputs.tag }}" dist/* --clobber
+
+  # A desktop-only run for a release tag (started by hand) refreshes the
+  # release's update feed and checksums. release.yml does this itself in its
+  # Publish job when it builds the desktop app as part of a release.
+  manifest:
+    name: Update feed
+    needs: build
+    if: ${{ inputs.tag != '' && github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: latest.json and SHA256SUMS
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          mkdir -p assets && cd assets
+          gh release download "$TAG" --pattern 'amiro-*' --pattern install.sh
+          node ../scripts/updater-manifest.mjs . "$TAG" "$GITHUB_REPOSITORY"
+          sha256sum amiro-* install.sh latest.json > SHA256SUMS
+          gh release upload "$TAG" latest.json SHA256SUMS --clobber
+      - uses: actions/attest-build-provenance@v2
+        with:
+          # Every file in assets/ is a release file.
+          subject-path: assets/*
