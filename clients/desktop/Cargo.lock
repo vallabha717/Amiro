@@ -34,7 +34,7 @@ dependencies = [
 
 [[package]]
 name = "amiro"
-version = "1.26.0"
+version = "1.27.0"
 dependencies = [
  "dotenv",
  "log",

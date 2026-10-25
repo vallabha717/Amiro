@@ -1,6 +1,6 @@
 [package]
 name = "amiro"
-version = "1.26.0"
+version = "1.27.0"
 description = "Amiro desktop: Tauri shell over the backend sidecar"
 authors = ["Amiro"]
 license = "MIT"

@@ -290,9 +290,9 @@ from **Admin**.
 
 ---
 
-## What's new since v1.26.1
+## What's new in v1.27.0
 
-These are on `main` and ship in the next release:
+Since v1.26.1:
 
 - **The TV**: the agent's real desktop streamed into the chat, with agent
   desktop tools and exact workspace paths ([#31](https://github.com/vallabha717/Amiro/pull/31), [#33](https://github.com/vallabha717/Amiro/pull/33)).
