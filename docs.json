@@ -137,6 +137,7 @@
               "settings/overview-tour",
               "settings/account",
               "settings/providers",
+              "settings/updates",
               "settings/troubleshooting",
               "settings/where-settings-live"
             ]
