@@ -1,0 +1,104 @@
+---
+title: "Everyday tasks"
+description: "Real things to ask Amiro: research on the live web, summarise and file documents, chart real numbers. With prompts you can copy."
+---
+
+Surveys of how people actually use AI assistants keep landing on the same
+short list: **looking things up**, **summarising**, **writing and email**, and
+**keeping on top of a schedule**. This page shows the first three with prompts
+you can paste as they are. [Schedules](/using/schedules) covers the fourth.
+
+<Info>
+Web research needs a search engine. Bing and DuckDuckGo work with no key: pick one in
+the setup chat, or in **Admin → Search Providers → Add**. See [Search](/using/search).
+</Info>
+
+## Research on the live web
+
+<Frame caption="Amiro searches, reads the pages, and answers with a table and its sources. The follow-up keeps the context.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/research.jpg" src="/docs/assets/showcase/research.mp4" />
+</Frame>
+
+```text
+Search the web and compare Obsidian, Logseq and Joplin for personal notes today.
+Give me a table with license, price, sync options and mobile apps, then one line
+on who each one suits. Cite the pages you used.
+```
+
+What to look for:
+
+- The **search** and **fetch** tool calls fold into a single "work" row above
+  the answer. Click it to see every query and page Amiro opened.
+- The **Tools** menu in the chat header hides tool calls you do not want to
+  see, down to answers only.
+- Ask a follow-up in the same chat. The previous answer stays in context, so
+  "which one, if I write mostly on my phone?" just works.
+
+More prompts that work well:
+
+```text
+What changed in the latest stable Rust release? Three bullets, with the link to the release notes.
+```
+
+```text
+Find three flights or trains from Bengaluru to Goa next Friday evening and list price, duration and operator.
+```
+
+## Summarise a page and keep the notes
+
+<Frame caption="Give a link and a job. The summary lands in chat and as a Markdown file in the agent's workspace.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/documents.jpg" src="/docs/assets/showcase/documents.mp4" />
+</Frame>
+
+```text
+Read https://en.wikipedia.org/wiki/Pomodoro_Technique and summarise it in 5 bullets.
+Then write a Pomodoro plan for my afternoon (2pm to 6pm) and save both to
+notes/pomodoro.md in your workspace.
+```
+
+Then open **Agent → Workspace** (or click the file chip in the reply) to read,
+edit or download the file. You can also:
+
+- **Attach files** with the paperclip: PDFs, Word, Excel, PowerPoint, CSV,
+  images, audio and video all open in the built-in viewer.
+- Type **`@`** in the composer to point at a file or folder in the chat's
+  folder.
+- Drop a long passage straight into the composer; it stays inline as text.
+
+## Chart real numbers
+
+<Frame caption="Numbers from the web, drawn inline with the Visualize superpower.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/visualize.jpg" src="/docs/assets/showcase/visualize.mp4" />
+</Frame>
+
+```text
+Search the web for India's total installed solar power capacity (GW) at the end
+of each year from 2019 to 2024, then use the visualize skill to draw it as an
+inline bar chart with a one-line takeaway. Mention your source.
+```
+
+Type **`/vis`** in the composer to attach the Visualize skill explicitly.
+Charts, diagrams (Mermaid) and small interactive widgets render right in the
+reply.
+
+## Write for you
+
+```text
+Draft a polite email to my landlord: the kitchen tap has been leaking for a week
+and I'd like a plumber to come before Saturday. Keep it short.
+```
+
+```text
+Turn these meeting notes into a summary with decisions, owners and dates: …
+```
+
+Amiro writes in the voice you set under [Personality](/using/personalizing-your-agent),
+and anything you tell it to remember (your name, your sign-off, your timezone)
+carries into every chat through [Memory](/using/memory).
+
+## Related
+
+- [Chatting](/using/chatting): models, the composer, slash commands, threads
+- [Search](/using/search): engines, keys and test queries
+- [Workspace files](/using/workspace-files)
+- [Schedules](/using/schedules): put any of these prompts on a timer

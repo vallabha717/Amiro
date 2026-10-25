@@ -21,7 +21,9 @@
     "test": "playwright test",
     "install-browsers": "playwright install --with-deps chromium",
     "show-report": "playwright show-report",
-    "e2e:feature": "node e2e/support/feature-recording.mjs"
+    "e2e:feature": "node e2e/support/feature-recording.mjs",
+    "showcase": "playwright test -c showcase/playwright.config.ts",
+    "showcase:export": "node showcase/export-media.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1"

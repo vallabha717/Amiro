@@ -28,6 +28,7 @@ pin the routes the native backend implements.
 | Rust Testkit | `cargo test --offline` (in `tests/rust`) | Std-only, zero network dependencies |
 | Tauri Desktop Check | `cargo check --offline` (in `clients/desktop`) | Tauri shell check |
 | E2E journeys (Playwright, recorded) | `pnpm test:e2e` | Isolated instance, video + `REVIEW.md`. See `e2e/README.md` |
+| Showcase videos (README + docs) | `pnpm --dir tests showcase`, then `pnpm --dir tests showcase:export` | Real tasks on a real model, same isolated instance; writes `docs/assets/showcase/*.{mp4,gif,jpg}` |
 
 The backend integration tests spawn their own server per test and wait for
 readiness. They are reliable in CI, but if you run the frontend suite, a cold
@@ -41,6 +42,7 @@ can fail with a readiness or connection error. Re-run them alone, or with
 tests/
   rust/                 Std-only Rust test harness (amiro-testkit)
   e2e/                  Recorded Playwright journeys (specs, support, fixtures)
+  showcase/             Feature videos for the README and docs (specs, export-media.mjs)
   fixtures/             Test fixtures (MCP, skills, workspace)
   cassettes/            Recorded provider interactions
   recordings/           E2E videos and review reports (gitignored)

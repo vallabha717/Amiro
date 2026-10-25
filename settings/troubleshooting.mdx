@@ -70,6 +70,23 @@ what usually fixes it, without jargon.
   folder again.
 </Accordion>
 
+<Accordion title="Web search finds nothing, or the agent says search is down">
+- On a cloud VM or server, DuckDuckGo often answers data-centre addresses with
+  a challenge page. **Admin → Search Providers → Test → Run Connectivity Test**
+  then says *Connection Successful* with **0 results**, and the agent fetches
+  pages directly instead.
+- Try **Bing Search** (also keyless). If it also reports 0 results, add a keyed
+  engine such as Brave (free tier) or Tavily and make it the default, then run
+  the test again until it reports results.
+</Accordion>
+
+<Accordion title="The desktop (TV) says it is not running">
+- The agent desktop needs the sandbox: Docker plus `bash scripts/sandbox.sh up`,
+  run as the user Amiro runs as. `bash scripts/sandbox.sh status` should say
+  the supervisor is up. Restart Amiro afterwards, then click **Reconnect** on
+  the TV. See [Agent desktop](/using/agent-desktop).
+</Accordion>
+
 <Accordion title="The app will not load, or the port seems wrong">
 - Confirm Amiro is running. On a server install, `scripts/amiro-server.sh
   status` prints whether the process is up, whether something is listening on

@@ -28,17 +28,20 @@ There are two ways the owner gets created.
 
 <Tabs>
 <Tab title="In the app">
-On a fresh instance, open Amiro and you land on the setup wizard. The **you**
-step is the only required one. Enter a name, a login (an email or a username), a
-password, and your timezone, and you are the owner. The password must be at
+On a fresh instance, open Amiro and click **Get started**. The account step is
+the only required one. Enter what the agent should call you, a login (an email
+or a username) and a password, and you are the owner. The password must be at
 least 12 characters and include a letter plus at least one number or symbol.
+The setup chat then continues with everything else, all skippable.
 
-<img src="/docs/assets/readme/onboarding-account.png" alt="Wizard account step: enter your name, login, password, and timezone" width="100%" />
+<Frame caption="The account step at the start of the first run, then the setup chat.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/setup-first-run.jpg" src="/docs/assets/showcase/setup-first-run.mp4" />
+</Frame>
 </Tab>
 <Tab title="Fully scripted">
 If `AMIRO_OWNER_EMAIL` and `AMIRO_OWNER_PASSWORD` (or
 `AMIRO_OWNER_PASSWORD_FILE`) are set when Amiro first starts with an empty user
-store, the owner is created for you and the wizard skips the password step.
+store, the owner is created for you and the setup chat skips the account step.
 </Tab>
 </Tabs>
 

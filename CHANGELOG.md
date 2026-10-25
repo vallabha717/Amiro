@@ -15,6 +15,17 @@ and subsequent work will accumulate under a fresh `Unreleased` section.
 
 ## [Unreleased]
 
+### Documentation
+
+- README and Mintlify docs refreshed for everything on `main`, with a recorded
+  video for each feature and setup step: a new *See it in action* page, an
+  *Everyday tasks* guide, and new pages for Team, the agent desktop (TV),
+  phones and devices, and notifications. Quickstart and First run now follow
+  the setup chat.
+- Showcase recordings in `tests/showcase/` (`pnpm --dir tests showcase`, then
+  `showcase:export`): real tasks against a real model on an isolated instance,
+  exported to `docs/assets/showcase/*.{mp4,gif,jpg}`.
+
 ### Added
 
 - The TV screen (Monitor button in the chat header) streams the agent's real

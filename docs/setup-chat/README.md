@@ -117,4 +117,4 @@ to **Admin → Search**.
 ## Later
 
 - Composio per team agent, then offer it in team mode.
-- Fresh README screenshots and GIF of the chat (`scripts/capture-readme-media.mjs`).
+- Fresh README screenshots and GIF of the chat (then `scripts/capture-readme-media.mjs`; now the real-model recordings in `tests/showcase/`).

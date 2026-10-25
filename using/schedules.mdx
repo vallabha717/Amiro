@@ -5,9 +5,9 @@ description: "Run a saved prompt on a timer: once, cron, or interval, and read e
 
 A schedule runs a saved prompt on a timer, in its own timezone, and records every firing so you can see what happened. Open **Schedules** in the sidebar, or go to `/schedules`.
 
-<img src="/docs/assets/readme/demo-schedules.gif" alt="Schedules: adding a suggested schedule with one click, reviewing it, and saving" width="100%" />
-
-*One-click suggestions: pick a suggested schedule, review it, and save.*
+<Frame caption="Ask for a weekday morning brief in plain words, find it on Schedules, Run now, and read the result from the Bell.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/schedules-morning-brief.jpg" src="/docs/assets/showcase/schedules-morning-brief.mp4" />
+</Frame>
 
 ## Create a schedule
 
@@ -39,6 +39,7 @@ A schedule runs a saved prompt on a timer, in its own timezone, and records ever
 | Reminder | Reminder | Posts your text as-is as a thread message. No model call. |
 | Text only | Text only | Runs a model turn with tools forced off and the model pinned server side. Writes a reply. |
 | Agent | Agent | Runs a full agent turn with the same tool and connector access a chat has, in the agent workspace, so its home files load. |
+| Script | Script | Runs a shell command in the agent's workspace and records its output. No model call. |
 
 <Note>
 A Reminder is the cheapest and most reliable option, because it never depends on the runtime. Text only and Agent pin the model you choose, so the schedule does not silently inherit a different default later.
@@ -47,10 +48,6 @@ A Reminder is the cheapest and most reliable option, because it never depends on
 ## Run history and controls
 
 Open a schedule to see its detail panel and run history.
-
-<img src="/docs/assets/readme/schedules.png" alt="Schedules page with suggestions, saved schedules and system tasks (heartbeat, memory upkeep)" width="100%" />
-
-*The Schedules page: suggestions, saved schedules, and system tasks such as heartbeat and memory upkeep.*
 
 - **Run now** fires the schedule immediately, even while it is paused. A once schedule is consumed when you run it manually.
 - **Pause** stops all timer firings. **Resume** brings them back.
@@ -78,7 +75,45 @@ The Schedules page also lists built-in tasks as read-only rows:
 
 ## Create a schedule from chat
 
-You can also just ask. Say something like "every weekday at 8, send me a briefing" and the agent creates the schedule through its built-in scheduling tools. It is tagged as created in chat, and the detail panel links back to the conversation it came from. If no model is given, an agent-created schedule runs on the model you last chatted with, unless the deployment sets a default.
+You can also just ask, the way the video at the top does:
+
+```text
+Every weekday at 8:00 am my time, give me a morning brief: the weather in Bengaluru
+today and the top 3 tech headlines from the web, each with a link. Set that up as an
+agent schedule called Morning brief.
+```
+
+The agent creates the schedule through its built-in scheduling tools. It is tagged as created in chat, and the detail panel links back to the conversation it came from. If no model is given, an agent-created schedule runs on the model you last chatted with, unless the deployment sets a default.
+
+## Playbook: Inbox cleanup
+
+The Schedules page features an **Inbox cleanup** playbook with sensible
+defaults: **Keep** reservations this month and bills from the last two months;
+**Clean up** promotions and unwanted notifications.
+
+<Frame caption="The Inbox cleanup playbook: Set up this schedule for me → flip the Keep / Clean up switches → Submit → saved.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/schedules-inbox-cleanup.jpg" src="/docs/assets/showcase/schedules-inbox-cleanup.mp4" />
+</Frame>
+
+<Steps>
+  <Step title="Set up this schedule for me">
+    Click it on the playbook card. Amiro opens a chat and renders the rules as
+    switches you can flip.
+  </Step>
+  <Step title="Pick your rules">
+    Turn on what to keep and what to clean up, then **Submit**.
+  </Step>
+  <Step title="Saved">
+    Amiro creates the **Inbox cleanup** schedule; it is listed under Your
+    schedules, marked *Created in chat*.
+  </Step>
+</Steps>
+
+<Note>
+The cleanup runs against your mailbox through a connector, so connect Gmail or
+Outlook first in [Connectors](/using/connectors) (Composio) before the first
+run.
+</Note>
 
 ## Related
 

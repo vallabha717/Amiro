@@ -1,115 +1,128 @@
 ---
 title: "Quickstart"
-description: "Install Amiro, finish the setup wizard, connect one provider, and send your first message in about five minutes."
+description: "Install Amiro, go through the setup chat, connect one provider, and get a real answer from the web in about five minutes."
 ---
 
-This is the shortest path from nothing to a reply. It uses the server installer,
-which works on Linux and macOS. If you would rather use the desktop app, see
-[Installation](/installation).
+This is the shortest path from nothing to a useful answer. It uses the server
+installer (Linux and macOS). For the desktop app, see
+[Installation](/installation): the steps after install are the same.
 
 <Info>
-You need a model provider to chat. Amiro ships no models and no default
-password. Connecting a provider is part of this walkthrough.
+You need one model provider. Amiro ships no models and no default password.
+The videos here use **OpenCode Go** with `muse-spark-1.2-contributor`; any
+provider in the catalog works the same way.
 </Info>
 
-<img src="/docs/assets/readme/demo-onboarding.gif" alt="Onboarding wizard: create the owner account, name the agent and pick its look and colour, then finish" width="100%" />
-
-*The setup wizard: account, agent, provider. Only the account step is required; the rest can wait.*
+<Frame caption="The whole first run, recorded on a fresh install: account, look, personality, provider key, web search, done.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/setup-first-run.jpg" src="/docs/assets/showcase/setup-first-run.mp4" />
+</Frame>
 
 <Steps>
   <Step title="Install Amiro">
-    Run the installer. It downloads the release for your machine, checks its
-    checksum, installs it under `~/.amiro`, and starts the server.
-
     ```bash
     curl -fsSL https://github.com/vallabha717/Amiro/releases/latest/download/install.sh | bash
     ```
 
-    To reach it over your network and keep it running across reboots, add
-    `--public --service`:
+    The installer picks the build for your OS and CPU, checks its SHA-256,
+    installs under `~/.amiro/app/<version>`, links `amiro` into
+    `~/.local/bin`, and starts the server. It prints the address to open
+    (usually `http://127.0.0.1:3000`).
+
+    On a VM you reach over the network, and to keep it running across reboots:
 
     ```bash
     curl -fsSL https://github.com/vallabha717/Amiro/releases/latest/download/install.sh | bash -s -- --public --service
     ```
-
-    The installer prints the address to open. With the plain command it is
-    usually `http://127.0.0.1:3000`.
   </Step>
 
-  <Step title="Open Amiro and create your account">
-    Open the printed address in a browser. On a fresh install the setup wizard
-    starts at the account step. Choose an email or username and a password.
-
-    Your password needs at least 12 characters, including a letter and at least
-    one number or symbol. There is no sign-up and no default password: this
-    first account is the owner.
+  <Step title="Create the owner account">
+    Open the address and click **Get started**. Enter what the agent should call
+    you, an email or username, and a password of at least 12 characters. There
+    is no sign-up and no cloud account: this is the only account, the owner.
 
     <Tip>
-    Amiro has no email recovery. Keep the owner password somewhere safe, or
-    reset it later with `amiro reset-password` on the machine running Amiro.
+    There is no email recovery. If you forget the password, run
+    `amiro reset-password` on the machine running Amiro.
     </Tip>
   </Step>
 
-  <Step title="Give your agent a look">
-    Pick a name for your agent, a plush character (Headphones, Sprout, Starfish,
-    or Dreamer), and a colour. You can skip this and change it any time under
-    **Agent, Customize**.
+  <Step title="Follow the setup chat">
+    Amiro now sets itself up as a chat, one step at a time, and you answer each
+    step with a card:
+
+    | Step | What you do | Can skip? |
+    | --- | --- | --- |
+    | Look | Pick a plush shape and a colour | Yes |
+    | Default prompt | Read `IDENTITY.md` and `SOUL.md`, the instructions it works from | Yes |
+    | Personality | Pick a preset (Warm Companion, Sharp Operator…) | Yes |
+    | Brain | Search the provider catalog, pick one, connect it | Yes, but you need it to chat |
+    | Web search | Bing and DuckDuckGo need no key; Brave, Tavily, Exa… take one | Yes |
+    | Connectors | Composio key or an MCP server | Yes |
+    | Voice and listening | Speech engines for read-aloud, dictation and live voice | Yes |
   </Step>
 
-  <Step title="Connect your first provider">
-    On the **Brain** step, connect one AI provider. The fastest option is to
-    paste an API key for Anthropic, OpenAI, OpenRouter, or Google Gemini.
-
-    For subscription sign-ins and local models, open **Subscriptions, local
-    models and more providers** and follow the prompt. You can also connect
-    providers later in the admin providers page, or from the composer by typing
-    `/login`.
-
-    ```text
-    /login
-    ```
-
-    <Note>
-    API keys and authorization codes are entered in the dedicated connection
-    panel, never as ordinary chat messages.
-    </Note>
+  <Step title="Connect your provider">
+    On **Brain**, type the provider's name (for example *OpenCode Go*), pick it
+    and paste its API key into the masked field, then **Save key**. The key goes
+    straight to the encrypted vault. It is never shown again and never enters
+    the chat. Subscription sign-ins (OAuth, device code) and local
+    OpenAI-compatible endpoints are in the same catalog.
   </Step>
 
-  <Step title="Send your first message">
-    Open a new chat and type a message. Pick a model from the chat toolbar if
-    the default is not the one you want. The reply streams as it is written.
+  <Step title="Pick a keyless web search">
+    On **Web search**, click **Bing Search** or **DuckDuckGo**. That is all it
+    takes for Amiro to research on the live web from a home connection. On a
+    cloud VM, the keyless engines often get a challenge page and no results:
+    add a Brave (free tier) or Tavily key there instead.
+  </Step>
+
+  <Step title="Choose your default model">
+    Open **Admin → Models & Providers**. On the provider card, click **Set
+    default** next to the model you want (here `muse-spark-1.2-contributor`),
+    then **Models & test → Run model test** to check it answers.
+
+    <Frame caption="Default model on the provider card, a model test, and the composer's model picker.">
+      <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/setup-model.jpg" src="/docs/assets/showcase/setup-model.mp4" />
+    </Frame>
+  </Step>
+
+  <Step title="Ask something real">
+    Open a new chat and try:
 
     ```text
-    Summarize what you can help me with, in three lines.
+    Search the web and compare Obsidian, Logseq and Joplin for personal notes today.
+    Give me a table and cite the pages you used.
     ```
 
-    That is it. The next useful things to try are
-    [personalizing your agent](/using/personalizing-your-agent) and
-    [putting a prompt on a schedule](/using/schedules).
+    <Frame caption="A real answer from the live web, with a table and sources.">
+      <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/research.jpg" src="/docs/assets/showcase/research.mp4" />
+    </Frame>
   </Step>
 </Steps>
 
-<img src="/docs/assets/readme/demo-chat.gif" alt="A chat reply streaming in, with a table and a numbered list" width="100%" />
+## If you skipped a step
 
-*Your first reply streams as it is written, with Markdown, tables, and lists.*
-
-## If a step is missing
-
-- The wizard lets you skip your agent and your provider. Each skipped step
-  appears as a **Finish setting up** card at the bottom of the sidebar, with a
-  link that takes you back.
-- To run the wizard again, go to **Admin, General, Setup, Run setup again**.
-- To reach a VM's Amiro safely, forward the port instead of exposing it:
-  `ssh -L 3000:127.0.0.1:3000 you@your-vm`, then open
-  `http://127.0.0.1:3000`.
+- Each skipped step leaves a reminder card at the bottom of the sidebar that
+  links straight back to it.
+- Run the whole setup chat again any time from **Admin → General**.
+- Connect providers any time in **Admin → Models & Providers**, or type `/login`
+  in the composer.
+- Reach a VM's Amiro without exposing it:
+  `ssh -L 3000:127.0.0.1:3000 you@your-vm`, then open `http://127.0.0.1:3000`.
 
 ## Next steps
 
 <CardGroup cols={2}>
-  <Card title="Start chatting" icon="comments" href="/using/chatting">
-    Models, attachments, and day-to-day chat.
+  <Card title="See it in action" icon="play" href="/showcase">
+    Every feature, recorded doing real work.
   </Card>
-  <Card title="Personalize your agent" icon="wand-magic-sparkles" href="/using/personalizing-your-agent">
-    Name, look, personality sliders, and voice.
+  <Card title="Everyday tasks" icon="list-checks" href="/using/everyday-tasks">
+    Research, documents and charts, with prompts to copy.
+  </Card>
+  <Card title="Schedules" icon="calendar-clock" href="/using/schedules">
+    A morning brief every weekday, or an inbox cleanup.
+  </Card>
+  <Card title="Connectors" icon="plug" href="/using/connectors">
+    MCP servers and 1,000+ apps.
   </Card>
 </CardGroup>
