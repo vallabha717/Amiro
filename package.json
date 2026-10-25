@@ -103,7 +103,7 @@
     "ioredis": "^5.8.2",
     "json-schema": "^0.4.0",
     "jszip": "3.10.1",
-    "katex": "^0.16.27",
+    "katex": "^0.18.2",
     "lucide-react": "^0.486.0",
     "mammoth": "1.8.0",
     "mermaid": "^11.12.2",
