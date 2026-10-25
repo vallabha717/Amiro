@@ -352,9 +352,23 @@ of it.
 | `amiro service install [--system]` | Start at boot (`--system` installs a system unit with sudo) |
 | `amiro config [edit]` | Show `amiro.toml` with secrets hidden, or open it in `$EDITOR` |
 | `amiro reset-password` | Set a new owner password (signs out every session) |
-| `amiro update [vX.Y.Z]` | Install the latest (or a given) release and restart |
+| `amiro update [vX.Y.Z]` | Install the latest (or a given) release and restart (or click **Update** in Admin → General) |
 | `amiro doctor` | Check the install, including OpenSSL 3 on Linux |
 | `amiro uninstall [--purge]` | Remove the app (`--purge` also removes all data) |
+
+### Updating
+
+**Admin → General → Version & updates** shows the version you run, the latest
+release and its notes, and one **Update** button that matches your install:
+
+| Build | Update |
+| --- | --- |
+| Server (`install.sh`) | Runs `amiro update`, checks the SHA-256, keeps two versions for rollback, restarts. Optional: install new releases automatically while idle |
+| Desktop app | Downloads the signed update with a progress bar, installs, relaunches (a `.deb` install links to the new `.deb`) |
+| Phones and other browsers | Nothing to install: they use the server's screens and offer a reload after it updates |
+
+A background check every few hours posts a Bell notification once per new
+version. See [Updates](settings/updates.mdx).
 
 Amiro has no email recovery, because it runs on your machine. If you forget the
 password, run `amiro reset-password` on the machine running Amiro. For the
@@ -471,6 +485,10 @@ startup, not silently ignored.
 | `AMIRO_SESSION_TTL_DAYS` | `7` | Sign-in lifetime in days (`0` = until sign-out) |
 | `AMIRO_DEVICE_SESSION_TTL_DAYS` | `0` | Paired-device sign-in lifetime in days (`0` = until removed in Settings → Devices) |
 | `AMIRO_REMOTE_PORT` | `8790` | Port of the phone-access listener (Settings → Devices) |
+| `AMIRO_UPDATE_CHECK_INTERVAL` | `21600` | Seconds between background update checks |
+| `AMIRO_NO_UPDATE_CHECK` | unset | `1` turns the background update check off (General still checks on demand) |
+| `AMIRO_REPO` | `vallabha717/Amiro` | GitHub repository updates come from |
+| `AMIRO_UPDATE_COMMAND` | `amiro` next to `amiro-backend` | Updater run as `<command> update <version>` |
 | `AMIRO_BROWSE_ROOTS` | `/root,/home,/srv,/opt,/var/www,/tmp` | Roots the server-side folder picker may browse |
 | `AMIRO_WORKSPACE_ROOT` | `$AMIRO_HOME/workspace` | Default workspace for file, edit, search and git tools |
 | `AMIRO_TOOL_PROFILE` | on | Tools run with the owner's permissions. `none` = chat without tools |
@@ -698,8 +716,7 @@ per-action tool approval and permission prompts, checkpoint restore, legacy
 skill generation, and remote URL ingestion for uploads.
 
 **Known gaps:** the macOS app is ad-hoc signed and not notarized, and the
-Windows installer is unsigned. There is no auto-update feed for the desktop app
-yet; `amiro update` covers servers. Amiro is single-operator, not multi-tenant.
+Windows installer is unsigned. Amiro is single-operator, not multi-tenant.
 Each external provider still needs its own authorization and network access,
 and failures surface as errors.
 

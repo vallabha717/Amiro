@@ -17,6 +17,32 @@ last one as its own version). New work accumulates under `Unreleased`.
 
 ## [Unreleased]
 
+### Added
+
+- **Self-update for every build**, in Admin → General → Version & updates:
+  - Servers installed with `install.sh` update in one click through
+    `amiro update`, with the release notes, live progress, and a result that
+    survives the restart (*Updated to vX*, or why it failed with the installer
+    output and **Try again**).
+  - The desktop app updates itself: signed updates (`tauri-plugin-updater`)
+    download with a progress bar, install and relaunch. Releases now build the
+    desktop apps and publish `latest.json` with `.sig` files
+    (`scripts/updater-manifest.mjs`). A `.deb` install links to the new `.deb`.
+  - Phones and other browsers get a *Reload* banner when the server they use
+    has been updated (`/health` now reports the version).
+  - A background check every few hours (`autoCheck`, on by default) posts one
+    Bell notification per new version; `autoInstall` (off by default) installs
+    server updates by itself while no chat or schedule is running.
+  - API: `GET/POST /api/system/update`, `GET /api/system/update/job`,
+    `PUT /api/system/update/settings`; docs: `settings/updates.mdx`.
+
+### Fixed
+
+- One-click updates on servers installed as a service (`install.sh --service`)
+  no longer leave the old version running: the update now goes through
+  `amiro update`, which restarts the systemd/launchd service, instead of
+  running `install.sh`, whose `amiro restart` could not stop a service.
+
 ## [1.27.0] - 2026-10-25
 
 ### Documentation

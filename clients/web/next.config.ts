@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import type { NextConfig } from "next";
 
@@ -6,6 +7,12 @@ import type { NextConfig } from "next";
 // The web app lives in clients/web, but its dependencies (node_modules) and
 // lockfile are at the repo root, so that is the root Turbopack must see.
 const PROJECT_ROOT = path.join(import.meta.dirname, "../..");
+// The release version this UI was built for (root package.json). Open tabs
+// compare it with the server's /health version to offer a reload after an
+// update (components/updates/reload-banner.tsx).
+const AMIRO_VERSION: string = JSON.parse(
+  fs.readFileSync(path.join(PROJECT_ROOT, "package.json"), "utf8"),
+).version;
 
 export default () => {
   const isDev = process.env.NODE_ENV === "development";
@@ -64,6 +71,7 @@ export default () => {
     env: {
       NO_HTTPS: process.env.NO_HTTPS,
       NEXT_PUBLIC_BACKEND_URL: isDev ? "" : process.env.NEXT_PUBLIC_BACKEND_URL,
+      NEXT_PUBLIC_AMIRO_VERSION: AMIRO_VERSION,
     },
     // authInterrupts (forbidden()/unauthorized()) and serverActions are
     // both RSC-server features -- static export has no server, and Phase 7

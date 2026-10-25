@@ -1,0 +1,78 @@
+---
+title: "Updates"
+description: "Keep Amiro up to date from Admin → General: one-click server updates, a self-updating desktop app, automatic installs, and a reload banner for phones and open tabs."
+---
+
+Everything about updating lives in **Admin → General → Version & updates**:
+the version you run, the latest release with its notes, an **Update** button
+that matches how you installed Amiro, and the automatic-update switches.
+
+## How each build updates
+
+| You run Amiro as | What **Update** does |
+| --- | --- |
+| A server or VM installed with `install.sh` | Runs `amiro update <version>`: downloads the release, checks its SHA-256, keeps the two previous versions for a rollback, and restarts Amiro the way it was started (systemd or launchd service, or the background process). |
+| The desktop app (macOS, Windows, Linux AppImage) | Downloads the signed update with a progress bar, verifies its signature, installs it and relaunches the app. The server inside the app updates with it. |
+| The desktop app from a `.deb` | apt manages it, so the card links to the new `.deb` (`sudo apt install ./amiro-desktop-linux-x86_64.deb`). |
+| A source checkout or a container | It cannot replace itself; the card says to update it the way you installed it (`git pull`, then `pnpm build` and `scripts/build-native.sh`). |
+| A phone or another browser | Nothing to install: it uses the server's screens. After the server updates, an open tab shows **Amiro was updated to vX. Reload**. |
+
+## Update a server
+
+<Steps>
+  <Step title="Open Admin → General">
+    **Version & updates** shows **Current** and **Latest**. When a newer
+    release exists, the badge says **Update available** and **What's new**
+    opens its release notes.
+  </Step>
+  <Step title="Click Update to vX">
+    The card shows *Downloading and installing…*, then *Restarting on vX…*.
+    The page reconnects by itself when the server is back.
+  </Step>
+  <Step title="Done, or what went wrong">
+    *Updated to vX* when the server runs the new version. If anything fails,
+    the card says so, keeps you on the version you had, and shows the
+    **Installer output**; **Try again** re-runs it. The result is saved on the
+    server, so it is still there after a reload.
+  </Step>
+</Steps>
+
+The same thing from a terminal on the server:
+
+```bash
+amiro update            # the latest release
+amiro update v1.27.0    # a specific one
+```
+
+## Update the desktop app
+
+In the desktop app, **General** has a **Desktop app** row. **Download and
+install vX** shows the download progress, installs the update and restarts
+Amiro. Updates are signed: a download whose signature does not match is
+refused and the app stays on its version.
+
+<Note>
+Self-update arrives with the release after v1.27.0. A desktop app on v1.27.0
+or older updates itself from then on after you install the new version once by
+hand from the [releases page](https://github.com/vallabha717/Amiro/releases/latest).
+</Note>
+
+## Automatic updates
+
+| Switch | Default | What it does |
+| --- | --- | --- |
+| **Check for updates automatically** | On | Checks GitHub every few hours. A Bell notification tells you once per new version. |
+| **Install server updates automatically** | Off | On an `install.sh` server, installs a new release by itself, but only while no chat turn or schedule is running. The Bell tells you when it is done. A version that failed once is not retried automatically. |
+
+## Settings for operators
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `AMIRO_UPDATE_CHECK_INTERVAL` | `21600` (6 h) | Seconds between background checks |
+| `AMIRO_NO_UPDATE_CHECK` | unset | `1` turns the background checker off (the General page still checks on demand) |
+| `AMIRO_REPO` | `vallabha717/Amiro` | GitHub repository releases come from |
+| `AMIRO_UPDATE_COMMAND` | the `amiro` next to `amiro-backend` | Absolute path of the updater run as `<command> update <version>` |
+| `AMIRO_UPDATE_API_BASE` | `https://api.github.com` | GitHub API base, for a mirror |
+
+The update check needs outbound HTTPS to `api.github.com` and `github.com`.
+Offline, the card says *Could not check* and Amiro keeps working.

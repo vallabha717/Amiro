@@ -200,7 +200,7 @@ Afterwards, `amiro` manages it:
 | `amiro service install [--system]` | Start at boot (a systemd user service, or launchd on macOS). `--system` installs a system unit with sudo. |
 | `amiro config [edit]` | Show `amiro.toml` with secrets hidden, or open it in `$EDITOR`. |
 | `amiro reset-password` | Set a new owner password. |
-| `amiro update [vX.Y.Z]` | Install the latest (or given) release and restart. |
+| `amiro update [vX.Y.Z]` | Install the latest (or given) release and restart. The same as **Update** in Admin → General, which also shows the release notes and the installer output, and can install updates automatically while Amiro is idle. |
 | `amiro doctor` | Check the install, including OpenSSL 3, which the agent runtime needs on Linux. |
 | `amiro uninstall [--purge]` | Remove the app. `--purge` also removes all data. |
 

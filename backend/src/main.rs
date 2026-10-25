@@ -38,8 +38,10 @@ fn unauthorized(msg: &str) -> (StatusCode, Json<serde_json::Value>) {
     (StatusCode::UNAUTHORIZED, Json(json!({"error": msg})))
 }
 
+/// Liveness plus the running version: open tabs and phones compare it with
+/// the UI they loaded and offer a reload after the server updates.
 async fn health() -> Json<serde_json::Value> {
-    Json(json!({"status":"ok"}))
+    Json(json!({"status":"ok","version":backend::updates::current_version()}))
 }
 
 /// `host[:port]` of a URL, with the scheme's default port filled in so
@@ -727,6 +729,7 @@ async fn serve() -> anyhow::Result<()> {
     backend::devices::load_remote_access(&state).await;
     let remote = spawn_remote_access(remote_app);
     let heartbeat = backend::heartbeat::spawn_heartbeat(state.clone());
+    let updates = backend::updates::spawn_update_checker(state.clone());
     let scheduler = backend::schedules::spawn_scheduler(state);
     tracing::info!(addr=%addr, "listening");
     // Peer addresses feed the device approval screen (backend::devices).
@@ -736,6 +739,7 @@ async fn serve() -> anyhow::Result<()> {
     )
     .await?;
     scheduler.abort();
+    updates.abort();
     heartbeat.abort();
     remote.abort();
     Ok(())

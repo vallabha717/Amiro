@@ -58,6 +58,18 @@
       "webviewInstallMode": {
         "type": "downloadBootstrapper"
       }
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDA4NEU4MUVCQzI3QzE1RkEKUldUNkZYekM2NEZPQ0N5b2Y4alhPV1NKMnR1UllRa3hQeDlSczl4VjJ2QVNRQmtnRDJmWHA4N0oK",
+      "endpoints": [
+        "https://github.com/vallabha717/Amiro/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

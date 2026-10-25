@@ -5,37 +5,35 @@
 //! dependencies. Values that the host cannot report (non-Linux, restricted
 //! `/proc`) come back as `null` and the UI shows "Unavailable".
 //!
-//! Update support for the General page's one-click update:
+//! Updates for the General page (`crate::updates` holds the logic):
 //!
-//! * `GET /api/system/update` (admin): compares the running version with
-//!   the latest GitHub release and reports whether an update is available.
-//!   Network/API failures are reported as `checkFailed`, never as errors,
-//!   so the General page keeps working offline.
-//! * `POST /api/system/update` (admin): replays `amiro update` detached --
-//!   downloads the release `install.sh` to a temp file and executes it as
-//!   `bash <file> -s -- [--version <v>]` with the version passed as a
-//!   single argv element after strict validation. The server restarts
-//!   itself; the response returns first.
-//!
-//! Updates only make sense for `install.sh`-managed servers
-//! (`local-server` / `vm-remote`). The desktop build has no auto-update
-//! feed, so the UI offers the release download link instead of the button.
+//! * `GET /api/system/update[?refresh=1]` (admin): versions, the latest
+//!   release with its notes, how this build updates (`installer`, `desktop`
+//!   or `manual`), the owner's settings and the last update job. Network
+//!   failures come back as `checkFailed`, never as errors.
+//! * `POST /api/system/update` (admin): starts `amiro update <version>` on
+//!   an `install.sh` server; 409 for desktop/source builds or when a job runs.
+//! * `GET /api/system/update/job` (admin): the job and the version answering
+//!   now, polled while the server restarts.
+//! * `PUT /api/system/update/settings` (admin): `autoCheck`, `autoInstall`.
 
 use std::net::IpAddr;
-use std::sync::OnceLock;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use axum::extract::State;
-use axum::routing::get;
+use axum::extract::{Query, State};
+use axum::routing::{get, put};
 use axum::{Json, Router};
 use serde_json::{json, Value};
 
 use crate::state::{ApiError, AppState, AuthUser};
+use crate::updates;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/system", get(get_system))
         .route("/api/system/update", get(get_update).post(post_update))
+        .route("/api/system/update/job", get(get_update_job))
+        .route("/api/system/update/settings", put(put_update_settings))
 }
 
 const MB: f64 = 1024.0 * 1024.0;
@@ -271,7 +269,7 @@ async fn get_system(
 }
 
 // ---------------------------------------------------------------------------
-// One-click update (General page)
+// Updates (General page) -- the logic lives in `crate::updates`
 // ---------------------------------------------------------------------------
 
 fn require_admin(user: &AuthUser) -> Result<(), ApiError> {
@@ -284,173 +282,19 @@ fn require_admin(user: &AuthUser) -> Result<(), ApiError> {
     Ok(())
 }
 
-fn repo_slug() -> String {
-    std::env::var("AMIRO_REPO").unwrap_or_else(|_| "vallabha717/Amiro".to_string())
+#[derive(serde::Deserialize)]
+struct UpdateQuery {
+    refresh: Option<String>,
 }
-
-/// "v1.26.0" -> (1, 26, 0, None). Strict character allowlist for prerelease
-/// so dot-segments and slashes can never traverse the GitHub URL.
-fn parse_version(raw: &str) -> Option<(u64, u64, u64, Option<String>)> {
-    let stripped = raw.trim().strip_prefix(['v', 'V']).unwrap_or(raw.trim());
-    let (core, prerelease) = match stripped.split_once('-') {
-        Some((core, pre)) if !pre.is_empty() => {
-            // Strictly alphanumeric, hyphens, and dots between alphanumeric components. No slashes or path navigation.
-            if !pre.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.') || pre.contains("..") || pre.starts_with('.') || pre.ends_with('.') {
-                return None;
-            }
-            (core, Some(pre.to_string()))
-        }
-        _ => (stripped, None),
-    };
-    let mut parts = core.split('.');
-    let major: u64 = parts.next()?.parse().ok()?;
-    let minor: u64 = parts.next()?.parse().ok()?;
-    let patch: u64 = parts.next()?.parse().ok()?;
-    if parts.next().is_some() {
-        return None;
-    }
-    Some((major, minor, patch, prerelease))
-}
-
-/// -1 / 0 / 1. A prerelease is older than the same release; unparseable
-/// input compares as 0 (never newer, never older).
-fn compare_versions(a: &str, b: &str) -> i8 {
-    let (pa, pb) = match (parse_version(a), parse_version(b)) {
-        (Some(pa), Some(pb)) => (pa, pb),
-        _ => return 0,
-    };
-    for i in 0..3 {
-        let (x, y) = match i {
-            0 => (pa.0, pb.0),
-            1 => (pa.1, pb.1),
-            _ => (pa.2, pb.2),
-        };
-        if x != y {
-            return if x < y { -1 } else { 1 };
-        }
-    }
-    match (&pa.3, &pb.3) {
-        (None, None) => 0,
-        (None, Some(_)) => 1,
-        (Some(_), None) => -1,
-        (Some(x), Some(y)) => {
-            if x == y {
-                0
-            } else if x < y {
-                -1
-            } else {
-                1
-            }
-        }
-    }
-}
-
-fn http_client() -> &'static reqwest::Client {
-    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
-    CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
-            .timeout(Duration::from_secs(10))
-            .user_agent("amiro-update-check")
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new())
-    })
-}
-
-struct CachedCheck {
-    at: Instant,
-    repo: String,
-    current: String,
-    result: Value,
-}
-
-static UPDATE_CHECK_CACHE: OnceLock<std::sync::Mutex<Option<CachedCheck>>> =
-    OnceLock::new();
-
-fn update_cache() -> &'static std::sync::Mutex<Option<CachedCheck>> {
-    UPDATE_CHECK_CACHE.get_or_init(|| std::sync::Mutex::new(None))
-}
-
-const UPDATE_CHECK_TTL: Duration = Duration::from_secs(10 * 60);
 
 async fn get_update(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     user: AuthUser,
+    Query(query): Query<UpdateQuery>,
 ) -> Result<Json<Value>, ApiError> {
     require_admin(&user)?;
-    let current = env!("CARGO_PKG_VERSION").to_string();
-    let repo = repo_slug();
-
-    if let Ok(guard) = update_cache().lock() {
-        if let Some(hit) = guard.as_ref() {
-            if hit.repo == repo
-                && hit.current == current
-                && hit.at.elapsed() < UPDATE_CHECK_TTL
-            {
-                return Ok(Json(hit.result.clone()));
-            }
-        }
-    }
-
-    let result = match check_github_release(&repo, &current).await {
-        Ok(v) => v,
-        Err(_) => json!({
-            "current": current,
-            "latest": null,
-            "updateAvailable": false,
-            "releaseUrl": format!("https://github.com/{repo}/releases"),
-            "publishedAt": null,
-            "checkFailed": true,
-            "noReleases": false,
-        }),
-    };
-
-    if let Ok(mut guard) = update_cache().lock() {
-        *guard = Some(CachedCheck {
-            at: Instant::now(),
-            repo,
-            current,
-            result: result.clone(),
-        });
-    }
-    Ok(Json(result))
-}
-
-async fn check_github_release(repo: &str, current: &str) -> Result<Value, String> {
-    let url = format!("https://api.github.com/repos/{repo}/releases/latest");
-    let resp = http_client()
-        .get(&url)
-        .header("Accept", "application/vnd.github+json")
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    if resp.status() == axum::http::StatusCode::NOT_FOUND {
-        return Ok(json!({
-            "current": current,
-            "latest": null,
-            "updateAvailable": false,
-            "releaseUrl": format!("https://github.com/{repo}/releases"),
-            "publishedAt": null,
-            "checkFailed": false,
-            "noReleases": true,
-        }));
-    }
-    if !resp.status().is_success() {
-        return Err(format!("GitHub API responded {}", resp.status()));
-    }
-    let body: Value = resp.json().await.map_err(|e| e.to_string())?;
-    let latest = body
-        .get("tag_name")
-        .and_then(|t| t.as_str())
-        .ok_or_else(|| "release has no tag_name".to_string())?;
-    Ok(json!({
-        "current": current,
-        "latest": latest,
-        "updateAvailable": compare_versions(current, latest) < 0,
-        "releaseUrl": body.get("html_url").and_then(|u| u.as_str()).unwrap_or(&format!("https://github.com/{repo}/releases/latest")),
-        "publishedAt": body.get("published_at").cloned().unwrap_or(Value::Null),
-        "checkFailed": false,
-        "noReleases": false,
-    }))
+    let force = matches!(query.refresh.as_deref(), Some("1") | Some("true"));
+    Ok(Json(updates::status(&state, force).await))
 }
 
 #[derive(serde::Deserialize)]
@@ -459,114 +303,42 @@ struct UpdateRequest {
 }
 
 async fn post_update(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     user: AuthUser,
     body: Option<Json<UpdateRequest>>,
 ) -> Result<Json<Value>, ApiError> {
     require_admin(&user)?;
-    let version = body.and_then(|b| b.0.version).map(|v| v.trim().to_string());
-    if let Some(ref v) = version {
-        if parse_version(v).is_none() {
-            return Err(ApiError(
-                axum::http::StatusCode::BAD_REQUEST,
-                format!("refusing to update to unparseable version: {v}"),
-            ));
-        }
-    }
-
-    // Download install.sh first (fail fast on network errors), then run it
-    // detached so this response returns before the restart kills us.
-    // `bash` is argv-executed -- no shell string anywhere -- and the version
-    // travels as a single validated argv element.
-    let repo = repo_slug();
-    let url = match &version {
-        Some(v) => format!("https://github.com/{repo}/releases/download/{v}/install.sh"),
-        None => format!("https://github.com/{repo}/releases/latest/download/install.sh"),
-    };
-    let script = http_client()
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| ApiError(axum::http::StatusCode::BAD_GATEWAY, format!("could not download installer: {e}")))?
-        .error_for_status()
-        .map_err(|e| ApiError(axum::http::StatusCode::BAD_GATEWAY, format!("could not download installer: {e}")))?
-        .text()
-        .await
-        .map_err(|e| ApiError(axum::http::StatusCode::BAD_GATEWAY, format!("could not download installer: {e}")))?;
-    if !script.starts_with("#!/usr/bin/env bash") {
-        return Err(ApiError(
-            axum::http::StatusCode::BAD_GATEWAY,
-            "downloaded installer failed the sanity check".to_string(),
-        ));
-    }
-    let dir = std::env::temp_dir().join(format!("amiro-update-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).map_err(|e| ApiError(axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let script_path = dir.join("install.sh");
-    std::fs::write(&script_path, script).map_err(|e| ApiError(axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(&script_path).map_err(|e| ApiError(axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?.permissions();
-        perms.set_mode(0o755);
-        std::fs::set_permissions(&script_path, perms).map_err(|e| ApiError(axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    }
-
-    let mut cmd = tokio::process::Command::new("bash");
-    cmd.arg(&script_path);
-    if let Some(ref v) = version {
-        cmd.arg("--version").arg(v);
-    }
-    // Detached: the installer restarts the server, so it must outlive us.
-    // A fresh process group (std-only, no libc) keeps server shutdown
-    // signals from reaching the installer. stdio is dropped.
-    #[cfg(unix)]
-    {
-        // tokio::process::Command::process_group is an inherent method
-        // (no trait import needed). On platforms without it, tokio exposes
-        // the std trait under tokio::process.
-        cmd.process_group(0);
-    }
-    let child = cmd
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| ApiError(axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("could not start update: {e}")))?;
+    let version = body.and_then(|b| b.0.version).filter(|v| !v.trim().is_empty());
+    let job = updates::start(&state, version, "manual").await?;
     Ok(Json(json!({
         "started": true,
-        "version": version.unwrap_or_else(|| "latest".to_string()),
-        "pid": child.id(),
+        "version": job["target"].clone(),
+        "job": job,
     })))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// Cheap poll while an update runs: the job plus the version answering now
+/// (it changes when the restarted server comes back).
+async fn get_update_job(
+    State(state): State<AppState>,
+    user: AuthUser,
+) -> Result<Json<Value>, ApiError> {
+    require_admin(&user)?;
+    Ok(Json(json!({
+        "current": updates::current_version(),
+        "job": updates::load_job(&state).await,
+    })))
+}
 
-    #[test]
-    fn parses_plain_and_v_prefixed_versions() {
-        assert_eq!(
-            parse_version("v1.26.0"),
-            Some((1, 26, 0, None))
-        );
-        assert_eq!(
-            parse_version("1.26.0-rc.1"),
-            Some((1, 26, 0, Some("rc.1".to_string())))
-        );
-        assert_eq!(parse_version("dev"), None);
-        assert_eq!(parse_version("1.26"), None);
-        assert_eq!(parse_version("1.26.0.1"), None);
-    }
-
-    #[test]
-    fn newer_releases_compare_greater() {
-        assert_eq!(compare_versions("1.26.0", "v1.27.0"), -1);
-        assert_eq!(compare_versions("v1.27.0", "1.26.0"), 1);
-        assert_eq!(compare_versions("1.26.0", "1.26.0"), 0);
-        assert_eq!(compare_versions("1.26.0-rc.1", "1.26.0"), -1);
-        assert_eq!(compare_versions("1.26.0", "1.26.0-rc.1"), 1);
-        // Unparseable input never claims newer or older.
-        assert_eq!(compare_versions("dev", "1.26.0"), 0);
-        assert_eq!(compare_versions("1.26.0", "dev"), 0);
-    }
+async fn put_update_settings(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Json(patch): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    require_admin(&user)?;
+    let settings = updates::save_settings(&state, &patch).await?;
+    Ok(Json(json!({
+        "autoCheck": settings.auto_check,
+        "autoInstall": settings.auto_install,
+    })))
 }

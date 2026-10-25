@@ -1948,5 +1948,75 @@
       "noAddress": "No network address found for this Amiro. Use the address you use to reach it.",
       "qrAlt": "QR code with this Amiro's address"
     }
+  },
+  "Updates": {
+    "title": "Version & updates",
+    "description": "Keep Amiro up to date: this server, the desktop app, and every phone or browser that uses it.",
+    "status": {
+      "checking": "Checking…",
+      "checkFailed": "Could not check",
+      "noReleases": "No releases yet",
+      "available": "Update available: {version}",
+      "upToDate": "Up to date"
+    },
+    "current": "Current",
+    "latest": "Latest",
+    "checkedAt": "Checked {time}",
+    "whatsNew": "What's new in {version}",
+    "checkNow": "Check now",
+    "checkFailedHint": "The release check needs internet access to github.com. Amiro keeps working; try again later.",
+    "server": {
+      "title": "Server",
+      "update": "Update to {version}",
+      "installerHint": "Runs the same amiro update as the terminal: it checks the download's SHA-256, keeps the two previous versions for a rollback, and restarts Amiro.",
+      "manual": "This server runs from a source checkout or a container, so it cannot update itself. Update it the way you installed it: for a checkout, git pull, then pnpm build and scripts/build-native.sh.",
+      "insideDesktop": "The server runs inside the desktop app and updates with it."
+    },
+    "job": {
+      "installing": "Downloading and installing {version}…",
+      "restarting": "Restarting on {version}… this page reconnects by itself.",
+      "succeeded": "Updated to {version}.",
+      "failed": "The update to {version} failed.",
+      "auto": "(automatic)",
+      "log": "Installer output",
+      "retry": "Try again",
+      "reload": "Reload now",
+      "reloadHint": "Reload to load the new version's screens."
+    },
+    "desktop": {
+      "title": "Desktop app",
+      "check": "Check for desktop updates",
+      "upToDate": "The desktop app is up to date ({version}).",
+      "available": "Desktop {version} is available.",
+      "install": "Download and install {version}",
+      "downloading": "Downloading… {percent}%",
+      "downloadingUnknown": "Downloading…",
+      "installing": "Installing… Amiro restarts by itself.",
+      "deb": "This app was installed from a .deb package, which apt manages. Download the new .deb and install it with sudo apt install.",
+      "debLink": "Download {version}",
+      "error": "Could not update the desktop app: {error}",
+      "checkError": "Could not check for desktop updates: {error}"
+    },
+    "settings": {
+      "title": "Automatic updates",
+      "autoCheck": "Check for updates automatically",
+      "autoCheckHint": "Every few hours. A Bell notification tells you when a new version is out.",
+      "autoInstall": "Install server updates automatically",
+      "autoInstallHint": "Only while no chat or schedule is running. The Bell tells you when it is done.",
+      "autoInstallUnavailable": "Only for servers installed with install.sh.",
+      "saved": "Saved",
+      "saveFailed": "Could not save: {error}"
+    },
+    "devicesNote": "Phones and other browsers use this server's screens: after an update they offer a reload.",
+    "toast": {
+      "started": "Updating to {version}. The server restarts; this page reconnects by itself.",
+      "startFailed": "Could not start the update: {error}",
+      "checkFailed": "Could not reach GitHub to check for updates."
+    },
+    "banner": {
+      "text": "Amiro was updated to {version}. Reload to use the new version.",
+      "reload": "Reload",
+      "dismiss": "Dismiss"
+    }
   }
 }

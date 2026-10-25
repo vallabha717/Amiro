@@ -5,6 +5,7 @@ import { AppSidebar } from "@/components/layouts/app-sidebar";
 import { AppHeader } from "@/components/layouts/app-header";
 import { AssistantDesktopPreview } from "@/components/desktop-preview/assistant-desktop-preview";
 import { AgentScopeBanner } from "@/components/team/agent-scope-banner";
+import { ReloadBanner } from "@/components/updates/reload-banner";
 import { legacyAgentRedirect } from "@/components/team/team-paths";
 import { useAgentScope } from "@/lib/backend/agent-scope";
 
@@ -96,6 +97,7 @@ function ChatLayoutInner({ children }: { children: React.ReactNode }) {
             className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border bg-background shadow-panel"
           >
             <AgentScopeBanner />
+            <ReloadBanner />
             <AppHeader />
             <AssistantDesktopPreview />
             {/* Keyed by the agent scope: switching whose settings these are

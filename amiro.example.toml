@@ -76,3 +76,7 @@
 # [env]
 # Anything else, copied into the environment verbatim.
 # RUST_LOG = "info"
+# Updates (Admin → General → Version & updates; the switches live there):
+# AMIRO_UPDATE_CHECK_INTERVAL = "21600"   # seconds between background checks
+# AMIRO_NO_UPDATE_CHECK = "1"             # no background checks at all
+# AMIRO_REPO = "vallabha717/Amiro"        # where releases come from

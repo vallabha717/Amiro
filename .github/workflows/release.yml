@@ -1,14 +1,17 @@
 name: Release
 
 # One release = server archives for install.sh (the web/VM build), verified by
-# installing it (desktop installers are paused; desktop.yml runs by hand only):
+# installing it, plus the desktop apps and their signed update feed:
 #
 #   curl -fsSL https://github.com/vallabha717/Amiro/releases/latest/download/install.sh | bash
 #
 # Start one by pushing a tag (git tag v1.27.0 && git push origin v1.27.0), or
 # from the Actions tab with a version. Pieces (each its own workflow):
 #   build-server.yml  server archives (Linux/macOS, x86_64/arm64)
+#   desktop.yml       desktop installers + signed update bundles (.sig)
 #   install-smoke.yml installs the published release and drives `amiro`
+# Publish writes latest.json (scripts/updater-manifest.mjs), the feed the
+# desktop app's updater reads, and SHA256SUMS over every file.
 # The release stays a draft until the server archives and SHA256SUMS are in.
 on:
   push:
@@ -73,9 +76,19 @@ jobs:
       tag: ${{ needs.prepare.outputs.tag }}
       version: ${{ needs.prepare.outputs.tag }}
 
+  desktop:
+    name: Desktop
+    needs: prepare
+    uses: ./.github/workflows/desktop.yml
+    secrets: inherit
+    with:
+      tag: ${{ needs.prepare.outputs.tag }}
+
+  # The server archives are required; a failed desktop platform is left out
+  # of latest.json (its users keep their version until the next release).
   publish:
     name: Publish
-    needs: [prepare, server]
+    needs: [prepare, server, desktop]
     if: ${{ !cancelled() && needs.server.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
@@ -89,16 +102,19 @@ jobs:
           mkdir -p assets && cd assets
           gh release download "$TAG" --pattern 'amiro-*'
           cp ../install.sh install.sh
-          sha256sum amiro-* install.sh > SHA256SUMS
+          if node ../scripts/updater-manifest.mjs . "$TAG" "$GITHUB_REPOSITORY"; then
+            gh release upload "$TAG" latest.json --clobber
+          else
+            echo "::warning::no signed desktop update bundles; latest.json not published"
+          fi
+          sha256sum amiro-* install.sh $(ls latest.json 2>/dev/null) > SHA256SUMS
           cat SHA256SUMS
           gh release upload "$TAG" SHA256SUMS install.sh --clobber
       - name: Build provenance
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: |
-            assets/amiro-*
-            assets/install.sh
-            assets/SHA256SUMS
+          # Every file in assets/ is a release file.
+          subject-path: assets/*
       - name: Release notes
         run: |
           sed -e "s#__REPO__#$GITHUB_REPOSITORY#g" -e "s#__TAG__#$TAG#g" .github/release/notes.md > notes.md
@@ -124,6 +140,7 @@ jobs:
             echo "| Part | Result |"
             echo "| --- | --- |"
             echo "| Server archives | ${{ needs.server.result }} |"
+            echo "| Desktop apps | ${{ needs.desktop.result }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
   verify:
