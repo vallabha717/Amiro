@@ -93,6 +93,23 @@ export default async function globalSetup() {
   }
   process.env.AMIRO_E2E_NOTIFY_STUB = notifyBase;
 
+  // ---- GitHub release stub (update check) ----------------------------------
+  // The General page's update check asks this instead of api.github.com, and
+  // the updater is a fake `amiro` that fails at the checksum, so the updates
+  // journey drives a real update job offline without installing anything.
+  const releasePort = Number(process.env.AMIRO_E2E_RELEASE_STUB_PORT || 38972);
+  const releaseLog = fs.openSync(path.join(dir, "release-stub.log"), "a");
+  const releaseStub = spawn(process.execPath, [path.join(__dirname, "../fixtures/release-stub-server.mjs"), String(releasePort)], {
+    stdio: ["ignore", releaseLog, releaseLog],
+    detached: true,
+  });
+  releaseStub.unref();
+  pids.push(releaseStub.pid!);
+  const releaseBase = `http://127.0.0.1:${releasePort}`;
+  if (!(await waitFor(`${releaseBase}/health`, 15000))) {
+    throw new Error(`Release stub did not start on port ${releasePort}; see ${dir}/release-stub.log`);
+  }
+
   if (cfg.target.mode === "external") {
     if (!cfg.target.baseUrl) throw new Error("target.mode=external needs target.baseUrl");
     const state: InstanceState = { baseUrl: cfg.target.baseUrl.replace(/\/$/, ""), mode: "external", pids };
@@ -147,6 +164,11 @@ export default async function globalSetup() {
     AMIRO_NO_TELEMETRY: "1",
     AMIRO_CONFIG: path.join(root, "amiro.toml"),
     AMIRO_ENV_FILE: path.join(root, "none.env"),
+    // Updates journey: offline release check, a fake updater, and no
+    // background checks (they would post Bell notifications mid-journey).
+    AMIRO_UPDATE_API_BASE: releaseBase,
+    AMIRO_UPDATE_COMMAND: path.join(__dirname, "../fixtures/fake-amiro-update.sh"),
+    AMIRO_NO_UPDATE_CHECK: "1",
     AMIRO_NOTIFY_TELEGRAM_BASE_URL: process.env.AMIRO_NOTIFY_TELEGRAM_BASE_URL || `${notifyBase}/tg`,
     AMIRO_NOTIFY_SLACK_BASE_URL: process.env.AMIRO_NOTIFY_SLACK_BASE_URL || `${notifyBase}/slack`,
     AMIRO_NOTIFY_DISCORD_BASE_URL: process.env.AMIRO_NOTIFY_DISCORD_BASE_URL || `${notifyBase}/dc`,
