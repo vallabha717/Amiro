@@ -11,16 +11,11 @@ import {
   isTauriDesktop,
   useNotifications,
 } from "@/lib/notifications/notification-runtime";
-import {
-  refreshUpdateStatus,
-  startServerUpdate,
-  useUpdateStatus,
-} from "@/lib/backend/update-api";
+import { UpdateCard } from "@/components/updates/update-card";
 import { reopenOnboarding } from "@/lib/onboarding/onboarding-api";
 import { fetcher } from "lib/utils";
 import {
   ArrowRight,
-  ArrowUpToLine,
   Bell,
   Bot,
   Check,
@@ -30,7 +25,6 @@ import {
   Globe,
   HardDrive,
   KeyRound,
-  Loader2,
   MemoryStick,
   Monitor,
   Network,
@@ -289,199 +283,6 @@ function SetupCard() {
         >
           Run setup again
         </Button>
-      </CardContent>
-    </Card>
-  );
-}
-
-function UpdateCard({
-  version,
-  deployment,
-}: {
-  version?: string;
-  deployment?: SystemInfo["deployment"];
-}) {
-  const { data: update, isLoading, mutate } = useUpdateStatus(true);
-  const [checking, setChecking] = useState(false);
-  const [updating, setUpdating] = useState(false);
-  const [updateDone, setUpdateDone] = useState<string | null>(null);
-
-  const isDesktop = deployment?.mode === "desktop";
-
-  const onCheckAgain = async () => {
-    setChecking(true);
-    try {
-      const fresh = await refreshUpdateStatus();
-      await mutate(fresh, { revalidate: false });
-    } catch {
-      toast.error("Could not reach GitHub to check for updates.");
-    } finally {
-      setChecking(false);
-    }
-  };
-
-  const onUpdateNow = async () => {
-    if (!update?.latest || updating) return;
-    setUpdating(true);
-    try {
-      const res = await startServerUpdate(update.latest);
-      if (res.started) {
-        setUpdateDone(res.version);
-        toast.success(
-          `Updating to ${res.version}: the server will restart. This page will reconnect on its own.`,
-          { duration: 10000 },
-        );
-      }
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Could not start the update.",
-      );
-      setUpdating(false);
-    }
-  };
-
-  const statusBadge = () => {
-    if (isLoading) {
-      return <Badge variant="secondary">Checking…</Badge>;
-    }
-    if (update?.checkFailed) {
-      return (
-        <Badge
-          variant="outline"
-          className="border-amber-500/30 text-amber-600 dark:text-amber-400"
-        >
-          Could not check
-        </Badge>
-      );
-    }
-    if (update?.noReleases) {
-      return <Badge variant="secondary">No releases yet</Badge>;
-    }
-    if (update?.updateAvailable && update.latest) {
-      return (
-        <Badge className="bg-primary text-primary-foreground">
-          Update available: {update.latest}
-        </Badge>
-      );
-    }
-    return (
-      <Badge
-        variant="outline"
-        className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
-      >
-        Up to date
-      </Badge>
-    );
-  };
-
-  return (
-    <Card data-testid="general-version">
-      <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="space-y-1.5">
-            <CardTitle className="text-lg font-semibold flex items-center gap-2">
-              <ArrowUpToLine className="size-5 text-primary" />
-              Version &amp; updates
-            </CardTitle>
-            <CardDescription>
-              The Amiro build you are running, and whether a newer release is
-              available.
-            </CardDescription>
-          </div>
-          {statusBadge()}
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex gap-6 text-sm">
-          <span className="w-32 text-muted-foreground">Current</span>
-          <span className="font-mono" data-testid="general-version-value">
-            {version ? `v${version}` : "Unavailable"}
-          </span>
-        </div>
-        {update?.latest ? (
-          <div className="flex gap-6 text-sm">
-            <span className="w-32 text-muted-foreground">Latest</span>
-            <a
-              href={update.releaseUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="font-mono text-primary hover:underline inline-flex items-center gap-1"
-              data-testid="general-version-latest"
-            >
-              {update.latest}
-              <ExternalLink className="size-3 shrink-0 opacity-70" />
-            </a>
-          </div>
-        ) : null}
-        {update?.checkFailed ? (
-          <p className="text-xs text-muted-foreground">
-            The release check needs internet access to github.com. Your server
-            is unaffected. Try again when you are back online.
-          </p>
-        ) : null}
-        {updateDone ? (
-          <p
-            className="text-xs text-muted-foreground"
-            data-testid="general-update-progress"
-          >
-            Updating to {updateDone}… the server is restarting. This page
-            reconnects automatically; if it does not, refresh in a minute.
-          </p>
-        ) : null}
-        <div className="flex flex-wrap items-center gap-2">
-          {update?.updateAvailable &&
-          update.latest &&
-          !isDesktop &&
-          !updateDone ? (
-            <Button
-              onClick={() => void onUpdateNow()}
-              disabled={updating}
-              data-testid="general-update-now"
-            >
-              {updating ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-                  Updating…
-                </>
-              ) : (
-                <>Update to {update.latest}</>
-              )}
-            </Button>
-          ) : null}
-          {update?.updateAvailable && update.latest && isDesktop ? (
-            <Button asChild data-testid="general-update-desktop-link">
-              <a href={update.releaseUrl} target="_blank" rel="noreferrer">
-                Download {update.latest}
-                <ExternalLink className="size-4" />
-              </a>
-            </Button>
-          ) : null}
-          {!isDesktop ? (
-            <Button
-              variant="outline"
-              onClick={() => void onCheckAgain()}
-              disabled={checking || isLoading}
-              data-testid="general-update-check"
-            >
-              <RefreshCw
-                className={checking ? "size-4 animate-spin" : "size-4"}
-              />
-              Check again
-            </Button>
-          ) : null}
-        </div>
-        {isDesktop ? (
-          <p className="text-xs text-muted-foreground">
-            The desktop app has no auto-update feed yet: download the installer
-            for your platform and reinstall. Your data and settings are kept.
-          </p>
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            One click runs the same <code>amiro update</code> you would run in
-            the terminal, then restarts the server. The two previous versions
-            are kept for a quick rollback.
-          </p>
-        )}
       </CardContent>
     </Card>
   );
@@ -1003,7 +804,7 @@ export function GeneralSettings() {
       <DeploymentCard deployment={data?.deployment} loading={isLoading} />
       <TimezoneCard />
       <SetupCard />
-      <UpdateCard version={data?.version} deployment={data?.deployment} />
+      <UpdateCard />
       <ResourcesCard
         info={data}
         loading={isLoading}
