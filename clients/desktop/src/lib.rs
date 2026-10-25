@@ -2,8 +2,9 @@ use rand::RngCore;
 use std::net::TcpStream;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_shell::{process::CommandChild, process::CommandEvent, ShellExt};
+use tauri_plugin_updater::UpdaterExt;
 
 /// Reserves an ephemeral loopback port for the backend sidecar by binding
 /// `127.0.0.1:0`, reading the OS-assigned port, then dropping the listener
@@ -209,6 +210,81 @@ fn desktop_runtime_info() -> serde_json::Value {
     })
 }
 
+/// Whether this install can replace itself. The updater handles the macOS
+/// app bundle, the Windows NSIS install and the Linux AppImage; a Debian
+/// package (`.deb`) is managed by apt, so it is updated with the new `.deb`.
+fn self_update_support() -> (bool, Option<&'static str>) {
+    if cfg!(target_os = "linux") && std::env::var_os("APPIMAGE").is_none() {
+        return (false, Some("deb"));
+    }
+    (true, None)
+}
+
+/// Check the release feed (`plugins.updater.endpoints` in tauri.conf.json)
+/// for a newer signed build of the desktop app.
+#[tauri::command]
+async fn desktop_update_check(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let (supported, reason) = self_update_support();
+    let current = app.package_info().version.to_string();
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    let update = updater.check().await.map_err(|e| e.to_string())?;
+    Ok(match update {
+        Some(update) => serde_json::json!({
+            "current": current,
+            "available": true,
+            "version": update.version,
+            "notes": update.body,
+            "date": update.date.map(|d| d.to_string()),
+            "supported": supported,
+            "reason": reason,
+        }),
+        None => serde_json::json!({
+            "current": current,
+            "available": false,
+            "supported": supported,
+            "reason": reason,
+        }),
+    })
+}
+
+/// Download the update (progress as `amiro://update-progress` events), stop
+/// the server sidecar so its files can be replaced, install, and relaunch.
+/// On Windows the installer closes the app itself and starts the new one.
+#[tauri::command]
+async fn desktop_update_install(app: tauri::AppHandle) -> Result<(), String> {
+    if let (false, Some(reason)) = self_update_support() {
+        return Err(format!("this install ({reason}) cannot update itself"));
+    }
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    let Some(update) = updater.check().await.map_err(|e| e.to_string())? else {
+        return Err("no update is available".to_string());
+    };
+    let progress_app = app.clone();
+    let mut received: u64 = 0;
+    let bytes = update
+        .download(
+            move |chunk, total| {
+                received += chunk as u64;
+                let _ = progress_app.emit(
+                    "amiro://update-progress",
+                    serde_json::json!({"phase": "downloading", "received": received, "total": total}),
+                );
+            },
+            || {},
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    let _ = app.emit("amiro://update-progress", serde_json::json!({"phase": "installing"}));
+    if let Some(state) = app.try_state::<SidecarChild>() {
+        if let Some(child) = state.0.lock().unwrap().take() {
+            let _ = child.kill();
+        }
+    }
+    update.install(bytes).map_err(|e| e.to_string())?;
+    let _ = app.emit("amiro://update-progress", serde_json::json!({"phase": "restarting"}));
+    app.restart();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Load .env file from the repo root for local development (`tauri dev`
@@ -218,11 +294,14 @@ pub fn run() {
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             desktop_show_notification,
             desktop_focus_window,
             focus_main_window,
-            desktop_runtime_info
+            desktop_runtime_info,
+            desktop_update_check,
+            desktop_update_install
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
