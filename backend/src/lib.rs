@@ -18,5 +18,6 @@ pub mod state;
 pub mod swarm;
 pub mod thread_activity;
 pub mod threads;
+pub mod updates;
 
 pub mod routes;

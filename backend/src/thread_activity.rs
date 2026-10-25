@@ -48,6 +48,12 @@ fn publish(user_id: &str, thread_id: &str, status: &str) {
     }));
 }
 
+/// Whether any chat turn is running for anyone right now (automatic updates
+/// wait for this to be false).
+pub fn any_running() -> bool {
+    running().lock().map(|set| !set.is_empty()).unwrap_or(false)
+}
+
 /// Whether a turn is running in this thread right now.
 pub fn is_running(user_id: &str, thread_id: &str) -> bool {
     running()

@@ -305,6 +305,12 @@ fn is_running(id: &str) -> bool {
     in_flight().lock().unwrap().contains(id)
 }
 
+/// Whether any schedule is executing in this process right now (automatic
+/// updates wait for this to be false).
+pub fn any_in_flight() -> bool {
+    in_flight().lock().map(|set| !set.is_empty()).unwrap_or(false)
+}
+
 // ---------------------------------------------------------------------------
 // Time math: timezones, one-shot parsing, cron, intervals
 // ---------------------------------------------------------------------------
