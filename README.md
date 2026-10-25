@@ -30,10 +30,7 @@ The stack is Rust, plus a static web UI.
 
 <br />
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/hero-chat-dark.png" />
-  <img src="docs/assets/readme/chat-plan-light.png" alt="Amiro chat: the agent Juno plans a launch week, with the sidebar mascot, chat history and the session panel" width="100%" />
-</picture>
+<a href="docs/assets/showcase/team-new-agent.mp4"><img src="docs/assets/showcase/team-new-agent.jpg" alt="Atlas, a travel-planner agent on the Team page, answers with a real day-by-day Mysuru weekend plan" width="100%" /></a>
 
 </div>
 
@@ -251,8 +248,6 @@ Usage** shows tokens and cost per agent. See [Team](using/team.mdx).
   instructions, not permissions. See [docs/skills/README.md](docs/skills/README.md).
 
 ### Voice mode with your mascot
-
-<img src="docs/assets/readme/voice-room.png" alt="Voice room: the plush mascot listening, with speaker, mic, stop-answer and end-call controls" width="100%" />
 
 You talk, Amiro detects the end of your sentence, answers through the normal
 chat stream and reads it aloud as it is written; interrupt it any time
@@ -683,8 +678,7 @@ pnpm --dir tests showcase:export                # → docs/assets/showcase/<scen
 
 `export-media.mjs` drops frozen frames (long model waits), writes a 1280-wide
 H.264 MP4 for the docs, a sped-up GIF under 4.5 MB for this README, and a poster
-frame. The older stills in `docs/assets/readme/` come from
-[`scripts/capture-readme-media.mjs`](scripts/capture-readme-media.mjs).
+frame.
 
 </details>
 
