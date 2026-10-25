@@ -58,7 +58,7 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Linux system libraries
         if: runner.os == 'Linux'
@@ -67,10 +67,10 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
             libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev patchelf
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.2.1
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -139,7 +139,7 @@ jobs:
           fi
 
       - name: Build the app
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -174,7 +174,7 @@ jobs:
           ls -la dist
 
       - name: Upload installers
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: amiro-desktop-${{ matrix.target }}
           path: dist/*
@@ -200,7 +200,7 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: latest.json and SHA256SUMS
         env:
           GH_TOKEN: ${{ github.token }}
@@ -211,7 +211,7 @@ jobs:
           node ../scripts/updater-manifest.mjs . "$TAG" "$GITHUB_REPOSITORY"
           sha256sum amiro-* install.sh latest.json > SHA256SUMS
           gh release upload "$TAG" latest.json SHA256SUMS --clobber
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@v4
         with:
           # Every file in assets/ is a release file.
           subject-path: assets/*
