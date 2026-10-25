@@ -5,9 +5,9 @@ description: "Watch the search setup, then follow the same steps to choose which
 
 The agent can search the web when a task needs current information. Search runs only through the providers you configure, and Amiro seeds a sensible set on first setup.
 
-<img src="/docs/assets/docs/demo-search-setup.gif" alt="Setting up search: reviewing the Search Providers page with Provider Native default and fallbacks" width="100%" />
-
-*Setting up search: the seeded list on this page with Provider Native as default. The steps below walk the same path.*
+<Frame caption="Admin → Search Providers: the active engine (Bing, no key), Run Connectivity Test, then a real search in chat.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/admin-search.jpg" src="/docs/assets/showcase/admin-search.mp4" />
+</Frame>
 
 ## Do it yourself
 
@@ -48,6 +48,11 @@ Provider Native uses your model provider's own hosted search. It is not an autom
 
 - The card you made active shows as the default on `/admin/search`.
 - Ask the agent a question that needs current information, for example a recent news headline, and check that the answer reflects the web.
+- On the provider's card, **Test** opens **Run Connectivity Test**: it runs a live query and reports the latency and how many results came back.
+
+<Warning>
+**Zero results on a server?** The keyless engines scrape public result pages, and DuckDuckGo (often Bing too) answers cloud and data-centre IP addresses with a challenge page. The test then says *Connection Successful* but returns 0 results, and the agent falls back to fetching pages directly. On a VM, use a keyed engine such as **Brave** (free tier) or **Tavily**; on a home connection the keyless engines work.
+</Warning>
 - If you added a keyed provider, the card shows it as configured and any key is kept private, shown only in the card and never to the model.
 - Confirm the list of fallbacks matches what you expect, since the agent tries the default first and then the other configured providers in order.
 

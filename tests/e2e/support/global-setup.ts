@@ -153,6 +153,18 @@ export default async function globalSetup() {
   };
   // Never let the user's own provider keys or owner settings leak into a "first run".
   for (const k of ["AMIRO_SANDBOX_TOKEN", "AMIRO_SANDBOX_MASTER", "AMIRO_SANDBOX_ENV_FILE"]) delete env[k];
+  // Opt-in (the showcase recordings set it): a HOME of its own, so the runtime
+  // cannot pick up sign-ins or quotas from other tools in the real home.
+  if (process.env.AMIRO_E2E_ISOLATE_HOME === "1") {
+    const userHome = path.join(root, "user");
+    for (const d of ["", ".config", ".local/share", ".cache"]) fs.mkdirSync(path.join(userHome, d), { recursive: true });
+    Object.assign(env, {
+      HOME: userHome,
+      XDG_CONFIG_HOME: path.join(userHome, ".config"),
+      XDG_DATA_HOME: path.join(userHome, ".local/share"),
+      XDG_CACHE_HOME: path.join(userHome, ".cache"),
+    });
+  }
   for (const k of Object.keys(env)) {
     if (/^(AMIRO_OWNER_|AMIRO_SKIP_ONBOARDING|AMIRO_CRED_|AMIRO_DEFAULT_MODEL)/.test(k)) delete env[k];
     if (/^(ANTHROPIC|OPENAI|OPENROUTER|GEMINI|COMPOSIO|ELEVENLABS)_API_KEY$/.test(k)) delete env[k];

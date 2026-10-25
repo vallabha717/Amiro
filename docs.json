@@ -2,7 +2,7 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
   "name": "Amiro",
-  "description": "Amiro is a self-hostable personal-intelligence chat app. This guide shows how to install it and use it day to day: chat, personalize your agent, voice, schedules, files, and settings.",
+  "description": "Amiro is your own AI agent, on your own machine. This guide shows how to install it and use it day to day \u2014 research, documents, schedules, connectors, its own desktop, a team of agents and voice \u2014 with a video for every setup step.",
   "colors": {
     "primary": "#E9642F",
     "light": "#F59A6B",
@@ -42,7 +42,7 @@
     "codeblocks": "system"
   },
   "search": {
-    "prompt": "Search the Amiro docs…"
+    "prompt": "Search the Amiro docs\u2026"
   },
   "contextual": {
     "options": [
@@ -54,7 +54,7 @@
     ]
   },
   "banner": {
-    "content": "**Amiro v1.26.1** is out: one-command server install and desktop apps for macOS, Windows and Linux. [Download →](https://github.com/vallabha717/Amiro/releases/latest)",
+    "content": "**New on main:** the agent's live desktop (TV), Team agents, phone pairing with a code, and the Inbox cleanup playbook. [See it in action \u2192](/showcase) \u00b7 [Latest release \u2192](https://github.com/vallabha717/Amiro/releases/latest)",
     "dismissible": true,
     "color": {
       "light": "#E9642F",
@@ -83,6 +83,7 @@
             "group": "Get started",
             "pages": [
               "introduction",
+              "showcase",
               "quickstart",
               "installation",
               "first-run"
@@ -96,18 +97,33 @@
           {
             "group": "Day to day",
             "pages": [
+              "using/everyday-tasks",
               "using/chatting",
               "using/threads-and-history",
-              "using/personalizing-your-agent",
-              "using/skills-superpowers",
-              "using/memory",
               "using/workspace-files",
-              "using/voice",
-              "using/schedules",
               "using/search",
+              "using/export-and-share"
+            ]
+          },
+          {
+            "group": "Your agent",
+            "pages": [
+              "using/personalizing-your-agent",
+              "using/memory",
+              "using/skills-superpowers",
+              "using/voice",
+              "using/agent-desktop",
+              "using/team"
+            ]
+          },
+          {
+            "group": "Automation and tools",
+            "pages": [
+              "using/schedules",
+              "using/notifications",
               "using/connectors",
               "using/credentials",
-              "using/export-and-share"
+              "using/devices"
             ]
           }
         ]

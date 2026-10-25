@@ -1,0 +1,54 @@
+---
+title: "Notifications"
+description: "The Bell inbox for finished replies, schedule runs and heartbeat notes, plus optional browser, Telegram, Slack and Discord delivery."
+---
+
+Amiro tells you when something finished while you were away: a long reply, a
+schedule run, a note from the heartbeat. Everything lands in the **Bell** in
+the top bar; you can also have it delivered outside Amiro.
+
+<Frame caption="A schedule runs, the Bell lights up, and Go to conversation opens the full result.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/schedules-morning-brief.jpg" src="/docs/assets/showcase/schedules-morning-brief.mp4" />
+</Frame>
+
+## The Bell
+
+- The badge counts unread notifications. The popover opens on **Unread**;
+  turn the switch off to see everything.
+- Click a row for its detail and delivery state, then **Go to conversation**
+  to open the thread it came from.
+- The **…** menu has **Mark all read** and **Settings** (sound, browser
+  notifications).
+
+## When a chat notifies you
+
+A reply you are watching never notifies you. If you start something long and
+leave (open Schedules, another chat, or close the tab), the reply still
+finishes; you get a Bell notification and a green dot next to the chat in the
+list. Opening the chat clears both.
+
+## Deliver outside Amiro
+
+Important notifications can also reach you on **Telegram, Slack or Discord**:
+
+<Steps>
+  <Step title="Connect a bot in Channels">
+    **Agent → Channels**: pick the app and paste the bot token into its secure
+    field (for Telegram, the token from @BotFather). It goes to the vault and
+    Amiro checks the bot before saving.
+  </Step>
+  <Step title="Add your own account to your contact card">
+    **Agent → Contacts → you**: add your Telegram, Slack or Discord account and
+    verify it with the code Amiro sends there. Unverified accounts never get
+    deliveries.
+  </Step>
+  <Step title="Choose what goes where">
+    **Admin → Notifications**: pick which events notify you and your quiet
+    hours, then **Send a test notification**.
+  </Step>
+</Steps>
+
+Routine updates stay in Amiro. Urgent things that need you, and test
+notifications, go to every ready channel. Chat replies always stay in Amiro.
+Channels also decide who may talk *to* your agent on those apps, with trust
+levels from *no one* to *verified contacts*.

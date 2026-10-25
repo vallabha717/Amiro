@@ -17,6 +17,8 @@ The stack is Rust, plus a static web UI.
 [![Tauri](https://img.shields.io/badge/Tauri-2.x-24C8DB.svg)](https://tauri.app)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black.svg)](https://nextjs.org)
 
+[See it in action](#see-it-in-action) ·
+[Quick setup](#quick-setup-5-minutes) ·
 [Install](#install) ·
 [Features](#features) ·
 [Quick start](#quick-start) ·
@@ -34,6 +36,54 @@ The stack is Rust, plus a static web UI.
 </picture>
 
 </div>
+
+---
+
+## See it in action
+
+Every clip below was recorded on a fresh Amiro with a real model
+(OpenCode Go: **`muse-spark-1.2-contributor`** and **`deepseek-v4.1-flash`**), the live web and real public services.
+Nothing is scripted. (They were recorded on a cloud VM where keyless search
+engines return nothing, so in the research clips Amiro reads the official pages
+directly.) Click any GIF for the full-length MP4, or browse them all
+on the docs' [See it in action](showcase.mdx) page.
+
+<a href="docs/assets/showcase/research.mp4"><img src="docs/assets/showcase/research.gif" alt="Amiro researches note apps on the live web and answers with a comparison table and sources" width="100%" /></a>
+
+<table>
+  <tr>
+    <td width="50%"><a href="docs/assets/showcase/schedules-morning-brief.mp4"><img src="docs/assets/showcase/schedules-morning-brief.gif" alt="Asking for a weekday morning brief, then running it from Schedules" width="100%" /></a><br/><b>A morning brief every weekday</b>, set up by asking.</td>
+    <td width="50%"><a href="docs/assets/showcase/agent-desktop.mp4"><img src="docs/assets/showcase/agent-desktop.gif" alt="The agent opens Hacker News on its own desktop, shown live in the chat" width="100%" /></a><br/><b>Its own computer</b>: watch it browse and open files, live.</td>
+  </tr>
+  <tr>
+    <td><a href="docs/assets/showcase/connectors-add.mp4"><img src="docs/assets/showcase/connectors-add.gif" alt="Adding the DeepWiki MCP server and asking it about the tokio repo" width="100%" /></a><br/><b>Any MCP server</b>: add DeepWiki, ask about a real repo.</td>
+    <td><a href="docs/assets/showcase/team-new-agent.mp4"><img src="docs/assets/showcase/team-new-agent.gif" alt="Creating Atlas, a travel planner agent, and giving it a trip to plan" width="100%" /></a><br/><b>A team</b>: a travel-planner agent with its own setup.</td>
+  </tr>
+</table>
+
+---
+
+## Quick setup (5 minutes)
+
+<a href="docs/assets/showcase/setup-first-run.mp4"><img src="docs/assets/showcase/setup-first-run.gif" alt="First run: owner account, look, personality, provider key into the vault, Bing web search" width="100%" /></a>
+
+1. **Install.** On a server or VM: `curl -fsSL https://github.com/vallabha717/Amiro/releases/latest/download/install.sh | bash`
+   (add `-s -- --public --service` to reach it over the network and start at boot).
+   On a laptop: download the [desktop app](#install).
+2. **Open the address it prints → Get started.** Create the owner account
+   (12+ character password; there is no sign-up and no cloud account).
+3. **Follow the setup chat.** Pick a look and a personality, then on **Brain**
+   search your provider (e.g. *OpenCode Go*), paste its key → **Save key** (it
+   goes to the encrypted vault, never into the chat). On **Web search** pick
+   **Bing** or **DuckDuckGo** (no key; on a cloud VM use a Brave or Tavily key).
+   Skip the rest for now.
+4. **Pick the model.** *Admin → Models & Providers* → **Set default** on the
+   model you want → *Models & test* → **Run model test**.
+5. **Ask something real**: *"Search the web and compare Obsidian, Logseq and
+   Joplin for personal notes. Give me a table and cite your sources."*
+
+Step-by-step with a video for every screen: [Quickstart](quickstart.mdx) ·
+[First run](first-run.mdx).
 
 ---
 
@@ -73,157 +123,192 @@ Either way, the first launch opens a short setup wizard.
   lives in `~/.amiro`. There is no hosted service and no sign-up. A running
   Amiro needs no Node.js.
 - **It's an agent, not a chat box.** Amiro has tools, connectors (MCP), skills,
-  schedules that run on their own, and a workspace of files it reads and
-  writes. A heartbeat keeps it current between chats.
+  schedules that run on their own, a workspace of files it reads and writes,
+  and — with the sandbox — a desktop of its own you can watch live. A
+  heartbeat keeps it current between chats.
+- **A team, not just one agent.** Add specialists (a researcher, a travel
+  planner) with their own personality, models, connectors and container.
 - **It has a personality you can see.** Pick a plush mascot and a colour, then
   tune the personality. The mascot lives in your sidebar and joins you in voice
   mode.
-- **Bring any model.** Connect Anthropic, OpenAI, OpenRouter or Gemini with a
-  key, sign in with OAuth or device code, or point Amiro at a local
+- **Bring any model.** Connect Anthropic, OpenAI, OpenRouter, Gemini,
+  OpenCode Go and the rest of the catalog with a key, sign in with OAuth or device code, or point Amiro at a local
   OpenAI-compatible endpoint. Every route is pinned as `provider:model`, so it
   never switches models silently.
-- **Configure it in a file.** Everything the wizard asks for can also live in
+- **Configure it in a file.** Everything the setup chat asks for can also live in
   `amiro.toml` or `.env`, so a scripted install never needs a browser.
 
 ---
 
 ## Features
 
-### Set up in a minute
+### Research, documents and charts — the everyday work
 
-<img src="docs/assets/readme/demo-onboarding.gif" alt="Onboarding wizard: create the owner account, name the agent and pick its look and colour, then finish" width="100%" />
+<a href="docs/assets/showcase/research.mp4"><img src="docs/assets/showcase/research.gif" alt="Live web research: a comparison table with sources, then a follow-up" width="100%" /></a>
 
-After the owner account is created, setup continues as a chat: Amiro
-streams one step at a time and you answer with a card. Pick its **look**
-(colour and shape; the name stays Amiro), read its **default prompt**, tune
-its **personality**, connect an **AI provider** (every supported one, with a
-guided API-key, OAuth or local step), then **web search**, **connectors** and
-**voice**. Only the account is required. Keys go straight to the vault, never
-into the chat. Team → New agent runs the same chat for a new agent. Each
-skipped step shows up as a "Finish setting up" card in the sidebar, and you
-can run setup again from **Admin → General**. See [docs/SETUP.md](docs/SETUP.md).
+Ask the way you would ask a person. Amiro searches (Bing and DuckDuckGo need no key;
+Brave, Tavily, Exa, Serper, Firecrawl and SearXNG are one click away), reads
+the pages, and answers with tables, code, Mermaid diagrams and the sources it
+used. Search and fetch calls fold into one "work" row you can open, and the
+**Tools** filter hides them down to "answers only". In the composer, `/` lists
+the runtime's commands (`/compact`, `/context`, `/memory`, `/mcp`…) and your
+skills, and `@` finds files in the chat's folder. See
+[Everyday tasks](using/everyday-tasks.mdx) and [docs/CHAT-UX-AND-SWARM.md](docs/CHAT-UX-AND-SWARM.md).
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/assets/readme/onboarding-welcome.png" alt="Wizard welcome step" /></td>
-    <td width="50%"><img src="docs/assets/readme/onboarding-agent.png" alt="Wizard agent step: name, look and colour, with a live mascot preview" /></td>
-  </tr>
-  <tr>
-    <td><img src="docs/assets/readme/onboarding-provider.png" alt="Wizard brain step: connect Anthropic, OpenAI, OpenRouter, Gemini or more" /></td>
-    <td><img src="docs/assets/readme/onboarding-ready.png" alt="Wizard ready step: checklist of what is set up" /></td>
+    <td width="50%"><a href="docs/assets/showcase/documents.mp4"><img src="docs/assets/showcase/documents.gif" alt="Summarising a Wikipedia article and saving notes into the workspace" width="100%" /></a><br/><b>Summarise and file it</b>: an article becomes <code>notes/pomodoro.md</code> in the workspace.</td>
+    <td width="50%"><a href="docs/assets/showcase/visualize.mp4"><img src="docs/assets/showcase/visualize.gif" alt="Solar capacity numbers from the web, charted inline" width="100%" /></a><br/><b>Chart real numbers</b> with the Visualize superpower, inline in the reply.</td>
   </tr>
 </table>
 
-### Chat that streams, with the session at a glance
-
-<img src="docs/assets/readme/demo-chat.gif" alt="A chat reply streaming in, with a table and a numbered list" width="100%" />
-
-Replies stream over SSE and render Markdown, tables, code, Mermaid diagrams
-and inline images. The **Visualize** skill lets the agent draw charts and
-diagrams inline in its answer. A session panel shows the context window, the
-connectors in use, todos, edited files and swarm agents. A tool filter can
-hide tool-call noise, down to "answers only". Threads can be archived and
-exported, and titles come from the runtime (a title you edit by hand is never
-overwritten). In the composer, `/` lists the runtime's commands (`/compact`,
-`/context`, `/memory`, `/mcp`…) and your skills, and `@` finds files in the
-chat's folder. See [docs/CHAT-UX-AND-SWARM.md](docs/CHAT-UX-AND-SWARM.md).
-
-### Voice mode with your mascot
-
-<img src="docs/assets/readme/voice-room.png" alt="Voice room: the plush mascot listening, with speaker, mic, stop-answer and end-call controls" width="100%" />
-
-You talk, Amiro detects the end of your sentence, the agent answers through the
-normal chat stream, and the answer is read aloud as it is written. You can
-interrupt it mid-sentence (barge-in). Live voice uses ElevenLabs (Scribe for
-speech-to-text, streaming text-to-speech). Dictation and per-message read-aloud
-work with any configured STT/TTS provider. See [docs/LIVE-VOICE.md](docs/LIVE-VOICE.md)
-and [docs/VOICE-AND-SPEECH.md](docs/VOICE-AND-SPEECH.md).
+Attach PDFs, Word, Excel, PowerPoint, CSV, images, audio or video: every file
+opens in the built-in viewer, and every path the agent mentions is a clickable
+chip.
 
 ### Schedules: your agent works on its own
 
-<img src="docs/assets/readme/demo-schedules.gif" alt="Schedules: adding a suggested schedule with one click, reviewing it, and saving" width="100%" />
+<a href="docs/assets/showcase/schedules-morning-brief.mp4"><img src="docs/assets/showcase/schedules-morning-brief.gif" alt="A weekday morning brief created in chat, run from Schedules, read from the Bell" width="100%" /></a>
 
 Each schedule runs a saved prompt once, on a cron expression or on an interval,
-in its own timezone. Wall times that don't exist or happen twice across a DST
-change are rejected instead of shifted. There are three modes:
+in its own timezone. Just ask — *"every weekday at 8, give me a morning brief:
+the weather and the top 3 tech headlines"* — or use the page:
 
 | Mode | What runs |
 | --- | --- |
 | **Reminder** (`notify`) | Posts the prompt as a message. No model call. |
 | **Text only** (`execute`) | One model turn with tools off and the model pinned. |
 | **Agent** (`agent`) | A full agent turn with tools, connectors and the agent home, like a chat. |
+| **Script** (`script`) | A shell command in the workspace; its output is the run result. |
 
-The page includes one-click suggestions and a run history with each run's
-result and errors. A cross-process lock stops two backends from firing the
-same schedule twice. You can also just ask in chat: *"remind me every Monday at
-9 to plan the week."* See [docs/SCHEDULES.md](docs/SCHEDULES.md).
+**Inbox cleanup playbook.** Click *Set up this schedule for me* and Amiro
+renders the rules as switches (keep reservations and recent bills, clean up
+promotions and notifications), then saves the schedule:
 
-<img src="docs/assets/readme/schedules.png" alt="Schedules page with suggestions, saved schedules and system tasks (heartbeat, memory upkeep)" width="100%" />
+<a href="docs/assets/showcase/schedules-inbox-cleanup.mp4"><img src="docs/assets/showcase/schedules-inbox-cleanup.gif" alt="The Inbox cleanup playbook: switches for keep and clean up rules, submitted in chat" width="100%" /></a>
+
+Wall times that don't exist or happen twice across a DST change are rejected,
+not shifted, and a cross-process lock stops two backends firing the same
+schedule twice. Results land in the **Bell** inbox, optionally on Telegram,
+Slack or Discord. See [Schedules](using/schedules.mdx) and [docs/SCHEDULES.md](docs/SCHEDULES.md).
 
 ### Connectors: MCP servers and 1,000+ apps
 
-<img src="docs/assets/readme/connectors.png" alt="Connectors page: three MCP servers waiting for a key, and Composio apps" width="100%" />
-
-One page lists everything the agent can reach: remote MCP servers (Streamable
-HTTP or SSE), local MCP commands, and apps through Composio's Tool Router.
-**The agent can set up a connector itself**: ask it to "connect the Linear MCP
-server" and it adds the entry, then asks for the key in a secure card. The
-key goes to the encrypted vault and never passes through the chat. See
-[docs/CONNECTORS.md](docs/CONNECTORS.md) and [docs/COMPOSIO.md](docs/COMPOSIO.md).
-
-### An agent with a home
-
 <table>
   <tr>
-    <td width="50%"><img src="docs/assets/readme/workspace.png" alt="Workspace: agent home files (Identity, Soul, You, Now, Heartbeat) and a file browser" /></td>
-    <td width="50%"><img src="docs/assets/readme/agent.png" alt="Agent hub: personality dials, the mascot, Superpowers, Memory and Workspace" /></td>
+    <td width="50%"><a href="docs/assets/showcase/connectors-add.mp4"><img src="docs/assets/showcase/connectors-add.gif" alt="Connectors → Add custom → DeepWiki, then a question about tokio" width="100%" /></a><br/><b>Add any MCP server</b> from the page: here DeepWiki, then a real question about <code>tokio-rs/tokio</code>.</td>
+    <td width="50%"><a href="docs/assets/showcase/connectors-agent.mp4"><img src="docs/assets/showcase/connectors-agent.gif" alt="The agent connects the Context7 MCP server itself and uses it" width="100%" /></a><br/><b>Or just ask.</b> The agent adds Context7 itself and reads current axum docs.</td>
   </tr>
 </table>
 
-- **Agent home.** The workspace (`~/.amiro/workspace`) holds a few files that
-  load into every turn. `IDENTITY.md` holds who it is, `SOUL.md` how it works
-  (including rules it writes when you correct it), `USER.md` a profile of you
-  and `NOW.md` what's going on right now. A `journal/` folder holds dated
-  entries. See [docs/AGENT-HOME.md](docs/AGENT-HOME.md).
-- **Heartbeat.** Every few hours (with quiet hours in your timezone), a
-  background turn runs the `HEARTBEAT.md` checklist. If something needs your
-  attention, it posts a note.
-- **Workspace browser.** Browse, preview, edit, create, rename and download the
-  agent's files from the web UI.
-- **Personality and look.** Personality dials, a name and tagline, four plush
-  mascots in nine colours, and a sidebar theme that follows the colour. See
-  [docs/AGENT.md](docs/AGENT.md).
-- **Memory.** A read-only map and card view of what the runtime remembers.
-- **Notifications.** A bell inbox for finished replies, schedule runs and
-  heartbeat notes, with optional browser or desktop notifications — plus
-  opt-in Telegram, Slack, and Discord delivery bound on the notifications
-  admin page.
+One page lists everything the agent can reach: remote MCP servers (Streamable
+HTTP or SSE, no auth, bearer, API-key header or OAuth), local MCP commands, and
+apps through Composio's Tool Router. When a server needs a key, the agent asks
+in a **secure card**; the value goes to the encrypted vault and never passes
+through the chat. See [Connectors](using/connectors.mdx), [docs/CONNECTORS.md](docs/CONNECTORS.md)
+and [docs/COMPOSIO.md](docs/COMPOSIO.md).
 
-### Superpowers (skills)
+### Its own computer: the TV
 
-<img src="docs/assets/readme/superpowers.png" alt="Superpowers: Visualize, MCP Setup and Schedules built-in skills" width="100%" />
+<a href="docs/assets/showcase/agent-desktop.mp4"><img src="docs/assets/showcase/agent-desktop.gif" alt="The TV streams the agent's real desktop: a browser on Hacker News, then Files at the workspace" width="100%" /></a>
 
-Superpowers lists the skills that shape the agent's instructions: built-in ones
-such as **Visualize** (inline charts and diagrams), **MCP Setup** and
-**Schedules**, plus skills you write yourself. Skills change instructions, not
-permissions. See [docs/skills/README.md](docs/skills/README.md).
+With the sandbox running (`bash scripts/sandbox.sh up`, needs Docker), every
+agent has a real Linux desktop in its container — Chromium, Files and a
+terminal. The **Monitor** button in the chat header opens it as a live,
+clickable TV. The agent drives it with `desktop_open` / `desktop_state`, each
+call shows a TV card in the chat naming the exact folder or URL on screen, and
+**Admin → Debug → Terminal** is the same shell as the TV's terminal. See
+[Agent desktop](using/agent-desktop.mdx).
 
-### Credentials vault and security
+### A team of agents
+
+<a href="docs/assets/showcase/team-new-agent.mp4"><img src="docs/assets/showcase/team-new-agent.gif" alt="Team → New agent: Atlas the travel planner is set up and plans a weekend trip" width="100%" /></a>
+
+**Team → New agent** runs the same guided setup chat for a specialist: its own
+name, role, instructions, look, personality, provider, search engine, remote
+connectors, workspace, schedules and (with the sandbox) container. **Team →
+Usage** shows tokens and cost per agent. See [Team](using/team.mdx).
+
+### An agent with a home, a memory and a personality
+
+<table>
+  <tr>
+    <td width="50%"><a href="docs/assets/showcase/memory.mp4"><img src="docs/assets/showcase/memory.gif" alt="Telling Amiro a fact, seeing it in Memory, and a new chat recalling it" width="100%" /></a><br/><b>Memory</b>: tell it once; a brand-new chat already knows.</td>
+    <td width="50%"><a href="docs/assets/showcase/agent-hub.mp4"><img src="docs/assets/showcase/agent-hub.gif" alt="Agent hub: personality dials with a live sample, Superpowers and the workspace" width="100%" /></a><br/><b>Personality, Superpowers, home files.</b></td>
+  </tr>
+</table>
+
+- **Agent home.** The workspace (`~/.amiro/workspace`) holds files that load
+  into every turn: `IDENTITY.md` (who it is), `SOUL.md` (how it works, including
+  rules it writes when you correct it), `USER.md` (you) and `NOW.md` (what's
+  going on). A `journal/` folder holds dated entries. See [docs/AGENT-HOME.md](docs/AGENT-HOME.md).
+- **Heartbeat.** Every few hours (with quiet hours), a background turn runs the
+  `HEARTBEAT.md` checklist and posts a note if something needs you.
+- **Personality and look.** Presets and dials with a live sample reply, four
+  plush mascots in nine colours, and a sidebar theme that follows the colour.
+- **Superpowers.** Built-in skills — Visualize, Schedules, MCP Setup, Frontend
+  design, GEO article writer, CLI discovery — plus your own. Skills change
+  instructions, not permissions. See [docs/skills/README.md](docs/skills/README.md).
+
+### Voice mode with your mascot
+
+<img src="docs/assets/readme/voice-room.png" alt="Voice room: the plush mascot listening, with speaker, mic, stop-answer and end-call controls" width="100%" />
+
+You talk, Amiro detects the end of your sentence, answers through the normal
+chat stream and reads it aloud as it is written; interrupt it any time
+(barge-in). Live voice works with any keyed provider (OpenAI, Deepgram, Groq,
+ElevenLabs); dictation and per-message read-aloud also work with the
+browser's own engines. See [docs/LIVE-VOICE.md](docs/LIVE-VOICE.md) and
+[docs/VOICE-AND-SPEECH.md](docs/VOICE-AND-SPEECH.md).
+
+### Secrets stay out of the chat
+
+<a href="docs/assets/showcase/secret-card.mp4"><img src="docs/assets/showcase/secret-card.gif" alt="Asked to switch to Brave Search, the agent shows a secure key card instead of asking in chat" width="100%" /></a>
 
 Secrets are encrypted at rest with AES-256-GCM under `~/.amiro/protected/`.
-List views show only metadata and a masked hint. A brokered HTTP proxy can
-inject a secret server-side, scoped to allowed domains, so the model never sees
-the raw value. See [docs/CREDENTIAL-VAULT.md](docs/CREDENTIAL-VAULT.md) and
-[Security](#security) for the limits.
+Agents ask for keys in a secure card, list views show only a masked hint, and
+a key-shaped string pasted into the composer is caught and offered to the
+vault instead. A brokered HTTP proxy can inject a secret server-side, scoped to
+allowed domains, so the model never sees the raw value. See
+[docs/CREDENTIAL-VAULT.md](docs/CREDENTIAL-VAULT.md) and [Security](#security).
 
 ### Phones and other devices
 
+<a href="docs/assets/showcase/devices.mp4"><img src="docs/assets/showcase/devices.gif" alt="Pairing a phone: the phone gets a code, the computer approves it, the phone signs in" width="100%" /></a>
+
 Connect a phone or another desktop app the way you sign in to the GitHub CLI:
-enter your Amiro's address on the device, it shows a short code, and you approve
-it at `<address>/device` from any browser, or in Settings → Devices. Each device
-gets its own sign-in that you can remove at any time. The desktop app can open a
-listener on your Wi-Fi for approved phones only, and can connect to an Amiro on a
-server instead of its own, then switch back. See [docs/DEVICES.md](docs/DEVICES.md).
+open your Amiro's address on the device (scan the QR in **Admin → Devices**), it
+shows a short code, and you approve it on the computer. Each device gets its
+own sign-in that you can remove any time. The desktop app can open a listener
+on your Wi-Fi for approved phones only, and can connect to an Amiro on a server
+instead of its own. See [Phones and devices](using/devices.mdx) and [docs/DEVICES.md](docs/DEVICES.md).
+
+### Admin, at a glance
+
+<a href="docs/assets/showcase/admin-tour.mp4"><img src="docs/assets/showcase/admin-tour.gif" alt="Admin: Voice & Speech, Notifications and Usage & Users" width="100%" /></a>
+
+Models & Providers (every provider by key, OAuth, device code or local
+endpoint; default model per provider card; model test), Search Providers with
+a live connectivity test, Voice & Speech, Credentials, Notifications, Devices,
+Usage & Users, and a Debug terminal (the same shell as the TV's terminal) — all
+from **Admin**.
+
+---
+
+## What's new since v1.26.1
+
+These are on `main` and ship in the next release:
+
+- **The TV**: the agent's real desktop streamed into the chat, with agent
+  desktop tools and exact workspace paths ([#31](https://github.com/vallabha717/Amiro/pull/31), [#33](https://github.com/vallabha717/Amiro/pull/33)).
+- **Admin → Debug terminal**, shared with the TV's terminal ([#31](https://github.com/vallabha717/Amiro/pull/31)).
+- **Inbox cleanup playbook**, session animal identities and the hover marquee for long titles ([#34](https://github.com/vallabha717/Amiro/pull/34)).
+- **Device codes and phone access over Wi-Fi** ([#28](https://github.com/vallabha717/Amiro/pull/28)).
+- **Generative UI cards** in chat: interactive questions, value intake and secret vault cards ([#25](https://github.com/vallabha717/Amiro/pull/25), [#26](https://github.com/vallabha717/Amiro/pull/26)).
+- **Set default model** right on the provider card ([#26](https://github.com/vallabha717/Amiro/pull/26)).
+- Web app and desktop shell moved into `clients/` ([#29](https://github.com/vallabha717/Amiro/pull/29)); `amiro-sandboxd` builds on Windows ([#30](https://github.com/vallabha717/Amiro/pull/30)).
+
+The full list is in [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
@@ -467,7 +552,7 @@ privately through GitHub security advisories; see [SECURITY.md](SECURITY.md).
 
 ## Documentation
 
-The user guide lives in this repo root as Mintlify pages (`docs.json`, `introduction.mdx`, `using/`, `settings/`, `reference/`). Connect the repo in Mintlify to publish it, or preview with `npx mintlify dev`.
+The user guide lives in this repo root as Mintlify pages (`docs.json`, `introduction.mdx`, `showcase.mdx`, `using/`, `settings/`, `reference/`), with a video for every setup step. Start with [See it in action](showcase.mdx), [Quickstart](quickstart.mdx) and [Everyday tasks](using/everyday-tasks.mdx). Connect the repo in Mintlify to publish it, or preview with `npx mintlify dev`.
 
 | Document | Contents |
 |---|---|
@@ -480,6 +565,8 @@ The user guide lives in this repo root as Mintlify pages (`docs.json`, `introduc
 | [docs/CONNECTORS.md](docs/CONNECTORS.md) · [docs/COMPOSIO.md](docs/COMPOSIO.md) | MCP connectors, agent-built connectors, vault-backed secrets; Composio Tool Router |
 | [docs/LIVE-VOICE.md](docs/LIVE-VOICE.md) · [docs/VOICE-AND-SPEECH.md](docs/VOICE-AND-SPEECH.md) | Live voice protocol and voice room; dictation, read-aloud, STT/TTS providers |
 | [docs/skills/README.md](docs/skills/README.md) | Skill discovery, activation, authoring and safety |
+| [docs/DEVICES.md](docs/DEVICES.md) | Device codes, paired devices, phone access over Wi-Fi |
+| [docs/multi-agent-team-isolation/](docs/multi-agent-team-isolation/) | Team agents, the sandbox supervisor and per-agent containers |
 | [docs/SECURITY-MODEL.md](docs/SECURITY-MODEL.md) · [docs/CREDENTIAL-VAULT.md](docs/CREDENTIAL-VAULT.md) | Owner auth, vault, sandbox boundary |
 | [docs/settings-ui.md](docs/settings-ui.md) · [docs/search-runtime.md](docs/search-runtime.md) · [docs/chat-titles.md](docs/chat-titles.md) | Settings surfaces, configured search routing, runtime titles |
 | [docs/RUST-RUNTIME.md](docs/RUST-RUNTIME.md) · [docs/runtime-upstream-update.md](docs/runtime-upstream-update.md) | Vendored runtime: provenance, crates, guarded upstream updates |
@@ -576,30 +663,35 @@ when run serially (`--test-threads=1`).
 </details>
 
 <details>
-<summary><b>README screenshots and GIFs</b></summary>
+<summary><b>README and docs videos</b></summary>
 
-The images in `docs/assets/readme/` come from
-[`scripts/capture-readme-media.mjs`](scripts/capture-readme-media.mjs). The
-script starts throwaway Amiro instances on ports 3930–3939, each with its own
-`HOME` and `AMIRO_HOME`. It uses a scripted OpenAI-compatible model, so chat
-replies are canned demo text and the provider shows as `demo-model`. Playwright
-drives the UI and ffmpeg turns the recordings into GIFs. Existing installs are
-never touched.
+The GIFs, MP4s and posters in `docs/assets/showcase/` come from the showcase
+recordings in [`tests/showcase/`](tests/showcase/). They reuse the E2E harness:
+a throwaway Amiro under `/tmp/amx-e2e-*` (never your `~/.amiro`), the agent
+sandbox when Docker and the images are present, and the **real** provider and
+keys from your gitignored `tests/e2e.config.json` (the videos use OpenCode Go
+with `muse-spark-1.2-contributor` and `deepseek-v4.1-flash`). Every
+scene is a real task — live web research, a public MCP server, the agent's real
+desktop — with captions for each step.
 
 ```bash
-pnpm build && scripts/build-native.sh   # if clients/web/out/ or the binaries are missing
-node scripts/capture-readme-media.mjs   # or: --only onboarding,chat,pages,schedules,voice
+pnpm build && scripts/build-native.sh          # if clients/web/out/ or the binaries are missing
+bash scripts/sandbox.sh up                      # optional: the agent desktop scene needs it
+pnpm --dir tests showcase                       # record every scene (or --project research)
+pnpm --dir tests showcase:export                # → docs/assets/showcase/<scene>.{mp4,gif,jpg}
 ```
 
-The voice room screenshot stubs the ElevenLabs connection in the browser, so it
-renders without a microphone or key.
+`export-media.mjs` drops frozen frames (long model waits), writes a 1280-wide
+H.264 MP4 for the docs, a sped-up GIF under 4.5 MB for this README, and a poster
+frame. The older stills in `docs/assets/readme/` come from
+[`scripts/capture-readme-media.mjs`](scripts/capture-readme-media.mjs).
 
 </details>
 
 <details>
 <summary><b>What works today, and what doesn't</b></summary>
 
-**Works:** streaming chat with history, archive, export and uploads. Provider
+**Works:** streaming chat with history, archive, export and uploads. Team agents with their own spaces and containers. The agent desktop (TV). Device-code pairing and phone access. Provider
 connection by OAuth, device code, API key or local endpoint. The model catalog.
 Agent identity, personality, skills, agent home and heartbeat. Read-only
 memory. The workspace browser. Schedules in all three modes. Configured-only

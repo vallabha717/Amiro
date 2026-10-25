@@ -1,6 +1,6 @@
 ---
 title: "First run"
-description: "From install to your first chat: choose desktop or server, open Amiro, create the owner account, connect a provider, and start talking."
+description: "From install to your first real answer: open Amiro, create the owner account, then let the setup chat walk you through look, personality, provider, web search, connectors and voice."
 ---
 
 This walkthrough takes you from nothing to your first conversation in a few
@@ -8,9 +8,9 @@ minutes. Amiro sets itself up the first time you open it. There is no default
 password and no sign-up: the first account you create is the owner, and it is
 the only account. You can skip steps and finish them later.
 
-<img src="/docs/assets/readme/demo-onboarding.gif" alt="Onboarding wizard: create the owner account, name the agent and pick its look and colour, then finish" width="100%" />
-
-*The wizard in motion: Welcome, You, Your agent, Brain, Ready.*
+<Frame caption="Recorded on a fresh install with a real OpenCode Go key: account → look → prompt → personality → provider → Bing search → done.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/setup-first-run.jpg" src="/docs/assets/showcase/setup-first-run.mp4" />
+</Frame>
 
 ## Step 1: Install and open Amiro
 
@@ -53,58 +53,87 @@ on an open network is not enough.
 
 ## Step 2: Create the owner account
 
-On a fresh install you land on the setup wizard. Work through the steps in
-order.
+On a fresh install, opening Amiro lands on the welcome screen. Click **Get
+started** and fill in:
 
-<Steps>
-<Step title="Welcome">
-Amiro briefly says where it is running: on this computer, or on your server.
-</Step>
-<Step title="You">
-Enter your name, a login (an email address or a username), a password, and your
-timezone. The browser suggests a timezone; change it if it is wrong. This
-creates the owner account.
-
-Your password must be at least 12 characters and include a letter plus at least
-one number or symbol.
+- **What should your agent call you?** Your first name is fine.
+- **Email or username.** Matched case-insensitively when you sign in.
+- **Password** and **Confirm password.** At least 12 characters, with a letter
+  plus a number or symbol. **Create account** stays disabled until both match.
 
 <Warning>
 This is the only required step, and there is no password recovery by email.
 Store the password somewhere safe. If you lose it, reset it on the machine
 running Amiro (see below).
 </Warning>
+
+## Step 3: The setup chat
+
+Amiro now introduces itself and sets itself up as a conversation: it streams
+one question at a time, you answer with a card, and a progress line shows
+**Step N of 8**. On the right, the story panel explains each chapter; on the
+left, your agent's face and every answer so far.
+
+<Steps>
+<Step title="Let's go → Look">
+Pick one of four plush shapes (Headphones, Sprout, Starfish, Dreamer) and one
+of nine colours, then **That's me**. The sidebar theme follows the colour. The
+main agent is always called Amiro; agents you add in [Team](/using/team) get
+their own names.
 </Step>
-<Step title="Your agent">
-Give your agent a name and pick an avatar and color. The mascot updates as you
-choose. You can skip this and change everything later in **Agent → Customize**.
-
-<img src="/docs/assets/readme/onboarding-agent.png" alt="Wizard agent step: name, look and colour, with a live mascot preview" width="100%" />
+<Step title="Default prompt">
+Read exactly what the agent works from: the `IDENTITY.md` and `SOUL.md` tabs.
+You can edit both later in **Agent → Workspace**.
 </Step>
-<Step title="Brain">
-Connect your first model provider. The wizard offers the common single-key
-choices first: Anthropic, OpenAI, OpenRouter, and Google Gemini. You can also
-open the full list for OAuth sign-ins and local endpoints.
-
-<img src="/docs/assets/readme/onboarding-provider.png" alt="Wizard brain step: connect Anthropic, OpenAI, OpenRouter, Gemini or more" width="100%" />
-
-You can skip this and connect a provider later, but you cannot chat until at
-least one provider is connected and its models are listed.
+<Step title="Personality">
+Pick a preset such as **Warm Companion** or **Sharp Operator**. The dials
+behind it are on **Agent → Personality**.
 </Step>
-<Step title="Ready">
-A checklist of what is done. Each skipped step says where to finish it.
+<Step title="Brain (AI provider)">
+The whole provider catalog is listed. Type to search (for example *OpenCode
+Go*), pick it, paste its API key into the masked field and click **Save key**.
+**Continue** unlocks once the provider is connected. OAuth and device-code
+sign-ins and local OpenAI-compatible endpoints use the same card.
 
-<img src="/docs/assets/readme/onboarding-ready.png" alt="Wizard ready step: checklist of what is set up" width="100%" />
+<Note>
+The key goes straight to the encrypted vault (`~/.amiro/protected/`). It is
+never shown back and never becomes a chat message.
+</Note>
+</Step>
+<Step title="Web search">
+**Bing** and **DuckDuckGo** need no key and work at once from a home
+connection (on a cloud VM they often get a challenge page and no results, so
+use a keyed engine there).
+Brave, Tavily, Exa, Serper and
+Firecrawl ask for a key in a password field; SearXNG takes your instance URL.
+</Step>
+<Step title="Connectors">
+Paste a Composio key for 1,000+ apps, or **Add server** for an MCP server (a remote URL
+or a local command). Easy to do later from [Connectors](/using/connectors).
+</Step>
+<Step title="Voice and listening">
+Choose a speaking voice (OpenAI, ElevenLabs, Deepgram… or the browser's own)
+and how Amiro listens. Live voice works with any keyed provider; the
+browser's built-in engines cover read-aloud and dictation only.
+</Step>
+<Step title="Summary">
+What is done and what is left for later. **Start working with Amiro** opens
+**Team** with Amiro as the first card; open it to start chatting.
 </Step>
 </Steps>
 
-## Step 3: Find a skipped step later
+Then pick the default model in **Admin → Models & Providers** (**Set default**
+on the provider card) and run a model test:
 
-Skipped steps stay reachable:
+<Frame caption="Default model, model test and the composer's model picker.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/setup-model.jpg" src="/docs/assets/showcase/setup-model.mp4" />
+</Frame>
 
-- The sidebar shows a **Finish setting up** card that links straight to the
-  missing step. It disappears once the step is done, or when you dismiss it.
-- To run the whole wizard again, go to **Admin → General → Setup → Run setup
-  again**.
+### Find a skipped step later
+
+- Each skipped step leaves a reminder card at the bottom of the sidebar that
+  links straight to it. It disappears once the step is done.
+- Run the whole setup chat again any time from **Admin → General**.
 
 ## Step 4: Sign in from then on
 
@@ -157,27 +186,36 @@ export AMIRO_OWNER_PASSWORD='a-long-owner-password'
 # or: export AMIRO_OWNER_PASSWORD_FILE=/run/secrets/amiro-owner-password
 ```
 
-## Step 5: Send your first message
+## Step 5: Ask something real
 
-Go to **Chat** and type something. Try one of these:
+Open a new chat and try a task, not a test. A few that show what Amiro does
+well (more on [Everyday tasks](/using/everyday-tasks)):
 
-<img src="/docs/assets/readme/demo-chat.gif" alt="A chat reply streaming in, with a table and a numbered list" width="100%" />
+```text
+Search the web and compare Obsidian, Logseq and Joplin for personal notes today. Give me a table and cite the pages you used.
+```
 
-*Watch a reply stream, including tables and lists.*
+```text
+Read https://en.wikipedia.org/wiki/Pomodoro_Technique, summarise it in 5 bullets and save the notes to notes/pomodoro.md.
+```
 
-- "Summarize the main points of this article: " followed by a link.
-- "Make a list of 5 ideas for a weekend project."
-- "What's on my schedule this week?" if you have added schedules.
+```text
+Every weekday at 8:00 am, give me a morning brief: today's weather in my city and the top 3 tech headlines with links.
+```
 
-If tools are enabled (the default), your agent can also read and edit files and
-run commands in its workspace, so it is worth knowing that Amiro is meant to run
-inside a VM or sandbox.
+<Frame caption="The first one, live: search, read, compare, cite.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/research.jpg" src="/docs/assets/showcase/research.mp4" />
+</Frame>
+
+Tools are on by default: your agent can read and edit files and run commands
+in its workspace. That is why Amiro is meant to run inside a VM or with the
+[sandbox](/using/agent-desktop).
 
 ## Next steps
 
 <CardGroup cols={2}>
-<Card title="Name and look" href="/settings/overview-tour">
-Give your agent a name, avatar, and color in Agent → Customize.
+<Card title="Personalize your agent" href="/using/personalizing-your-agent">
+Look, personality dials and the home files in the Agent hub.
 </Card>
 <Card title="Connect more providers" href="/settings/providers">
 Add subscriptions, local models, and API-key providers.

@@ -1,0 +1,120 @@
+---
+title: "See it in action"
+description: "Short videos of Amiro doing real work: live web research, documents, charts, schedules, connectors, its own desktop, a team of agents, and phone pairing."
+---
+
+Every video on this page was recorded on a fresh Amiro with a real model
+(OpenCode Go: `muse-spark-1.2-contributor` and `deepseek-v4.1-flash`), the live
+web, and real public services. Nothing is scripted or canned: what you see is what the agent did.
+They were recorded on a cloud VM, where the keyless search engines return no
+results, so in the research clips Amiro says search is unavailable and reads
+the official pages directly; with a working engine it searches first. See
+[Search](/using/search).
+Each one links to the page that explains how to set it up.
+
+## Set up in a few minutes
+
+<Frame caption="First run: owner account, the agent's look, personality, an API key into the vault, and Bing web search.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/setup-first-run.jpg" src="/docs/assets/showcase/setup-first-run.mp4" />
+</Frame>
+
+<Frame caption="Admin → Models & Providers: set the default model on the provider card, test it, chat.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/setup-model.jpg" src="/docs/assets/showcase/setup-model.mp4" />
+</Frame>
+
+How-to: [Quickstart](/quickstart) · [First run](/first-run) · [Providers](/settings/providers)
+
+## Everyday work
+
+<Frame caption="Research on the live web: compare three note apps, with a table and sources, then a follow-up.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/research.jpg" src="/docs/assets/showcase/research.mp4" />
+</Frame>
+
+<Frame caption="Read an article, summarise it, plan an afternoon, and save the notes into the workspace.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/documents.jpg" src="/docs/assets/showcase/documents.mp4" />
+</Frame>
+
+<Frame caption="Look up real numbers and chart them inline with the Visualize superpower.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/visualize.jpg" src="/docs/assets/showcase/visualize.mp4" />
+</Frame>
+
+How-to: [Everyday tasks](/using/everyday-tasks) · [Chatting](/using/chatting) · [Workspace files](/using/workspace-files)
+
+## Work that runs on its own
+
+<Frame caption="Ask for a weekday morning brief, find it on Schedules, run it now, read it from the Bell.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/schedules-morning-brief.jpg" src="/docs/assets/showcase/schedules-morning-brief.mp4" />
+</Frame>
+
+<Frame caption="The Inbox cleanup playbook: pick what to keep and what to clean up, Amiro saves the schedule.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/schedules-inbox-cleanup.jpg" src="/docs/assets/showcase/schedules-inbox-cleanup.mp4" />
+</Frame>
+
+How-to: [Schedules](/using/schedules) · [Notifications](/using/notifications)
+
+## Connect your tools
+
+<Frame caption="Add a real MCP server (DeepWiki) from the Connectors page and use it in chat.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/connectors-add.jpg" src="/docs/assets/showcase/connectors-add.mp4" />
+</Frame>
+
+<Frame caption="Or just ask: the agent connects Context7 itself and uses it straight away.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/connectors-agent.jpg" src="/docs/assets/showcase/connectors-agent.mp4" />
+</Frame>
+
+<Frame caption="When a tool needs a key, the agent asks in a secure card. The key goes to the vault, never into chat.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/secret-card.jpg" src="/docs/assets/showcase/secret-card.mp4" />
+</Frame>
+
+How-to: [Connectors](/using/connectors) · [Credentials](/using/credentials)
+
+## An agent with its own computer
+
+<Frame caption="The TV in the chat header streams the agent's real desktop: it opens Hacker News, reports the top stories, then opens a second site in a new tab.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/agent-desktop.jpg" src="/docs/assets/showcase/agent-desktop.mp4" />
+</Frame>
+
+How-to: [Agent desktop](/using/agent-desktop)
+
+## A team, a memory, a home
+
+<Frame caption="Team → New agent: a travel planner with its own look, personality and search, given a real trip to plan.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/team-new-agent.jpg" src="/docs/assets/showcase/team-new-agent.mp4" />
+</Frame>
+
+<Frame caption="Tell it once: the fact shows up in Memory, and a brand-new chat already knows.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/memory.jpg" src="/docs/assets/showcase/memory.mp4" />
+</Frame>
+
+<Frame caption="Agent hub: personality dials with a live sample, Superpowers, and the home files it reads every turn.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/agent-hub.jpg" src="/docs/assets/showcase/agent-hub.mp4" />
+</Frame>
+
+How-to: [Team](/using/team) · [Memory](/using/memory) · [Personalizing your agent](/using/personalizing-your-agent)
+
+## Settings and devices
+
+<Frame caption="Admin → Search Providers: the active engine, a live connectivity test, then a real search in chat.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/admin-search.jpg" src="/docs/assets/showcase/admin-search.mp4" />
+</Frame>
+
+<Frame caption="Admin: Voice & Speech, Notifications, and Usage & Users.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/admin-tour.jpg" src="/docs/assets/showcase/admin-tour.mp4" />
+</Frame>
+
+<Frame caption="Pair a phone with a code: the phone (right) asks, the computer approves, the phone signs in by itself.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/devices.jpg" src="/docs/assets/showcase/devices.mp4" />
+</Frame>
+
+How-to: [Search](/using/search) · [Settings tour](/settings/overview-tour) · [Phones and devices](/using/devices)
+
+## Record these yourself
+
+The videos come from the showcase recordings in `tests/showcase/`. They boot a
+throwaway Amiro (never your `~/.amiro`), use the keys in your gitignored
+`tests/e2e.config.json`, and write the media to `docs/assets/showcase/`:
+
+```bash
+pnpm --dir tests showcase
+pnpm --dir tests showcase:export
+```

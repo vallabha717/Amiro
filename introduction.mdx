@@ -1,19 +1,23 @@
 ---
 title: "Introduction"
-description: "What Amiro is, what you can do with it, and how to get started in a few minutes."
+description: "Amiro is your own AI agent, on your own machine: it researches, files notes, runs schedules, uses your tools, works on its own desktop and remembers you."
 ---
 
-Amiro is a personal-intelligence chat app that you run yourself, on your own
-computer or your own server. It is a chat product first: you talk to an agent,
-it remembers how you like to work, it can use tools, and it can act on a
-schedule. It ships as a desktop app and as a self-hosted web app, and your data
-stays in your own home directory.
+Amiro is your own AI agent that you run yourself, on your own computer or your
+own server. You talk to it like a person: it researches on the live web,
+summarises and files documents, runs work on a schedule, uses your tools
+through MCP connectors, works on a desktop of its own, and remembers how you
+like things done. It ships as a desktop app and as a self-hosted web app, and
+your data stays in your own home directory.
 
-<img src="/docs/assets/readme/chat-plan-light.png" alt="Amiro chat: the agent plans a launch week, with the sidebar mascot, chat history, and the session panel" width="100%" />
-
-*Chat in Amiro: the sidebar mascot, thread history, streaming reply, and the session panel at a glance.*
+<Frame caption="Recorded live with a real model: Amiro searches the web, compares three note apps in a table and cites its sources.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/research.jpg" src="/docs/assets/showcase/research.mp4" />
+</Frame>
 
 <CardGroup cols={2}>
+  <Card title="See it in action" icon="play" href="/showcase">
+    Every feature, recorded doing real work with a real model.
+  </Card>
   <Card title="Quickstart" icon="rocket" href="/quickstart">
     Install Amiro and send your first message in about five minutes.
   </Card>
@@ -21,7 +25,7 @@ stays in your own home directory.
     Server, VM, desktop app, WSL2, and headless install paths.
   </Card>
   <Card title="First run" icon="wand-magic-sparkles" href="/first-run">
-    The setup wizard: your account, your agent, your first provider.
+    The setup chat: your account, your agent's look, your first provider.
   </Card>
   <Card title="Using Amiro" icon="comments" href="/using/chatting">
     Chat, threads, memory, voice, schedules, files, and settings.
@@ -30,22 +34,25 @@ stays in your own home directory.
 
 ## What you can do
 
-- **Chat with models you choose.** Connect providers you already use, then pick
-  a model per chat. Responses stream as they are written.
-- **Give the agent a personality.** Set a name, a tagline, a look, and five
-  persona sliders.
-- **Let it remember.** Amiro keeps a memory the agent can read, and a set of
-  home files that load into every turn.
-- **Talk instead of type.** Dictate with a microphone, have replies read aloud,
-  or open live voice mode for a hands-free conversation.
-- **Put work on a timer.** Schedules run a saved prompt once, on a cron
-  expression, or every N minutes, each in its own timezone.
-- **Work with files.** Pick a workspace folder, browse it, preview files, and
-  let the agent read and edit inside allowed roots.
-- **Connect your tools.** Composio connectors and MCP servers extend what the
-  agent can reach.
-- **Keep secrets safe.** Provider keys and other secrets live in an encrypted
-  vault, and the agent never sees the raw values in its prompt.
+- **Research on the live web.** Ask a question; Amiro searches, reads the
+  pages, and answers with tables and sources. [Everyday tasks](/using/everyday-tasks)
+- **Summarise and file documents.** Links, PDFs, Office files and images in;
+  notes saved to its workspace out. [Workspace files](/using/workspace-files)
+- **Put work on a timer.** A weekday morning brief, an inbox cleanup, a weekly
+  review — set up by asking. [Schedules](/using/schedules)
+- **Connect your tools.** Any MCP server or 1,000+ apps through Composio; the
+  agent can add one itself. [Connectors](/using/connectors)
+- **Watch it work.** With the sandbox, the agent has its own desktop, streamed
+  live into the chat. [Agent desktop](/using/agent-desktop)
+- **Build a team.** Specialist agents with their own personality, models,
+  connectors and container. [Team](/using/team)
+- **Let it remember.** Memory and home files carry who you are into every
+  chat. [Memory](/using/memory)
+- **Talk instead of type.** Dictation, read-aloud and a hands-free live voice
+  room. [Voice](/using/voice)
+- **Use it from your phone.** Pair a device with a short code. [Devices](/using/devices)
+- **Keep secrets safe.** Keys go to an encrypted vault through secure cards,
+  never through the chat. [Credentials](/using/credentials)
 
 ## What runs where
 

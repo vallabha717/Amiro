@@ -1,0 +1,74 @@
+---
+title: "Agent desktop (the TV)"
+description: "Watch your agent work on its own computer: a live desktop with a browser, Files and a terminal, streamed into the chat."
+---
+
+With the sandbox running, every agent has a real Linux desktop in its
+container: Chromium, Files (Thunar) and a terminal in a dock. The **Monitor**
+button in the chat header opens it as a small TV you can drag, resize and
+expand to full screen. It is live and clickable.
+
+<Frame caption="Amiro opens Hacker News in the browser on its desktop, reports the top stories, then opens a second site in a new tab.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/agent-desktop.jpg" src="/docs/assets/showcase/agent-desktop.mp4" />
+</Frame>
+
+## Turn it on
+
+<Steps>
+  <Step title="Install Docker">
+    Docker Engine on Linux, or Docker Desktop on macOS and Windows (WSL2).
+  </Step>
+  <Step title="Start the sandbox">
+    From a source checkout, as the user Amiro runs as (not root):
+
+    ```bash
+    bash scripts/sandbox.sh up
+    bash scripts/sandbox.sh status
+    ```
+
+    The first run builds the `amiro-agent` and `amiro-sandboxd` images and
+    writes its secrets to `~/.amiro/sandbox/supervisor.env` (mode 0600).
+  </Step>
+  <Step title="Restart Amiro">
+    `amiro restart` (or restart the backend). It finds the supervisor at
+    `http://127.0.0.1:4313` and starts the agent's container on first use.
+  </Step>
+  <Step title="Open the TV">
+    Click the **Monitor** icon in the chat header. Without a running sandbox
+    the TV says so and offers **Reconnect**.
+  </Step>
+</Steps>
+
+## Ask the agent to use it
+
+The agent has two desktop tools: `desktop_open` (open a URL in the browser, a
+folder in Files, or a terminal in a folder) and `desktop_state` (list every
+window with its exact path or address). Team agents with Shell on get
+`agent_desktop_open` and `agent_desktop_state`.
+
+```text
+Use desktop_open to open https://news.ycombinator.com in the browser on your desktop.
+Then fetch that page and tell me the top 3 stories with one line each.
+```
+
+```text
+Open Files at your workspace's notes folder on your desktop and tell me which files are in it.
+```
+
+Every desktop call shows a **TV card** in the chat with the live screen, the
+windows that are open (each with its full path or URL) and **Open TV** /
+**Full screen** buttons.
+
+## What you see is where it really is
+
+Amiro's container mounts Amiro's real workspace (`~/.amiro/workspace` by
+default, `AMIRO_SANDBOX_MAIN_WORKSPACE` to change it). So Files shows the same
+files the [Workspace](/using/workspace-files) page shows, the terminal prompt
+reads `amiro@amiro-os:/home/you/.amiro/workspace$`, and the TV header names
+each window as *Amiro's Files* or *Amiro's Terminal* with its real path.
+
+## One shared terminal
+
+**Admin → Debug → Terminal** and the terminal on the TV are the same shell (a
+tmux session in the container). Type in one and it shows in the other, which
+makes it easy to look over the agent's shoulder or fix something by hand.

@@ -1,0 +1,61 @@
+---
+title: "Phones and other devices"
+description: "Use Amiro from your phone or another computer: approve each device with a short code, like signing in to the GitHub CLI."
+---
+
+Amiro runs in one place (the desktop app or your server). Phones and other
+desktop apps connect to it: they show the UI, the agent keeps running where it
+is. Each device gets its own sign-in that you approve with a code and can
+remove at any time.
+
+<Frame caption="The phone (right) asks for a code; the computer approves it in Admin → Devices; the phone signs in by itself.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/devices.jpg" src="/docs/assets/showcase/devices.mp4" />
+</Frame>
+
+## Connect a phone
+
+<Steps>
+  <Step title="Turn on phone access (desktop app)">
+    Open **Admin → Devices** and switch on **Allow phones on my network**. Amiro
+    opens a second listener on your Wi-Fi (port 8790 by default,
+    `AMIRO_REMOTE_PORT`) and shows its address and a QR code.
+
+    A server install is already reachable on its own address; skip this step
+    and use that address.
+  </Step>
+  <Step title="On the phone: open the address">
+    Scan the QR code. It opens `<address>/pair` with the address filled in.
+    Give the device a name and tap **Get a code**. The phone shows a code like
+    `WXYZ-2345` and waits.
+  </Step>
+  <Step title="On the computer: approve">
+    The request appears under **Waiting for approval** in Admin → Devices with
+    the same code, the device's name and where it asked from. Check the code
+    matches the phone in your hand, then **Approve**. (You can also approve at
+    `<address>/device` from any signed-in browser.)
+  </Step>
+  <Step title="Done">
+    The phone signs in by itself. No password is typed on it, and the Wi-Fi
+    listener never accepts a password sign-in at all. Add Amiro to the home
+    screen from the browser's share menu.
+  </Step>
+</Steps>
+
+## Connect another desktop app
+
+In the desktop app, choose **Connect to another Amiro**, type the server's
+address and approve the code the same way. **Switch back to this computer**
+returns to the app's own Amiro without signing in again.
+
+## Remove a device
+
+**Admin → Devices → Paired devices** lists every device with its address and
+when it was last seen. **Remove** signs it out at once. Changing the owner
+password signs out every device too.
+
+<Note>
+Codes expire after 10 minutes and work once. A device must use `https://`
+unless the address is on your own network (private IPs, `localhost`,
+`*.local`, Tailscale). Paired devices stay signed in until removed, or for
+`AMIRO_DEVICE_SESSION_TTL_DAYS` days if you set it.
+</Note>

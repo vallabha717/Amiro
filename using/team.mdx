@@ -1,0 +1,85 @@
+---
+title: "Team"
+description: "Add specialist agents next to Amiro, each with its own look, personality, search engine, connectors, workspace and container."
+---
+
+**Team** is where your agents live. Amiro is always the first card; every
+agent you add gets its own Team thread, its own space (`/<agent>/…` in the
+URL), its own workspace folder and, with the sandbox running, its own
+container.
+
+<Frame caption="Team → New agent: Atlas, a travel planner, set up in the guided chat and given a real trip to plan.">
+  <video controls muted playsInline preload="metadata" poster="/docs/assets/showcase/team-new-agent.jpg" src="/docs/assets/showcase/team-new-agent.mp4" />
+</Frame>
+
+## Add an agent
+
+<Steps>
+  <Step title="Team → New agent">
+    Open **Team** in the sidebar and click **New agent**. The same setup chat
+    you used on first run opens, in team mode.
+  </Step>
+  <Step title="Name, role, instructions, look">
+    Give it a name (for example *Atlas*), a role (*Travel planner*) and
+    instructions it should always follow. Pick a shape and colour. Leave
+    **Use Amiro's providers** on to start with the provider keys you already
+    connected.
+  </Step>
+  <Step title="Prompt and personality">
+    Read the default prompt (it now carries the new agent's name and your
+    instructions), then pick a personality preset. Both are saved for this
+    agent only.
+  </Step>
+  <Step title="Brain and search">
+    Keep the copied provider, or connect a different one just for this agent.
+    Pick its web search engine; Amiro keeps its own.
+  </Step>
+  <Step title="Connectors, voice, listening">
+    A team agent can have its own **remote** MCP servers (local commands and
+    Composio stay with Amiro). Voice is shared by the whole team. Skip
+    anything you do not need yet.
+  </Step>
+  <Step title="Open its thread">
+    The summary lists what is set and what is left. **Open thread** starts
+    the agent's Team thread. Ask it something real:
+
+    ```text
+    Plan a 2-day weekend trip from Bengaluru to Mysuru next month for two people:
+    how to get there, where to stay in a mid-range budget, and a day-by-day plan.
+    Check current train options on the web.
+    ```
+  </Step>
+</Steps>
+
+## What each agent keeps to itself
+
+| Kept per agent | Shared with the team |
+| --- | --- |
+| Name, role, instructions, look, personality | The owner account |
+| Provider choice and default model | Voice and speech settings |
+| Web search engine | The Bell inbox |
+| Remote MCP connectors, credentials saved in its space | |
+| Workspace folder, schedules, memory | |
+| Its container and desktop (with the sandbox) | |
+
+Open an agent's space from its card (**Open** plus the agent's name, e.g. **Open Atlas**) and everything in the
+sidebar (Connectors, Schedules, Credentials, Personality) is that agent's. A
+banner says whose space you are in; switch back to Amiro from it.
+
+## The sandbox
+
+With Docker installed, run the sandbox supervisor once from a source checkout:
+
+```bash
+bash scripts/sandbox.sh up
+```
+
+Each team agent with **Shell** on then runs its tools in a hardened container
+with only its own folder mounted, and gets its own [desktop](/using/agent-desktop).
+Without the sandbox, team agents still chat, search and use connectors; tools
+that need a shell say the sandbox is unavailable.
+
+## Usage
+
+**Team → Usage** shows tokens and cost per agent and per model, so a busy
+research agent is easy to spot.
