@@ -4,7 +4,6 @@ import { cn } from "lib/utils";
 import {
   CalendarIcon,
   ChevronDownIcon,
-  ChevronRightIcon,
   ClockIcon,
   ExternalLinkIcon,
   FileTextIcon,
@@ -27,7 +26,6 @@ import {
   parseWebFetchOutput,
   parseWebSearchOutput,
 } from "lib/web-search/parse-web-search";
-import { Collapse } from "../fold-card";
 import { VisualPlaceholder, VisualSurface } from "../visual/visual-surface";
 import type { PresenterProps, ToolPresenter, ToolRunStatus } from "./types";
 
@@ -79,7 +77,7 @@ function formatBytes(bytes: number): string {
  * with no fallback leaves a row of broken-image glyphs; the monogram keeps
  * every row scannable either way.
  */
-function SiteFavicon({ url, className }: { url?: string; className?: string }) {
+export function SiteFavicon({ url, className }: { url?: string; className?: string }) {
   const [failed, setFailed] = useState(false);
   const favicon = url ? faviconUrlFor(url) : "";
   const domain = url ? extractDomain(url) : "";
@@ -158,34 +156,28 @@ export function WebSearchSourceChip({
   );
 }
 
-/** One detailed result row: favicon, title, host pill, rank and snippet. */
+/** One result: favicon and title, then host and snippet, rank on the left. */
 function WebSearchResultRow({ hit }: { hit: ParsedWebSearchHit }) {
   const className =
-    "group/wsrow flex gap-2.5 rounded-lg border border-transparent p-2 transition-colors hover:border-border/60 hover:bg-muted/40";
+    "group/wsrow flex min-w-0 items-start gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-muted/50";
   const body = (
     <>
-      <span className="flex size-7 shrink-0 items-center justify-center rounded-md border bg-muted/40">
-        <SiteFavicon url={hit.url} className="size-4" />
+      <span className="w-4 shrink-0 pt-0.5 text-right text-[11px] tabular-nums text-muted-foreground">
+        {hit.rank}
       </span>
+      <SiteFavicon url={hit.url} className="mt-0.5 size-4" />
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="flex min-w-0 items-center gap-1.5">
-          <span className="truncate font-medium text-foreground transition-colors group-hover/wsrow:text-primary">
+          <span className="truncate font-medium text-foreground group-hover/wsrow:underline group-hover/wsrow:underline-offset-2">
             {hit.title}
           </span>
           <ExternalLinkIcon className="size-3 shrink-0 opacity-0 transition-opacity group-hover/wsrow:opacity-60" />
         </span>
-        <span className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
-          {hit.domain ? (
-            <span className="rounded-full bg-muted px-1.5 py-0.5">
-              {hit.domain}
-            </span>
-          ) : null}
-          <span className="rounded-full bg-muted px-1.5 py-0.5 font-mono">
-            #{hit.rank}
-          </span>
-        </span>
+        {hit.domain ? (
+          <span className="truncate text-[11px] text-muted-foreground">{hit.domain}</span>
+        ) : null}
         {hit.snippet ? (
-          <span className="line-clamp-2 text-xs text-muted-foreground">
+          <span className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
             {hit.snippet}
           </span>
         ) : null}
@@ -212,6 +204,29 @@ function WebSearchResultRow({ hit }: { hit: ParsedWebSearchHit }) {
   );
 }
 
+/** Placeholder rows while a search runs: the card's shape, not a spinner. */
+function ResultSkeleton() {
+  return (
+    <div className="flex flex-col gap-2 px-2 py-1.5" aria-hidden>
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="flex items-start gap-2.5">
+          <span className="mt-0.5 size-4 shrink-0 animate-pulse rounded-sm bg-muted" />
+          <span className="flex flex-1 flex-col gap-1.5">
+            <span
+              className="h-3 animate-pulse rounded bg-muted"
+              style={{ width: `${70 - i * 12}%`, animationDelay: `${i * 120}ms` }}
+            />
+            <span
+              className="h-2.5 w-11/12 animate-pulse rounded bg-muted/70"
+              style={{ animationDelay: `${i * 120 + 60}ms` }}
+            />
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export interface WebSearchResultCardProps {
   query?: string;
   provider?: string;
@@ -227,9 +242,9 @@ export interface WebSearchResultCardProps {
 }
 
 /**
- * The full web-search card: header, source chips strip, result rows and the
- * raw output escape hatch. Shared by the tool card and the message-level
- * sources bar so the two cannot drift.
+ * The full web-search card: the query as its title, a quiet meta line
+ * (provider, count, time), then the results as a ranked list with the raw
+ * output kept behind an escape hatch.
  */
 export function WebSearchResultCard({
   query,
@@ -255,71 +270,47 @@ export function WebSearchResultCard({
   return (
     <div
       className={cn(
-        "w-full rounded-lg border bg-card overflow-hidden text-xs",
+        "w-full overflow-hidden rounded-lg border bg-card text-xs",
         isError && "border-destructive/50",
         className,
       )}
     >
-      <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b bg-muted/40">
+      <div className="flex min-w-0 items-center gap-2 px-3 pb-1.5 pt-2.5">
         <SearchIcon className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="font-medium">Web search</span>
-        {query ? (
-          <span
-            className="max-w-[16rem] truncate rounded-full border bg-background px-2 py-0.5 text-[11px] text-muted-foreground"
-            title={query}
-          >
-            "{query}"
-          </span>
-        ) : null}
-        {providerLabel ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
-            <SearchIcon className="size-2.5" />
-            {providerLabel}
-          </span>
-        ) : null}
+        <span className="min-w-0 truncate text-[13px] font-medium" title={query}>
+          {query ? `“${query}”` : "Web search"}
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-3 pb-2 pl-[2.1rem] text-[11px] text-muted-foreground">
+        <span>Web search</span>
+        {providerLabel ? <span>{providerLabel}</span> : null}
         {!pending && !isError ? (
-          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+          <span>
             {hits.length} {hits.length === 1 ? "source" : "sources"}
           </span>
         ) : null}
-        {duration ? (
-          <span className="ml-auto shrink-0 rounded-full border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-            {duration}
-          </span>
-        ) : null}
+        {duration ? <span className="ml-auto font-mono tabular-nums">{duration}</span> : null}
       </div>
 
       {intent ? (
-        <div className="px-3 pt-2 text-[11px] text-muted-foreground">
-          {intent}
-        </div>
+        <div className="px-3 pb-2 text-[11px] text-muted-foreground">{intent}</div>
       ) : null}
 
       {pending ? (
-        <div className="space-y-2 px-3 py-3" data-testid="websearch-pending">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <div className="border-t py-1.5" data-testid="websearch-pending">
+          <div className="flex items-center gap-2 px-3 pb-1 text-xs text-muted-foreground">
             <span className="relative flex size-2">
               <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary/50" />
               <span className="relative inline-flex size-2 rounded-full bg-primary/70" />
             </span>
             <span className="animate-pulse">
-              Searching the web{query ? ` for "${query}"` : ""}…
+              Searching the web{query ? ` for “${query}”` : ""}…
             </span>
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            {[0, 1, 2, 3].map((i) => (
-              <span
-                key={i}
-                className="h-6 w-24 animate-pulse rounded-full bg-muted"
-              />
-            ))}
-          </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-            <div className="h-full w-1/3 animate-pulse rounded-full bg-linear-to-r from-transparent via-primary/50 to-transparent" />
-          </div>
+          <ResultSkeleton />
         </div>
       ) : isError ? (
-        <div className="px-3 py-3">
+        <div className="border-t px-3 py-3">
           <div
             data-testid="websearch-error"
             className="whitespace-pre-wrap rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-destructive"
@@ -328,16 +319,8 @@ export function WebSearchResultCard({
           </div>
         </div>
       ) : hits.length > 0 ? (
-        <div className="space-y-2 px-3 py-2">
-          <div
-            className="flex flex-wrap gap-1.5"
-            data-testid="websearch-source-strip"
-          >
-            {hits.map((hit) => (
-              <WebSearchSourceChip key={hit.url} hit={hit} />
-            ))}
-          </div>
-          <div className="flex flex-col gap-1">
+        <div className="border-t px-1 py-1">
+          <div className="flex flex-col">
             {visibleHits.map((hit) => (
               <WebSearchResultRow key={hit.url} hit={hit} />
             ))}
@@ -347,14 +330,14 @@ export function WebSearchResultCard({
               type="button"
               data-testid="websearch-toggle-all"
               onClick={() => setShowAll((value) => !value)}
-              className="w-full rounded-md border border-dashed px-2 py-1.5 text-[11px] text-muted-foreground transition-colors hover:border-border hover:bg-muted/40 hover:text-foreground"
+              className="ml-8 mt-0.5 rounded-md px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
             >
               {showAll ? "Show fewer" : `Show all ${hits.length} results`}
             </button>
           ) : null}
         </div>
       ) : (
-        <div className="space-y-2 px-3 py-3">
+        <div className="space-y-2 border-t px-3 py-3">
           <div className="rounded-md border border-dashed bg-muted/20 px-3 py-4 text-center text-xs text-muted-foreground">
             {noResults
               ? `No results found${query ? ` for "${query}"` : ""}.`
@@ -373,7 +356,7 @@ export function WebSearchResultCard({
       )}
 
       {!pending && clean && hits.length > 0 ? (
-        <div className="border-t px-3 py-2">
+        <div className="border-t px-3 py-1.5">
           <button
             type="button"
             data-testid="websearch-toggle-raw"
@@ -546,11 +529,9 @@ export function FetchedPageCard({
 }
 
 /**
- * The one-line row the WorkLog shows for a web call.
- *
- * Rendered as a `node` on the glance so the collapsed log still carries the
- * favicon source chips -- a "searched the web" line with no sources is
- * exactly the detail the log was hiding.
+ * The line under a web call on the timeline: the sources it found as
+ * stacked favicons with their hosts, so the folded log still shows where an
+ * answer came from. The step's own pill above already says what was asked.
  */
 export function WebSearchGlanceRow({
   toolName,
@@ -566,50 +547,55 @@ export function WebSearchGlanceRow({
   if (toolName === "webfetch" || toolName === "webContent") {
     const parsed = parseWebFetchOutput(output, input?.url);
     const url = parsed.url || input?.url || "";
-    const label =
-      status === "pending"
-        ? `Fetching ${parsed.domain || url || "page"}…`
-        : `Fetched ${parsed.domain || url || "page"}`;
+    if (!url) return null;
     return (
       <div
         data-testid="worklog-webfetch-row"
-        className="flex min-w-0 flex-wrap items-center gap-1.5"
+        className="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground"
       >
-        <span className="truncate">{label}</span>
-        {url ? (
-          <WebSearchSourceChip
-            testId="worklog-webfetch-chip"
-            hit={{
-              rank: 1,
-              title: parsed.title || parsed.domain || url,
-              url,
-              domain: parsed.domain,
-              faviconUrl: parsed.faviconUrl,
-            }}
-          />
-        ) : null}
+        <WebSearchSourceChip
+          testId="worklog-webfetch-chip"
+          hit={{
+            rank: 1,
+            title: parsed.title || parsed.domain || url,
+            url,
+            domain: parsed.domain,
+            faviconUrl: parsed.faviconUrl,
+          }}
+        />
+        {status === "pending" ? <span className="animate-pulse">Reading…</span> : null}
       </div>
     );
   }
 
   const parsed = parseWebSearchOutput(output, input?.query);
-  const query = input?.query ?? parsed.query ?? "";
-  const label =
-    status === "pending"
-      ? query
-        ? `Searching the web for "${query}"…`
-        : "Searching the web…"
-      : query
-        ? `Searched the web · "${query}"`
-        : "Searched the web";
+  if (status === "pending") {
+    return (
+      <div
+        data-testid="worklog-websearch-row"
+        className="flex items-center gap-1.5 text-[11px] text-muted-foreground"
+      >
+        <span className="flex items-center">
+          {[0, 1, 2].map((i) => (
+            <span
+              key={i}
+              className="size-3.5 animate-pulse rounded-full border bg-muted"
+              style={{ marginLeft: i === 0 ? 0 : -4, animationDelay: `${i * 150}ms` }}
+            />
+          ))}
+        </span>
+        <span className="animate-pulse">Looking for sources…</span>
+      </div>
+    );
+  }
+  if (!parsed.hits.length) return null;
   const chips = parsed.hits.slice(0, 4);
   const more = parsed.hits.length - chips.length;
   return (
     <div
       data-testid="worklog-websearch-row"
-      className="flex min-w-0 flex-wrap items-center gap-1.5"
+      className="flex min-w-0 flex-wrap items-center gap-1"
     >
-      <span className="truncate">{label}</span>
       {chips.map((hit) => (
         <WebSearchSourceChip
           key={hit.url}
@@ -618,7 +604,7 @@ export function WebSearchGlanceRow({
         />
       ))}
       {more > 0 ? (
-        <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+        <span className="shrink-0 px-1 text-[10px] text-muted-foreground">
           +{more} more
         </span>
       ) : null}
@@ -638,135 +624,12 @@ export interface WebSearchSourceEntry {
   rawText?: string;
 }
 
-/**
- * The message-level sources bar: "Used N web sources" with stacked favicons,
- * expanding to the full cards. Sits above the assistant's reply so the
- * evidence for an answer is visible without expanding the work log.
- */
-export function WebSearchSourcesBar({
-  searches,
-  className,
-}: {
-  searches: WebSearchSourceEntry[];
-  className?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  if (!searches.length) return null;
-
-  const seen = new Set<string>();
-  const hits: ParsedWebSearchHit[] = [];
-  for (const search of searches) {
-    for (const hit of search.hits) {
-      const key = hit.url.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      hits.push(hit);
-    }
-  }
-  const pending = searches.some((search) => search.pending);
-  const hasError = searches.some((search) => Boolean(search.errorText));
-  const domains = Array.from(
-    new Set(hits.map((hit) => hit.domain).filter(Boolean)),
-  ).slice(0, 4);
-  const label =
-    pending && hits.length === 0
-      ? "Searching the web…"
-      : hasError && hits.length === 0
-        ? "Web search unavailable (expand for details)"
-        : hits.length === 0
-          ? "Searched the web (0 sources returned)"
-          : `Used ${hits.length} web source${hits.length === 1 ? "" : "s"}`;
-
-  return (
-    <div
-      data-testid="message-web-sources-bar"
-      className={cn(
-        "overflow-hidden rounded-xl border bg-card text-xs",
-        className,
-      )}
-    >
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-        className="flex w-full flex-wrap items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/40"
-      >
-        <ChevronRightIcon
-          className={cn(
-            "size-3.5 shrink-0 text-muted-foreground transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
-            open && "rotate-90",
-          )}
-        />
-        <span className="flex shrink-0 items-center">
-          {pending && hits.length === 0
-            ? [0, 1, 2].map((i) => (
-                <span
-                  key={i}
-                  className="flex size-5 animate-pulse items-center justify-center rounded-full border bg-muted"
-                  style={{ marginLeft: i === 0 ? 0 : -6, animationDelay: `${i * 150}ms` }}
-                >
-                  <GlobeIcon className="size-3 text-muted-foreground" />
-                </span>
-              ))
-            : null}
-          {hits.slice(0, 3).map((hit, index) => (
-            <span
-              key={hit.url}
-              className="flex size-5 items-center justify-center overflow-hidden rounded-full border bg-background"
-              style={{ marginLeft: index === 0 ? 0 : -6 }}
-            >
-              <SiteFavicon url={hit.url} className="size-3.5 rounded-full" />
-            </span>
-          ))}
-        </span>
-        <span className={cn("font-medium", pending && "animate-pulse")}>
-          {label}
-        </span>
-        <span className="flex flex-wrap items-center gap-1">
-          {domains.map((domain) => (
-            <span
-              key={domain}
-              className="max-w-[10rem] truncate rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
-            >
-              {domain}
-            </span>
-          ))}
-        </span>
-      </button>
-      <Collapse open={open}>
-        <div className="space-y-2 border-t p-2">
-          {searches.map((search) => (
-            <WebSearchResultCard
-              key={search.id}
-              query={search.query}
-              provider={search.provider}
-              hits={search.hits}
-              duration={search.duration}
-              pending={search.pending}
-              noResults={search.noResults}
-              errorText={search.errorText}
-              rawText={search.rawText}
-              runStatus={
-                search.errorText
-                  ? "error"
-                  : search.pending
-                    ? "pending"
-                    : "success"
-              }
-            />
-          ))}
-        </div>
-      </Collapse>
-    </div>
-  );
-}
-
 const websearch: ToolPresenter = {
   glance: ({ input, status }) => {
     const q = input?.query ?? "";
-    if (status === "pending") return `searching the web for "${q}"…`;
-    if (status === "error") return `web search failed`;
-    return `websearch · "${q}"`;
+    if (status === "pending") return `Searching “${q}”…`;
+    if (status === "error") return `Web search failed · “${q}”`;
+    return `Searched “${q}”`;
   },
   Compact: ({ input, output, status }: PresenterProps) => {
     const timing = parseToolTiming(output);
@@ -841,9 +704,10 @@ const websearch: ToolPresenter = {
 const webfetch: ToolPresenter = {
   glance: ({ input, status }) => {
     const url = input?.url ?? "";
-    if (status === "pending") return `fetching ${url}…`;
-    if (status === "error") return `failed to fetch ${url}`;
-    return `webfetch · ${url}`;
+    const host = extractDomain(url) || url;
+    if (status === "pending") return `Reading ${host}…`;
+    if (status === "error") return `Couldn't read ${host}`;
+    return `Read ${host}`;
   },
   Compact: ({ input, output, status }: PresenterProps) => {
     const timing = parseToolTiming(output);

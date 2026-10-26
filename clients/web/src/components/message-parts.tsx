@@ -25,7 +25,6 @@ import {
   FileIcon,
   History,
   Loader,
-  Pencil,
   RefreshCw,
   Square,
   Trash2,
@@ -33,14 +32,21 @@ import {
   Volume2,
   X,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Badge } from "ui/badge";
 import { Button } from "ui/button";
 import JsonView from "ui/json-view";
 import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
 import { RewindConfirmDialog } from "./checkpoint/rewind-confirm-dialog";
 import { Markdown } from "./markdown";
-import { MessageEditor } from "./message-editor";
 import { OpenUISurface } from "./openui/openui-surface";
 import { parseInlineVisuals, VisualSurface } from "./visual/visual-surface";
 
@@ -74,6 +80,8 @@ import { notify } from "lib/notify";
 import dynamic from "next/dynamic";
 import { ModelProviderIcon } from "ui/model-provider-icon";
 import { ToolRenderBoundary } from "./tool-invocation/tool-render-boundary";
+import { InTimelineContext } from "./work-log";
+import { narrateStep, thoughtPreview } from "lib/chat-ux/step-narration";
 import {
   getToolPresenter,
   presenterPropsFromToolPart,
@@ -128,13 +136,11 @@ export const UserMessagePart = memo(
     status,
     message,
     setMessages,
-    sendMessage,
     readonly,
     isError,
   }: UserMessagePartProps) {
     const { copied, copy } = useCopy();
     const t = useTranslations();
-    const [mode, setMode] = useState<"view" | "edit">("view");
     const [isDeleting, setIsDeleting] = useState(false);
     const [expanded, setExpanded] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
@@ -176,21 +182,13 @@ export const UserMessagePart = memo(
       }
     }, [status]);
 
-    if (mode === "edit" && setMessages && sendMessage) {
-      return (
-        <div className="flex flex-row gap-2 items-start w-full">
-          <MessageEditor
-            message={message}
-            setMode={setMode}
-            setMessages={setMessages}
-            sendMessage={sendMessage}
-          />
-        </div>
-      );
-    }
 
     return (
-      <div className="flex flex-col gap-2 items-end my-2">
+      // More air above a prompt than below it: the prompt belongs to the
+      // reply that follows, so it sits close to that and apart from the
+      // turn before. The hover actions float under the bubble on desktop
+      // instead of pushing the reply down.
+      <div className="relative flex flex-col gap-1 items-end mt-8 mb-1">
         <div
           data-testid="message-content"
           data-role="user"
@@ -228,11 +226,11 @@ export const UserMessagePart = memo(
           )}
         </div>
         {isLast && (
-          <div className="flex w-full justify-end md:opacity-0 group-hover/message:opacity-100 transition-opacity duration-300">
+          <div className="flex w-full justify-end md:absolute md:right-0 md:top-full md:z-10 md:w-auto md:rounded-md md:bg-background/90 md:opacity-0 group-hover/message:opacity-100 focus-within:opacity-100 transition-opacity duration-300">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  data-testid="message-edit-button"
+                  data-testid="message-copy-button"
                   variant="ghost"
                   size="icon"
                   className={cn("size-3! p-4!")}
@@ -245,21 +243,6 @@ export const UserMessagePart = memo(
             </Tooltip>
             {!readonly && (
               <>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      data-testid="message-edit-button"
-                      variant="ghost"
-                      size="icon"
-                      className="size-3! p-4!"
-                      onClick={() => setMode("edit")}
-                    >
-                      <Pencil />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">Edit</TooltipContent>
-                </Tooltip>
-
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -736,6 +719,7 @@ export const ReasoningPart = memo(function ReasoningPart({
   // null = follow the agent (open while thinking, collapsed after). Once the
   // user clicks, their choice wins so we never re-collapse something they
   // deliberately opened.
+  const tStream = useTranslations("ChatStream.Timeline");
   const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
   const isExpanded = userExpanded ?? Boolean(isThinking);
 
@@ -793,12 +777,24 @@ export const ReasoningPart = memo(function ReasoningPart({
             as="span"
             className="font-normal text-xs [--base-color:#a1a1aa] [--base-gradient-color:#52525b] dark:[--base-color:#a1a1aa] dark:[--base-gradient-color:#f4f4f5]"
           >
-            Thinking
+            {tStream("thinking")}
           </TextShimmer>
         ) : (
-          <span className="font-normal text-xs text-muted-foreground/75">
-            Thinking
-          </span>
+          <>
+            <span className="shrink-0 font-normal text-xs text-muted-foreground/75">
+              {tStream("thought")}
+            </span>
+            {/* What the thought was about, so a folded thought still says
+                something without being opened. */}
+            {!isExpanded && reasoningText.trim() ? (
+              <span
+                data-testid="reasoning-preview"
+                className="min-w-0 truncate text-xs italic text-muted-foreground/60"
+              >
+                {thoughtPreview(reasoningText)}
+              </span>
+            ) : null}
+          </>
         )}
       </button>
 
@@ -938,6 +934,8 @@ export const ToolMessagePart = memo(
     isManualToolInvocation,
   }: ToolMessagePartProps) => {
     const t = useTranslations("");
+    const inTimeline = useContext(InTimelineContext);
+    const tn = useTranslations("ChatStream.Narrate");
 
     const { output, toolCallId, state, input, errorText } = part;
 
@@ -1162,6 +1160,14 @@ export const ToolMessagePart = memo(
       return mcpToolName ? `${mcpServerName} / ${mcpToolName}` : mcpServerName;
     }, [input, presenter, presenterProps, mcpServerName, mcpToolName]);
 
+    // On the timeline the step reads as a sentence with what came back
+    // underneath; elsewhere the compact tool description stays.
+    const narration = useMemo(
+      () => (inTimeline ? narrateStep(tn, toolName, presenterProps) : null),
+      [inTimeline, tn, toolName, presenterProps],
+    );
+    const pillTitle = narration?.title ?? toolDescription;
+
     return (
       <div className="group w-full">
         <div className="flex flex-col w-full my-0.5 fade-in duration-200 animate-in">
@@ -1184,24 +1190,43 @@ export const ToolMessagePart = memo(
                 expanded && "rotate-90",
               )}
             />
-            {isExecuting || presenterProps.status === "pending" ? (
+            {inTimeline ? null : isExecuting ||
+              presenterProps.status === "pending" ? (
               <Loader className="size-3 shrink-0 animate-spin text-muted-foreground" />
             ) : isError || presenterProps.status === "error" ? (
               <TriangleAlert className="size-3 shrink-0 text-destructive" />
             ) : null}
-            <div className="min-w-0 flex items-center gap-1.5 truncate flex-1">
+            <div className="min-w-0 flex flex-col truncate flex-1">
               {isExecuting || presenterProps.status === "pending" ? (
                 <TextShimmer
                   as="span"
-                  className="truncate text-xs font-normal"
+                  className={cn(
+                    "truncate font-normal",
+                    narration ? "text-[13px] text-foreground" : "text-xs",
+                  )}
                 >
-                  {toolDescription}
+                  {pillTitle}
                 </TextShimmer>
               ) : (
-                <span className="truncate text-xs font-normal">
-                  {toolDescription}
+                <span
+                  className={cn(
+                    "truncate font-normal",
+                    narration && "text-[13px] text-foreground",
+                    !narration && "text-xs",
+                    narration && presenterProps.status === "error" && "text-destructive",
+                  )}
+                >
+                  {pillTitle}
                 </span>
               )}
+              {narration?.detail ? (
+                <span
+                  data-testid="tool-call-result"
+                  className="truncate text-[11px] text-muted-foreground"
+                >
+                  {narration.detail}
+                </span>
+              ) : null}
             </div>
             {parsedTiming.duration ? (
               <span className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-muted/60 text-muted-foreground">

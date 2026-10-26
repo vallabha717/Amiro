@@ -2018,5 +2018,109 @@
       "reload": "रीलोड करें",
       "dismiss": "बंद करें"
     }
+  },
+  "ChatStream": {
+    "Timeline": {
+      "working": "काम चल रहा है",
+      "worked": "काम पूरा हुआ",
+      "thinking": "सोच रहा है",
+      "thought": "सोचा",
+      "steps": "{count, plural, one {# चरण} other {# चरण}}",
+      "goToStep": "चरण {index} पर जाएँ: {title}",
+      "thinkingAbout": "सोच-विचार कर रहा है",
+      "update": "अपडेट",
+      "writing": "लिख रहा है…"
+    },
+    "Sources": {
+      "label": "{count, plural, one {# स्रोत} other {# स्रोत}}",
+      "showMore": "{count, plural, one {# और स्रोत} other {# और स्रोत}}",
+      "showFewer": "कम स्रोत दिखाएँ"
+    },
+    "Changes": {
+      "title": "{count, plural, one {# फ़ाइल बदली गई} other {# फ़ाइलें बदली गईं}}",
+      "new": "नई",
+      "noPreview": "इस बदलाव का डिफ़ पूर्वावलोकन उपलब्ध नहीं है।"
+    },
+    "AskUser": {
+      "answered": "जवाब दिया गया",
+      "askedEarlier": "एजेंट ने पूछा",
+      "progress": "प्रश्न {current} / {total}",
+      "pickAny": "जितने लागू हों, सभी चुनें।",
+      "other": "अन्य…",
+      "otherLabel": "आपका अपना जवाब",
+      "otherPlaceholder": "अपना जवाब लिखें",
+      "keyboardHint": "चुनने के लिए 1–9 दबाएँ, आगे बढ़ने के लिए Enter",
+      "back": "पीछे",
+      "next": "आगे",
+      "send": "जवाब भेजें"
+    },
+    "Narrate": {
+      "ask": {
+        "now": "{count, plural, one {आपसे एक सवाल पूछ रहा है} other {आपसे # सवाल पूछ रहा है}}",
+        "done": "{count, plural, one {आपसे एक सवाल पूछा} other {आपसे # सवाल पूछे}}",
+        "failed": "सवाल कार्ड नहीं दिखा सका"
+      },
+      "search": {
+        "now": "वेब पर “{query}” खोज रहा है",
+        "done": "“{query}” खोजा",
+        "failed": "“{query}” की वेब खोज विफल रही",
+        "results": "{sites} से {count, plural, one {# नतीजा} other {# नतीजे}}",
+        "none": "कोई नतीजा नहीं"
+      },
+      "fetch": {
+        "now": "{host} पढ़ रहा है",
+        "done": "{host} पढ़ा",
+        "failed": "{host} नहीं खुल सका"
+      },
+      "command": {
+        "now": "{command} चला रहा है",
+        "done": "{command} चलाया",
+        "failed": "कमांड विफल: {command}",
+        "exit": "कोड {code} के साथ बंद हुआ"
+      },
+      "edit": {
+        "now": "{file} बदल रहा है",
+        "done": "{file} बदली",
+        "failed": "{file} नहीं बदल सका"
+      },
+      "write": {
+        "now": "{file} लिख रहा है",
+        "done": "{file} बनाई",
+        "failed": "{file} नहीं लिख सका"
+      },
+      "rewrite": {
+        "now": "{file} लिख रहा है",
+        "done": "{file} दोबारा लिखी",
+        "failed": "{file} नहीं लिख सका"
+      },
+      "read": {
+        "now": "{file} पढ़ रहा है",
+        "done": "{file} पढ़ी",
+        "failed": "{file} नहीं पढ़ सका"
+      },
+      "list": {
+        "now": "{path} में देख रहा है",
+        "done": "{path} में देखा",
+        "failed": "{path} नहीं खुल सका"
+      },
+      "find": {
+        "now": "फ़ाइलों में “{pattern}” खोज रहा है",
+        "done": "फ़ाइलों में “{pattern}” खोजा",
+        "failed": "फ़ाइलों में “{pattern}” की खोज विफल रही"
+      },
+      "plan": {
+        "now": "योजना अपडेट कर रहा है",
+        "done": "योजना अपडेट की",
+        "failed": "योजना अपडेट नहीं हो सकी"
+      },
+      "tool": {
+        "now": "{tool} इस्तेमाल कर रहा है",
+        "done": "{tool} इस्तेमाल किया",
+        "failed": "{tool} विफल रहा"
+      },
+      "aFile": "एक फ़ाइल",
+      "lines": "{count, plural, one {# पंक्ति} other {# पंक्तियाँ}}",
+      "matches": "{count, plural, one {# मिलान} other {# मिलान}}"
+    }
   }
 }

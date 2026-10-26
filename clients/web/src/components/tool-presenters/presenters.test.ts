@@ -12,7 +12,6 @@ import {
 import {
   WebSearchGlanceRow,
   WebSearchSourceChip,
-  WebSearchSourcesBar,
 } from "./jcode-presenters";
 
 /**
@@ -479,14 +478,14 @@ describe("websearch rich card", () => {
     expect(html).toContain("6.4s");
   });
 
-  it("renders the source chips strip and detailed result rows", () => {
+  it("renders the query as the title and a ranked result list", () => {
     const html = renderSearchExpanded(searchOutput(3));
 
-    expect(html).toContain('data-testid="websearch-source-chip"');
-    expect(html).toContain('data-testid="websearch-result-row"');
+    expect(html).toContain("“rust async runtime”");
+    // The list is the one view of the results; no duplicate chip strip.
+    expect(html).not.toContain('data-testid="websearch-source-chip"');
+    expect(html.split('data-testid="websearch-result-row"').length - 1).toBe(3);
     expect(html).toContain("site1.example.com");
-    expect(html).toContain("#1");
-    expect(html).toContain("#3");
     expect(html).toContain("Snippet number 1.");
     // Links are real, new-tab, referrer-safe anchors.
     expect(html).toContain('href="https://site1.example.com/page"');
@@ -583,8 +582,9 @@ describe("work log web glance rows", () => {
         status: "success",
       }),
     );
-    expect(html).toContain('Searched the web · &quot;rust async runtime&quot;');
-    expect(html).toContain('data-testid="worklog-websearch-chip"');
+    // The pill above the row names the query; the row is the sources.
+    expect(html).not.toContain("rust async runtime");
+    expect(html.split('data-testid="worklog-websearch-chip"').length - 1).toBe(4);
     expect(html).toContain("+2 more");
   });
 
@@ -597,35 +597,9 @@ describe("work log web glance rows", () => {
         status: "pending",
       }),
     );
-    expect(html).toContain("Fetching example.com");
+    expect(html).toContain("Reading…");
     expect(html).toContain('data-testid="worklog-webfetch-chip"');
-  });
-});
-
-describe("message sources bar", () => {
-  it("summarizes used sources and lists domains", () => {
-    const html = renderToStaticMarkup(
-      createElement(WebSearchSourcesBar, {
-        searches: [
-          {
-            id: "call-1",
-            query: "rust async runtime",
-            hits: [
-              {
-                rank: 1,
-                title: "Tokio",
-                url: "https://tokio.rs/",
-                domain: "tokio.rs",
-                faviconUrl: "https://www.google.com/s2/favicons?domain=tokio.rs&sz=64",
-              },
-            ],
-          },
-        ],
-      }),
-    );
-    expect(html).toContain('data-testid="message-web-sources-bar"');
-    expect(html).toContain("Used 1 web source");
-    expect(html).toContain("tokio.rs");
+    expect(html).toContain("example.com");
   });
 });
 
