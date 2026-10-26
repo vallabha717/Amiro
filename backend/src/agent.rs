@@ -440,7 +440,8 @@ pub fn build_capability_guidance_block(home: &Path) -> String {
            The user enters the value in that encrypted UI card, which seals it directly in the vault (`$AMIRO_CRED_<SERVICE>_<FIELD>`) and immediately provisions the service.\n\
          - For OAuth logins (Claude, OpenAI, Gemini, Copilot, MCP servers like Linear/Notion, or 1-click Composio apps like Gmail/Slack), call the matching OAuth start tool (`provider_oauth_start`, `mcp_oauth_start`, or `composio_connect_start`). It returns an interactive card and auth URL:\n\
            `OAUTH_CONNECT {\"type\":\"provider\"|\"mcp\"|\"composio\",\"provider\":\"...\",\"authorizationUrl\":\"...\"}`\n\
-           Tell the user to click the link or complete the device code in the rendered card, then call the status tool to confirm."
+           Tell the user to click the link or complete the device code in the rendered card, then call the status tool to confirm.\n\
+         - When you need a decision only the user can make (which option, which approach), call `ui_ask_user` with 1-4 multiple-choice questions instead of asking in prose, then end your turn: their answers arrive as the next message."
             .to_string(),
         "## Your Computer (the TV)\n\
          You have your own Linux desktop (Chromium, Files, a terminal) in your sandbox container. The user watches it live on the TV screen: \

@@ -481,6 +481,17 @@ pub fn tool_definitions() -> Vec<Value> {
             "purpose":{"type":"string","description":"Purpose badge shown on the card"},
             "allowed_domains":{"type":"array","items":{"type":"string"},"description":"Optional allowed domains for brokered requests"}
         },"required":["service","label"],"additionalProperties":false}}),
+        json!({"name":"ui_ask_user","description":"Ask the user 1-4 multiple-choice questions with a question card in the chat, when you need a decision only they can make (which option, which approach, what to prioritise). Each question has 2-4 short options; the card always adds an \"Other\" free-text answer. After calling this, end your turn: the user's answers arrive as their next message. Never use it to ask for secrets (use ui_prompt_secret).","inputSchema":{"type":"object","properties":{
+            "questions":{"type":"array","minItems":1,"maxItems":4,"items":{"type":"object","properties":{
+                "question":{"type":"string","description":"The full question, ending with a question mark"},
+                "header":{"type":"string","description":"Very short topic chip shown above the question (max 16 chars), e.g. 'Database'"},
+                "options":{"type":"array","minItems":2,"maxItems":4,"items":{"type":"object","properties":{
+                    "label":{"type":"string","description":"1-5 word choice"},
+                    "description":{"type":"string","description":"One line on what picking it means"}
+                },"required":["label"],"additionalProperties":false}},
+                "multi_select":{"type":"boolean","description":"Allow picking more than one option (default false)"}
+            },"required":["question","options"],"additionalProperties":false}}
+        },"required":["questions"],"additionalProperties":false}}),
         json!({"name":"ui_navigate","description":"Emit an interactive navigation card or open a specific Amiro settings/admin/superpowers page for the user.","inputSchema":{"type":"object","properties":{
             "page":{"type":"string","enum":["providers","voice","search","connectors","credentials","integrations","general","notifications","usage","schedules","superpowers","personality","memory","workspace"],"description":"Target Amiro page to open or link to"}
         },"required":["page"],"additionalProperties":false}}),
@@ -1843,6 +1854,15 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<(String
             Ok((text, res.0))
         }
 
+        "ui_ask_user" => {
+            let questions = ask_user_questions(args)?;
+            let card = json!({"questions": questions});
+            let text = format!(
+                "Showed the user a question card. End your turn now and wait: their answers arrive as their next message.\n\nASK_USER {card}"
+            );
+            Ok((text, card))
+        }
+
         "ui_navigate" => {
             let page = require_str(args, "page")?;
             let (title, path) = match page {
@@ -1924,6 +1944,53 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<(String
         }
         other => Err(format!("unknown tool \"{other}\"")),
     }
+}
+
+/// Validates `ui_ask_user` questions into the card's shape: 1-4 questions,
+/// each with a non-empty question and 2-4 labelled options.
+fn ask_user_questions(args: &Value) -> Result<Vec<Value>, String> {
+    let raw = args
+        .get("questions")
+        .and_then(Value::as_array)
+        .ok_or("questions is required")?;
+    if raw.is_empty() || raw.len() > 4 {
+        return Err("ask between 1 and 4 questions".to_string());
+    }
+    let text = |v: &Value, key: &str| {
+        v.get(key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+    raw.iter()
+        .enumerate()
+        .map(|(i, q)| {
+            let question = text(q, "question").ok_or(format!("question {} is empty", i + 1))?;
+            let options: Vec<Value> = q
+                .get("options")
+                .and_then(Value::as_array)
+                .map(|opts| {
+                    opts.iter()
+                        .filter_map(|o| {
+                            let label = text(o, "label")?;
+                            Some(json!({"label": label, "description": text(o, "description")}))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            if options.len() < 2 || options.len() > 4 {
+                return Err(format!("question {} needs 2-4 options with labels", i + 1));
+            }
+            Ok(json!({
+                "id": format!("q{}", i + 1),
+                "question": question,
+                "header": text(q, "header"),
+                "options": options,
+                "multiSelect": q.get("multi_select").and_then(Value::as_bool).unwrap_or(false),
+            }))
+        })
+        .collect()
 }
 
 fn openui_preset_code(preset: &str) -> &'static str {
@@ -2344,6 +2411,7 @@ mod tests {
         assert!(names.contains(&"composio_connect_start"));
         assert!(names.contains(&"ui_prompt_secret"));
         assert!(names.contains(&"ui_navigate"));
+        assert!(names.contains(&"ui_ask_user"));
         for tool in body["result"]["tools"].as_array().unwrap() {
             assert_eq!(tool["inputSchema"]["type"], "object");
             assert!(tool["description"].is_string());
@@ -2724,6 +2792,42 @@ mod tests {
         )
         .await
         .is_err());
+    }
+
+    #[tokio::test]
+    async fn ui_ask_user_returns_a_question_card_and_rejects_bad_questions() {
+        let state = state();
+        write_json(
+            &state.home.join("users.json"),
+            &json!({"users":[{"id":"owner","role":"admin"}]}),
+        )
+        .await
+        .unwrap();
+        let (text, data) = call_tool(
+            &state,
+            "ui_ask_user",
+            &json!({"questions": [{
+                "question": "Which database should we use?",
+                "header": "Database",
+                "options": [{"label": "Postgres", "description": "Relational"}, {"label": "SQLite"}],
+                "multi_select": true
+            }]}),
+        )
+        .await
+        .unwrap();
+        assert!(text.contains("ASK_USER {"), "{text}");
+        assert!(text.contains("End your turn"), "{text}");
+        let q = &data["questions"][0];
+        assert_eq!(q["id"], json!("q1"));
+        assert_eq!(q["header"], json!("Database"));
+        assert_eq!(q["multiSelect"], json!(true));
+        assert_eq!(q["options"][1]["label"], json!("SQLite"));
+        assert_eq!(q["options"][1]["description"], Value::Null);
+
+        let one_option = json!({"questions": [{"question": "Sure?", "options": [{"label": "Yes"}]}]});
+        assert!(call_tool(&state, "ui_ask_user", &one_option).await.is_err());
+        assert!(call_tool(&state, "ui_ask_user", &json!({"questions": []})).await.is_err());
+        assert!(call_tool(&state, "ui_ask_user", &json!({})).await.is_err());
     }
 
     #[tokio::test]
