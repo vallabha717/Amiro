@@ -62,10 +62,19 @@ import {
 } from "./tool-presenters";
 import { isDesktopToolCall } from "./tool-presenters/desktop-presenters";
 import {
+  SiteFavicon,
   WebSearchGlanceRow,
-  WebSearchSourcesBar,
   type WebSearchSourceEntry,
 } from "./tool-presenters/jcode-presenters";
+import { AskUserCard } from "./chat-stream/ask-user-card";
+import { SourcesStrip, dedupeSources } from "./chat-stream/sources-strip";
+import {
+  TurnChangesCard,
+  type TurnEdit,
+  collectTurnChanges,
+} from "./chat-stream/turn-changes-card";
+import { type AskUserRequest, parseAskUser } from "lib/chat-ux/ask-user";
+import { narrateStep, thoughtPreview } from "lib/chat-ux/step-narration";
 import { parseToolTiming } from "lib/ai/tools/timing";
 import {
   type ParsedWebSearchHit,
@@ -214,6 +223,7 @@ const PurePreviewMessage = ({
     useShallow((s) => [s.onlyToolCategories, s.hideAllTools] as const),
   );
   const t = useTranslations("Chat.Tool");
+  const tn = useTranslations("ChatStream.Narrate");
   const grantedModeLabel =
     grantedMode === "auto"
       ? t("autoPermissionMode")
@@ -444,6 +454,93 @@ const PurePreviewMessage = ({
                   }
                 }
               }
+              // A reply that only thought (no tools) still gets the card:
+              // live while it thinks, folded to "Thought · 4s" after, so
+              // every turn's working-out looks and behaves the same way.
+              const thoughtTexts = isUserMessage
+                ? []
+                : partsForDisplay
+                    .filter((p) => p.type === "reasoning")
+                    .map((p) => (p as { text?: string }).text?.trim() ?? "");
+              if (thoughtTexts.length && !hideAllTools) {
+                const thinkingNow = Boolean(
+                  partsForDisplay[partsForDisplay.length - 1]?.type ===
+                    "reasoning" &&
+                    isLastMessage &&
+                    isLoading,
+                );
+                // As with tool turns: while the reply runs its text stays in
+                // the card (a tool call may still follow), and moves below
+                // it as the answer once the turn ends.
+                const replyRunning = Boolean(isLastMessage && isLoading);
+                const liveRows: WorkLogRow[] = replyRunning
+                  ? partsForDisplay.flatMap((part, i) =>
+                      part.type === "text" && part.text?.trim()
+                        ? [
+                            {
+                              type: "prose" as const,
+                              live: i === partsForDisplay.length - 1,
+                              title: thoughtPreview(part.text),
+                              children: renderPart(part, i),
+                            },
+                          ]
+                        : [],
+                    )
+                  : [];
+                return (
+                  <>
+                    <FoldedWork
+                      rows={liveRows}
+                      thought
+                      reasoning={
+                        <ReasoningPart
+                          key={`${message.id}-turn-reasoning`}
+                          readonly={readonly}
+                          reasoningText={thoughtTexts.filter(Boolean).join("\n\n")}
+                          isThinking={thinkingNow}
+                        />
+                      }
+                      reasoningTitle={
+                        thinkingNow
+                          ? undefined
+                          : thoughtPreview(thoughtTexts.join(" "))
+                      }
+                      reasoningActive={thinkingNow}
+                      turnSettled={!replyRunning}
+                      isRunning={replyRunning}
+                      images={[]}
+                      stepCount={0}
+                      durationMs={
+                        (message.metadata as ChatMetadata | undefined)?.durationMs
+                      }
+                    />
+                    {partsForDisplay.map((part, i) =>
+                      part.type === "reasoning" ||
+                      (replyRunning && part.type === "text")
+                        ? null
+                        : renderPart(part, i),
+                    )}
+                    {artifactCards}
+                    {approvals}
+                    {textSecretPrompts.map((sp) => (
+                      <SecretPromptCard
+                        key={sp.id}
+                        prompt={sp}
+                        readonly={readonly}
+                        onSaved={
+                          isLastMessage && sendMessage
+                            ? (text) =>
+                                sendMessage({
+                                  role: "user",
+                                  parts: [{ type: "text", text }],
+                                })
+                            : undefined
+                        }
+                      />
+                    ))}
+                  </>
+                );
+              }
               return (
                 <>
                   {partsForDisplay.map(renderPart)}
@@ -512,17 +609,51 @@ const PurePreviewMessage = ({
             // The latest desktop tool call's TV card (one live stream per reply).
             let inlineDesktop: { id: string; node: ReactNode } | null = null;
             const secretPrompts: SecretPromptRequest[] = [];
+            // Questions the agent put to the user with ui_ask_user.
+            const askUsers: { id: string; request: AskUserRequest }[] = [];
+            // Every write the turn made, for the "files changed" card.
+            const turnEdits: TurnEdit[] = [];
+            // Reasoning that came after a step, drawn on the rail where it
+            // happened rather than merged into the opening thought.
+            let thoughtCount = 0;
+            // The opening thought is the part still streaming.
+            let leadingActive = false;
+            const thoughtRow = (
+              text: string,
+              active: boolean,
+              index: number,
+            ): WorkLogRow => ({
+              type: "prose",
+              thought: true,
+              active,
+              title: active ? undefined : thoughtPreview(text),
+              children: (
+                <ReasoningPart
+                  key={`${message.id}-thought-${index}`}
+                  readonly={readonly}
+                  reasoningText={text}
+                  isThinking={active}
+                />
+              ),
+            });
             for (let i = 0; i < workParts.length; i++) {
               const part = workParts[i];
               if (part.type === "step-start") continue;
 
               if (!isToolUIPart(part)) {
                 if (part.type === "reasoning") {
-                  if (part.text?.trim()) {
-                    reasoningTexts.push(part.text.trim());
-                  }
-                  if (i === partsForDisplay.length - 1 && isLastMessage && isLoading) {
-                    isReasoningActive = true;
+                  const active = Boolean(
+                    i === partsForDisplay.length - 1 && isLastMessage && isLoading,
+                  );
+                  if (active) isReasoningActive = true;
+                  // Thinking before the first step leads the timeline;
+                  // thinking between steps is a step of its own, in order.
+                  if (!hideAllTools && rows.some((r) => r.type === "group")) {
+                    thoughtCount++;
+                    rows.push(thoughtRow(part.text ?? "", active, i));
+                  } else {
+                    if (active) leadingActive = true;
+                    if (part.text?.trim()) reasoningTexts.push(part.text.trim());
                   }
                   continue;
                 }
@@ -543,6 +674,10 @@ const PurePreviewMessage = ({
                 }
                 rows.push({
                   type: "prose",
+                  title:
+                    part.type === "text" && part.text
+                      ? thoughtPreview(part.text)
+                      : undefined,
                   children: renderPart(part, i),
                 });
                 continue;
@@ -652,6 +787,14 @@ const PurePreviewMessage = ({
                   ...ocFromTool,
                   id: `${part.toolCallId}-${ocFromTool.id}`,
                 });
+              }
+              if (part.state === "output-available") {
+                const ask = parseAskUser(part.output);
+                if (ask) askUsers.push({ id: part.toolCallId, request: ask });
+              }
+              if (stepKindOf(toolName, partInput) === "edit") {
+                const props = presenterPropsFromToolPart(part);
+                turnEdits.push({ toolName, ...props });
               }
               const partImages =
                 part.state === "output-available"
@@ -767,18 +910,12 @@ const PurePreviewMessage = ({
               const kind = stepKindOf(toolName, (part as any).input);
               const presenterProps = presenterPropsFromToolPart(part);
               const status = presenterProps.status;
-              const rawGlance =
-                getToolPresenter(toolName)?.glance(presenterProps) ?? toolName;
-              const intentText =
-                typeof (partInput as any)?.intent === "string"
-                  ? (partInput as any).intent.trim()
-                  : typeof (partInput as any)?.description === "string"
-                    ? (partInput as any).description.trim()
-                    : "";
-              const glance =
-                intentText && rawGlance && intentText !== rawGlance
-                  ? `${intentText} · ${rawGlance}`
-                  : intentText || rawGlance;
+              // The step as a sentence ("Searched “bun release”"), shared
+              // with the pill, the live headline and the step strip.
+              const narration = narrateStep(tn, toolName, presenterProps);
+              const glance = narration.title;
+              const glanceTone =
+                narration.kind === "ask" ? "ask" : undefined;
               toolCount++;
 
               // A web call gets a rich glance node: the collapsed log should
@@ -814,6 +951,7 @@ const PurePreviewMessage = ({
                   text: glance,
                   failed: status === "error",
                   node: toolNode,
+                  tone: glanceTone,
                 });
                 if (partImages.length) {
                   prev.images = [...(prev.images ?? []), ...partImages];
@@ -828,6 +966,7 @@ const PurePreviewMessage = ({
                       text: glance,
                       failed: status === "error",
                       node: toolNode,
+                      tone: glanceTone,
                     },
                   ],
                   images: partImages.length ? partImages : undefined,
@@ -837,33 +976,91 @@ const PurePreviewMessage = ({
               }
             }
 
-            const isWorkLogRunning = Boolean(
-              isLastMessage &&
-                isLoading &&
-                (tailParts.every((p) => p.type !== "text" || !p.text?.trim()) ||
-                  workParts.some(
-                    (p) => isToolUIPart(p) && !p.state.startsWith("output"),
-                  )),
-            );
+            // While the turn runs, nothing it writes leaves the card: text
+            // after the last tool call may be a note before the next call,
+            // and there is no telling yet. Showing it outside and pulling it
+            // back in when a tool starts is the jump this avoids. Once the
+            // turn ends, that text is the answer and renders below the card.
+            const turnRunning = Boolean(isLastMessage && isLoading);
+            const liveTail = turnRunning && !hideAllTools;
+            tailParts.forEach((part, k) => {
+              const index = lastToolIndex + 1 + k;
+              if (part.type === "reasoning") {
+                const active = Boolean(
+                  index === partsForDisplay.length - 1 && turnRunning,
+                );
+                if (active) isReasoningActive = true;
+                if (hideAllTools) return;
+                thoughtCount++;
+                rows.push(thoughtRow(part.text ?? "", active, index));
+              } else if (liveTail && part.type === "text" && part.text?.trim()) {
+                rows.push({
+                  type: "prose",
+                  live: index === partsForDisplay.length - 1,
+                  title: thoughtPreview(part.text),
+                  children: renderPart(part, index),
+                });
+              }
+            });
 
             const hasPendingTool = workParts.some(
               (p) => isToolUIPart(p) && !p.state.startsWith("output"),
             );
+            const isWorkLogRunning = liveTail
+              ? true
+              : Boolean(
+                  turnRunning &&
+                    (tailParts.every(
+                      (p) => p.type !== "text" || !p.text?.trim(),
+                    ) ||
+                      hasPendingTool),
+                );
             const turnSettled =
               !isWorkLogRunning &&
               !isReasoningActive &&
               !hasPendingTool &&
               mustShow.length === 0 &&
-              (!(isLastMessage && isLoading) ||
+              (!turnRunning ||
                 tailParts.some((p) => p.type === "text" && p.text?.trim()));
 
+            const turnChanges = turnSettled ? collectTurnChanges(turnEdits) : [];
+            const turnSources = dedupeSources(webSearches);
+            const turnAdded = turnChanges.reduce((n, c) => n + c.added, 0);
+            const turnRemoved = turnChanges.reduce((n, c) => n + c.removed, 0);
+            // What the folded card still shows: where the answer came from
+            // and how much it changed.
+            const foldTrailing =
+              turnSources.length || turnChanges.length ? (
+                <span className="flex shrink-0 items-center gap-2">
+                  {turnSources.length ? (
+                    <span className="flex items-center" aria-hidden>
+                      {turnSources.slice(0, 3).map((hit, k) => (
+                        <span
+                          key={hit.url}
+                          className="flex size-4 items-center justify-center overflow-hidden rounded-full border bg-background"
+                          style={{ marginLeft: k === 0 ? 0 : -5 }}
+                        >
+                          <SiteFavicon url={hit.url} className="size-3 rounded-full" />
+                        </span>
+                      ))}
+                    </span>
+                  ) : null}
+                  {turnChanges.length ? (
+                    <span className="font-mono text-[10px] tabular-nums">
+                      <span className="text-emerald-600 dark:text-emerald-400">+{turnAdded}</span>{" "}
+                      <span className="text-destructive">−{turnRemoved}</span>
+                    </span>
+                  ) : null}
+                </span>
+              ) : null;
+
             const reasoningNode =
-              reasoningTexts.length > 0 || isReasoningActive ? (
+              reasoningTexts.length > 0 || leadingActive ? (
                 <ReasoningPart
                   key={`${message.id}-turn-reasoning`}
                   readonly={readonly}
                   reasoningText={reasoningTexts.join("\n\n")}
-                  isThinking={isReasoningActive}
+                  isThinking={leadingActive}
                 />
               ) : null;
 
@@ -890,22 +1087,35 @@ const PurePreviewMessage = ({
                 ) : (
                   <FoldedWork
                     rows={rows}
-                    thought={reasoningTexts.length > 0 || isReasoningActive}
+                    thought={
+                      reasoningTexts.length > 0 ||
+                      isReasoningActive ||
+                      thoughtCount > 0
+                    }
                     reasoning={reasoningNode}
+                    reasoningTitle={
+                      leadingActive
+                        ? undefined
+                        : thoughtPreview(reasoningTexts.join(" "))
+                    }
+                    reasoningActive={leadingActive}
                     turnSettled={turnSettled}
                     isRunning={isWorkLogRunning}
                     images={turnImages}
                     hiddenCount={hiddenCount}
+                    trailing={foldTrailing}
                     stepCount={toolCount}
                     durationMs={
                       (message.metadata as ChatMetadata | undefined)?.durationMs
                     }
                   />
                 )}
-                {!hideAllTools && webSearches.length ? (
-                  <WebSearchSourcesBar searches={webSearches} />
+                {!hideAllTools && turnSources.length ? (
+                  <SourcesStrip searches={webSearches} />
                 ) : null}
                 {tailParts.map((part, i) => {
+                  // Already on the card's timeline (see above).
+                  if (part.type === "reasoning" && !hideAllTools) return null;
                   if (part.type === "text" && part.text) {
                     const sp = parseSecretPrompt(part.text);
                     if (
@@ -936,6 +1146,8 @@ const PurePreviewMessage = ({
                         id: `${message.id}-tail-oc-${i}-${oc.id}`,
                       });
                     }
+                    // Still running: this text is on the card's timeline.
+                    if (liveTail) return null;
                   }
                   return renderPart(part, lastToolIndex + 1 + i);
                 })}
@@ -996,8 +1208,29 @@ const PurePreviewMessage = ({
                     />
                   ),
                 )}
+                {turnChanges.length ? (
+                  <TurnChangesCard changes={turnChanges} />
+                ) : null}
                 {artifactCards}
                 {approvals}
+                {askUsers.map((ask) => (
+                  <AskUserCard
+                    key={ask.id}
+                    request={ask.request}
+                    // Answered or moved past: a later message exists.
+                    settled={!isLastMessage}
+                    readonly={readonly}
+                    onSubmit={
+                      isLastMessage && sendMessage && !isLoading
+                        ? (text) =>
+                            sendMessage({
+                              role: "user",
+                              parts: [{ type: "text", text }],
+                            })
+                        : undefined
+                    }
+                  />
+                ))}
                 {connectorSetups.map((setup) => (
                   <ConnectorSetupCard
                     key={setup.id}

@@ -21,7 +21,8 @@ describe("ReasoningPart", () => {
     expect(html).toContain('data-testid="reasoning-part"');
     expect(html).toContain('data-thinking="true"');
     expect(html).toContain('data-testid="message-reasoning-toggle"');
-    expect(html).toContain(">Thinking<");
+    // Live label (translation key "thinking" under the mock).
+    expect(html).toContain(">thinking<");
     // Must not highlight Thinking in a box
     expect(html).not.toContain("bg-muted/30");
     expect(html).not.toContain("rounded-lg border");
@@ -43,11 +44,15 @@ describe("ReasoningPart", () => {
     expect(html).toContain('data-testid="reasoning-part"');
     expect(html).toContain('data-thinking="false"');
     expect(html).toContain('aria-expanded="false"');
-    expect(html).toContain(">Thinking<");
+    // Finished thinking reads as "Thought" (key "thought" under the mock).
+    expect(html).toContain(">thought<");
     expect(html).not.toContain("bg-muted/30");
     expect(html).not.toContain("border-l");
-    // Minimized: body is not rendered until clicked
-    expect(html).not.toContain("Finished reasoning text that should be collapsed.");
+    // Minimized: the body is not rendered until clicked, but a one-line
+    // preview of its first sentence says what the thought was about.
+    expect(html).not.toContain('data-testid="message-reasoning"');
+    expect(html).toContain('data-testid="reasoning-preview"');
+    expect(html).toContain("Finished reasoning text that should be collapsed.");
   });
 });
 

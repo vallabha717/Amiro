@@ -3788,6 +3788,69 @@
     }
   }
 
+  /* A new step lands on the live timeline; a question card rises in. */
+  @keyframes worklog-step-in {
+    from {
+      opacity: 0;
+      transform: translateY(3px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .worklog-step-in {
+    animation: worklog-step-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .ask-user-in {
+    animation: worklog-step-in 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  /* The live headline: each new step's sentence rises into place. */
+  .step-headline-in {
+    animation: worklog-step-in 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  /* The step-strip segment for the step in progress breathes. */
+  @keyframes step-seg-live {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+
+  .step-seg-live {
+    animation: step-seg-live 1.2s ease-in-out infinite;
+  }
+
+  /* A step the strip jumped to glows once so the eye finds it. */
+  @keyframes step-flash {
+    0% {
+      background-color: color-mix(in oklab, var(--primary) 14%, transparent);
+    }
+    100% {
+      background-color: transparent;
+    }
+  }
+
+  .step-flash {
+    animation: step-flash 1.4s ease-out both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .worklog-step-in,
+    .ask-user-in,
+    .step-headline-in,
+    .step-seg-live {
+      animation: none;
+    }
+  }
+
   .fade-300 {
     @apply fade-in animate-in duration-300;
   }

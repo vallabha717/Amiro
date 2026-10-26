@@ -2018,5 +2018,109 @@
       "reload": "Reload",
       "dismiss": "Dismiss"
     }
+  },
+  "ChatStream": {
+    "Timeline": {
+      "working": "Working",
+      "worked": "Worked",
+      "thinking": "Thinking",
+      "thought": "Thought",
+      "steps": "{count, plural, one {# step} other {# steps}}",
+      "goToStep": "Go to step {index}: {title}",
+      "thinkingAbout": "Thinking it through",
+      "update": "Update",
+      "writing": "Writing…"
+    },
+    "Sources": {
+      "label": "{count, plural, one {# source} other {# sources}}",
+      "showMore": "{count, plural, one {# more source} other {# more sources}}",
+      "showFewer": "Show fewer sources"
+    },
+    "Changes": {
+      "title": "{count, plural, one {# file changed} other {# files changed}}",
+      "new": "new",
+      "noPreview": "No diff preview for this change."
+    },
+    "AskUser": {
+      "answered": "Answered",
+      "askedEarlier": "The agent asked",
+      "progress": "Question {current} of {total}",
+      "pickAny": "Pick all that apply.",
+      "other": "Other…",
+      "otherLabel": "Your own answer",
+      "otherPlaceholder": "Type your answer",
+      "keyboardHint": "Press 1–9 to pick, Enter to continue",
+      "back": "Back",
+      "next": "Next",
+      "send": "Send answers"
+    },
+    "Narrate": {
+      "ask": {
+        "now": "{count, plural, one {Asking you a question} other {Asking you # questions}}",
+        "done": "{count, plural, one {Asked you a question} other {Asked you # questions}}",
+        "failed": "Couldn't show the question card"
+      },
+      "search": {
+        "now": "Searching the web for “{query}”",
+        "done": "Searched “{query}”",
+        "failed": "Web search failed for “{query}”",
+        "results": "{count, plural, one {# result} other {# results}} from {sites}",
+        "none": "No results"
+      },
+      "fetch": {
+        "now": "Reading {host}",
+        "done": "Read {host}",
+        "failed": "Couldn't open {host}"
+      },
+      "command": {
+        "now": "Running {command}",
+        "done": "Ran {command}",
+        "failed": "Command failed: {command}",
+        "exit": "Exited with code {code}"
+      },
+      "edit": {
+        "now": "Editing {file}",
+        "done": "Edited {file}",
+        "failed": "Couldn't edit {file}"
+      },
+      "write": {
+        "now": "Writing {file}",
+        "done": "Created {file}",
+        "failed": "Couldn't write {file}"
+      },
+      "rewrite": {
+        "now": "Writing {file}",
+        "done": "Rewrote {file}",
+        "failed": "Couldn't write {file}"
+      },
+      "read": {
+        "now": "Reading {file}",
+        "done": "Read {file}",
+        "failed": "Couldn't read {file}"
+      },
+      "list": {
+        "now": "Looking in {path}",
+        "done": "Looked in {path}",
+        "failed": "Couldn't open {path}"
+      },
+      "find": {
+        "now": "Searching files for “{pattern}”",
+        "done": "Searched files for “{pattern}”",
+        "failed": "File search failed for “{pattern}”"
+      },
+      "plan": {
+        "now": "Updating the plan",
+        "done": "Updated the plan",
+        "failed": "Couldn't update the plan"
+      },
+      "tool": {
+        "now": "Using {tool}",
+        "done": "Used {tool}",
+        "failed": "{tool} failed"
+      },
+      "aFile": "a file",
+      "lines": "{count, plural, one {# line} other {# lines}}",
+      "matches": "{count, plural, one {# match} other {# matches}}"
+    }
   }
 }
