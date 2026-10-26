@@ -50,12 +50,84 @@ test.describe("chat", () => {
       const links = await assistantMessages(page).last().locator("a[href^='http']").count();
       if (!links) note("Web search answer has no clickable source link.");
     });
+    await step("Web search UI: sources sit above the answer as numbered cards, and the folded timeline keeps their favicons", async () => {
+      const strip = page.getByTestId("message-web-sources-bar").last();
+      await expect.soft(strip, "sources strip shows above the answer").toBeVisible({ timeout: 30000 });
+      const cards = strip.getByTestId("source-card");
+      expect.soft(await cards.count(), "at least one source card").toBeGreaterThan(0);
+      await expect.soft(cards.first(), "a source card is a real link").toHaveAttribute("href", /^https?:\/\//);
+      const fold = page.getByTestId("work-summary").last();
+      await expect.soft(fold, "the search run folded once the answer came").toHaveAttribute("data-state", "settled");
+      await expect
+        .soft(
+          page
+            .locator('[data-message-role="assistant"]')
+            .last()
+            .locator('[data-testid="reasoning-part"]:not([data-testid="work-summary"] [data-testid="reasoning-part"])'),
+          "thinking after the search stays inside the card, never in the answer",
+        )
+        .toHaveCount(0);
+      await fold.locator("> button").click();
+      await expect.soft(page.getByTestId("worklog-timeline").last(), "the timeline lists the search step").toContainText(/Searched|Read /);
+      await fold.locator("> button").click();
+    });
     await step("Open the Tools menu in the chat header", async () => {
       const tools = page.getByRole("button", { name: "Tools" });
       if (await tools.isVisible()) {
         await tools.click();
         await page.waitForTimeout(800);
         await page.keyboard.press("Escape");
+      }
+    });
+  });
+
+  test("ask-user question card: the agent asks, the user picks, the answer is sent", async ({ page, step }) => {
+    const card = page.getByTestId("ask-user-card").last();
+    await step("Ask the agent to check a choice with me first → a question card appears", async () => {
+      // The turn may end with the card alone and no prose, so wait for the
+      // card itself rather than for a text reply.
+      await send(
+        page,
+        "Use the ui_ask_user tool to ask me one question: which colour theme I want, with the options Light and Dark. Then stop and wait for my answer.",
+      );
+      await expect(card, "the agent's question renders as a card").toBeVisible({ timeout: 180000 });
+      await expect
+        .soft(page.locator('[data-testid="work-summary"][data-state="running"]'), "the turn ends after asking")
+        .toHaveCount(0, { timeout: 120000 });
+      await expect.soft(card).toHaveAttribute("data-state", "open");
+      await expect.soft(card.getByTestId("ask-user-option"), "the options are listed").toHaveCount(2);
+      await expect.soft(card.getByTestId("ask-user-other"), "an Other answer is offered").toBeVisible();
+    });
+    await step("Pick Dark with the keyboard-numbered option and send → the answer goes out as my message", async () => {
+      await card.getByTestId("ask-user-option").filter({ hasText: /Dark/i }).click();
+      await expect.soft(card.getByTestId("ask-user-option").filter({ hasText: /Dark/i })).toHaveAttribute("aria-checked", "true");
+      const before = await assistantMessages(page).count();
+      await card.getByTestId("ask-user-send").click();
+      await expect(page.locator('[data-message-role="user"]').last(), "the picks are sent as the user's reply").toContainText(/Dark/, { timeout: 15000 });
+      await waitForReply(page, { before, timeoutMs: 180000 });
+      await expect.soft(page.getByTestId("ask-user-card").first(), "the asked card is now read-only").toHaveAttribute("data-state", "answered");
+      expect.soft(await assistantMessages(page).last().innerText(), "the agent acts on the answer").toMatch(/dark/i);
+    });
+  });
+
+  test("thinking-only reply folds into a Thought card, prompt spacing", async ({ page, step }) => {
+    await step("Ask something that needs only thinking → the thinking lives in the card and folds to 'Thought'", async () => {
+      await ask(page, "Think it through step by step first, then answer with just the number: what is 17 * 23? Do not use any tools.");
+      const fold = page.getByTestId("work-summary").last();
+      await expect.soft(fold, "thinking-only replies get the card too").toBeVisible();
+      await expect.soft(fold).toHaveAttribute("data-state", "settled");
+      await expect.soft(fold.locator("> button"), "folded label says Thought").toContainText(/Thought/);
+      await expect.soft(assistantMessages(page).last()).toContainText("391");
+    });
+    await step("More space above my prompt than below it", async () => {
+      const prompt = page.locator('[data-message-role="user"]').last();
+      const above = page.locator("[data-message-id]").nth(-3);
+      const reply = page.locator('[data-message-role="assistant"]').last();
+      const [p, a, r] = await Promise.all([prompt.boundingBox(), above.boundingBox(), reply.boundingBox()]);
+      if (p && a && r) {
+        const gapAbove = p.y - (a.y + a.height);
+        const gapBelow = r.y - (p.y + p.height);
+        expect.soft(gapAbove, "gap above the prompt is larger than below").toBeGreaterThan(gapBelow);
       }
     });
   });
@@ -327,23 +399,16 @@ test.describe("chat", () => {
       await expect.poll(() => assistantMessages(page).count(), { timeout: 240000 }).toBeGreaterThanOrEqual(2);
       await waitForReply(page, { before: 1 });
     });
-    await step("Hover the reply: copy, read-aloud and edit actions exist", async () => {
+    await step("Hover the reply: copy and read-aloud actions exist", async () => {
       await assistantMessages(page).last().hover();
       await expect.soft(page.getByTestId("message-read-aloud-button").last()).toBeVisible();
     });
-    await step("Edit the first user message and resend", async () => {
-      const userMsg = page.getByTestId("message-content").first();
+    await step("Hover my prompt: copy is offered, and there is no edit action", async () => {
+      const userMsg = page.locator('[data-message-role="user"]').last();
       await userMsg.hover();
-      const edit = page.locator('[data-testid^="message-edit-button"]').first();
-      if (await edit.isVisible().catch(() => false)) {
-        await edit.click();
-        const editor = page.getByTestId("message-editor-text");
-        if (await editor.isVisible().catch(() => false)) {
-          await editor.fill("Write a 2-sentence story about a lighthouse keeper.");
-          await page.getByTestId("message-editor-send-button").click();
-          await waitForReply(page, { before: 0 });
-        }
-      }
+      await expect.soft(userMsg.getByTestId("message-copy-button"), "prompt can be copied").toBeVisible();
+      await expect.soft(userMsg.getByRole("button", { name: /edit/i }), "prompts are not editable").toHaveCount(0);
+      await expect.soft(page.getByTestId("message-editor-text")).toHaveCount(0);
     });
     await step("The conversation appears in Recent Chats with a generated title", async () => {
       const thread = page.locator('a[href*="?thread="]').first();
@@ -500,6 +565,29 @@ test.describe("chat", () => {
         page,
         "First write a <thinking> block with 4 lines explaining your plan, then run bash `echo 'INLINE_STREAM_OK'`, write '/tmp/e2e-inline-edit.txt' with 'line 1', edit '/tmp/e2e-inline-edit.txt' to replace 'line 1' with 'line 2', and finally reply 'Done'.",
       );
+      await expect
+        .soft(
+          page.locator('[data-testid="work-summary"][data-state="running"]').first(),
+          "Streaming timeline: the live card is open while the agent works",
+        )
+        .toBeVisible({ timeout: 60000 });
+      await expect
+        .soft(page.getByTestId("worklog-timeline").first(), "steps stream onto the timeline rail")
+        .toBeVisible({ timeout: 60000 });
+      await expect
+        .soft(page.getByTestId("work-summary-headline").first(), "the header narrates the step in progress")
+        .not.toBeEmpty();
+      if (await page.locator('[data-testid="work-summary"][data-state="running"]').count()) {
+        await expect
+          .soft(
+            page
+              .locator('[data-message-role="assistant"]')
+              .last()
+              .locator('[data-testid="message-content"]:not([data-testid="work-summary"] [data-testid="message-content"])'),
+            "while the turn runs, nothing it writes appears outside the card",
+          )
+          .toHaveCount(0);
+      }
       const streamingUi = page
         .getByTestId("streaming-thinking-indicator")
         .or(page.getByTestId("reasoning-part"))
@@ -563,7 +651,10 @@ test.describe("chat", () => {
       await expect.soft(reasoning, "reasoning block is rendered on top").toBeVisible();
       if (await reasoning.isVisible().catch(() => false)) {
         const toggle = reasoning.getByTestId("message-reasoning-toggle");
-        await expect.soft(toggle).toHaveText("Thinking");
+        await expect.soft(toggle, "finished thinking reads as Thought").toHaveText(/^Thought/);
+        await expect
+          .soft(reasoning.getByTestId("reasoning-preview"), "a folded thought previews its first sentence")
+          .toBeVisible();
         await expect.soft(toggle).toHaveAttribute("aria-expanded", "false");
         // Verify unboxed: no border or background box on the Thinking toggle
         const borderWidth = await toggle.evaluate(
@@ -587,6 +678,41 @@ test.describe("chat", () => {
         // Collapse it again
         await toggle.click();
       }
+    });
+
+    await step("Streaming timeline folds to one line with its duration; the files-changed card opens the diff", async () => {
+      const fold = page.getByTestId("work-summary").last();
+      await expect.soft(fold, "the run settles").toHaveAttribute("data-state", "settled");
+      await expect.soft(fold.getByTestId("work-summary-elapsed"), "the folded line says how long it worked").toBeVisible();
+      await expect
+        .soft(
+          page.locator('[data-message-role="assistant"]').last().getByTestId("work-summary"),
+          "all of a turn's thinking and tool calls live in one card",
+        )
+        .toHaveCount(1);
+      // The step strip stays on the folded card as the turn's fingerprint;
+      // a segment opens the card at that step.
+      const segments = fold.getByTestId("step-strip-segment");
+      expect.soft(await segments.count(), "one strip segment per step").toBeGreaterThan(1);
+      await expect.soft(fold.locator('[data-testid="step-strip-segment"][data-kind="command"]').first(), "commands are their own colour").toBeVisible();
+      await segments.last().click();
+      await expect.soft(fold.locator("> button").first(), "a segment opens the card").toHaveAttribute("aria-expanded", "true");
+      await expect.soft(fold.getByTestId("tool-call-result").first(), "steps read as a sentence with what came back").toBeVisible();
+      const updates = fold.getByTestId("worklog-note");
+      if (await updates.count()) {
+        await expect.soft(updates.first(), "the agent's mid-run updates read as a labelled bubble").toContainText(/Update/);
+      }
+      await page.waitForTimeout(1200);
+      await fold.locator("> button").first().click();
+      const changes = page.getByTestId("turn-changes-card").last();
+      await expect.soft(changes, "files changed card follows the turn").toBeVisible();
+      await expect.soft(changes).toContainText(/e2e-inline-edit\.txt/);
+      const file = changes.getByTestId("turn-change-file").first();
+      await file.locator("> button").click();
+      await expect.soft(file.locator("> button"), "file row opens").toHaveAttribute("aria-expanded", "true");
+      await expect.soft(file, "the diff shows the edit").toContainText(/line 2/, { timeout: 5000 });
+      await page.waitForTimeout(800);
+      await file.locator("> button").click();
     });
 
     await step("Tool calls show description only until clicked, then expand bash and file edit inline", async () => {
