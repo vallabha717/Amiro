@@ -1403,7 +1403,7 @@
     "browserOnly": "Browser · not live voice"
   },
   "TeamRoom": {
-    "title": "Team room",
+    "title": "Huddle",
     "subtitle": "You and every agent in one conversation. @mention an agent to ask them; agents @mention each other to hand off work.",
     "manage": "Manage team",
     "membersLabel": "Agents in the room",
@@ -1411,9 +1411,9 @@
     "working": "Working…",
     "idle": "Idle",
     "isWorking": "{name} is working…",
-    "logLabel": "Team room messages",
+    "logLabel": "Huddle messages",
     "empty": "No messages yet. Say hello — your main agent answers, or @mention anyone on the team.",
-    "loadError": "Could not load the Team room.",
+    "loadError": "Could not load the Huddle.",
     "sendError": "Could not send your message.",
     "inputLabel": "Message the team",
     "placeholder": "Message the team… type @ to mention an agent",
@@ -1427,11 +1427,16 @@
     "noReply": "{name} finished without replying",
     "formerAgent": "A removed agent",
     "listTitle": "Team",
-    "listLabel": "Team room and agents",
-    "roomEntrySubtitle": "You and every agent",
-    "backTo": "Back to {name}",
+    "listLabel": "Huddle and agents",
+    "roomEntrySubtitle": "Everyone on the team, together",
     "ownChat": "Your own chat · history kept",
-    "openSpace": "Open {name}"
+    "you": "You",
+    "youWith": "Your chat with {name}",
+    "youAnd": "You and {name}",
+    "pairTitle": "{a} and {b}",
+    "pairSubtitle": "What they said to each other in the Huddle",
+    "pairEmpty": "{a} and {b} haven't talked yet. In the Huddle, ask {a} to work with {b}.",
+    "openRoom": "Open Huddle"
   },
   "Team": {
     "title": "Team",

@@ -28,7 +28,8 @@ export const TeamRoomComposer = forwardRef<
   const box = useRef<HTMLTextAreaElement>(null);
 
   const query = mentionQuery(text, caret);
-  const suggestions = query === null ? [] : matchAgents(agents, query).slice(0, 6);
+  const suggestions =
+    query === null ? [] : matchAgents(agents, query).slice(0, 6);
 
   const apply = (next: { text: string; caret: number }) => {
     setText(next.text);
@@ -63,11 +64,21 @@ export const TeamRoomComposer = forwardRef<
       }
       if (event.key === "Enter" || event.key === "Tab") {
         event.preventDefault();
-        apply(insertMention(text, caret, suggestions[active]?.name ?? suggestions[0].name));
+        apply(
+          insertMention(
+            text,
+            caret,
+            suggestions[active]?.name ?? suggestions[0].name,
+          ),
+        );
         return;
       }
     }
-    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey &&
+      !event.nativeEvent.isComposing
+    ) {
       event.preventDefault();
       void send();
     }
@@ -118,7 +129,9 @@ export const TeamRoomComposer = forwardRef<
             setCaret(event.target.selectionStart ?? event.target.value.length);
             setActive(0);
           }}
-          onSelect={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
+          onSelect={(event) =>
+            setCaret(event.currentTarget.selectionStart ?? 0)
+          }
           onKeyDown={onKeyDown}
         />
         <Button

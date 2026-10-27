@@ -17,7 +17,10 @@ import { mutate } from "swr";
 import { Button } from "ui/button";
 import { Skeleton } from "ui/skeleton";
 import { AgentAvatar } from "./agent-avatar";
-import { TeamRoomComposer, type TeamRoomComposerHandle } from "./team-room-composer";
+import {
+  TeamRoomComposer,
+  type TeamRoomComposerHandle,
+} from "./team-room-composer";
 import { TeamRoomMessageRow } from "./team-room-message";
 
 function AgentChip({
@@ -64,7 +67,14 @@ function AgentChip({
  * whoever it @mentions (the main agent when it mentions no one), and agents
  * @mention each other to hand off work — every hand-off shows up here.
  */
-export function TeamRoom({ showMembers = true }: { showMembers?: boolean }) {
+export function TeamRoom({
+  showMembers = true,
+  showManage = true,
+}: {
+  showMembers?: boolean;
+  /** "Manage team" link to the Team app; off when already inside it. */
+  showManage?: boolean;
+}) {
   const t = useTranslations("TeamRoom");
   const { data: agentData, isLoading: agentsLoading } = useAgents();
   const { data: room, error, isLoading } = useTeamRoom();
@@ -78,7 +88,8 @@ export function TeamRoom({ showMembers = true }: { showMembers?: boolean }) {
   const lastId = messages[messages.length - 1]?.id;
 
   useEffect(() => {
-    if (lastId || working.size) bottom.current?.scrollIntoView({ block: "end" });
+    if (lastId || working.size)
+      bottom.current?.scrollIntoView({ block: "end" });
   }, [lastId, working.size]);
 
   const send = async (text: string) => {
@@ -112,32 +123,41 @@ export function TeamRoom({ showMembers = true }: { showMembers?: boolean }) {
           </h2>
           <p className="text-xs text-muted-foreground">{t("subtitle")}</p>
         </div>
-        <Button asChild variant="outline" size="sm" data-testid="team-room-manage">
-          <Link href="/team">
-            <Settings2Icon className="size-4" />
-            <span className="hidden sm:inline">{t("manage")}</span>
-            <span className="sr-only sm:hidden">{t("manage")}</span>
-          </Link>
-        </Button>
+        {showManage && (
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            data-testid="team-room-manage"
+          >
+            <Link href="/team">
+              <Settings2Icon className="size-4" />
+              <span className="hidden sm:inline">{t("manage")}</span>
+              <span className="sr-only sm:hidden">{t("manage")}</span>
+            </Link>
+          </Button>
+        )}
       </header>
 
       {showMembers && (
-      <nav
-        aria-label={t("membersLabel")}
-        data-testid="team-room-members"
-        className="custom-scrollbar flex gap-1 overflow-x-auto border-b px-2 py-2"
-      >
-        {agentsLoading &&
-          [0, 1].map((i) => <Skeleton key={i} className="h-11 w-32 shrink-0 rounded-xl" />)}
-        {agents.map((agent) => (
-          <AgentChip
-            key={agent.id}
-            agent={agent}
-            working={working.has(agent.id)}
-            onMention={() => composer.current?.mention(agent.name)}
-          />
-        ))}
-      </nav>
+        <nav
+          aria-label={t("membersLabel")}
+          data-testid="team-room-members"
+          className="custom-scrollbar flex gap-1 overflow-x-auto border-b px-2 py-2"
+        >
+          {agentsLoading &&
+            [0, 1].map((i) => (
+              <Skeleton key={i} className="h-11 w-32 shrink-0 rounded-xl" />
+            ))}
+          {agents.map((agent) => (
+            <AgentChip
+              key={agent.id}
+              agent={agent}
+              working={working.has(agent.id)}
+              onMention={() => composer.current?.mention(agent.name)}
+            />
+          ))}
+        </nav>
       )}
 
       <div
@@ -164,7 +184,11 @@ export function TeamRoom({ showMembers = true }: { showMembers?: boolean }) {
             </div>
           )}
           {messages.map((message) => (
-            <TeamRoomMessageRow key={message.id} message={message} agents={byId} />
+            <TeamRoomMessageRow
+              key={message.id}
+              message={message}
+              agents={byId}
+            />
           ))}
           {[...working].map((id) => (
             <p
@@ -172,7 +196,10 @@ export function TeamRoom({ showMembers = true }: { showMembers?: boolean }) {
               className="flex items-center gap-2 text-xs text-muted-foreground"
               data-testid={`team-room-typing-${id}`}
             >
-              <span className="size-1.5 animate-pulse rounded-full bg-primary" aria-hidden />
+              <span
+                className="size-1.5 animate-pulse rounded-full bg-primary"
+                aria-hidden
+              />
               {t("isWorking", { name: byId.get(id)?.name ?? t("formerAgent") })}
             </p>
           ))}

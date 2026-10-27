@@ -52,13 +52,16 @@ export function TeamRoomMessageRow({
         <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
         <span>
           {t("couldNotReply", { name })}
-          {message.detail && <span className="text-muted-foreground"> · {message.detail}</span>}
+          {message.detail && (
+            <span className="text-muted-foreground"> · {message.detail}</span>
+          )}
         </span>
       </div>
     );
   }
 
-  const fromAgent = message.from.type === "agent" ? agents.get(message.from.id) : undefined;
+  const fromAgent =
+    message.from.type === "agent" ? agents.get(message.from.id) : undefined;
   const isHandoff = message.from.type === "agent" && message.to.length > 0;
   const recipients = message.to.map(nameOf);
 
@@ -81,7 +84,9 @@ export function TeamRoomMessageRow({
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs">
-          <span className="font-semibold text-foreground text-sm">{message.from.name}</span>
+          <span className="font-semibold text-foreground text-sm">
+            {message.from.name}
+          </span>
           {recipients.length > 0 && (
             <span className="flex items-center gap-1 text-muted-foreground">
               <ArrowRightIcon className="size-3" aria-label={t("to")} />
@@ -100,13 +105,17 @@ export function TeamRoomMessageRow({
         <div
           className={cn(
             "mt-1 text-sm break-words",
-            isHandoff && "rounded-xl border-l-2 border-primary/40 bg-muted/40 px-3 py-2",
+            isHandoff &&
+              "rounded-xl border-l-2 border-primary/40 bg-muted/40 px-3 py-2",
           )}
         >
           <Markdown>{message.text}</Markdown>
         </div>
         {message.limitReached && (
-          <p className="mt-1 text-xs text-muted-foreground" data-testid="team-room-limit">
+          <p
+            className="mt-1 text-xs text-muted-foreground"
+            data-testid="team-room-limit"
+          >
             {t("limitReached")}
           </p>
         )}

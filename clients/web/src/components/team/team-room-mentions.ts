@@ -20,7 +20,8 @@ export function insertMention(
 ): { text: string; caret: number } {
   const query = mentionQuery(text, caret);
   const start = query === null ? caret : caret - query.length - 1;
-  const lead = query === null && start > 0 && !/\s$/.test(text.slice(0, start)) ? " " : "";
+  const lead =
+    query === null && start > 0 && !/\s$/.test(text.slice(0, start)) ? " " : "";
   const inserted = `${lead}@${name} `;
   const after = text.slice(caret).replace(/^\s+/, "");
   return {
@@ -30,11 +31,15 @@ export function insertMention(
 }
 
 /** Agents whose name starts with (or contains) the query, best matches first. */
-export function matchAgents<T extends { name: string }>(agents: T[], query: string): T[] {
+export function matchAgents<T extends { name: string }>(
+  agents: T[],
+  query: string,
+): T[] {
   const q = query.toLowerCase();
   const starts = agents.filter((a) => a.name.toLowerCase().startsWith(q));
   const contains = agents.filter(
-    (a) => !a.name.toLowerCase().startsWith(q) && a.name.toLowerCase().includes(q),
+    (a) =>
+      !a.name.toLowerCase().startsWith(q) && a.name.toLowerCase().includes(q),
   );
   return [...starts, ...contains];
 }

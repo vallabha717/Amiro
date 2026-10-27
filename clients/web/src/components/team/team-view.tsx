@@ -36,7 +36,8 @@ import { Skeleton } from "ui/skeleton";
 import { AgentAvatar } from "./agent-avatar";
 import { AgentChat } from "./agent-chat";
 import { AssistantDesktopAffordance } from "@/components/desktop-preview/assistant-desktop-affordance";
-import { agentSpacePath, teamThreadPath } from "./team-paths";
+import { TEAM_HUDDLE_PATH, agentSpacePath, teamThreadPath } from "./team-paths";
+import { TeamRoom } from "./team-room";
 
 function AgentRow({ agent, active }: { agent: TeamAgent; active: boolean }) {
   const t = useTranslations("Team");
@@ -159,14 +160,18 @@ function PickAnAgent() {
  */
 export function TeamView() {
   const t = useTranslations("Team");
-  const selectedId = useSearchParams().get("agent");
+  const tRoom = useTranslations("TeamRoom");
+  const searchParams = useSearchParams();
+  const huddle = searchParams.get("view") === "huddle";
+  const selectedId = searchParams.get("agent");
   const { data: session } = useSession();
   const isOwner = session?.user.role === "admin";
   const { data, error, isLoading } = useAgents();
   const agents = data?.agents ?? [];
-  const selected =
-    agents.find((agent) => agent.id === selectedId) ??
-    (!selectedId && agents.length > 0 ? (agents.find((a) => a.isMain) || agents[0]) : null);
+  const selected = huddle
+    ? null
+    : (agents.find((agent) => agent.id === selectedId) ??
+      (!selectedId && agents.length > 0 ? agents.find((a) => a.isMain) || agents[0] : null));
 
   useEffect(() => {
     if (selected) {
@@ -198,6 +203,26 @@ export function TeamView() {
               {error.message || t("loadError")}
             </p>
           )}
+          <Link
+            href={TEAM_HUDDLE_PATH}
+            aria-current={huddle ? "page" : undefined}
+            data-testid="team-huddle-entry"
+            className={cn(
+              "flex min-w-0 shrink-0 items-center gap-3 rounded-xl px-2.5 py-2 transition-colors md:shrink",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              huddle ? "bg-accent" : "hover:bg-accent/60",
+            )}
+          >
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <MessagesSquareIcon className="size-5" aria-hidden />
+            </span>
+            <span className="flex min-w-0 flex-col">
+              <span className="truncate text-sm font-medium">{tRoom("title")}</span>
+              <span className="hidden truncate text-xs text-muted-foreground md:block">
+                {tRoom("roomEntrySubtitle")}
+              </span>
+            </span>
+          </Link>
           {agents.map((agent) => (
             <AgentRow key={agent.id} agent={agent} active={agent.id === selected?.id} />
           ))}
@@ -206,9 +231,13 @@ export function TeamView() {
 
       <section
         className="flex min-h-0 min-w-0 flex-1 flex-col"
-        aria-label={selected ? t("channelLabel", { name: selected.name }) : undefined}
+        aria-label={
+          huddle ? tRoom("title") : selected ? t("channelLabel", { name: selected.name }) : undefined
+        }
       >
-        {selected ? (
+        {huddle ? (
+          <TeamRoom showMembers={false} showManage={false} />
+        ) : selected ? (
           <>
             <ThreadHeader agent={selected} isOwner={isOwner} />
             <div className="relative min-h-0 flex-1" data-testid="team-channel">

@@ -66,29 +66,35 @@ Open an agent's space from its card (**Open** plus the agent's name, e.g. **Open
 sidebar (Connectors, Schedules, Credentials, Personality) is that agent's. A
 banner says whose space you are in; switch back to Amiro from it.
 
-## The Team room
+## The Huddle
 
-**Team** in an agent's sidebar opens the **Team room** without leaving that
-space (`/<agent>/team-room`). It is one conversation between you and every
-agent on the team, and it shows everything they say to each other.
+The **Huddle** is one group chat between you and every agent on the team, and
+it shows everything they say to each other. It is at the top of the agent list
+in **Team**, and in every agent's space.
 
-- Write to the room and your main agent answers. **@mention** an agent to ask
-  them instead (type `@` for a list, or click an agent at the top). `@all`
-  reaches everyone.
+- Write in the Huddle and your main agent answers. **@mention** an agent to
+  ask them instead (type `@` for a list). `@all` reaches everyone.
 - An agent hands work to a teammate by @mentioning them in its reply. The
-  teammate answers in the room. Hand-offs are marked, so you can follow who
+  teammate answers in the Huddle. Hand-offs are marked, so you can follow who
   asked whom.
 - After four agent replies in a row, mentions are no longer passed on. This
-  stops two agents answering each other forever. The room says when this
-  happens.
-- Each agent answers room messages with its own providers, connectors and
-  tools, one message at a time. Your 1:1 Team threads stay as they are.
+  stops two agents answering each other forever. The Huddle says when this
+  happens, and when an agent finished without replying.
+- Each agent answers Huddle messages with its own providers, connectors and
+  tools, one message at a time.
 
 ```text
 @Amiro plan a launch post for our new feature. Ask @Atlas for three facts to include.
 ```
 
-**Manage team** at the top of the room goes back to the Team directory.
+### Team in an agent's space
+
+**Team** in an agent's sidebar shows the team from that agent's side, in the
+main window (`/<agent>/team-room`), with the sidebar still there:
+
+- **Huddle**: the group chat.
+- **You**: your own chat with this agent.
+- **Each teammate**: only what this agent and that teammate said to each other.
 
 ## The sandbox
 

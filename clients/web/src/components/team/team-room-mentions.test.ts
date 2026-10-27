@@ -17,7 +17,10 @@ describe("mentionQuery", () => {
 
 describe("insertMention", () => {
   it("completes the word being typed", () => {
-    expect(insertMention("hi @sc", 6, "Scout")).toEqual({ text: "hi @Scout ", caret: 10 });
+    expect(insertMention("hi @sc", 6, "Scout")).toEqual({
+      text: "hi @Scout ",
+      caret: 10,
+    });
   });
 
   it("adds a mention at the caret with a separating space", () => {
@@ -25,7 +28,10 @@ describe("insertMention", () => {
       text: "hello @Writer Bot ",
       caret: 18,
     });
-    expect(insertMention("", 0, "Scout")).toEqual({ text: "@Scout ", caret: 7 });
+    expect(insertMention("", 0, "Scout")).toEqual({
+      text: "@Scout ",
+      caret: 7,
+    });
   });
 
   it("keeps the text after the caret", () => {
@@ -39,7 +45,14 @@ describe("insertMention", () => {
 describe("matchAgents", () => {
   const agents = [{ name: "Amiro" }, { name: "Scout" }, { name: "Mascot" }];
   it("puts prefix matches first", () => {
-    expect(matchAgents(agents, "sc").map((a) => a.name)).toEqual(["Scout", "Mascot"]);
-    expect(matchAgents(agents, "").map((a) => a.name)).toEqual(["Amiro", "Scout", "Mascot"]);
+    expect(matchAgents(agents, "sc").map((a) => a.name)).toEqual([
+      "Scout",
+      "Mascot",
+    ]);
+    expect(matchAgents(agents, "").map((a) => a.name)).toEqual([
+      "Amiro",
+      "Scout",
+      "Mascot",
+    ]);
   });
 });
