@@ -166,4 +166,43 @@ test.describe("notifications", () => {
         .toBe("seen");
     });
   });
+
+  test("admin page: hero, what pings you, how it reaches you, quiet hours timeline", async ({
+    page,
+    step,
+  }) => {
+    await step("Admin → Notifications shows the live hero", async () => {
+      await page.goto("/admin/notifications");
+      await expect(page.getByRole("heading", { name: "Notifications", level: 1 })).toBeVisible();
+      await expect(page.getByTestId("notifications-active-summary")).toHaveAttribute("data-live", "true");
+    });
+    await step("Send a test notification from the hero", async () => {
+      await page.getByTestId("admin-send-test-notification").click();
+      await expect(page.getByText("Test notification sent").first()).toBeVisible({ timeout: 15000 });
+    });
+    await step("Turn the chime off, then on again", async () => {
+      const chime = page.getByTestId("toggle-soundEnabled");
+      const wasOn = (await chime.getAttribute("aria-checked")) === "true";
+      await chime.click();
+      await expect(chime).toHaveAttribute("aria-checked", String(!wasOn));
+      await chime.click();
+      await expect(chime).toHaveAttribute("aria-checked", String(wasOn));
+    });
+    await step("Quiet hours reveal the 24-hour timeline and time pickers", async () => {
+      const quiet = page.getByTestId("toggle-quietHoursEnabled");
+      if ((await quiet.getAttribute("aria-checked")) !== "true") await quiet.click();
+      await expect(page.getByTestId("admin-quiet-start")).toBeVisible();
+      await expect(page.getByText(/^Quiet from /)).toBeVisible();
+      await quiet.click();
+      await expect(page.getByTestId("admin-quiet-start")).toHaveCount(0);
+    });
+    await step("Pausing notifications dims the hero and disables the tiles, then resume", async () => {
+      const master = page.getByTestId("toggle-enabled");
+      await master.click();
+      await expect(page.getByTestId("notifications-active-summary")).toHaveAttribute("data-live", "false");
+      await expect(page.getByTestId("toggle-chatReplyAlerts")).toBeDisabled();
+      await master.click();
+      await expect(page.getByTestId("notifications-active-summary")).toHaveAttribute("data-live", "true");
+    });
+  });
 });

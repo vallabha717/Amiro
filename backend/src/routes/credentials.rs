@@ -3,7 +3,9 @@
 //! Credentials are instance-wide, like the Composio key: writes are admin-only,
 //! while any authenticated user may list metadata (service/field/label/hint plus
 //! the Vellum-style policy: exported env var, usage description, allowed tools
-//! and domains). No route ever returns a credential value.
+//! and domains). Listing never returns a credential value; the only route that
+//! does is the admin-only `GET /api/credentials/{service}/{field}/reveal`, which
+//! backs the click-to-reveal control on the Credentials page.
 //!
 //! `POST /api/credentials/validate` checks a stored credential against its
 //! upstream provider (`composio`, or `github` when `AMIRO_GITHUB_BASE_URL` is
@@ -18,7 +20,8 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use axum::extract::Path;
-use axum::http::StatusCode;
+use axum::http::{header, StatusCode};
+use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::{json, Value};
@@ -204,6 +207,23 @@ async fn delete_credential(
     credentials::delete(&state, &service, &field).await?;
     crate::composio_config::refresh_runtime_key(&state);
     Ok(Json(json!({ "success": true })))
+}
+
+/// Return one decrypted value so an admin can view it on the Credentials page.
+/// Admin-only, uncacheable, and never logged.
+async fn reveal_credential(
+    AgentState(state): AgentState,
+    user: AuthUser,
+    Path((service, field)): Path<(String, String)>,
+) -> Result<impl IntoResponse, ApiError> {
+    require_admin(&user)?;
+    let secret = credentials::get_plaintext(&state, &service, &field)
+        .await?
+        .ok_or_else(not_configured)?;
+    Ok((
+        [(header::CACHE_CONTROL, "no-store")],
+        Json(json!({ "value": secret.expose() })),
+    ))
 }
 
 async fn validate(
@@ -436,6 +456,10 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/credentials/{service}/{field}",
             axum::routing::delete(delete_credential),
+        )
+        .route(
+            "/api/credentials/{service}/{field}/reveal",
+            get(reveal_credential),
         )
         .route("/api/credentials/validate", post(validate))
         .route("/api/credentials/broker", post(broker))

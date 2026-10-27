@@ -711,3 +711,43 @@ async fn github_routes_migrate_the_legacy_plaintext_token() {
     assert_eq!(body["connected"], json!(false));
 }
 
+
+#[tokio::test]
+async fn reveal_is_admin_only_uncacheable_and_returns_the_value() {
+    let fixture = fixture();
+    let app = app(&fixture);
+    call(
+        &app,
+        Method::PUT,
+        "/api/credentials",
+        Some(json!({"service":"github","field":"token","value":SECRET})),
+    )
+    .await;
+    let uri = "/api/credentials/github/token/reveal";
+
+    let (status, _) = call_with(&app, None, Method::GET, uri, None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, body) = call_with(&app, Some(USER_TOKEN), Method::GET, uri, None).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert!(!body.to_string().contains(SECRET));
+
+    let (status, body) = call(&app, Method::GET, uri, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, json!({ "value": SECRET }));
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(uri)
+                .header("authorization", format!("Bearer {ADMIN_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.headers()["cache-control"], "no-store");
+
+    let (status, _) = call(&app, Method::GET, "/api/credentials/github/missing/reveal", None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}

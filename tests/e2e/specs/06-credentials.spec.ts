@@ -10,7 +10,7 @@ import { expect, test } from "../support/fixtures";
 const FAKE_KEY = "sk-proj-E2eFakeKey0123456789abcdefghijklmnopqrstuv";
 
 test.describe("credentials", () => {
-  test("vault: add, see it masked, delete", async ({ page, step, amiro }) => {
+  test("vault: add, see it blurred, reveal on click, delete", async ({ page, step, amiro }) => {
     await step("Admin → Credentials (empty state)", async () => {
       await page.goto("/admin/credentials");
       await expect(page.getByRole("heading", { name: "Credentials", level: 1 })).toBeVisible();
@@ -31,6 +31,22 @@ test.describe("credentials", () => {
       expect(await page.locator("body").innerText()).not.toContain(FAKE_KEY);
       const { body } = await amiro.api("/api/credentials");
       expect(JSON.stringify(body)).not.toContain(FAKE_KEY);
+    });
+    await step("Value is blurred with no copy button; clicking reveals it and offers Copy", async () => {
+      const value = page.getByTestId("credential-value-e2e-service-api_key");
+      await expect(value).toHaveAttribute("data-revealed", "false");
+      await expect(value).not.toContainText(FAKE_KEY);
+      await expect(page.getByTestId("credential-copy-value-e2e-service-api_key")).toHaveCount(0);
+      await value.click();
+      await expect(value).toHaveAttribute("data-revealed", "true");
+      await expect(value).toContainText(FAKE_KEY);
+      await expect(page.getByTestId("credential-copy-value-e2e-service-api_key")).toBeVisible();
+    });
+    await step("Hide it again: the secret leaves the page and Copy goes away", async () => {
+      await page.getByTestId("credential-hide-e2e-service-api_key").click();
+      await expect(page.getByTestId("credential-value-e2e-service-api_key")).toHaveAttribute("data-revealed", "false");
+      await expect(page.getByTestId("credential-copy-value-e2e-service-api_key")).toHaveCount(0);
+      expect(await page.locator("body").innerText()).not.toContain(FAKE_KEY);
     });
     await step("Delete it", async () => {
       const row = page.locator("li").filter({ hasText: /e2e-service/i }).first();
