@@ -94,7 +94,11 @@ describe("CredentialRow", () => {
     expect(html).toContain('data-testid="credential-row-github-token"');
     expect(html).toContain("GitHub Personal Access Token");
     expect(html).toContain("github/token");
-    expect(html).toContain("••••1234");
+    expect(html).toContain('data-testid="credential-value-github-token"');
+    expect(html).toContain('data-revealed="false"');
+    expect(html).not.toContain("Copy value of");
+    expect(html).toContain("blur-");
+    expect(html).toContain('aria-label="Click to reveal value of github/token"');
     expect(html).toContain("data-private");
     expect(html).toContain("$AMIRO_CRED_GITHUB_TOKEN");
     expect(html).toContain('aria-label="Copy environment variable');

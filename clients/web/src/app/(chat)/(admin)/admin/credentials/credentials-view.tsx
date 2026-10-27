@@ -1,9 +1,13 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import {
   Check,
   ChevronDown,
   Copy,
+  Eye,
+  EyeOff,
   Globe,
   KeyRound,
   Loader2,
@@ -11,7 +15,10 @@ import {
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { CredentialMetadata } from "@/lib/backend/credentials-api";
+import {
+  revealCredential,
+  type CredentialMetadata,
+} from "@/lib/backend/credentials-api";
 import { credentialEnvVar } from "./credentials-view-utils";
 
 interface CredentialRowProps {
@@ -22,10 +29,129 @@ interface CredentialRowProps {
   onDelete: (credential: CredentialMetadata) => void;
 }
 
+/** Auto-hide a revealed secret so it does not stay on screen unattended. */
+const REVEAL_TIMEOUT_MS = 30_000;
+
+/** Stand-in shown (blurred) before reveal; it is never the real value. */
+const BLURRED_PLACEHOLDER = "••••••••••••••••••••";
+
 /**
- * A compact settings row: key icon, title and masked metadata on the left,
- * destructive action on the right. The secret itself is never rendered; only
- * the backend-provided hint (`••••1234`) and the env var name are shown.
+ * The secret value, blurred until clicked. The real value is fetched from the
+ * admin-only reveal endpoint on click, kept in component state only, and
+ * dropped again when hidden or after `REVEAL_TIMEOUT_MS`. Copy is offered only
+ * while the value is revealed.
+ */
+function RevealableValue({ credential }: { credential: CredentialMetadata }) {
+  const [value, setValue] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const name = `${credential.service}/${credential.field}`;
+  const revealed = value !== null;
+
+  useEffect(() => {
+    if (!revealed) return;
+    const timer = setTimeout(() => setValue(null), REVEAL_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [revealed]);
+
+  async function reveal() {
+    setLoading(true);
+    try {
+      setValue(await revealCredential(credential.service, credential.field));
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Could not reveal credential",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function copy() {
+    if (value === null) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.error("Could not copy to the clipboard");
+    }
+  }
+
+  const frame =
+    "inline-flex min-w-0 max-w-[22rem] items-center gap-1 rounded-md border border-border/60 bg-muted/50 font-mono text-[11px] text-foreground";
+  const iconButton =
+    "rounded-sm p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  const testId = `credential-value-${credential.service}-${credential.field}`;
+
+  if (!revealed) {
+    return (
+      <button
+        type="button"
+        data-private
+        data-testid={testId}
+        data-revealed="false"
+        onClick={reveal}
+        disabled={loading}
+        aria-label={`Click to reveal value of ${name}`}
+        title="Click to reveal"
+        className={`${frame} cursor-pointer px-2 py-0.5 hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-wait`}
+      >
+        <span
+          aria-hidden
+          className="truncate select-none blur-[5px] transition-[filter]"
+        >
+          {BLURRED_PLACEHOLDER}
+        </span>
+        {loading ? (
+          <Loader2 className="size-3 shrink-0 animate-spin" aria-hidden />
+        ) : (
+          <Eye className="size-3 shrink-0 text-muted-foreground" aria-hidden />
+        )}
+      </button>
+    );
+  }
+
+  return (
+    <span
+      data-private
+      data-testid={testId}
+      data-revealed="true"
+      className={`${frame} pl-2`}
+    >
+      <span className="truncate select-all">{value}</span>
+      <button
+        type="button"
+        onClick={copy}
+        data-testid={`credential-copy-value-${credential.service}-${credential.field}`}
+        aria-label={`Copy value of ${name}`}
+        title="Copy value"
+        className={iconButton}
+      >
+        {copied ? (
+          <Check className="size-3 text-emerald-500" aria-hidden />
+        ) : (
+          <Copy className="size-3" aria-hidden />
+        )}
+      </button>
+      <button
+        type="button"
+        onClick={() => setValue(null)}
+        data-testid={`credential-hide-${credential.service}-${credential.field}`}
+        aria-label={`Hide value of ${name}`}
+        title="Hide"
+        className={iconButton}
+      >
+        <EyeOff className="size-3" aria-hidden />
+      </button>
+    </span>
+  );
+}
+
+/**
+ * A compact settings row: key icon, title and, on the `$ENV_VAR = value` line, the blurred secret,
+ * destructive action on the right. The value is only fetched and shown after
+ * an explicit click on the blurred field.
  */
 export function CredentialRow({
   credential,
@@ -57,13 +183,6 @@ export function CredentialRow({
               {name}
             </span>
           ) : null}
-          <span
-            data-private
-            className="ml-auto shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground"
-            title="Masked secret"
-          >
-            {credential.hint}
-          </span>
         </div>
 
         <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-muted-foreground">
@@ -86,6 +205,8 @@ export function CredentialRow({
                 <Copy className="size-3" aria-hidden />
               )}
             </button>
+            <span aria-hidden>=</span>
+            <RevealableValue credential={credential} />
           </span>
 
           {credential.allowedDomains && credential.allowedDomains.length > 0 ? (

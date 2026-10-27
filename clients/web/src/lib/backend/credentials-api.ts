@@ -169,3 +169,18 @@ export async function validateCredential(
     body: JSON.stringify({ service, field }),
   });
 }
+
+/**
+ * Fetch one decrypted value so an admin can view it. Called only when the user
+ * clicks a blurred value; the result is never cached or written to storage.
+ */
+export async function revealCredential(
+  service: string,
+  field: string,
+): Promise<string> {
+  const res = await apiJson<{ value: string }>(
+    `/api/credentials/${encodeURIComponent(service)}/${encodeURIComponent(field)}/reveal`,
+    { method: "GET" },
+  );
+  return res.value;
+}
