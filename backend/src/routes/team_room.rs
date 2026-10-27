@@ -1,5 +1,5 @@
-//! The Team room: one shared conversation between a user and every agent on
-//! the team, where the agents also talk to each other.
+//! The Huddle (the "team room" in code): one shared conversation between a
+//! user and every agent on the team, where the agents also talk to each other.
 //!
 //! Each agent already has a private 1:1 channel thread (`agents.rs`). The room
 //! is separate: a log of messages per user plus one runtime session per agent
@@ -10,6 +10,8 @@
 //! - An agent's reply is posted to the room, and any teammate it @mentions gets
 //!   it as their next message. That is how agents hand work to each other, and
 //!   every hand-off is visible in the room.
+//! - An answer to a hand-off also goes back to the agent that asked, so it can
+//!   finish the job with it ([`reply_targets`]).
 //! - A chain of agent-to-agent hand-offs stops after [`MAX_HOPS`] replies, so
 //!   two agents can never keep answering each other forever.
 //!
@@ -141,6 +143,20 @@ pub fn find_mentions(text: &str, agents: &[(String, String)], allow_all: bool) -
         .filter(|(id, name)| mentioned(name) || mentioned(id))
         .map(|(id, _)| id.clone())
         .collect()
+}
+
+/// Who an agent's reply goes to: the teammates it @mentions, plus the agent
+/// that asked, when `message` was a teammate's hand-off. Without the second,
+/// the asking agent would never see the answer it asked for.
+pub fn reply_targets(mut mentions: Vec<String>, message: &Value, agent_id: &str) -> Vec<String> {
+    if message["from"]["type"] == "agent" {
+        if let Some(asker) = message["from"]["id"].as_str() {
+            if asker != agent_id && !mentions.iter().any(|m| m == asker) {
+                mentions.push(asker.to_string());
+            }
+        }
+    }
+    mentions
 }
 
 // ---------------------------------------------------------------------------
@@ -299,8 +315,8 @@ fn room_reminder(me: &Value, agents: &[Value], person: &str, recent: &[Value], h
         })
         .collect();
     let mut out = format!(
-        "You are {} in the Team room, a group chat with {person} and your teammates. \
-         Everything you reply is posted to the room for everyone to read.\n",
+        "You are {} in the Huddle, a group chat with {person} and your teammates. \
+         Everything you reply is posted to the Huddle for everyone to read.\n",
         me["name"].as_str().unwrap_or("an agent"),
     );
     if teammates.is_empty() {
@@ -310,8 +326,10 @@ fn room_reminder(me: &Value, agents: &[Value], person: &str, recent: &[Value], h
         if hops_left > 0 {
             out.push_str(
                 "To ask a teammate for something, @mention them by name in your reply and say exactly \
-                 what you need; they will answer in the room. Mention a teammate only when you need \
-                 their help, never just to thank or acknowledge them.\n",
+                 what you need; their answer comes back to you, so you can finish the job with it. \
+                 When a teammate asks you something, just answer; your reply goes back to them. \
+                 Mention a teammate only when you need their help, never just to thank or \
+                 acknowledge them.\n",
             );
         } else {
             out.push_str(
@@ -322,7 +340,7 @@ fn room_reminder(me: &Value, agents: &[Value], person: &str, recent: &[Value], h
     }
     if !recent.is_empty() {
         let lines: Vec<String> = recent.iter().map(|m| transcript_line(m, &names)).collect();
-        out.push_str(&format!("\nLatest room messages (oldest first):\n{}\n", lines.join("\n")));
+        out.push_str(&format!("\nLatest Huddle messages (oldest first):\n{}\n", lines.join("\n")));
     }
     out
 }
@@ -429,7 +447,7 @@ async fn answer(
     .filter(|block| !block.trim().is_empty())
     .collect::<Vec<_>>()
     .join("\n\n");
-    let prompt = format!("{} wrote in the Team room:\n\n{}", sender_name(message), message["text"].as_str().unwrap_or(""));
+    let prompt = format!("{} wrote in the Huddle:\n\n{}", sender_name(message), message["text"].as_str().unwrap_or(""));
     let session_id = room["sessions"][agent_id].as_str().filter(|s| !s.is_empty()).map(str::to_string);
 
     let plan = crate::runtime::TurnPlan {
@@ -472,7 +490,7 @@ async fn answer(
         .filter(|a| a["id"].as_str() != Some(agent_id))
         .map(|a| (a["id"].as_str().unwrap_or("").to_string(), a["name"].as_str().unwrap_or("").to_string()))
         .collect();
-    let mentions = find_mentions(&reply, &handles, false);
+    let mentions = reply_targets(find_mentions(&reply, &handles, false), message, agent_id);
     Ok(Some((me, reply, mentions)))
 }
 
@@ -568,6 +586,16 @@ mod tests {
         assert_eq!(find_mentions("@all standup", &team(), true).len(), 3);
         assert_eq!(find_mentions("@everyone", &team(), true).len(), 3);
         assert!(find_mentions("@all standup", &team(), false).is_empty());
+    }
+
+    #[test]
+    fn a_handoff_answer_goes_back_to_the_asking_agent() {
+        let handoff = json!({"from": {"type": "agent", "id": "main"}, "to": ["a1"]});
+        assert_eq!(reply_targets(vec![], &handoff, "a1"), vec!["main"]);
+        assert_eq!(reply_targets(vec!["a2".into()], &handoff, "a1"), vec!["a2", "main"]);
+        assert_eq!(reply_targets(vec!["main".into()], &handoff, "a1"), vec!["main"]);
+        let from_person = json!({"from": {"type": "user", "id": "u1"}, "to": ["a1"]});
+        assert!(reply_targets(vec![], &from_person, "a1").is_empty());
     }
 
     #[test]
