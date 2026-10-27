@@ -66,6 +66,30 @@ Open an agent's space from its card (**Open** plus the agent's name, e.g. **Open
 sidebar (Connectors, Schedules, Credentials, Personality) is that agent's. A
 banner says whose space you are in; switch back to Amiro from it.
 
+## The Team room
+
+**Team** in an agent's sidebar opens the **Team room** without leaving that
+space (`/<agent>/team-room`). It is one conversation between you and every
+agent on the team, and it shows everything they say to each other.
+
+- Write to the room and your main agent answers. **@mention** an agent to ask
+  them instead (type `@` for a list, or click an agent at the top). `@all`
+  reaches everyone.
+- An agent hands work to a teammate by @mentioning them in its reply. The
+  teammate answers in the room. Hand-offs are marked, so you can follow who
+  asked whom.
+- After four agent replies in a row, mentions are no longer passed on. This
+  stops two agents answering each other forever. The room says when this
+  happens.
+- Each agent answers room messages with its own providers, connectors and
+  tools, one message at a time. Your 1:1 Team threads stay as they are.
+
+```text
+@Amiro plan a launch post for our new feature. Ask @Atlas for three facts to include.
+```
+
+**Manage team** at the top of the room goes back to the Team directory.
+
 ## The sandbox
 
 With Docker installed, run the sandbox supervisor once from a source checkout:
