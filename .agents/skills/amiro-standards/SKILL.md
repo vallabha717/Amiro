@@ -55,6 +55,13 @@ app. `adapter/` is retired; never build on it. There is no Go.
    licence text stay upstream.
 7. **No build output in git:** `clients/web/out/`, `node_modules`, `*/target/`,
    `clients/desktop/binaries/`, `tests/recordings/`, `tests/e2e.config.json`.
+8. **Agent work never dies with a connection.** Phones drop streaming
+   requests whenever the screen locks or the app is switched. A turn, run or
+   job must not be cancelled because a request or stream closed: run it as a
+   task of its own (`backend/src/chat_runs.rs` for chat turns), let the page
+   reconnect and replay it (`use-resume-chat-turn.ts`), and end it early only
+   on an explicit Stop. Its E2E step reloads or goes offline mid-answer and
+   checks the answer still arrives.
 
 ## Definition of done (short form — full list in reference/done.md)
 

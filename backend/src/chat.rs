@@ -14,13 +14,13 @@ use std::convert::Infallible;
 use std::path::Path as FsPath;
 use std::time::Duration;
 
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
-use axum::routing::post;
+use axum::routing::{get, post};
 use axum::{Json, Router};
-use futures::stream::Stream;
+use futures::stream::{Stream, StreamExt};
 use serde_json::{json, Value};
 
 use crate::routes::fsbrowse::{is_denied, is_inside_roots, resolve_browse_roots};
@@ -184,20 +184,21 @@ pub(crate) fn validate_working_dir(raw: &str) -> Result<String, ApiError> {
     Ok(canonical.to_string_lossy().to_string())
 }
 
-fn frame(value: Value) -> Result<Event, Infallible> {
-    Ok(Event::default().data(value.to_string()))
+fn frame(value: Value) -> String {
+    value.to_string()
 }
 
-fn done_frame() -> Result<Event, Infallible> {
-    Ok(Event::default().data("[DONE]"))
+fn done_frame() -> String {
+    "[DONE]".to_string()
 }
 
 /// Build the SSE response with the AI SDK stream header the frontend expects.
 fn sse_response<S>(stream: S) -> Response
 where
-    S: Stream<Item = Result<Event, Infallible>> + Send + 'static,
+    S: Stream<Item = String> + Send + 'static,
 {
-    let mut response = Sse::new(stream)
+    let events = stream.map(|data| Ok::<_, Infallible>(Event::default().data(data)));
+    let mut response = Sse::new(events)
         .keep_alive(KeepAlive::new().interval(KEEPALIVE).text("keepalive"))
         .into_response();
     response.headers_mut().insert(
@@ -210,7 +211,8 @@ where
     response
 }
 
-/// Cancels the runtime turn when the browser goes away mid-turn.
+/// Cancels the runtime turn when the turn is dropped before it ends: an
+/// explicit Stop or a newer turn (see `chat_runs`), never a closed browser.
 struct CancelGuard {
     state: AppState,
     session_id: String,
@@ -374,6 +376,8 @@ async fn chat_handler(
         .cloned()
         .unwrap_or_default();
 
+    let run_uid = uid.clone();
+    let run_thread = thread_id.clone();
     let stream = async_stream::stream! {
         yield frame(json!({"type": "start", "messageId": response_id}));
         // Nothing to answer: no text, no attachments and no tool-card answers.
@@ -902,7 +906,47 @@ async fn chat_handler(
         yield done_frame();
     };
 
-    Ok(sse_response(stream))
+    let run = crate::chat_runs::start(&run_uid, &run_thread, stream).await;
+    Ok(sse_response(crate::chat_runs::follow(run)))
+}
+
+/// Body: `{ "id": threadId }`. Stops the thread's running turn.
+async fn chat_stop(
+    user: AuthUser,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    let thread_id = body.get("id").and_then(Value::as_str).unwrap_or("").trim();
+    if thread_id.is_empty() {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "id is required".into()));
+    }
+    let stopped = crate::chat_runs::stop(&uid_of(&user), thread_id);
+    Ok(Json(json!({ "stopped": stopped })))
+}
+
+/// The thread's latest turn: `running`, `finished` (still replayable) or `none`.
+async fn chat_run_state(
+    user: AuthUser,
+    Path(thread_id): Path<String>,
+) -> Json<Value> {
+    let state = match crate::chat_runs::get(&uid_of(&user), &thread_id) {
+        Some(run) if run.is_done() => "finished",
+        Some(_) => "running",
+        None => "none",
+    };
+    Json(json!({ "state": state }))
+}
+
+/// Reconnects to the thread's latest turn: every frame from its start, then
+/// live until it ends. 204 when there is nothing to reconnect to (the AI SDK's
+/// resume contract).
+async fn chat_resume(
+    user: AuthUser,
+    Path(thread_id): Path<String>,
+) -> Response {
+    match crate::chat_runs::get(&uid_of(&user), &thread_id) {
+        Some(run) => sse_response(crate::chat_runs::follow(run)),
+        None => StatusCode::NO_CONTENT.into_response(),
+    }
 }
 
 async fn chat_temporary(
@@ -1297,6 +1341,9 @@ async fn chat_openai_realtime(_user: AuthUser) -> Result<Json<Value>, ApiError> 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/chat", post(chat_handler))
+        .route("/api/chat/stop", post(chat_stop))
+        .route("/api/chat/{id}/run", get(chat_run_state))
+        .route("/api/chat/{id}/stream", get(chat_resume))
         .route("/api/chat/temporary", post(chat_temporary))
         .route("/api/chat/title", post(chat_title))
         .route("/api/chat/export", post(chat_export))

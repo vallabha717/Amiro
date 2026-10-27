@@ -54,6 +54,10 @@ import { applyRuntimeThreadTitle } from "@/lib/backend/runtime-thread-title";
 import { useFileDragOverlay } from "@/hooks/use-file-drag-overlay";
 import { useToRef } from "@/hooks/use-latest";
 import { useMounted } from "@/hooks/use-mounted";
+import {
+  stopChatTurn,
+  useResumeChatTurn,
+} from "@/hooks/use-resume-chat-turn";
 import { useThreadFileUploader } from "@/hooks/use-thread-file-uploader";
 import { useMessageReadAloudStore } from "@/lib/ai/speech/read-aloud-store";
 import { deleteThread } from "@/lib/backend/chat-api";
@@ -256,6 +260,7 @@ export default function ChatBot({
     error,
     sendMessage,
     stop,
+    resumeStream,
   } = useChat({
     id: threadId,
     sendAutomaticallyWhen: (params) => {
@@ -366,12 +371,24 @@ export default function ChatBot({
     [_addToolResult],
   );
 
+  // A turn keeps running on the server when the stream drops (a phone
+  // locking its screen); this reconnects to it.
+  const { markStopped } = useResumeChatTurn({
+    threadId,
+    status,
+    setMessages,
+    resumeStream,
+  });
+
   // Stop must mean stop -- see suppressNextAutoResumeRef above for why the
-  // library's own abort isn't enough on its own.
+  // library's own abort isn't enough on its own. Closing the stream no longer
+  // ends the turn on the server, so Stop says so explicitly.
   const handleStop = useCallback(() => {
     suppressNextAutoResumeRef.current = true;
+    markStopped();
+    stopChatTurn(threadId);
     stop();
-  }, [stop]);
+  }, [stop, markStopped, threadId]);
 
   const mounted = useMounted();
 

@@ -3,6 +3,7 @@ pub mod agent_home;
 pub mod agent_mcp;
 pub mod auth;
 pub mod chat;
+pub mod chat_runs;
 pub mod composio_config;
 pub mod config;
 pub mod credentials;
