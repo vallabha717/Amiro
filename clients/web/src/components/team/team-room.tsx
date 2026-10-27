@@ -64,7 +64,7 @@ function AgentChip({
  * whoever it @mentions (the main agent when it mentions no one), and agents
  * @mention each other to hand off work — every hand-off shows up here.
  */
-export function TeamRoom() {
+export function TeamRoom({ showMembers = true }: { showMembers?: boolean }) {
   const t = useTranslations("TeamRoom");
   const { data: agentData, isLoading: agentsLoading } = useAgents();
   const { data: room, error, isLoading } = useTeamRoom();
@@ -107,9 +107,9 @@ export function TeamRoom() {
     <div className="flex h-full min-h-0 flex-col" data-testid="team-room">
       <header className="flex items-start justify-between gap-3 border-b px-4 py-3">
         <div className="min-w-0">
-          <h1 className="text-lg font-semibold" data-testid="team-room-heading">
+          <h2 className="text-lg font-semibold" data-testid="team-room-heading">
             {t("title")}
-          </h1>
+          </h2>
           <p className="text-xs text-muted-foreground">{t("subtitle")}</p>
         </div>
         <Button asChild variant="outline" size="sm" data-testid="team-room-manage">
@@ -121,6 +121,7 @@ export function TeamRoom() {
         </Button>
       </header>
 
+      {showMembers && (
       <nav
         aria-label={t("membersLabel")}
         data-testid="team-room-members"
@@ -137,6 +138,7 @@ export function TeamRoom() {
           />
         ))}
       </nav>
+      )}
 
       <div
         role="log"

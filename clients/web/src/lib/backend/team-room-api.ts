@@ -22,8 +22,11 @@ export interface TeamRoomMessage {
   replyTo?: string;
   /** The reply @mentioned teammates, but the chain had reached its limit. */
   limitReached?: boolean;
-  /** System notices: `error` when an agent could not answer. */
-  kind?: "error";
+  /**
+   * System notices: `error` when an agent could not answer, `empty` when it
+   * finished its turn without saying anything.
+   */
+  kind?: "error" | "empty";
   agentId?: string;
   detail?: string;
 }

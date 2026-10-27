@@ -371,23 +371,35 @@ test.describe.serial("team", () => {
     const fromAgent = (id: string) => log.locator(`[data-testid="team-room-message"][data-sender="${id}"]`);
     const replyWait = { timeout: 240000 };
 
-    await step("Amiro's space → sidebar Team → the Team room opens in the main window", async () => {
+    await step("Amiro's space → sidebar Team → a full-window Team: no sidebar, every agent listed, Team room open", async () => {
       await page.goto("/amiro");
       await page.getByTestId("sidebar-team-link").click();
       await expect(page).toHaveURL(/\/amiro\/team-room$/);
+      await expect(page.getByTestId("team-space-window")).toBeVisible();
+      await expect(page.getByTestId("sidebar-team-link")).toHaveCount(0);
+      await expect(page.getByTestId("team-room-entry")).toHaveAttribute("aria-current", "page");
       await expect(page.getByTestId("team-room-heading")).toHaveText("Team room");
-      await expect(page.getByTestId("sidebar-team-link")).toBeVisible();
-      await expect(page.getByTestId("team-window")).toHaveCount(0);
       await expect(page.getByTestId("team-room-agent-main")).toContainText(main.name);
       await expect(page.getByTestId(`team-room-agent-${scout.id}`)).toContainText(SCOUT);
     });
 
-    await step("Scout's space → sidebar Team → the same room, still in Scout's space", async () => {
+    await step("Click Scout → your own chat with Scout opens beside the list", async () => {
+      await page.getByTestId(`team-room-agent-${scout.id}`).click();
+      await expect(page).toHaveURL(new RegExp(`/amiro/team-room\\?agent=${scout.id}$`));
+      await expect(page.getByTestId("team-channel-title")).toHaveText(SCOUT);
+      await expect(page.getByTestId("team-channel")).toBeVisible();
+    });
+
+    await step("Scout's space → sidebar Team → the same Team, and Back returns to Scout's space", async () => {
       await page.goto(`/${scout.id}`);
       await page.getByTestId("sidebar-team-link").click();
       await expect(page).toHaveURL(new RegExp(`/${scout.id}/team-room$`));
-      await expect(page.getByTestId("team-room-heading")).toBeVisible();
+      await expect(page.getByTestId("team-space-back")).toHaveText(`Back to ${SCOUT}`);
+      await page.getByTestId("team-space-back").click();
+      await expect(page).toHaveURL(new RegExp(`/${scout.id}$`));
       await expect(page.getByTestId("agent-scope-banner")).toContainText(`${SCOUT}'s space`);
+      await page.getByTestId("sidebar-team-link").click();
+      await expect(page.getByTestId("team-room-heading")).toBeVisible();
     });
 
     await step("Type @Sc → the mention list offers Scout → pick it", async () => {
@@ -421,12 +433,36 @@ test.describe.serial("team", () => {
       const handoff = log.locator(`[data-sender="${main.id}"][data-handoff="true"]`).first();
       await expect(handoff).toBeVisible(replyWait);
       await expect(handoff).toContainText(SCOUT);
-      await expect(fromAgent(scout.id).nth(before)).toBeVisible(replyWait);
-      const room = await amiro.api<{ messages: Array<{ from: { type: string; id?: string }; to: string[]; hop: number }> }>(
-        "/api/team/room",
-      );
-      const relayed = room.body.messages.find((m) => m.from.id === main.id && m.to.includes(scout.id));
+      type RoomMessage = {
+        id: string;
+        from: { type: string; id?: string };
+        to: string[];
+        hop: number;
+        replyTo?: string;
+        kind?: string;
+        agentId?: string;
+      };
+      const roomMessages = async () =>
+        (await amiro.api<{ messages: RoomMessage[] }>("/api/team/room")).body.messages;
+      const relayed = (await roomMessages()).find((m) => m.from.id === main.id && m.to.includes(scout.id));
       expect(relayed?.hop, "the hand-off is the first agent reply in its chain").toBe(1);
+      // The hand-off reached Scout: its turn answered it, with a reply or (when
+      // the model says nothing) the room's "finished without replying" notice.
+      await expect
+        .poll(
+          async () => {
+            const answer = (await roomMessages()).find(
+              (m) => m.replyTo === relayed?.id && (m.from.id === scout.id || m.agentId === scout.id),
+            );
+            return answer ? (answer.kind ?? "reply") : "waiting";
+          },
+          { timeout: replyWait.timeout, message: "Scout answers the hand-off" },
+        )
+        .toMatch(/^(reply|empty)$/);
+      const answered = (await roomMessages()).find((m) => m.replyTo === relayed?.id);
+      expect(answered, "Scout's answer to the hand-off is in the room").toBeTruthy();
+      expect.soft(answered?.kind, "Scout replies with text, not an empty turn").toBeUndefined();
+      if (!answered?.kind) await expect(fromAgent(scout.id).nth(before)).toBeVisible();
     });
 
     await step("Reload → the whole conversation is still in the room", async () => {

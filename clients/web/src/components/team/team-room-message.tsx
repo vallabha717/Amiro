@@ -28,10 +28,25 @@ export function TeamRoomMessageRow({
 
   if (message.from.type === "system") {
     const name = message.agentId ? nameOf(message.agentId) : t("formerAgent");
+    if (message.kind === "empty") {
+      return (
+        <p
+          role="note"
+          data-testid="team-room-notice"
+          data-kind="empty"
+          data-agent={message.agentId}
+          className="mx-auto text-center text-xs text-muted-foreground"
+        >
+          {t("noReply", { name })}
+        </p>
+      );
+    }
     return (
       <div
         role="note"
         data-testid="team-room-notice"
+        data-kind="error"
+        data-agent={message.agentId}
         className="mx-auto flex max-w-xl items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
       >
         <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden />

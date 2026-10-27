@@ -1424,7 +1424,14 @@
     "handoff": "Hand-off",
     "limitReached": "Not passed on: this chain of hand-offs reached its limit.",
     "couldNotReply": "{name} couldn't reply",
-    "formerAgent": "A removed agent"
+    "noReply": "{name} finished without replying",
+    "formerAgent": "A removed agent",
+    "listTitle": "Team",
+    "listLabel": "Team room and agents",
+    "roomEntrySubtitle": "You and every agent",
+    "backTo": "Back to {name}",
+    "ownChat": "Your own chat · history kept",
+    "openSpace": "Open {name}"
   },
   "Team": {
     "title": "Team",

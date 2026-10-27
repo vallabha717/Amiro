@@ -1424,7 +1424,14 @@
     "handoff": "काम सौंपा",
     "limitReached": "आगे नहीं भेजा गया: काम सौंपने की यह कड़ी अपनी सीमा तक पहुँच गई।",
     "couldNotReply": "{name} जवाब नहीं दे सका",
-    "formerAgent": "हटाया गया एजेंट"
+    "noReply": "{name} ने बिना जवाब दिए काम पूरा किया",
+    "formerAgent": "हटाया गया एजेंट",
+    "listTitle": "टीम",
+    "listLabel": "टीम रूम और एजेंट",
+    "roomEntrySubtitle": "आप और सभी एजेंट",
+    "backTo": "{name} पर वापस",
+    "ownChat": "आपकी अपनी चैट · इतिहास सुरक्षित",
+    "openSpace": "{name} खोलें"
   },
   "Team": {
     "title": "टीम",

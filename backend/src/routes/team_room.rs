@@ -335,7 +335,22 @@ fn deliver(state: AppState, uid: String, agent_id: String, message: Value) -> Bo
         let _turn = lock.lock().await;
         let _working = WorkingGuard::new(&uid, &agent_id);
         let hop = message["hop"].as_u64().unwrap_or(0) + 1;
+        let notice = |kind: &str, detail: Option<String>| {
+            let mut notice = new_message(json!({"type": "system"}), &[], "", hop);
+            notice["kind"] = json!(kind);
+            notice["agentId"] = json!(agent_id);
+            if let Some(detail) = detail {
+                notice["detail"] = json!(detail);
+            }
+            notice["replyTo"] = message["id"].clone();
+            notice
+        };
         match answer(&state, &uid, &agent_id, &message, hop).await {
+            // A finished turn with no text must not look like the agent never
+            // got the message.
+            Ok(Some((_, reply, _))) if reply.is_empty() => {
+                let _ = append(&state, &uid, notice("empty", None)).await;
+            }
             Ok(Some((me, reply, mentions))) => {
                 let deliverable = hop < MAX_HOPS;
                 let mut posted = new_message(
@@ -359,18 +374,14 @@ fn deliver(state: AppState, uid: String, agent_id: String, message: Value) -> Bo
             }
             Ok(None) => {}
             Err(err) => {
-                let mut notice = new_message(json!({"type": "system"}), &[], "", hop);
-                notice["kind"] = json!("error");
-                notice["agentId"] = json!(agent_id);
-                notice["detail"] = json!(clip(&err.1, 400));
-                notice["replyTo"] = message["id"].clone();
-                let _ = append(&state, &uid, notice).await;
+                let _ = append(&state, &uid, notice("error", Some(clip(&err.1, 400)))).await;
             }
         }
     })
 }
 
-/// Runs one room turn. `Ok(None)` when the agent is gone or said nothing.
+/// Runs one room turn. `Ok(None)` when the agent is gone; an empty reply
+/// means it finished without saying anything.
 async fn answer(
     state: &AppState,
     uid: &str,
@@ -454,7 +465,7 @@ async fn answer(
     .await?;
     let reply = reply.trim().to_string();
     if reply.is_empty() {
-        return Ok(None);
+        return Ok(Some((me, reply, Vec::new())));
     }
     let handles: Vec<(String, String)> = agents
         .iter()

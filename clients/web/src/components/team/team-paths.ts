@@ -45,6 +45,18 @@ export function agentScopedPath(
   return `${prefix}${clean}`;
 }
 
+/**
+ * Team inside an agent's space: the shared Team room, or with `agentId` that
+ * agent's own chat. E.g. /amiro/team-room, /<space>/team-room?agent=<id>.
+ */
+export function teamRoomPath(
+  spaceAgentId: string | null | undefined,
+  agentId?: string | null,
+): string {
+  const base = agentScopedPath(spaceAgentId, "/team-room");
+  return agentId ? `${base}?agent=${encodeURIComponent(agentId)}` : base;
+}
+
 /** Pre-#19 chat-area roots that now live under an agent's space. */
 const LEGACY_CHAT_ROOTS = new Set([
   "connectors",
