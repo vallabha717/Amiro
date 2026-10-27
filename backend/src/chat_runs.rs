@@ -15,9 +15,9 @@ use std::time::Duration;
 use futures::stream::{Stream, StreamExt};
 use tokio::sync::{watch, Notify};
 
-/// How long a finished turn stays replayable, so a phone that comes back just
-/// after the reply ended still gets it in full.
-pub const KEEP_FINISHED: Duration = Duration::from_secs(120);
+/// How long a finished turn stays replayable, so a phone that comes back a
+/// while after the reply ended still gets it in full (later, history has it).
+pub const KEEP_FINISHED: Duration = Duration::from_secs(30 * 60);
 
 /// How long a newer turn waits for the one it replaces to wind down.
 const REPLACE_WAIT: Duration = Duration::from_secs(10);

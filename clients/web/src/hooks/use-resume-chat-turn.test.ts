@@ -1,6 +1,6 @@
 import type { UIMessage } from "ai";
 import { describe, expect, it } from "vitest";
-import { messagesBeforeTurn } from "./use-resume-chat-turn";
+import { messagesBeforeTurn, recoveryFor } from "./use-resume-chat-turn";
 
 const msg = (id: string, role: UIMessage["role"]): UIMessage => ({
   id,
@@ -31,5 +31,13 @@ describe("messagesBeforeTurn", () => {
   it("never empties a chat that has no user message", () => {
     const messages = [msg("a1", "assistant")];
     expect(messagesBeforeTurn(messages)).toBe(messages);
+  });
+});
+
+describe("recoveryFor", () => {
+  it("replays a turn the server still has, loads history otherwise", () => {
+    expect(recoveryFor("running")).toBe("replay");
+    expect(recoveryFor("finished")).toBe("replay");
+    expect(recoveryFor("none")).toBe("reload-history");
   });
 });

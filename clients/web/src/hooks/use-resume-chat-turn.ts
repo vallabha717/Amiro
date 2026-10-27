@@ -1,18 +1,21 @@
 "use client";
 
 import type { UIMessage } from "ai";
-import { useEffect, useRef } from "react";
-import { backendFetch } from "@/lib/backend/client";
+import { useCallback, useEffect, useRef } from "react";
+import { backendFetch, fetcher } from "@/lib/backend/client";
 import { backendUrl } from "@/lib/backend/config";
 
 /**
  * A chat turn keeps running on the server when the page loses its stream
- * (a phone locking its screen or switching apps drops the request). This
- * reconnects to it: on opening the chat while a turn is running, and after
- * the stream fails, once the page is visible again.
+ * (a phone locking its screen or switching apps drops the request, or leaves
+ * a dead connection that never errors). This brings the page back in step:
  *
- * The server replays the turn from its first frame, so the partial reply
- * already on screen is removed first and rebuilt from the replay.
+ * - the turn still runs, or ended a moment ago: the partial reply on screen is
+ *   removed and the server replays the turn from its first frame;
+ * - the turn ended long ago: the saved conversation is loaded from history.
+ *
+ * It runs on opening the chat, after a stream fails or is cut off, and when the
+ * page comes back (visible again, back online) after being away.
  */
 
 export type ChatRunState = "running" | "finished" | "none";
@@ -51,103 +54,145 @@ export function messagesBeforeTurn<M extends UIMessage>(messages: M[]): M[] {
     : messages.slice(0, end);
 }
 
-/** Reconnect attempts after one failure before giving up and showing it. */
+/** What to do to bring the page back in step with the server's turn. */
+export function recoveryFor(
+  run: ChatRunState,
+): "replay" | "reload-history" {
+  return run === "none" ? "reload-history" : "replay";
+}
+
+/** Away at least this long before a still-"streaming" page is doubted. */
+const AWAY_MS = 3000;
+/** Recoveries after one interruption before giving up and showing it. */
 const MAX_ATTEMPTS = 3;
+
+type Status = "submitted" | "streaming" | "ready" | "error";
 
 export function useResumeChatTurn<M extends UIMessage>({
   threadId,
   status,
   setMessages,
   resumeStream,
+  abortStream,
+  clearError,
 }: {
   threadId: string;
-  status: "submitted" | "streaming" | "ready" | "error";
-  setMessages: (update: (messages: M[]) => M[]) => void;
+  status: Status;
+  setMessages: (messages: M[] | ((messages: M[]) => M[])) => void;
   resumeStream: () => Promise<void>;
+  /** Drop the page's own stream (not the server's turn). */
+  abortStream: () => void;
+  clearError: () => void;
 }) {
-  const latest = useRef({ status, setMessages, resumeStream });
-  latest.current = { status, setMessages, resumeStream };
+  const latest = useRef({ status, setMessages, resumeStream, abortStream, clearError });
+  latest.current = { status, setMessages, resumeStream, abortStream, clearError };
   const busy = useRef(false);
   const attempts = useRef(0);
   const stopped = useRef(false);
+  // The last stream ended without the turn's own end (dropped or failed).
+  const interrupted = useRef(false);
+  const hiddenAt = useRef<number | null>(null);
 
-  // Stop means stop: never reconnect to a turn the user just stopped.
   useEffect(() => {
-    if (status === "submitted") stopped.current = false;
-    if (status === "ready") attempts.current = 0;
+    if (status === "submitted") {
+      stopped.current = false;
+      interrupted.current = false;
+    }
+    if (status === "error") interrupted.current = true;
   }, [status]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const reconnect = async (accept: ChatRunState[]) => {
+  const recover = useCallback(
+    async ({ onlyIfRunning, force }: { onlyIfRunning?: boolean; force?: boolean } = {}) => {
       if (busy.current || stopped.current) return;
-      const now = latest.current.status;
-      if (now === "submitted" || now === "streaming") return;
+      const live = latest.current.status === "submitted" || latest.current.status === "streaming";
+      if (live && !force) return;
       busy.current = true;
       try {
-        const state = await fetchChatRunState(threadId);
-        if (cancelled || !accept.includes(state)) return;
-        const again = latest.current.status;
-        if (again === "submitted" || again === "streaming") return;
-        latest.current.setMessages((messages) => messagesBeforeTurn(messages));
-        await latest.current.resumeStream();
+        const run = await fetchChatRunState(threadId);
+        if (onlyIfRunning && run !== "running") return;
+        if (live) latest.current.abortStream();
+        if (recoveryFor(run) === "replay") {
+          latest.current.setMessages((messages) => messagesBeforeTurn(messages));
+          await latest.current.resumeStream();
+        } else {
+          const thread = (await fetcher(`/api/thread/${threadId}`)) as
+            | { messages?: M[] }
+            | undefined;
+          if (thread?.messages) latest.current.setMessages(thread.messages);
+          latest.current.clearError();
+        }
+        interrupted.current = false;
+        attempts.current = 0;
+      } catch {
+        // Next visibility/online change tries again.
       } finally {
         busy.current = false;
       }
-    };
+    },
+    [threadId],
+  );
 
+  useEffect(() => {
     // Opening the chat while its turn runs (a reload, or back from another
     // app): the history so far is on screen, the rest streams in.
-    void reconnect(["running"]);
+    void recover({ onlyIfRunning: true });
 
-    const onVisible = () => {
-      if (document.visibilityState !== "visible") return;
-      if (latest.current.status !== "error") return;
-      if (attempts.current >= MAX_ATTEMPTS) return;
+    const onBack = () => {
+      if (document.visibilityState !== "visible") {
+        hiddenAt.current = Date.now();
+        return;
+      }
+      const awayFor = hiddenAt.current ? Date.now() - hiddenAt.current : 0;
+      hiddenAt.current = null;
+      const now = latest.current.status;
+      const live = now === "submitted" || now === "streaming";
+      // Back from the background with a stream that may have died silently
+      // (iOS keeps it "open" with nothing arriving): check with the server.
+      if (live && awayFor >= AWAY_MS) {
+        void recover({ force: true });
+        return;
+      }
+      if (!interrupted.current || attempts.current >= MAX_ATTEMPTS) return;
       attempts.current += 1;
-      void reconnect(["running", "finished"]);
+      void recover();
     };
-    document.addEventListener("visibilitychange", onVisible);
-    window.addEventListener("online", onVisible);
-    window.addEventListener("pageshow", onVisible);
+    document.addEventListener("visibilitychange", onBack);
+    window.addEventListener("online", onBack);
+    window.addEventListener("pageshow", onBack);
     return () => {
-      cancelled = true;
-      document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener("online", onVisible);
-      window.removeEventListener("pageshow", onVisible);
+      document.removeEventListener("visibilitychange", onBack);
+      window.removeEventListener("online", onBack);
+      window.removeEventListener("pageshow", onBack);
     };
-  }, [threadId]);
+  }, [recover]);
 
-  // A stream that fails while the page is visible (the network blipped, or the
-  // phone woke up and the browser reported the dropped request): reconnect.
+  // A stream that fails or is cut off while the page is visible (the network
+  // blipped, or the phone woke up and the browser reported the drop).
   useEffect(() => {
     if (status !== "error" || stopped.current) return;
     if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
     if (attempts.current >= MAX_ATTEMPTS) return;
     attempts.current += 1;
-    const timer = window.setTimeout(() => {
-      if (busy.current) return;
-      busy.current = true;
-      void (async () => {
-        try {
-          const state = await fetchChatRunState(threadId);
-          if (state !== "running" && state !== "finished") return;
-          if (latest.current.status !== "error") return;
-          latest.current.setMessages((messages) => messagesBeforeTurn(messages));
-          await latest.current.resumeStream();
-        } finally {
-          busy.current = false;
-        }
-      })();
-    }, 600);
+    const timer = window.setTimeout(() => void recover(), 600);
     return () => window.clearTimeout(timer);
-  }, [status, threadId]);
+  }, [status, recover]);
 
   return {
     /** Call with Stop, so the turn is not reconnected to afterwards. */
     markStopped: () => {
       stopped.current = true;
+    },
+    /** Call from useChat's onFinish: a disconnect counts as interrupted. */
+    noteFinish: ({ isDisconnect, isError, isAbort }: { isDisconnect?: boolean; isError?: boolean; isAbort?: boolean }) => {
+      if (isDisconnect || isError) {
+        interrupted.current = true;
+        if (document.visibilityState === "visible" && attempts.current < MAX_ATTEMPTS && !stopped.current) {
+          attempts.current += 1;
+          window.setTimeout(() => void recover(), 600);
+        }
+      } else if (!isAbort) {
+        interrupted.current = false;
+      }
     },
   };
 }

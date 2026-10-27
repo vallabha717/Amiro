@@ -1,6 +1,6 @@
 "use client";
 
-import { SidebarGroupLabel, SidebarMenuSub } from "ui/sidebar";
+import { SidebarGroupLabel, SidebarMenuSub, useSidebar } from "ui/sidebar";
 import Link from "next/link";
 import {
   SidebarMenuAction,
@@ -57,6 +57,7 @@ const MAX_THREADS_COUNT = 40;
 
 export function AppSidebarThreads() {
   const mounted = useMounted();
+  const { setOpenMobile } = useSidebar();
   const router = useRouter();
   const agentScope = useAgentScope();
   const t = useTranslations("Layout");
@@ -280,6 +281,9 @@ export function AppSidebarThreads() {
                                     href={`${agentScopedPath(agentScope, "/")}?thread=${thread.id}`}
                                     data-testid="sidebar-thread-link"
                                     className="flex items-center gap-2"
+                                    // On a phone the sidebar is a sheet over
+                                    // the chat: close it to show the chat.
+                                    onClick={() => setOpenMobile(false)}
                                   >
                                     {generatingTitleThreadIds.includes(
                                       thread.id,

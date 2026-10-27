@@ -6,6 +6,7 @@ import {
   buildAttachmentsSummary,
   countParkedFiles,
   createPendingFollowUp,
+  followUpParts,
   excludeParkedFiles,
   hasUploadInProgress,
   isLoginCommand,
@@ -82,5 +83,19 @@ describe("followup-queue", () => {
     const parked = [file(), file({ id: "file-2", name: "b.png" })];
     expect(restoreParkedFiles([file()], parked)).toEqual([parked[1]]);
     expect(restoreParkedFiles(parked, parked)).toEqual([]);
+  });
+});
+
+describe("followUpParts", () => {
+  test("a queued follow-up sends what was typed, after its files", () => {
+    const file = { type: "file", url: "data:x", mediaType: "image/png" } as const;
+    expect(followUpParts({ text: " Now give it a title. ", attachmentParts: [] })).toEqual([
+      { type: "text", text: "Now give it a title." },
+    ]);
+    expect(followUpParts({ text: "Describe it", attachmentParts: [file] })).toEqual([
+      file,
+      { type: "text", text: "Describe it" },
+    ]);
+    expect(followUpParts({ text: "  ", attachmentParts: [file] })).toEqual([file]);
   });
 });

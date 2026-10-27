@@ -432,8 +432,25 @@ async fn list_threads(crate::routes::agents::AgentState(state): crate::routes::a
             "channel": is_channel(e),
         }))
     }).collect();
-    list.sort_by(|a,b| a["id"].as_str().cmp(&b["id"].as_str()));
+    sort_by_activity(&mut list);
     Ok(Json(json!(list)))
+}
+
+/// Most recent activity first (the last message, else when it was created);
+/// the id breaks ties so the order is stable.
+pub fn sort_by_activity(list: &mut [Value]) {
+    let at = |v: &Value| {
+        v.get("lastMessageAt")
+            .or_else(|| v.get("createdAt"))
+            .and_then(Value::as_str)
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+            .map(|t| t.timestamp_millis())
+            .unwrap_or(0)
+    };
+    list.sort_by(|a, b| {
+        at(b).cmp(&at(a))
+            .then_with(|| a["id"].as_str().cmp(&b["id"].as_str()))
+    });
 }
 
 async fn get_thread(State(state): State<AppState>, user: AuthUser, Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
@@ -631,6 +648,19 @@ pub fn router() -> Router<AppState> {
 #[cfg(test)]
 mod reminder_tests {
     use super::*;
+
+    #[test]
+    fn the_most_recently_active_chat_comes_first() {
+        let mut list = vec![
+            json!({"id": "a-old", "lastMessageAt": "2026-10-20T10:00:00.000Z"}),
+            json!({"id": "z-new", "lastMessageAt": "2026-10-27T16:27:14.000Z"}),
+            json!({"id": "m-created-only", "createdAt": "2026-10-26T09:00:00.000Z"}),
+            json!({"id": "b-mid", "lastMessageAt": "2026-10-27T09:00:00.000Z"}),
+        ];
+        sort_by_activity(&mut list);
+        let order: Vec<&str> = list.iter().map(|v| v["id"].as_str().unwrap()).collect();
+        assert_eq!(order, ["z-new", "b-mid", "m-created-only", "a-old"]);
+    }
 
     #[tokio::test]
     async fn reminder_message_actions_are_durable_and_owner_scoped() {

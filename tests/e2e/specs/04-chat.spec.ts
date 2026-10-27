@@ -411,8 +411,32 @@ test.describe("chat", () => {
       await expect.soft(page.getByTestId("message-editor-text")).toHaveCount(0);
     });
     await step("The conversation appears in Recent Chats with a generated title", async () => {
+      await page.getByTestId("sidebar-switch-conversations").first().click();
       const thread = page.locator('a[href*="?thread="]').first();
       await expect.soft(thread, "a sidebar link to the conversation").toBeVisible({ timeout: 30000 });
+    });
+    await step("On a phone: the chat just used is on top; tapping an older chat opens it and closes the sidebar", async () => {
+      // A second, newer conversation so there is an older one to go back to.
+      await newChat(page);
+      await ask(page, "Say hi in three words.");
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.getByTestId("sidebar-toggle").click();
+      const sheet = page.locator('[data-mobile="true"]');
+      await expect(sheet).toBeVisible();
+      await sheet.getByTestId("sidebar-switch-conversations").click();
+      const links = sheet.getByTestId("sidebar-thread-link");
+      await expect.poll(() => links.count(), { timeout: 30000 }).toBeGreaterThanOrEqual(2);
+      const newest = new URL((await links.first().getAttribute("href"))!, page.url()).searchParams.get("thread");
+      expect(newest, "the chat just used is first").toBe(new URL(page.url()).searchParams.get("thread"));
+      const older = links.nth(1);
+      const olderId = new URL((await older.getAttribute("href"))!, page.url()).searchParams.get("thread");
+      await older.click();
+      await expect(page).toHaveURL(new RegExp(`thread=${olderId}`));
+      await expect(sheet, "the sidebar closes to show the chat").toBeHidden();
+      await expect(assistantMessages(page).first()).toBeVisible();
+      const reply = await assistantMessages(page).first().boundingBox();
+      expect(reply?.width ?? 0, "the chat gets the phone's width, not a sliver beside a side panel").toBeGreaterThan(250);
+      await page.setViewportSize({ width: 1440, height: 900 });
     });
     await step("Start a new chat with the keyboard shortcut", async () => {
       await page.keyboard.press("Control+Shift+O");
@@ -454,6 +478,23 @@ test.describe("chat", () => {
       const reply = await waitForReply(page, { before });
       expect.soft(reply.length, "the backup plan arrives").toBeGreaterThan(150);
       await expect.soft(chatErrors(page)).toHaveCount(errorsBefore);
+    });
+
+    await step("Away until long after the reply ended (nothing left to replay) → the saved reply loads from history, no error", async () => {
+      const before = await assistantMessages(page).count();
+      await send(page, "One more: suggest a dessert place near the museum, in two sentences.");
+      await expect.poll(() => assistantMessages(page).count(), { timeout: 120000 }).toBeGreaterThan(before);
+      // The server forgot the finished turn: only its history has the reply.
+      await page.route("**/api/chat/*/run", (route) =>
+        route.fulfill({ status: 200, contentType: "application/json", body: '{"state":"none"}' }),
+      );
+      await page.context().setOffline(true);
+      await page.waitForTimeout(45000);
+      await page.context().setOffline(false);
+      const reply = await waitForReply(page, { before });
+      expect(reply, "the saved reply is shown in full").toMatch(/\w+[.!?]/);
+      await expect(chatErrors(page), "no error is left on screen").toHaveCount(errorsBefore);
+      await page.unroute("**/api/chat/*/run");
     });
 
     await step("Stop still stops: the reply ends and does not come back after a reload", async () => {

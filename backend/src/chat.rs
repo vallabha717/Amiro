@@ -887,6 +887,13 @@ async fn chat_handler(
             )
             .await;
         }
+        // The reply is the thread's latest activity: it sorts to the top.
+        let _ = threads::upsert_entry(
+            &state_for_stream,
+            &thread_id,
+            json!({ "lastMessageAt": crate::state::now_iso() }),
+        )
+        .await;
         activity.finish(&state_for_stream, failed).await;
         let mut metadata = json!({
             "chatModel": chat_model,
