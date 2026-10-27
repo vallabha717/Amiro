@@ -71,6 +71,8 @@ export function TeamRoomMessageRow({
       data-from={message.from.type}
       data-sender={message.from.id}
       data-handoff={isHandoff ? "true" : undefined}
+      data-streaming={message.streaming ? "true" : undefined}
+      aria-busy={message.streaming || undefined}
       className="flex gap-3"
     >
       <div className="shrink-0 pt-0.5">
@@ -101,16 +103,32 @@ export function TeamRoomMessageRow({
           <time className="text-muted-foreground" dateTime={message.createdAt}>
             {time(message.createdAt)}
           </time>
-        </div>
-        <div
-          className={cn(
-            "mt-1 text-sm break-words",
-            isHandoff &&
-              "rounded-xl border-l-2 border-primary/40 bg-muted/40 px-3 py-2",
+          {message.streaming && (
+            <span
+              className="flex items-center gap-1 text-muted-foreground"
+              data-testid="team-room-live-status"
+            >
+              <span
+                className="size-1.5 animate-pulse rounded-full bg-primary"
+                aria-hidden
+              />
+              {message.tool
+                ? t("usingTool", { tool: message.tool })
+                : t("typing")}
+            </span>
           )}
-        >
-          <Markdown>{message.text}</Markdown>
         </div>
+        {(message.text || !message.streaming) && (
+          <div
+            className={cn(
+              "mt-1 text-sm break-words",
+              isHandoff &&
+                "rounded-xl border-l-2 border-primary/40 bg-muted/40 px-3 py-2",
+            )}
+          >
+            <Markdown isStreaming={message.streaming}>{message.text}</Markdown>
+          </div>
+        )}
         {message.limitReached && (
           <p
             className="mt-1 text-xs text-muted-foreground"

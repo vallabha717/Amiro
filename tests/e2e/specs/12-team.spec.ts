@@ -428,7 +428,11 @@ test.describe.serial("team", () => {
       await page.getByTestId("team-room-send").click();
       const ask = await lastFromUser();
       expect(ask.to, "@Scout goes to Scout only").toEqual([scout.id]);
-      await expect(page.getByTestId(`team-room-agent-${scout.id}`)).toHaveAttribute("data-working", "true", { timeout: 15000 });
+      // Live: Scout's reply appears as it is written, before it is finished.
+      const live = log.locator(`[data-streaming="true"][data-sender="${scout.id}"]`);
+      await expect(live).toBeVisible({ timeout: 15000 });
+      await expect(live.getByTestId("team-room-live-status")).toBeVisible();
+      await expect(page.getByTestId(`team-room-agent-${scout.id}`)).toHaveAttribute("data-working", "true");
       const answer = await waitFor("Scout answers the research ask", (all) =>
         all.find((m) => m.replyTo === ask.id && m.from.id === scout.id),
       );
@@ -436,17 +440,22 @@ test.describe.serial("team", () => {
       await expect(page.getByTestId(`team-room-agent-${scout.id}`)).toHaveAttribute("data-working", "false", replyWait);
     });
 
-    await step(`Delegate: ${main.name} asks Scout for a local detail, Scout's answer goes back to ${main.name}, who writes the caption`, async () => {
+    await step(`Delegate, watched live in the ${main.name} ↔ Scout view: ${main.name} asks Scout for a local detail, Scout's answer streams back to ${main.name}, who writes the caption`, async () => {
       // "Scout" without an @ so the message reaches the main agent only, which must then hand off.
       const brief = await send(
         `@${main.name} draft a two-line Instagram caption for our launch day. First ask Scout for one local Koregaon Park detail to include, then write the caption using it.`,
       );
       expect(brief.to).toEqual(["main"]);
+      // Switch to just the two agents' conversation and watch it happen there.
+      await page.getByTestId(`team-room-agent-${scout.id}`).click();
+      await expect(page.getByTestId("team-channel-title")).toHaveText(`${main.name} and ${SCOUT}`);
+      const pair = page.getByTestId("team-pair-log");
+      await expect(pair.locator(`[data-handoff="true"][data-sender="${main.id}"]`).last()).toBeVisible(replyWait);
+      await expect(pair.locator('[data-streaming="true"]').first()).toBeVisible(replyWait);
       const handoff = await waitFor(`${main.name} hands off to Scout`, (all) =>
         all.find((m) => m.replyTo === brief.id && m.from.id === main.id && m.to.includes(scout.id)),
       );
       expect(handoff.hop).toBe(1);
-      await expect(log.locator(`[data-sender="${main.id}"][data-handoff="true"]`).last()).toBeVisible();
       const detail = await waitFor(`Scout's answer goes back to ${main.name}`, (all) =>
         all.find((m) => m.replyTo === handoff.id && m.from.id === scout.id),
       );
@@ -456,6 +465,11 @@ test.describe.serial("team", () => {
       );
       expect(caption.hop, "the round trip stays inside the hop limit").toBeLessThan(4);
       expect.soft(caption.kind, `${main.name} replies with the caption, not an empty turn`).toBeUndefined();
+      // The finished replies replaced their live drafts in this view.
+      await expect(pair.locator('[data-testid="team-room-message"], [data-testid="team-room-notice"]').nth(2)).toBeVisible();
+      await expect(pair.locator('[data-streaming="true"]')).toHaveCount(0, { timeout: 30000 });
+      await page.getByTestId("team-room-entry").click();
+      await expect(page.getByTestId("team-room-heading")).toBeVisible();
     });
 
     await step("@all standup → every agent answers the same message", async () => {

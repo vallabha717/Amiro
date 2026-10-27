@@ -6,13 +6,17 @@ import {
   type TeamAgent,
   useAgents,
 } from "@/lib/backend/agents-api";
-import { type TeamRoomMessage, useTeamRoom } from "@/lib/backend/team-room-api";
+import {
+  type TeamRoom as TeamRoomData,
+  roomTimeline,
+  useTeamRoom,
+} from "@/lib/backend/team-room-api";
 import { cn } from "@/lib/utils";
 import { MessagesSquareIcon, UserRoundIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Button } from "ui/button";
 import { Skeleton } from "ui/skeleton";
 import { AgentAvatar } from "./agent-avatar";
@@ -131,19 +135,31 @@ function YouPane({ me }: { me: TeamAgent }) {
 function PairPane({
   me,
   other,
-  messages,
+  room,
   agents,
 }: {
   me: TeamAgent;
   other: TeamAgent;
-  messages: TeamRoomMessage[];
+  room: TeamRoomData | undefined;
   agents: Map<string, TeamAgent>;
 }) {
   const t = useTranslations("TeamRoom");
+  // Replies still being written count too, so a hand-off streams here live.
   const pair = useMemo(
-    () => pairMessages(messages, me.id, other.id),
-    [messages, me.id, other.id],
+    () =>
+      pairMessages(
+        roomTimeline(room, (id) => agents.get(id)?.name ?? t("formerAgent")),
+        me.id,
+        other.id,
+      ),
+    [room, agents, me.id, other.id, t],
   );
+  const bottom = useRef<HTMLDivElement>(null);
+  const last = pair[pair.length - 1];
+  const followKey = `${last?.id ?? ""}:${last?.text.length ?? 0}`;
+  useEffect(() => {
+    if (followKey !== ":0") bottom.current?.scrollIntoView({ block: "end" });
+  }, [followKey]);
   return (
     <>
       <PaneHeader
@@ -184,6 +200,7 @@ function PairPane({
               />
             ))
           )}
+          <div ref={bottom} />
         </div>
       </div>
     </>
@@ -301,7 +318,7 @@ export function TeamSpaceView() {
           <PairPane
             me={me}
             other={other}
-            messages={room?.messages ?? []}
+            room={room}
             agents={byId}
           />
         ) : (

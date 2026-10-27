@@ -5,6 +5,7 @@ import {
   TEAM_ROOM_KEY,
   type TeamRoom as TeamRoomData,
   postTeamRoomMessage,
+  roomTimeline,
   useTeamRoom,
 } from "@/lib/backend/team-room-api";
 import { cn } from "@/lib/utils";
@@ -84,13 +85,18 @@ export function TeamRoom({
   const agents = agentData?.agents ?? [];
   const byId = useMemo(() => new Map(agents.map((a) => [a.id, a])), [agents]);
   const working = new Set(room?.working ?? []);
-  const messages = room?.messages ?? [];
-  const lastId = messages[messages.length - 1]?.id;
+  const nameOf = (id: string) => byId.get(id)?.name ?? t("formerAgent");
+  const messages = roomTimeline(room, nameOf);
+  // Agents working with nothing drawn yet (waiting their turn).
+  const waiting = [...working].filter(
+    (id) => !(room?.drafts ?? []).some((d) => d.agentId === id),
+  );
+  const last = messages[messages.length - 1];
+  const followKey = `${last?.id ?? ""}:${last?.text.length ?? 0}:${waiting.length}`;
 
   useEffect(() => {
-    if (lastId || working.size)
-      bottom.current?.scrollIntoView({ block: "end" });
-  }, [lastId, working.size]);
+    if (followKey !== ":0:0") bottom.current?.scrollIntoView({ block: "end" });
+  }, [followKey]);
 
   const send = async (text: string) => {
     try {
@@ -98,7 +104,8 @@ export function TeamRoom({
       await mutate(
         TEAM_ROOM_KEY,
         (current: TeamRoomData | undefined) =>
-          current
+          // The live stream may have delivered it already.
+          current && !current.messages.some((m) => m.id === message.id)
             ? {
                 ...current,
                 messages: [...current.messages, message],
@@ -190,7 +197,7 @@ export function TeamRoom({
               agents={byId}
             />
           ))}
-          {[...working].map((id) => (
+          {waiting.map((id) => (
             <p
               key={id}
               className="flex items-center gap-2 text-xs text-muted-foreground"

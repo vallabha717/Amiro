@@ -1425,6 +1425,8 @@
     "limitReached": "Not passed on: this chain of hand-offs reached its limit.",
     "couldNotReply": "{name} couldn't reply",
     "noReply": "{name} finished without replying",
+    "typing": "typing…",
+    "usingTool": "using {tool}…",
     "formerAgent": "A removed agent",
     "listTitle": "Team",
     "listLabel": "Huddle and agents",

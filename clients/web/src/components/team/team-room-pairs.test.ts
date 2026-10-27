@@ -1,4 +1,4 @@
-import type { TeamRoomMessage } from "@/lib/backend/team-room-api";
+import { type TeamRoomMessage, draftMessage } from "@/lib/backend/team-room-api";
 import { describe, expect, it } from "vitest";
 import { pairMessages } from "./team-room-pairs";
 
@@ -62,6 +62,17 @@ describe("pairMessages", () => {
       "other",
       "notice",
     ]);
+  });
+
+  it("includes a reply still being written to the other agent", () => {
+    const live = draftMessage(
+      { id: "d1", agentId: "scout", replyTo: "handoff", text: "Leafy lane", tool: null, startedAt: at },
+      "Scout",
+    );
+    const pair = pairMessages([...room, live], "main", "scout");
+    expect(pair.map((m) => m.id)).toEqual(["handoff", "answer", "draft-d1"]);
+    expect(pair.at(-1)?.streaming).toBe(true);
+    expect(pairMessages([...room, live], "scout", "writer")).toEqual([]);
   });
 
   it("leaves out the person's messages and replies to them", () => {
