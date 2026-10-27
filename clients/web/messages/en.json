@@ -2279,5 +2279,39 @@
     "quietSpan": "Quiet from {start} to {end}, every day.",
     "quietStart": "From",
     "quietEnd": "Until"
+  },
+  "ImageGeneration": {
+    "title": "Image generation",
+    "subtitle": "Pick the provider your agent draws pictures with. Every picture is saved to Files.",
+    "activeWith": "Drawing with {provider} ({model}).",
+    "notSetUp": "Not set up yet: pick a provider below.",
+    "provider": "Provider",
+    "about": {
+      "9router": "Your own 9Router, the same one Vellum draws with.",
+      "openai": "OpenAI's image models (gpt-image-1, DALL·E).",
+      "gemini": "Google's Gemini image models.",
+      "openai-compatible": "Any other OpenAI-style images API at your own address."
+    },
+    "model": "Model",
+    "modelPlaceholder": "Model name",
+    "apiBase": "API base URL",
+    "apiBaseHint": "The address of your server, for example https://router.example.com/v1.",
+    "apiKey": "{provider} API key",
+    "keyPlaceholder": "Paste the key here (it is stored encrypted)",
+    "keyKept": "Saved key {hint}; leave empty to keep it",
+    "getKey": "Where to get a {provider} key",
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Image generation now uses {provider}.",
+    "saveError": "Could not save the image settings.",
+    "tryTitle": "Try it",
+    "tryPlaceholder": "A cup of filter coffee in a brass tumbler, morning light",
+    "tryButton": "Draw",
+    "tryWaiting": "Drawing… this can take up to a minute.",
+    "tryError": "Could not draw the picture.",
+    "trySaved": "Drawn with {model} and saved to Files.",
+    "toolDrawing": "Drawing a picture…",
+    "toolDrew": "Drew a picture",
+    "toolFailed": "Could not draw the picture"
   }
 }

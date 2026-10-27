@@ -2279,5 +2279,39 @@
     "quietSpan": "हर दिन {start} से {end} तक शांत।",
     "quietStart": "से",
     "quietEnd": "तक"
+  },
+  "ImageGeneration": {
+    "title": "चित्र बनाना",
+    "subtitle": "चुनें कि आपका एजेंट किस प्रदाता से चित्र बनाए। हर चित्र Files में सहेजा जाता है।",
+    "activeWith": "{provider} ({model}) से चित्र बन रहे हैं।",
+    "notSetUp": "अभी सेट नहीं है: नीचे एक प्रदाता चुनें।",
+    "provider": "प्रदाता",
+    "about": {
+      "9router": "आपका अपना 9Router, वही जिससे Vellum चित्र बनाता है।",
+      "openai": "OpenAI के चित्र मॉडल (gpt-image-1, DALL·E)।",
+      "gemini": "Google के Gemini चित्र मॉडल।",
+      "openai-compatible": "आपके अपने पते पर कोई भी OpenAI-जैसा चित्र API।"
+    },
+    "model": "मॉडल",
+    "modelPlaceholder": "मॉडल का नाम",
+    "apiBase": "API बेस URL",
+    "apiBaseHint": "आपके सर्वर का पता, जैसे https://router.example.com/v1।",
+    "apiKey": "{provider} API कुंजी",
+    "keyPlaceholder": "कुंजी यहाँ चिपकाएँ (यह एन्क्रिप्ट करके रखी जाती है)",
+    "keyKept": "सहेजी गई कुंजी {hint}; वही रखने के लिए खाली छोड़ें",
+    "getKey": "{provider} की कुंजी कहाँ मिलेगी",
+    "save": "सहेजें",
+    "saving": "सहेजा जा रहा है…",
+    "saved": "चित्र अब {provider} से बनेंगे।",
+    "saveError": "चित्र की सेटिंग सहेजी नहीं जा सकी।",
+    "tryTitle": "आज़माएँ",
+    "tryPlaceholder": "सुबह की रोशनी में पीतल के गिलास में फ़िल्टर कॉफ़ी",
+    "tryButton": "बनाएँ",
+    "tryWaiting": "चित्र बन रहा है… इसमें एक मिनट तक लग सकता है।",
+    "tryError": "चित्र नहीं बन सका।",
+    "trySaved": "{model} से बना और Files में सहेजा गया।",
+    "toolDrawing": "चित्र बन रहा है…",
+    "toolDrew": "एक चित्र बनाया",
+    "toolFailed": "चित्र नहीं बन सका"
   }
 }

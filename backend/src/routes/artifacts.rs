@@ -80,6 +80,7 @@ pub fn infer_kind(filename: &str, mime: &str) -> String {
         "csv" => "csv".to_string(),
         "json" => "json".to_string(),
         "svg" => "svg".to_string(),
+        "png" | "jpg" | "jpeg" | "webp" | "gif" => "image".to_string(),
         "xhtml" => "html".to_string(),
         _ => {
             if mime.starts_with("text/markdown") {

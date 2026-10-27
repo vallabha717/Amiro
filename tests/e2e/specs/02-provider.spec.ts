@@ -156,4 +156,55 @@ test.describe("provider", () => {
       await expect(page.locator("main").getByText(/All configured search providers failed/)).toHaveCount(0);
     });
   });
+
+  test("image generation through your own 9Router: set it up in Admin, try a picture, then the agent draws one in chat", async ({
+    page,
+    step,
+    amiro,
+  }) => {
+    test.setTimeout(10 * 60_000);
+    const { nineRouterApiBase, nineRouterApiKey } = amiro.cfg.search;
+    need(nineRouterApiKey && nineRouterApiBase, "search.nineRouterApiBase + search.nineRouterApiKey");
+
+    await step("Admin → Image Generation: not set up yet; pick 9Router, its model is filled in, the key field is hidden", async () => {
+      await page.goto("/admin/image-generation");
+      await expect(page.getByTestId("image-generation-status")).toContainText(/not set up/i);
+      await page.getByTestId("image-provider-9router").click();
+      await expect(page.getByTestId("image-model-input")).toHaveValue("ag/gemini-3.1-flash-image");
+      await expect(page.getByTestId("image-api-key-input")).toHaveAttribute("type", "password");
+    });
+
+    await step("Save the 9Router address and key; the key is never shown back", async () => {
+      await page.getByTestId("image-api-base-input").fill(nineRouterApiBase);
+      await page.getByTestId("image-api-key-input").fill(nineRouterApiKey);
+      await page.getByTestId("image-generation-save").click();
+      await expect(page.getByTestId("image-generation-status")).toContainText("9Router");
+      await expect(page.getByTestId("image-api-key-input")).toHaveValue("");
+      const saved = await amiro.api("/api/image-generation");
+      expect(JSON.stringify(saved.body), "the key never comes back from the API").not.toContain(nineRouterApiKey);
+      expect((saved.body as { config: { keySet: boolean } }).config.keySet).toBe(true);
+    });
+
+    await step("Try it: a café menu illustration is drawn and shown", async () => {
+      await page.getByTestId("image-try-input").fill("A hand-drawn chalkboard menu for a small Pune café, filter coffee and poha, warm colours");
+      await page.getByTestId("image-try-button").click();
+      await expect(page.getByTestId("image-try-result").locator("img")).toBeVisible({ timeout: 200_000 });
+    });
+
+    await step("In chat, the agent draws a poster with image_generate; the picture shows inline and is saved to Files", async () => {
+      await newChat(page);
+      await selectModel(page);
+      await ask(
+        page,
+        "Use your image_generate tool to draw a small square poster for 'Brew & Bloom café, Koregaon Park': a cup of filter coffee with jasmine flowers. Then tell me in one line that it is ready.",
+        { timeoutMs: 300_000 },
+      );
+      const card = page.getByTestId("image-generate-card").last();
+      await expect(card).toBeVisible({ timeout: 30_000 });
+      await expect(card).toHaveAttribute("data-status", "success");
+      await expect(card.getByTestId("image-generate-picture")).toBeVisible({ timeout: 30_000 });
+      const files = await amiro.api<Array<{ kind: string; mime: string }>>("/api/artifacts");
+      expect(files.body.some((f) => f.kind === "image"), "the picture is kept in Files").toBe(true);
+    });
+  });
 });

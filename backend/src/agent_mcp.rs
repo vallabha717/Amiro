@@ -124,12 +124,18 @@ pub fn bypasses_sidecar(
 // Wiring (mcp.json + env)
 // ---------------------------------------------------------------------------
 
+/// How long the runtime waits for one of Amiro's own tools. Most answer at
+/// once, but drawing a picture takes up to a minute or more (the runtime's
+/// default of 30 seconds cut `image_generate` off mid-drawing).
+pub const TOOL_TIMEOUT_SECS: u64 = 300;
+
 pub fn mcp_entry(port: u16) -> Value {
     json!({
         "type": "streamable-http",
         "url": format!("http://127.0.0.1:{port}{AGENT_MCP_PATH}"),
         "headers": { TOKEN_HEADER: format!("${{{TOKEN_ENV_VAR}}}") },
         "shared": true,
+        "timeout_secs": TOOL_TIMEOUT_SECS,
     })
 }
 
@@ -393,10 +399,10 @@ pub fn tool_definitions() -> Vec<Value> {
         },"additionalProperties":false}}),
         // --- Web Search Providers configuration ---
         json!({"name":"search_providers_list","description":"List all supported web search provider types (catalog), all configured search providers, and the currently active default search provider.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}}),
-        json!({"name":"search_provider_configure","description":"Configure, add, or update a web search provider (duckduckgo, bing, brave, tavily, exa, serper, firecrawl, searxng, custom, inference-provider-native). Reads API keys automatically from the encrypted vault (`<provider>/api_key` or `search.<provider>/api_key`). If a required key is missing, emits a SECRET_PROMPT card.","inputSchema":{"type":"object","properties":{
-            "provider":{"type":"string","description":"Search provider kind (duckduckgo, bing, brave, tavily, exa, serper, firecrawl, searxng, custom, inference-provider-native)"},
+        json!({"name":"search_provider_configure","description":"Configure, add, or update a web search provider (duckduckgo, bing, brave, tavily, exa, serper, firecrawl, 9router, searxng, custom, inference-provider-native). Reads API keys automatically from the encrypted vault (`<provider>/api_key` or `search.<provider>/api_key`). If a required key is missing, emits a SECRET_PROMPT card.","inputSchema":{"type":"object","properties":{
+            "provider":{"type":"string","description":"Search provider kind (duckduckgo, bing, brave, tavily, exa, serper, firecrawl, 9router, searxng, custom, inference-provider-native)"},
             "name":{"type":"string","description":"Display name for the search provider"},
-            "base_url":{"type":"string","description":"Base URL for searxng, firecrawl, or custom HTTP JSON search"},
+            "base_url":{"type":"string","description":"Base URL for searxng, firecrawl, 9router (e.g. https://router.example.com/v1), or custom HTTP JSON search"},
             "set_active":{"type":"boolean","description":"Whether to immediately set this provider as the active default search provider (default true)"},
             "custom":{"type":"object","description":"Optional custom HTTP JSON search configuration (endpoint, method, query_param, count_param, results_pointer, title_pointer, url_pointer, snippet_pointer)"}
         },"required":["provider"],"additionalProperties":false}}),
@@ -409,6 +415,18 @@ pub fn tool_definitions() -> Vec<Value> {
         json!({"name":"search_provider_delete","description":"Delete a configured search provider.","inputSchema":{"type":"object","properties":{
             "id":{"type":"string","description":"Search provider ID"}
         },"required":["id"],"additionalProperties":false}}),
+        // --- Image generation ---
+        json!({"name":"image_generate","description":"Draw a picture from a description with the image provider set up in Admin -> Image generation (9Router, OpenAI, Gemini or an OpenAI-compatible API). The picture is saved as an artifact (Files tab) and shown in the chat. Takes up to a minute.","inputSchema":{"type":"object","properties":{
+            "prompt":{"type":"string","description":"What to draw: subject, style, setting, light, framing"},
+            "title":{"type":"string","description":"Short name for the saved picture"},
+            "model":{"type":"string","description":"Optional model for this picture only (e.g. ag/gemini-3.1-flash-image on 9Router); defaults to the configured one"}
+        },"required":["prompt"],"additionalProperties":false}}),
+        json!({"name":"image_provider_status","description":"Show which image provider and model the agent draws with, and the providers that can be set up.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}}),
+        json!({"name":"image_provider_configure","description":"Set the image provider (9router, openai, gemini, openai-compatible). Reads its key from the encrypted vault (`image.<provider>/api_key`); if it is missing, emits a SECRET_PROMPT card so the user enters it securely. Never ask for the key in chat.","inputSchema":{"type":"object","properties":{
+            "provider":{"type":"string","description":"9router, openai, gemini or openai-compatible"},
+            "model":{"type":"string","description":"Model to draw with; defaults to the provider's usual image model"},
+            "api_base":{"type":"string","description":"API base URL; required for 9router and openai-compatible (e.g. https://router.example.com/v1)"}
+        },"required":["provider"],"additionalProperties":false}}),
         // --- MCP Connectors & Composio OAuth ---
         json!({"name":"mcp_connectors_list","description":"List all MCP connectors and Composio status from the unified Connectors registry.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}}),
         json!({"name":"mcp_oauth_start","description":"Start an interactive browser OAuth flow for a remote MCP server (e.g. linear, notion, figma, sentry) and emit an OAUTH_CONNECT card with the authorization URL.","inputSchema":{"type":"object","properties":{
@@ -1388,7 +1406,7 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<(String
             let set_active = args.get("set_active").and_then(Value::as_bool).unwrap_or(true);
 
             // Check if key is needed and if it's already in vault
-            let needs_key = matches!(provider_kind.as_str(), "brave" | "tavily" | "exa" | "serper" | "firecrawl");
+            let needs_key = matches!(provider_kind.as_str(), "brave" | "tavily" | "exa" | "serper" | "firecrawl" | "9router");
             let mut api_key = String::new();
             if needs_key {
                 // Try `<provider_kind>/api_key` or `search.<provider_kind>/api_key`
@@ -1429,6 +1447,69 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<(String
             }
             let text = format!("Search provider \"{name}\" ({provider_kind}) configured successfully{}.", if set_active { " and activated as default" } else { "" });
             Ok((text, res))
+        }
+
+        "image_generate" => {
+            let prompt = require_str(args, "prompt")?;
+            let model = arg_str(args, "model")?;
+            let title = arg_str(args, "title")?;
+            let entry = crate::routes::image_generation::generate_artifact(state, &uid, prompt, model, title).await?;
+            let text = format!(
+                "Drew \"{}\" with {} and saved it as an artifact ({}). It is shown in the chat and in the Files tab.\n\n```json\n{}\n```",
+                entry["title"].as_str().unwrap_or(""),
+                entry["model"].as_str().unwrap_or(""),
+                entry["workspacePath"].as_str().unwrap_or(""),
+                json!({"artifact": entry}),
+            );
+            Ok((text, json!({"artifact": entry})))
+        }
+
+        "image_provider_status" => {
+            let settings = crate::routes::image_generation::public_settings(state).await.map_err(err_text)?;
+            let text = match settings.get("config").filter(|c| !c.is_null()) {
+                Some(c) => format!(
+                    "Drawing with {} (model {}, {}). The key is {}.",
+                    c["provider"].as_str().unwrap_or(""),
+                    c["model"].as_str().unwrap_or(""),
+                    c["apiBase"].as_str().unwrap_or(""),
+                    if c["keySet"].as_bool() == Some(true) { "saved" } else { "missing" },
+                ),
+                None => "Image generation is not set up. Providers: 9router, openai, gemini, openai-compatible.".to_string(),
+            };
+            Ok((text, settings))
+        }
+
+        "image_provider_configure" => {
+            let kind = require_str(args, "provider")?.to_lowercase();
+            let service = crate::routes::image_generation::key_service(&kind);
+            let has_key = crate::credentials::get_plaintext(state, &service, "api_key").await.map_err(err_text)?.is_some();
+            if !has_key {
+                let prompt = json!({
+                    "service": service,
+                    "field": "api_key",
+                    "label": format!("{kind} image API key"),
+                    "description": format!("API key for drawing pictures with {kind}. Entered secrets are encrypted in Amiro's vault."),
+                    "purpose": "Image generation provider",
+                    "placeholder": "API key..."
+                });
+                let text = format!(
+                    "An API key for image provider \"{kind}\" is needed. Please enter it securely in the card below, then ask me again:\n\n\
+                    SECRET_PROMPT {}",
+                    prompt
+                );
+                return Ok((text, json!({"status": "needs_secret", "prompt": prompt})));
+            }
+            let mut body = json!({"provider": kind});
+            if let Some(model) = arg_str(args, "model")? { body["model"] = json!(model); }
+            if let Some(base) = arg_str(args, "api_base")? { body["apiBase"] = json!(base); }
+            let settings = crate::routes::image_generation::save_settings(state, &body).await.map_err(err_text)?;
+            let c = &settings["config"];
+            let text = format!(
+                "Image generation now uses {} (model {}).",
+                c["provider"].as_str().unwrap_or(""),
+                c["model"].as_str().unwrap_or(""),
+            );
+            Ok((text, settings))
         }
 
         "search_provider_activate" => {
@@ -2659,6 +2740,7 @@ mod tests {
             "${AMIRO_AGENT_MCP_TOKEN}"
         );
         assert_eq!(entry["shared"], true);
+        assert_eq!(entry["timeout_secs"], TOOL_TIMEOUT_SECS);
         assert!(doc["servers"]["other"].is_object());
         // The value reaches the runtime via credential-env.json.
         let env: Value = serde_json::from_slice(
