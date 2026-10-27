@@ -189,6 +189,123 @@ async fn team_room_routes_by_mention_and_defaults_to_main() {
     wait_for_notice(&app, OWNER_TOKEN, "main").await;
 }
 
+/// Reads SSE `data:` frames from a streaming response body as JSON.
+struct Frames {
+    body: axum::body::BodyDataStream,
+    buffer: String,
+}
+
+impl Frames {
+    async fn next(&mut self) -> Value {
+        use futures::StreamExt;
+        loop {
+            if let Some(end) = self.buffer.find("\n\n") {
+                let frame: String = self.buffer.drain(..end + 2).collect();
+                let data: String = frame
+                    .lines()
+                    .filter_map(|line| line.strip_prefix("data:"))
+                    .map(str::trim)
+                    .collect();
+                if data.is_empty() {
+                    continue; // keepalive comment
+                }
+                return serde_json::from_str(&data).unwrap();
+            }
+            let chunk = tokio::time::timeout(std::time::Duration::from_secs(10), self.body.next())
+                .await
+                .expect("stream went quiet")
+                .expect("stream ended")
+                .unwrap();
+            self.buffer.push_str(std::str::from_utf8(&chunk).unwrap());
+        }
+    }
+
+    /// The next event of `kind`, skipping the others.
+    async fn next_of(&mut self, kind: &str) -> Value {
+        self.next_where(kind, |_| true).await
+    }
+
+    /// The next event of `kind` that `matches`, skipping the others.
+    async fn next_where(&mut self, kind: &str, matches: impl Fn(&Value) -> bool) -> Value {
+        loop {
+            let event = self.next().await;
+            if event["type"] == kind && matches(&event) {
+                return event;
+            }
+        }
+    }
+}
+
+async fn open_stream(app: &Router, token: Option<&str>) -> (StatusCode, Option<Frames>) {
+    let mut builder = Request::builder().method(Method::GET).uri("/api/team/room/stream");
+    if let Some(token) = token {
+        builder = builder.header("authorization", format!("Bearer {token}"));
+    }
+    let response = app.clone().oneshot(builder.body(Body::empty()).unwrap()).await.unwrap();
+    let status = response.status();
+    if status != StatusCode::OK {
+        return (status, None);
+    }
+    let body = response.into_body().into_data_stream();
+    (status, Some(Frames { body, buffer: String::new() }))
+}
+
+#[tokio::test]
+async fn team_room_stream_needs_sign_in() {
+    let fx = fixture();
+    let app = app(&fx);
+    let (status, _) = open_stream(&app, None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn team_room_stream_sends_a_snapshot_then_live_changes() {
+    let fx = fixture();
+    let app = app(&fx);
+    let (_, posted) = post(&app, OWNER_TOKEN, "before the stream").await;
+    let (status, frames) = open_stream(&app, Some(OWNER_TOKEN)).await;
+    assert_eq!(status, StatusCode::OK);
+    let mut frames = frames.unwrap();
+
+    let snapshot = frames.next().await;
+    assert_eq!(snapshot["type"], "snapshot");
+    assert!(snapshot["messages"].as_array().unwrap().iter().any(|m| m["id"] == posted["message"]["id"]));
+    assert!(snapshot["drafts"].is_array());
+    assert!(snapshot["working"].is_array());
+
+    // A new message arrives live, then the main agent's turn: working, a draft
+    // for its reply, and (no runtime here) a notice that replaces the draft.
+    // (The earlier message's turn may still be finishing; its events are skipped.)
+    let (_, posted) = post(&app, OWNER_TOKEN, "Morning, team").await;
+    let id = posted["message"]["id"].clone();
+    frames.next_where("message", |e| e["message"]["id"] == id).await;
+
+    let draft = frames.next_where("draft", |e| e["draft"]["replyTo"] == id).await;
+    assert_eq!(draft["draft"]["agentId"], "main");
+    assert_eq!(draft["draft"]["text"], "");
+    let draft_id = draft["draft"]["id"].clone();
+
+    let notice = frames.next_where("message", |e| e["message"]["replyTo"] == id).await["message"].clone();
+    assert_eq!(notice["kind"], "error");
+    assert_eq!(notice["draftId"], draft_id, "the notice names the draft it replaces");
+    frames.next_where("draft.end", |e| e["id"] == draft_id).await;
+    frames.next_where("working", |e| e["working"] == json!([])).await;
+}
+
+#[tokio::test]
+async fn team_room_stream_is_per_user() {
+    let fx = fixture();
+    let app = app(&fx);
+    let (_, frames) = open_stream(&app, Some(MEMBER_TOKEN)).await;
+    let mut frames = frames.unwrap();
+    assert_eq!(frames.next().await["type"], "snapshot");
+    post(&app, OWNER_TOKEN, "owner only").await;
+    let (_, mine) = post(&app, MEMBER_TOKEN, "member here").await;
+    // The member's first live message is their own; the owner's never arrives.
+    let first = frames.next_of("message").await;
+    assert_eq!(first["message"]["id"], mine["message"]["id"]);
+}
+
 #[tokio::test]
 async fn team_room_is_per_user() {
     let fx = fixture();

@@ -16,22 +16,30 @@
 //!   two agents can never keep answering each other forever.
 //!
 //! An agent answers one room message at a time; later ones wait their turn.
-//! The browser polls `GET /api/team/room` while anyone is working.
+//! While it writes, its reply is a *draft* that streams live (with the tool it
+//! is using), in the Huddle and in every agent-to-agent view alike.
 //!
-//! - `GET  /api/team/room`  the caller's room: recent messages, who is working
-//! - `POST /api/team/room`  `{text}` post a message as the caller
+//! - `GET  /api/team/room`         the caller's room: messages, drafts, who is working
+//! - `GET  /api/team/room/stream`  the same as a snapshot, then live events (SSE):
+//!   `message`, `draft`, `draft.end`, `working`
+//! - `POST /api/team/room`         `{text}` post a message as the caller
 
 use std::collections::{HashMap, HashSet};
+use std::convert::Infallible;
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex as StdMutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use axum::extract::State;
-use axum::http::StatusCode;
+use axum::http::{header, HeaderValue, StatusCode};
+use axum::response::sse::{Event, KeepAlive, Sse};
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use serde_json::{json, Value};
+use tokio::sync::broadcast;
 
 use crate::routes::agents::{roster, MAIN_AGENT_ID};
 use crate::state::{now_iso, read_json, write_json, ApiError, AppState, AuthUser};
@@ -44,6 +52,12 @@ const MAX_STORED: usize = 500;
 const MAX_LISTED: usize = 200;
 const CONTEXT_MESSAGES: usize = 12;
 const CONTEXT_CHARS: usize = 600;
+/// A draft's text is re-sent at most this often while it grows.
+const DRAFT_THROTTLE: Duration = Duration::from_millis(120);
+const KEEPALIVE: Duration = Duration::from_secs(15);
+/// A room turn still running after this is stopped. An agent answers one room
+/// message at a time, so one stalled turn would otherwise hold its queue forever.
+const ROOM_TURN_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 
 type BoxFuture = Pin<Box<dyn Future<Output = ()> + Send>>;
 
@@ -82,18 +96,23 @@ fn agent_lock(uid: &str, agent_id: &str) -> Arc<tokio::sync::Mutex<()>> {
     locks.entry(agent_key(uid, agent_id)).or_default().clone()
 }
 
-/// Marks an agent as working for as long as it lives.
-struct WorkingGuard(String);
+/// Marks an agent as working for as long as it lives, and tells open streams.
+struct WorkingGuard {
+    uid: String,
+    key: String,
+}
 impl WorkingGuard {
     fn new(uid: &str, agent_id: &str) -> Self {
         let key = agent_key(uid, agent_id);
         working().lock().unwrap().insert(key.clone());
-        Self(key)
+        publish(uid, json!({"type": "working", "working": working_for(uid)}));
+        Self { uid: uid.to_string(), key }
     }
 }
 impl Drop for WorkingGuard {
     fn drop(&mut self) {
-        working().lock().unwrap().remove(&self.0);
+        working().lock().unwrap().remove(&self.key);
+        publish(&self.uid, json!({"type": "working", "working": working_for(&self.uid)}));
     }
 }
 
@@ -111,6 +130,108 @@ fn working_for(uid: &str) -> Vec<String> {
 
 fn clip(text: &str, max: usize) -> String {
     text.chars().take(max).collect()
+}
+
+// ---------------------------------------------------------------------------
+// Live updates
+// ---------------------------------------------------------------------------
+
+/// Every room change as `(uid, event)`, fanned out to the open streams.
+fn hub() -> &'static broadcast::Sender<(String, Value)> {
+    static HUB: OnceLock<broadcast::Sender<(String, Value)>> = OnceLock::new();
+    HUB.get_or_init(|| broadcast::channel(1024).0)
+}
+
+fn publish(uid: &str, event: Value) {
+    // No open stream is not an error: the next GET or stream reads the store.
+    let _ = hub().send((uid.to_string(), event));
+}
+
+/// Replies being written right now, by uid then draft id.
+fn drafts() -> &'static StdMutex<HashMap<String, HashMap<String, Value>>> {
+    static DRAFTS: OnceLock<StdMutex<HashMap<String, HashMap<String, Value>>>> = OnceLock::new();
+    DRAFTS.get_or_init(Default::default)
+}
+
+fn drafts_for(uid: &str) -> Vec<Value> {
+    let mut list: Vec<Value> = drafts()
+        .lock()
+        .unwrap()
+        .get(uid)
+        .map(|by_id| by_id.values().cloned().collect())
+        .unwrap_or_default();
+    list.sort_by(|a, b| a["startedAt"].as_str().cmp(&b["startedAt"].as_str()));
+    list
+}
+
+/// One agent's reply while it is being written: `{id, agentId, replyTo, text,
+/// tool, startedAt}`. Streams as `draft` events (text throttled to
+/// [`DRAFT_THROTTLE`]) and ends with `draft.end` when dropped. The finished
+/// reply carries the draft's id as `draftId`, so a view swaps one for the other.
+struct Draft {
+    uid: String,
+    value: Value,
+    last_sent: Option<Instant>,
+}
+
+impl Draft {
+    fn start(uid: &str, agent_id: &str, reply_to: &Value) -> Self {
+        let mut draft = Self {
+            uid: uid.to_string(),
+            value: json!({
+                "id": uuid::Uuid::new_v4().to_string(),
+                "agentId": agent_id,
+                "replyTo": reply_to,
+                "text": "",
+                "tool": Value::Null,
+                "startedAt": now_iso(),
+            }),
+            last_sent: None,
+        };
+        draft.send(true);
+        draft
+    }
+
+    fn id(&self) -> Value {
+        self.value["id"].clone()
+    }
+
+    fn set_text(&mut self, text: &str) {
+        let tool_was_set = !self.value["tool"].is_null();
+        self.value["text"] = json!(text);
+        self.value["tool"] = Value::Null;
+        self.send(tool_was_set);
+    }
+
+    fn tool(&mut self, name: &str) {
+        self.value["tool"] = json!(name);
+        self.send(true);
+    }
+
+    fn send(&mut self, force: bool) {
+        let id = self.value["id"].as_str().unwrap_or("").to_string();
+        drafts()
+            .lock()
+            .unwrap()
+            .entry(self.uid.clone())
+            .or_default()
+            .insert(id, self.value.clone());
+        if !force && self.last_sent.is_some_and(|at| at.elapsed() < DRAFT_THROTTLE) {
+            return;
+        }
+        self.last_sent = Some(Instant::now());
+        publish(&self.uid, json!({"type": "draft", "draft": self.value}));
+    }
+}
+
+impl Drop for Draft {
+    fn drop(&mut self) {
+        let id = self.value["id"].as_str().unwrap_or("").to_string();
+        if let Some(by_id) = drafts().lock().unwrap().get_mut(&self.uid) {
+            by_id.remove(&id);
+        }
+        publish(&self.uid, json!({"type": "draft.end", "id": id}));
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -196,14 +317,16 @@ async fn update_room<T>(
 }
 
 async fn append(state: &AppState, uid: &str, message: Value) -> Result<Value, ApiError> {
-    update_room(state, uid, |room| {
+    let message = update_room(state, uid, |room| {
         match room["messages"].as_array_mut() {
             Some(list) => list.push(message.clone()),
             None => room["messages"] = json!([message.clone()]),
         }
         message
     })
-    .await
+    .await?;
+    publish(uid, json!({"type": "message", "message": message}));
+    Ok(message)
 }
 
 fn new_message(from: Value, to: &[String], text: &str, hop: u64) -> Value {
@@ -221,16 +344,60 @@ fn new_message(from: Value, to: &[String], text: &str, hop: u64) -> Value {
 // Routes
 // ---------------------------------------------------------------------------
 
-async fn get_room(State(state): State<AppState>, user: AuthUser) -> Result<Json<Value>, ApiError> {
-    let uid = user_id(&user);
-    let room = read_room(&state, &uid).await?;
+/// The caller's room as the browser first sees it.
+async fn snapshot(state: &AppState, uid: &str) -> Result<Value, ApiError> {
+    let room = read_room(state, uid).await?;
     let messages = room["messages"].as_array().cloned().unwrap_or_default();
     let start = messages.len().saturating_sub(MAX_LISTED);
-    Ok(Json(json!({
+    Ok(json!({
         "messages": messages[start..],
-        "working": working_for(&uid),
+        "working": working_for(uid),
+        "drafts": drafts_for(uid),
         "maxHops": MAX_HOPS,
-    })))
+    }))
+}
+
+async fn get_room(State(state): State<AppState>, user: AuthUser) -> Result<Json<Value>, ApiError> {
+    Ok(Json(snapshot(&state, &user_id(&user)).await?))
+}
+
+fn sse(value: Value) -> Result<Event, Infallible> {
+    Ok(Event::default().data(value.to_string()))
+}
+
+/// A snapshot, then every change to the caller's room as it happens. A stream
+/// that fell behind gets a fresh snapshot instead of the events it missed.
+async fn stream_room(State(state): State<AppState>, user: AuthUser) -> Result<Response, ApiError> {
+    let uid = user_id(&user);
+    // Subscribe first: a change between the snapshot and the subscription would
+    // otherwise be lost. Duplicates are harmless; views dedupe by id.
+    let mut events = hub().subscribe();
+    let first = snapshot(&state, &uid).await?;
+    let stream = async_stream::stream! {
+        let mut first = first;
+        first["type"] = json!("snapshot");
+        yield sse(first);
+        loop {
+            match events.recv().await {
+                Ok((owner, event)) if owner == uid => yield sse(event),
+                Ok(_) => continue,
+                Err(broadcast::error::RecvError::Lagged(_)) => {
+                    if let Ok(mut again) = snapshot(&state, &uid).await {
+                        again["type"] = json!("snapshot");
+                        yield sse(again);
+                    }
+                }
+                Err(broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    };
+    let mut response = Sse::new(stream)
+        .keep_alive(KeepAlive::new().interval(KEEPALIVE).text("keepalive"))
+        .into_response();
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    Ok(response)
 }
 
 async fn post_room(
@@ -272,7 +439,9 @@ async fn post_room(
 }
 
 pub fn routes() -> Router<AppState> {
-    Router::new().route("/api/team/room", get(get_room).post(post_room))
+    Router::new()
+        .route("/api/team/room", get(get_room).post(post_room))
+        .route("/api/team/room/stream", get(stream_room))
 }
 
 // ---------------------------------------------------------------------------
@@ -352,6 +521,10 @@ fn deliver(state: AppState, uid: String, agent_id: String, message: Value) -> Bo
         let lock = agent_lock(&uid, &agent_id);
         let _turn = lock.lock().await;
         let _working = WorkingGuard::new(&uid, &agent_id);
+        // Declared after the working guard, so it ends first: views see the
+        // finished reply (or notice) replace the draft before the agent idles.
+        let mut draft = Draft::start(&uid, &agent_id, &message["id"]);
+        let draft_id = draft.id();
         let hop = message["hop"].as_u64().unwrap_or(0) + 1;
         let notice = |kind: &str, detail: Option<String>| {
             let mut notice = new_message(json!({"type": "system"}), &[], "", hop);
@@ -361,9 +534,10 @@ fn deliver(state: AppState, uid: String, agent_id: String, message: Value) -> Bo
                 notice["detail"] = json!(detail);
             }
             notice["replyTo"] = message["id"].clone();
+            notice["draftId"] = draft_id.clone();
             notice
         };
-        match answer(&state, &uid, &agent_id, &message, hop).await {
+        match answer(&state, &uid, &agent_id, &message, hop, &mut draft).await {
             // A finished turn with no text must not look like the agent never
             // got the message.
             Ok(Some((_, reply, _))) if reply.is_empty() => {
@@ -378,6 +552,7 @@ fn deliver(state: AppState, uid: String, agent_id: String, message: Value) -> Bo
                     hop,
                 );
                 posted["replyTo"] = message["id"].clone();
+                posted["draftId"] = draft_id.clone();
                 if !mentions.is_empty() && !deliverable {
                     posted["limitReached"] = json!(true);
                 }
@@ -406,6 +581,7 @@ async fn answer(
     agent_id: &str,
     message: &Value,
     hop: u64,
+    draft: &mut Draft,
 ) -> Result<Option<(Value, String, Vec<String>)>, ApiError> {
     let agents = roster(state, uid).await?;
     let Some(me) = agents.iter().find(|a| a["id"].as_str() == Some(agent_id)).cloned() else {
@@ -461,7 +637,19 @@ async fn answer(
         system_reminder: Some(reminder),
         agent_tools,
     };
-    let (reply, session) = match room_turn(&scoped, plan).await {
+    // Dropping a timed-out turn cancels its runtime session (`SessionGuard`).
+    let turn = tokio::time::timeout(ROOM_TURN_TIMEOUT, room_turn(&scoped, plan, draft))
+        .await
+        .unwrap_or_else(|_| {
+            Err(ApiError(
+                StatusCode::GATEWAY_TIMEOUT,
+                format!(
+                    "No reply after {} minutes, so the turn was stopped.",
+                    ROOM_TURN_TIMEOUT.as_secs() / 60
+                ),
+            ))
+        });
+    let (reply, session) = match turn {
         Ok(done) => done,
         Err(err) => {
             // A broken session must not keep failing every later message.
@@ -508,8 +696,13 @@ impl Drop for SessionGuard {
 }
 
 /// One turn on the agent's room session; returns `(final text, session id)`.
-/// The final text is what the agent said after its last tool call.
-async fn room_turn(state: &AppState, plan: crate::runtime::TurnPlan) -> Result<(String, String), ApiError> {
+/// The final text is what the agent said after its last tool call. `draft`
+/// follows along live: the text so far, or the tool being used.
+async fn room_turn(
+    state: &AppState,
+    plan: crate::runtime::TurnPlan,
+    draft: &mut Draft,
+) -> Result<(String, String), ApiError> {
     use crate::runtime::TurnUpdate;
     use amiro_sdk::ApiEvent;
     let gateway = |message: String| ApiError(StatusCode::BAD_GATEWAY, message);
@@ -528,7 +721,11 @@ async fn room_turn(state: &AppState, plan: crate::runtime::TurnPlan) -> Result<(
     let mut after_tool = false;
     while let Some(update) = turn.updates.recv().await {
         match update {
-            TurnUpdate::Event(ApiEvent::ToolStart { .. } | ApiEvent::ToolExec { .. } | ApiEvent::ToolCall { .. }) => {
+            TurnUpdate::Event(ApiEvent::ToolStart { name, .. }) => {
+                after_tool = true;
+                draft.tool(&name);
+            }
+            TurnUpdate::Event(ApiEvent::ToolExec { .. } | ApiEvent::ToolCall { .. }) => {
                 after_tool = true;
             }
             TurnUpdate::Event(ApiEvent::TextDelta { text: delta, .. }) => {
@@ -539,10 +736,12 @@ async fn room_turn(state: &AppState, plan: crate::runtime::TurnPlan) -> Result<(
                 if text.chars().count() < MAX_REPLY_CHARS {
                     text.push_str(&delta);
                 }
+                draft.set_text(&text);
             }
             TurnUpdate::Event(ApiEvent::TextReplace { text: replacement, .. }) => {
                 after_tool = false;
                 text = clip(&replacement, MAX_REPLY_CHARS);
+                draft.set_text(&text);
             }
             TurnUpdate::Error(message) => return Err(gateway(message)),
             TurnUpdate::Done(_) => {
