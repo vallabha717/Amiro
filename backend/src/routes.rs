@@ -160,6 +160,20 @@ mod tests {
         assert!(!storage::is_valid_token(""));
     }
 
+    #[test]
+    fn test_storage_put_path_matcher() {
+        let good = "/storage/0123456789abcdef0123456789abcdef0123456789abcdef";
+        assert!(storage::is_storage_put(good));
+        assert!(storage::is_storage_put(&format!("{good}/")));
+        // Not a token path: wrong shape, traversal, sub-paths, or other routes.
+        assert!(!storage::is_storage_put("/storage/short"));
+        assert!(!storage::is_storage_put("/storage/"));
+        assert!(!storage::is_storage_put("/storage"));
+        assert!(!storage::is_storage_put(&format!("{good}/extra")));
+        assert!(!storage::is_storage_put("/api/storage/upload-url"));
+        assert!(!storage::is_storage_put("/storage/../secrets"));
+    }
+
     #[tokio::test]
     async fn test_user_preferences_isolation() {
         let temp_dir =

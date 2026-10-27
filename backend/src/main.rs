@@ -238,7 +238,14 @@ async fn sidecar_and_origin_middleware(
     // The static UI is public: a browser navigation cannot attach a custom
     // header. Everything that can change state, and every API call, carries the
     // sidecar secret exactly as it does inside the desktop webview.
-    let needs_secret = path.starts_with("/api") || path == "/health" || !is_read;
+    // Exception: PUT /storage/{token} is the presigned-upload completion hop.
+    // The frontend uploads with a plain fetch (no sidecar header) because the
+    // signed token in the path is itself the credential; the storage handler
+    // validates the token and its expiry before writing anything.
+    let is_presigned_storage_put =
+        method == Method::PUT && backend::routes::storage::is_storage_put(&path);
+    let needs_secret =
+        (path.starts_with("/api") || path == "/health" || !is_read) && !is_presigned_storage_put;
 
     // The built-in agent MCP endpoint authenticates with its own token. Exactly
     // `POST /agent-mcp` with a valid agent token skips the sidecar secret; any

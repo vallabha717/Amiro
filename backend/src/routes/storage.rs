@@ -30,6 +30,19 @@ pub fn is_valid_token(token: &str) -> bool {
     token.len() == 48 && token.chars().all(|c| c.is_ascii_hexdigit())
 }
 
+/// Whether `path` is the presigned-upload completion hop (`PUT /storage/{token}`).
+/// The signed token in the path is itself the credential (validated with expiry
+/// by the storage handler), so the sidecar-secret middleware exempts it -- the
+/// frontend uploads with a plain fetch that carries no sidecar header.
+/// Matches only a well-formed token path so no other /storage route is opened.
+pub fn is_storage_put(path: &str) -> bool {
+    let Some(token) = path.strip_prefix("/storage/") else {
+        return false;
+    };
+    let token = token.trim_end_matches('/');
+    !token.is_empty() && !token.contains('/') && is_valid_token(token)
+}
+
 async fn get_token_info(state: &AppState, token: &str) -> Result<Option<Value>, ApiError> {
     if !is_valid_token(token) {
         return Ok(None);
