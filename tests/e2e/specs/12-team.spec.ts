@@ -31,7 +31,7 @@ test.describe.serial("team", () => {
       await expect(page.getByTestId("team-window")).toBeVisible();
       await expect(page.getByTestId("sidebar-team-link")).toHaveCount(0);
       await expect(page.getByTestId("sidebar-user-button")).toBeVisible();
-      await expect(page.getByTestId("team-sidebar-new-agent")).toBeVisible();
+      await expect(page.getByTestId("team-new-agent")).toBeVisible();
       await expect(page.getByTestId("team-agent-main")).toContainText(agent.name);
       await expect(page.getByTestId("team-pick-agent")).toBeVisible();
     });
@@ -360,6 +360,85 @@ test.describe.serial("team", () => {
       await expect(page.getByTestId("debug-team-agent-banner")).toBeVisible();
       await page.getByTestId("terminal-connect-button").click();
       await expect(page.getByTestId("terminal-error-banner")).toContainText("Shell access is disabled");
+    });
+  });
+
+  test("team room: you and every agent in one chat, with agent-to-agent hand-offs", async ({ page, step, amiro }) => {
+    const { body } = await amiro.api<{ agents: TeamAgent[] }>("/api/agents");
+    const main = body.agents.find((a) => a.isMain)!;
+    const scout = body.agents.find((a) => a.name === SCOUT)!;
+    const log = page.getByTestId("team-room-log");
+    const fromAgent = (id: string) => log.locator(`[data-testid="team-room-message"][data-sender="${id}"]`);
+    const replyWait = { timeout: 240000 };
+
+    await step("Amiro's space → sidebar Team → the Team room opens in the main window", async () => {
+      await page.goto("/amiro");
+      await page.getByTestId("sidebar-team-link").click();
+      await expect(page).toHaveURL(/\/amiro\/team-room$/);
+      await expect(page.getByTestId("team-room-heading")).toHaveText("Team room");
+      await expect(page.getByTestId("sidebar-team-link")).toBeVisible();
+      await expect(page.getByTestId("team-window")).toHaveCount(0);
+      await expect(page.getByTestId("team-room-agent-main")).toContainText(main.name);
+      await expect(page.getByTestId(`team-room-agent-${scout.id}`)).toContainText(SCOUT);
+    });
+
+    await step("Scout's space → sidebar Team → the same room, still in Scout's space", async () => {
+      await page.goto(`/${scout.id}`);
+      await page.getByTestId("sidebar-team-link").click();
+      await expect(page).toHaveURL(new RegExp(`/${scout.id}/team-room$`));
+      await expect(page.getByTestId("team-room-heading")).toBeVisible();
+      await expect(page.getByTestId("agent-scope-banner")).toContainText(`${SCOUT}'s space`);
+    });
+
+    await step("Type @Sc → the mention list offers Scout → pick it", async () => {
+      const input = page.getByTestId("team-room-input");
+      await input.click();
+      await input.pressSequentially("@Sc");
+      await expect(page.getByTestId("team-room-mention-list")).toBeVisible();
+      await page.getByTestId(`team-room-mention-${scout.id}`).click();
+      await expect(input).toHaveValue(`@${SCOUT} `);
+    });
+
+    await step("@Scout asks its name → Scout is working, then answers in the room", async () => {
+      await page.getByTestId("team-room-input").pressSequentially("What is your name? Reply with one word.");
+      await page.getByTestId("team-room-send").click();
+      await expect(log.locator('[data-from="user"]').last()).toContainText("What is your name?");
+      await expect(fromAgent(scout.id).first()).toBeVisible(replyWait);
+      expect.soft(await fromAgent(scout.id).first().innerText(), "Scout answers as Scout").toMatch(/Scout/i);
+      await expect(page.getByTestId(`team-room-agent-${scout.id}`)).toHaveAttribute("data-working", "false", replyWait);
+    });
+
+    await step(`Ask ${main.name} to hand off to Scout → a hand-off to Scout, then Scout's answer`, async () => {
+      const before = await fromAgent(scout.id).count();
+      // The prompt must not @mention Scout itself, or the room would route it
+      // to Scout directly instead of through the hand-off.
+      await page
+        .getByTestId("team-room-input")
+        .fill(
+          `@${main.name} Reply with exactly this one line, with # replaced by the at sign, and nothing else: #${SCOUT} what is your name?`,
+        );
+      await page.getByTestId("team-room-send").click();
+      const handoff = log.locator(`[data-sender="${main.id}"][data-handoff="true"]`).first();
+      await expect(handoff).toBeVisible(replyWait);
+      await expect(handoff).toContainText(SCOUT);
+      await expect(fromAgent(scout.id).nth(before)).toBeVisible(replyWait);
+      const room = await amiro.api<{ messages: Array<{ from: { type: string; id?: string }; to: string[]; hop: number }> }>(
+        "/api/team/room",
+      );
+      const relayed = room.body.messages.find((m) => m.from.id === main.id && m.to.includes(scout.id));
+      expect(relayed?.hop, "the hand-off is the first agent reply in its chain").toBe(1);
+    });
+
+    await step("Reload → the whole conversation is still in the room", async () => {
+      await page.reload();
+      await expect(fromAgent(scout.id).first()).toBeVisible({ timeout: 30000 });
+      await expect(log.locator('[data-handoff="true"]').first()).toBeVisible();
+    });
+
+    await step("Manage team → back to the Team directory", async () => {
+      await page.getByTestId("team-room-manage").click();
+      await expect(page).toHaveURL(/\/team$/);
+      await expect(page.getByTestId("team-heading")).toHaveText("Team");
     });
   });
 
