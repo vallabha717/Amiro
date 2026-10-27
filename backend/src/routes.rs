@@ -26,6 +26,7 @@ pub mod search_providers;
 pub mod skills;
 pub mod storage;
 pub mod system;
+pub mod team_room;
 pub mod terminal;
 pub mod user;
 pub mod voice;
@@ -55,6 +56,7 @@ pub fn router() -> Router<AppState> {
         .merge(export::routes())
         .merge(storage::routes())
         .merge(system::routes())
+        .merge(team_room::routes())
         .merge(terminal::routes())
         .merge(mcp::routes())
         .merge(fsbrowse::routes())
