@@ -3,7 +3,7 @@
  * test the configured model, and make it the chat model. Every later journey
  * depends on this one.
  */
-import { ask, newChat, selectModel } from "../support/chat";
+import { ask, assistantMessages, newChat, selectModel } from "../support/chat";
 import { expect, need, test } from "../support/fixtures";
 
 test.describe("provider", () => {
@@ -108,6 +108,52 @@ test.describe("provider", () => {
     await step("The model choice sticks for the next new chat", async () => {
       await newChat(page);
       await expect(page.getByTestId("selected-model-name").first()).toHaveText(model);
+    });
+  });
+
+  test("web search through your own 9Router: connect it in Admin → Search, make it the default, the agent searches with it", async ({
+    page,
+    step,
+    amiro,
+  }) => {
+    const { nineRouterApiBase, nineRouterApiKey } = amiro.cfg.search;
+    need(nineRouterApiKey && nineRouterApiBase, "search.nineRouterApiBase + search.nineRouterApiKey");
+
+    await step("Admin → Search → Add: 9Router asks for its key (hidden) and its API base URL", async () => {
+      await page.goto("/admin/search");
+      await page.getByTestId("add-search-provider-button").click();
+      await page.getByRole("menuitem").filter({ hasText: "9Router" }).click();
+      await expect(page).toHaveURL(/template=9router/);
+      await expect(page.getByTestId("search-provider-type-trigger")).toContainText("9Router");
+      await expect(page.getByTestId("search-provider-key-input")).toHaveAttribute("type", "password");
+      await page.getByTestId("search-provider-name-input").fill("My 9Router");
+      await page.getByTestId("search-provider-key-input").fill(nineRouterApiKey);
+      await page.getByTestId("search-provider-base-url-input").fill(nineRouterApiBase);
+      await page.getByTestId("search-provider-save-button").click();
+      await expect(page).toHaveURL(/\/admin\/search\/?$/, { timeout: 30000 });
+    });
+
+    await step("Make 9Router the default engine; the key is never shown back", async () => {
+      const card = page.getByTestId("search-provider-card").filter({ hasText: "My 9Router" });
+      await expect(card).toBeVisible();
+      await card.getByTestId("search-provider-default-button").click();
+      const saved = await amiro.api<Array<{ provider: string; isActive: boolean; apiKey?: string }>>("/api/search/providers");
+      const nine = saved.body.find((p) => p.provider === "9router");
+      expect(nine?.isActive, "9Router is the default").toBe(true);
+      expect(JSON.stringify(saved.body), "the key never comes back from the API").not.toContain(nineRouterApiKey);
+    });
+
+    await step("Ask about a real company: the agent's web search goes through 9Router and cites sources", async () => {
+      await newChat(page);
+      await selectModel(page);
+      const reply = await ask(
+        page,
+        "Search the web: what does the company Paramount Software Solutions do, and where is it based? Answer in two sentences with a source link.",
+      );
+      expect.soft(reply, "the answer names the company").toMatch(/Paramount/i);
+      const sources = assistantMessages(page).last().locator('a[href^="http"]');
+      expect(await sources.count(), "the reply shows web sources as links").toBeGreaterThan(0);
+      await expect(page.locator("main").getByText(/All configured search providers failed/)).toHaveCount(0);
     });
   });
 });

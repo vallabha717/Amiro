@@ -40,7 +40,9 @@
   },
 
   "search": {
-    "braveApiKey": ""
+    "braveApiKey": "",
+    "nineRouterApiBase": "",
+    "nineRouterApiKey": ""
   },
 
   "composio": {

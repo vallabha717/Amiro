@@ -54,11 +54,15 @@ pub fn search_catalog() -> Vec<Value> {
         json!({"kind":"exa","label":"Exa","extracts":true,"freeTier":"Search API","docs":"https://exa.ai"}),
         json!({"kind":"serper","label":"Serper","extracts":false,"freeTier":"Google search API","docs":"https://serper.dev"}),
         json!({"kind":"firecrawl","label":"Firecrawl","extracts":true,"freeTier":"Search API","docs":"https://www.firecrawl.dev","supportsApiBase":true,"defaultApiBase":"https://api.firecrawl.dev"}),
+        json!({"kind":"9router","label":"9Router","extracts":true,"freeTier":"Search through your own 9Router (its grounded search, the same one Vellum uses)","docs":"https://github.com/decolua/9router","supportsApiBase":true}),
         json!({"kind":"searxng","label":"SearXNG","extracts":false,"freeTier":"Self-hosted / public metasearch","docs":"https://docs.searxng.org","supportsApiBase":true,"keyless":true}),
         json!({"kind":"custom","label":"Custom HTTP JSON Search","extracts":true,"freeTier":"Connect a configured HTTP JSON search API","docs":"https://github.com/1jehuang/jcode/blob/main/docs/custom-web-search.md","supportsApiBase":true,"supportsCustomConfig":true,"keyless":true}),
         json!({"kind":"inference-provider-native","label":"Provider Native","extracts":true,"freeTier":"Model provider's native web search","docs":"https://docs.anthropic.com","keyless":true}),
     ]
 }
+
+/// 9Router's grounded search engine, the one Vellum's 9Router search uses.
+const NINE_ROUTER_SEARCH_MODEL: &str = "ag";
 
 fn text<'a>(record: &'a Value, key: &str) -> &'a str {
     record.get(key).and_then(Value::as_str).unwrap_or("")
@@ -194,6 +198,33 @@ fn custom_config(record: &Value) -> Result<CustomWebSearchConfig, ApiError> {
                     .insert("Authorization".into(), format!("Bearer {key}"));
             }
         }
+        "9router" => {
+            // POST {base}/v1/search {model, query, max_results, search_type},
+            // answered with {results: [{title, url, snippet}], answer}.
+            let base = text(record, "baseUrl").trim().trim_end_matches('/');
+            if base.is_empty() {
+                return Err(bad_request("9Router needs its API base URL"));
+            }
+            config.endpoint = if base.ends_with("/v1") {
+                format!("{base}/search")
+            } else {
+                format!("{base}/v1/search")
+            };
+            config.method = CustomWebSearchMethod::Post;
+            config.query_param = "query".into();
+            config.count_param = Some("max_results".into());
+            config.snippet_pointer = "/snippet".into();
+            let model = record
+                .get("model")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|m| !m.is_empty())
+                .unwrap_or(NINE_ROUTER_SEARCH_MODEL);
+            config.body = json!({"model": model, "search_type": "web"});
+            config
+                .headers
+                .insert("Authorization".into(), format!("Bearer {key}"));
+        }
         "searxng" => {
             // Keyed SearXNG uses the custom adapter so its authentication is preserved.
             config.endpoint = format!("{}/search", text(record, "baseUrl").trim_end_matches('/'));
@@ -251,7 +282,7 @@ fn runtime_record(record: &Value) -> Result<Option<Value>, ApiError> {
     }
     let kind = text(record, "provider");
     let key = text(record, "apiKey");
-    if matches!(kind, "brave" | "tavily" | "exa" | "serper" | "firecrawl") && key.is_empty() {
+    if matches!(kind, "brave" | "tavily" | "exa" | "serper" | "firecrawl" | "9router") && key.is_empty() {
         return Ok(None);
     }
     let mut result = json!({"id":text(record,"id"),"label":text(record,"name"),"engine":"custom"});
@@ -1033,6 +1064,33 @@ mod tests {
             searx["custom"]["headers"]["Authorization"],
             "Bearer test-secret"
         );
+    }
+
+    #[test]
+    fn nine_router_searches_like_vellum() {
+        let config = custom_config(&record("9router")).unwrap();
+        assert_eq!(config.endpoint, "http://127.0.0.1:8080/v1/search");
+        assert!(matches!(config.method, CustomWebSearchMethod::Post));
+        assert_eq!(config.query_param, "query");
+        assert_eq!(config.count_param.as_deref(), Some("max_results"));
+        assert_eq!(config.snippet_pointer, "/snippet");
+        assert_eq!(config.body, json!({"model": "ag", "search_type": "web"}));
+        assert_eq!(config.headers["Authorization"], "Bearer test-secret");
+
+        // A base that already ends in /v1, and a chosen search model.
+        let mut saved = record("9router");
+        saved["baseUrl"] = json!("https://router.example/v1/");
+        saved["model"] = json!("tavily");
+        let config = custom_config(&saved).unwrap();
+        assert_eq!(config.endpoint, "https://router.example/v1/search");
+        assert_eq!(config.body["model"], "tavily");
+
+        // No key or no base: not offered to the runtime / refused.
+        saved["apiKey"] = json!("");
+        assert!(runtime_record(&saved).unwrap().is_none());
+        let mut no_base = record("9router");
+        no_base["baseUrl"] = json!("");
+        assert!(custom_config(&no_base).is_err());
     }
 
     #[test]

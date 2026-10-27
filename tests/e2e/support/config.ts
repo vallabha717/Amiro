@@ -44,7 +44,7 @@ export interface E2EConfig {
     sttEngine: string;
     sttApiKey: string;
   };
-  search: { braveApiKey: string };
+  search: { braveApiKey: string; nineRouterApiBase: string; nineRouterApiKey: string };
   composio: { apiKey: string };
   mcp: {
     fixturePort: number;
@@ -91,6 +91,8 @@ const ENV: Record<string, string> = {
   AMIRO_E2E_TTS_VOICE_ID: "voice.ttsVoiceId",
   AMIRO_E2E_STT_API_KEY: "voice.sttApiKey",
   AMIRO_E2E_BRAVE_API_KEY: "search.braveApiKey",
+  AMIRO_E2E_9ROUTER_API_BASE: "search.nineRouterApiBase",
+  AMIRO_E2E_9ROUTER_API_KEY: "search.nineRouterApiKey",
   AMIRO_E2E_COMPOSIO_API_KEY: "composio.apiKey",
   AMIRO_E2E_HEADLESS: "recording.headless",
   AMIRO_E2E_SLOWMO: "recording.slowMoMs",
