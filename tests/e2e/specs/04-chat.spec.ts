@@ -155,6 +155,25 @@ test.describe("chat", () => {
       await waitForReply(page, { before, timeoutMs: 240000 });
       await expect(plan, "the revised plan awaits review again").toHaveAttribute("data-state", "pending", { timeout: 120000 });
     });
+    await step("On a phone: the plan opens as a full-screen sheet and a tap on a line adds a comment", async () => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      const pane = page.getByTestId("artifact-pane");
+      await expect(pane).toHaveAttribute("data-mobile", "true");
+      const box = await pane.boundingBox();
+      expect(box?.width ?? 0, "the pane takes the phone's whole width").toBeGreaterThanOrEqual(380);
+      await expect(page.getByTestId("artifact-pane-close"), "close stays reachable").toBeInViewport();
+      await expect(page.getByTestId("plan-proceed"), "approve stays reachable").toBeInViewport();
+      const before = await page.getByTestId("plan-comment").count();
+      // No hover on a phone: a touch on the line is what shows its comment button.
+      await plan.locator("li, p").filter({ hasText: /\w{4}/ }).first().dispatchEvent("pointerdown", { pointerType: "touch", bubbles: true });
+      await page.getByTestId("plan-comment-line").click();
+      const input = page.getByTestId("plan-comment-input");
+      await expect(input).toBeInViewport();
+      await input.fill("Keep the opening budget under ₹40 lakh.");
+      await page.getByTestId("plan-comment-submit").click();
+      await expect(page.getByTestId("plan-comment")).toHaveCount(before + 1);
+      await page.setViewportSize({ width: 1440, height: 900 });
+    });
     await step("Approve → the Plan stage is ticked and the pane moves to Tasks (plain todos)", async () => {
       await page.getByTestId("plan-proceed").click();
       await expect(page.getByTestId("artifact-tab-plan"), "an approved plan shows as a finished stage").toHaveAttribute("data-done", "true", { timeout: 60000 });
@@ -173,6 +192,17 @@ test.describe("chat", () => {
       await expect(plan).toHaveAttribute("data-state", "proceed", { timeout: 30000 });
       await page.getByTestId("artifact-tab-walkthrough").click();
       await expect(page.getByTestId("walkthrough-hero")).toBeVisible();
+    });
+    await step("On a phone: the walkthrough reads full width, and closing it goes back to the chat", async () => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expect(page.getByTestId("walkthrough-hero")).toBeInViewport();
+      const hero = await page.getByTestId("walkthrough-hero").boundingBox();
+      expect(hero?.width ?? 0, "the walkthrough is not squeezed beside the chat").toBeGreaterThan(330);
+      await page.getByTestId("artifact-pane-close").click();
+      await expect(page.getByTestId("artifact-pane")).toBeHidden();
+      const reply = await assistantMessages(page).last().boundingBox();
+      expect(reply?.width ?? 0, "the chat gets the phone's width back").toBeGreaterThan(250);
+      await page.setViewportSize({ width: 1440, height: 900 });
     });
   });
 
