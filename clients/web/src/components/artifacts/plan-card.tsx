@@ -109,6 +109,7 @@ export function PlanCard({
           <Button
             size="sm"
             className="h-7 rounded-full text-xs active:scale-[0.97] transition-transform duration-[160ms] ease-[var(--ease-out)]"
+            data-testid="plan-card-proceed"
             disabled={busy}
             onClick={onProceed}
           >
