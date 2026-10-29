@@ -96,6 +96,9 @@ export function CommentableMarkdown({
   const [draft, setDraft] = useState("");
   const [hovered, setHovered] = useState<HoveredLine | null>(null);
 
+  /** Touch has no hover and finishes a selection after pointer-up. */
+  const touchRef = useRef(false);
+
   const blocks = useMemo<PlanBlock[]>(() => planBlocks(markdown), [markdown]);
 
   const { attached, outdated } = useMemo(
@@ -210,6 +213,34 @@ export function CommentableMarkdown({
     [readonly, pending],
   );
 
+  /**
+   * Touch: a tap shows the line's comment button (there is no hover to do
+   * it), and a long-press selection is captured once its handles stop
+   * moving -- on a phone the selection is still changing after pointer-up.
+   */
+  const onPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      touchRef.current = event.pointerType !== "mouse";
+      if (touchRef.current) trackLine(event);
+    },
+    [trackLine],
+  );
+
+  useEffect(() => {
+    if (readonly) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onChange = () => {
+      if (!touchRef.current) return;
+      clearTimeout(timer);
+      timer = setTimeout(captureSelection, 500);
+    };
+    document.addEventListener("selectionchange", onChange);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("selectionchange", onChange);
+    };
+  }, [readonly, captureSelection]);
+
   const commentOnLine = useCallback(() => {
     if (!hovered) return;
     setPending({
@@ -253,10 +284,14 @@ export function CommentableMarkdown({
       <div
         ref={containerRef}
         className="relative"
+        onPointerDown={onPointerDown}
         onPointerUp={captureSelection}
         onKeyUp={captureSelection}
         onPointerMove={trackLine}
-        onPointerLeave={() => setHovered(null)}
+        onPointerLeave={(e) => {
+          // A finger lifting "leaves" too; keep the tapped line's button.
+          if (e.pointerType === "mouse") setHovered(null);
+        }}
       >
         {blocks.map((block, i) => {
           const blockComments = attached.get(block.id) ?? [];
@@ -316,7 +351,7 @@ export function CommentableMarkdown({
               aria-label={t("commentOnLine")}
               title={t("commentOnLine")}
               className={cn(
-                "absolute right-0 z-10 -translate-y-1/2 rounded-full border bg-background/90 p-1 text-muted-foreground shadow-sm backdrop-blur-sm",
+                "absolute right-0 z-10 -translate-y-1/2 rounded-full border bg-background/90 p-2 text-muted-foreground shadow-sm backdrop-blur-sm sm:p-1",
                 "hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
                 "motion-safe:animate-in motion-safe:fade-in motion-safe:duration-100",
               )}
@@ -352,10 +387,12 @@ export function CommentableMarkdown({
 
       {pending && (
         <div
-          className="fixed z-50 w-72 rounded-lg border bg-popover shadow-lg p-2 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-1 motion-safe:duration-150"
+          className="fixed z-[60] w-[min(18rem,calc(100vw-1rem))] rounded-lg border bg-popover shadow-lg p-2 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-1 motion-safe:duration-150"
           style={{
-            top: Math.min(pending.top + 8, window.innerHeight - 180),
-            left: Math.min(pending.left, window.innerWidth - 304),
+            // Kept on screen on a phone too, where the selection may sit at
+            // the very edge and the keyboard takes the bottom half.
+            top: Math.max(8, Math.min(pending.top + 8, window.innerHeight - 200)),
+            left: Math.max(8, Math.min(pending.left, window.innerWidth - 296)),
           }}
         >
           <p className="text-[11px] text-muted-foreground line-clamp-2 border-l-2 border-amber-500/60 pl-2 mb-2">
@@ -370,7 +407,8 @@ export function CommentableMarkdown({
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
             }}
             placeholder={t("commentPlaceholder")}
-            className="w-full resize-none rounded border bg-background px-2 py-1.5 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            // 16px on phones: iOS zooms the page into any smaller input.
+            className="w-full resize-none rounded border bg-background px-2 py-1.5 text-base outline-none focus-visible:ring-1 focus-visible:ring-ring sm:text-xs"
             rows={3}
           />
           <div className="flex items-center gap-2 pt-2">

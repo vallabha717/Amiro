@@ -187,7 +187,8 @@ export function ArtifactPane({
               },
             }))
           }
-          className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors duration-[120ms] ease-[var(--ease-out)] hover:bg-muted/60 hover:text-foreground"
+          data-testid="artifact-pane-close"
+          className="sticky right-0 ml-auto inline-flex shrink-0 items-center gap-1 rounded-md bg-background px-2 py-1 text-xs text-muted-foreground transition-colors duration-[120ms] ease-[var(--ease-out)] hover:bg-muted/60 hover:text-foreground"
         >
           <XIcon className="size-3.5" />
         </button>
