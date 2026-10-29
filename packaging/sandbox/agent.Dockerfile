@@ -29,6 +29,10 @@ RUN chmod 755 /usr/local/bin/amiro-desktop-start /usr/local/bin/amiro-desktop-op
       /usr/local/bin/amiro-desktop-state /usr/local/bin/amiro-desktop-chrome \
       /usr/local/bin/amiro-desktop-terminal /usr/local/bin/amiro-desktop-identity \
       /usr/local/bin/amiro-shell
+# The main agent's workspace is also mounted at its real host path, so the
+# desktop names folders exactly. When Amiro runs as root that path is under
+# /root, which the image keeps at 0700; let the agent's uid pass through.
+RUN chmod 711 /root
 
 ENV HOME=/home/agent
 WORKDIR /home/agent
