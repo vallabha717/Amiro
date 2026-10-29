@@ -254,7 +254,13 @@
       "comment": "टिप्पणी",
       "commentPlaceholder": "यहाँ क्या बदलना चाहिए?",
       "outdatedComments": "अब योजना में नहीं",
-      "commentOnLine": "इस पंक्ति पर टिप्पणी करें"
+      "commentOnLine": "इस पंक्ति पर टिप्पणी करें",
+      "walkthroughDone": "काम पूरा हुआ",
+      "walkthroughFor": "योजना “{title}” के अनुसार पूरा किया गया",
+      "statChanges": "{count} बदलाव",
+      "statFollowUps": "{count} आगे के काम",
+      "whatHappened": "क्या किया गया",
+      "tasksCompleted": "पूरे हुए काम"
     },
     "OpenUI": {
       "badge": "OpenUI लाइव",
