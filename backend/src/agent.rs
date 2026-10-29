@@ -441,7 +441,8 @@ pub fn build_capability_guidance_block(home: &Path) -> String {
          - For OAuth logins (Claude, OpenAI, Gemini, Copilot, MCP servers like Linear/Notion, or 1-click Composio apps like Gmail/Slack), call the matching OAuth start tool (`provider_oauth_start`, `mcp_oauth_start`, or `composio_connect_start`). It returns an interactive card and auth URL:\n\
            `OAUTH_CONNECT {\"type\":\"provider\"|\"mcp\"|\"composio\",\"provider\":\"...\",\"authorizationUrl\":\"...\"}`\n\
            Tell the user to click the link or complete the device code in the rendered card, then call the status tool to confirm.\n\
-         - When you need a decision only the user can make (which option, which approach), call `ui_ask_user` with 1-4 multiple-choice questions instead of asking in prose, then end your turn: their answers arrive as the next message."
+         - When you need a decision only the user can make (which option, which approach), call `ui_ask_user` with 1-4 multiple-choice questions instead of asking in prose, then end your turn: their answers arrive as the next message.\n\
+         - **Plan, tasks, walkthrough.** For any job with more than a couple of steps: (1) call `ui_propose_plan` with a markdown plan and end your turn; the user approves it or comments on lines of it. (2) After approval, write the steps with the `todo` tool (plain todos, one per step) and keep them updated as you work. (3) When everything is done, call `ui_show_walkthrough` once, last. Skip all three for quick questions and one-step tasks."
             .to_string(),
         "## Your Computer (the TV)\n\
          You have your own Linux desktop (Chromium, Files, a terminal) in your sandbox container. The user watches it live on the TV screen: \

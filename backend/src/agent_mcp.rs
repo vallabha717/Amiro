@@ -510,6 +510,19 @@ pub fn tool_definitions() -> Vec<Value> {
                 "multi_select":{"type":"boolean","description":"Allow picking more than one option (default false)"}
             },"required":["question","options"],"additionalProperties":false}}
         },"required":["questions"],"additionalProperties":false}}),
+        json!({"name":"ui_propose_plan","description":"Show the user a plan to review BEFORE you change anything, in the Plan tab of the artifact panel. Use it for any task with more than a couple of steps (building a feature, a refactor, a migration, a setup that touches many things). Write the plan as markdown with short headings (Goal, Approach, Steps, Risks), one idea per paragraph or list item, so the user can comment on a block or a single selected line. After calling this, end your turn and wait: the user either approves it (their next message says to proceed) or sends comments quoting the text they object to. On approval, write the steps to the task list with the `todo` tool and do the work, ticking items off as you go. On comments, revise the plan and call ui_propose_plan again.","inputSchema":{"type":"object","properties":{
+            "title":{"type":"string","description":"Short plan title (max 80 chars)"},
+            "plan":{"type":"string","description":"The plan as markdown"}
+        },"required":["title","plan"],"additionalProperties":false}}),
+        json!({"name":"ui_show_walkthrough","description":"When ALL the work is finished, show the user a walkthrough in the Walkthrough tab of the artifact panel: what you did and where to look, so they can understand it without reading the transcript. Call it once, last, after the task list is complete. Do not repeat its contents in prose afterwards; one short closing sentence is enough.","inputSchema":{"type":"object","properties":{
+            "summary":{"type":"string","description":"Plain-language markdown: what was asked, what you did, the outcome (2-6 short paragraphs or bullets)"},
+            "changes":{"type":"array","maxItems":30,"description":"Files or things changed, in the order a reviewer should read them","items":{"type":"object","properties":{
+                "path":{"type":"string","description":"File path or the thing changed"},
+                "why":{"type":"string","description":"One line on what changed and why"}
+            },"required":["path","why"],"additionalProperties":false}},
+            "testing":{"type":"string","description":"Markdown: how you checked it works and how the user can verify it"},
+            "follow_ups":{"type":"array","maxItems":10,"items":{"type":"string"},"description":"Things left undone or worth doing next"}
+        },"required":["summary"],"additionalProperties":false}}),
         json!({"name":"ui_navigate","description":"Emit an interactive navigation card or open a specific Amiro settings/admin/superpowers page for the user.","inputSchema":{"type":"object","properties":{
             "page":{"type":"string","enum":["providers","voice","search","connectors","credentials","integrations","general","notifications","usage","schedules","superpowers","personality","memory","workspace"],"description":"Target Amiro page to open or link to"}
         },"required":["page"],"additionalProperties":false}}),
@@ -1944,6 +1957,27 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<(String
             Ok((text, card))
         }
 
+        "ui_propose_plan" => {
+            let title = require_str(args, "title")?.trim().to_string();
+            let plan = require_str(args, "plan")?.trim().to_string();
+            if title.is_empty() || plan.is_empty() {
+                return Err("title and plan must not be empty".to_string());
+            }
+            let card = json!({"title": title, "plan": plan});
+            let text = format!(
+                "Showed the user the plan in the Plan tab. End your turn now and wait: they will approve it or send comments as their next message. Do not start the work until they approve.\n\nPLAN {card}"
+            );
+            Ok((text, card))
+        }
+
+        "ui_show_walkthrough" => {
+            let card = walkthrough_card(args)?;
+            let text = format!(
+                "Showed the user the walkthrough in the Walkthrough tab. Finish with one short sentence; do not repeat it.\n\nWALKTHROUGH {card}"
+            );
+            Ok((text, card))
+        }
+
         "ui_navigate" => {
             let page = require_str(args, "page")?;
             let (title, path) = match page {
@@ -2025,6 +2059,47 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<(String
         }
         other => Err(format!("unknown tool \"{other}\"")),
     }
+}
+
+/// Validates `ui_show_walkthrough` input into the walkthrough card's shape.
+fn walkthrough_card(args: &Value) -> Result<Value, String> {
+    let text = |v: &Value, key: &str| {
+        v.get(key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+    let summary = text(args, "summary").ok_or("summary is required")?;
+    let changes: Vec<Value> = args
+        .get("changes")
+        .and_then(Value::as_array)
+        .map(|rows| {
+            rows.iter()
+                .filter_map(|c| {
+                    Some(json!({"path": text(c, "path")?, "why": text(c, "why").unwrap_or_default()}))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let follow_ups: Vec<String> = args
+        .get("follow_ups")
+        .and_then(Value::as_array)
+        .map(|rows| {
+            rows.iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(json!({
+        "summary": summary,
+        "changes": changes,
+        "testing": text(args, "testing"),
+        "follow_ups": follow_ups,
+    }))
 }
 
 /// Validates `ui_ask_user` questions into the card's shape: 1-4 questions,
@@ -2493,6 +2568,8 @@ mod tests {
         assert!(names.contains(&"ui_prompt_secret"));
         assert!(names.contains(&"ui_navigate"));
         assert!(names.contains(&"ui_ask_user"));
+        assert!(names.contains(&"ui_propose_plan"));
+        assert!(names.contains(&"ui_show_walkthrough"));
         for tool in body["result"]["tools"].as_array().unwrap() {
             assert_eq!(tool["inputSchema"]["type"], "object");
             assert!(tool["description"].is_string());
@@ -2874,6 +2951,47 @@ mod tests {
         )
         .await
         .is_err());
+    }
+
+    #[tokio::test]
+    async fn plan_and_walkthrough_tools_return_cards_and_reject_empty_input() {
+        let state = state();
+        write_json(
+            &state.home.join("users.json"),
+            &json!({"users":[{"id":"owner","role":"admin"}]}),
+        )
+        .await
+        .unwrap();
+        let (text, data) = call_tool(
+            &state,
+            "ui_propose_plan",
+            &json!({"title": "Launch plan", "plan": "## Goal\n\nOpen the café."}),
+        )
+        .await
+        .unwrap();
+        assert!(text.contains("PLAN {"), "{text}");
+        assert!(text.contains("End your turn"), "{text}");
+        assert_eq!(data["title"], json!("Launch plan"));
+        assert!(call_tool(&state, "ui_propose_plan", &json!({"title": " ", "plan": "x"}))
+            .await
+            .is_err());
+
+        let (text, data) = call_tool(
+            &state,
+            "ui_show_walkthrough",
+            &json!({
+                "summary": "Built it.",
+                "changes": [{"path": "a.rs", "why": "new"}, {"why": "no path"}],
+                "testing": "Run the tests.",
+                "follow_ups": ["Docs", " "]
+            }),
+        )
+        .await
+        .unwrap();
+        assert!(text.contains("WALKTHROUGH {"), "{text}");
+        assert_eq!(data["changes"].as_array().unwrap().len(), 1);
+        assert_eq!(data["follow_ups"], json!(["Docs"]));
+        assert!(call_tool(&state, "ui_show_walkthrough", &json!({})).await.is_err());
     }
 
     #[tokio::test]
