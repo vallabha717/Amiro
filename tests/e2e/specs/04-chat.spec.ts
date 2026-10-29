@@ -110,6 +110,38 @@ test.describe("chat", () => {
     });
   });
 
+  test("plan, tasks and walkthrough: plan with a line comment, revised, approved, tasks, walkthrough", async ({ page, step }) => {
+    const plan = page.getByTestId("plan-view");
+    await step("Brew & Bloom: ask for a launch plan first → the Plan tab opens with the plan awaiting review", async () => {
+      await send(
+        page,
+        "I am launching Brew & Bloom, an oat-milk café in Koregaon Park, Pune. Use the ui_propose_plan tool to show me a short launch plan (Goal, Steps, Risks) and stop to wait for my review. Do not start the work.",
+      );
+      await expect(plan, "the plan renders in the artifact pane").toBeVisible({ timeout: 240000 });
+      await expect(plan).toHaveAttribute("data-state", "pending", { timeout: 120000 });
+      await expect.soft(page.getByTestId("artifact-tab-plan")).toHaveAttribute("data-active", "true");
+    });
+    await step("Comment on one line of the plan → it is listed, then Send comments → the plan is revised", async () => {
+      await plan.locator("li, p").filter({ hasText: /\w{4}/ }).nth(1).hover();
+      await page.getByTestId("plan-comment-line").click();
+      await page.getByTestId("plan-comment-input").fill("Add a soft-opening week with friends and family before the public launch.");
+      await page.getByTestId("plan-comment-submit").click();
+      await expect(page.getByTestId("plan-comment")).toHaveCount(1);
+      await page.getByTestId("plan-review-toggle").click();
+      const before = await assistantMessages(page).count();
+      await page.getByTestId("plan-send-comments").click();
+      await expect(page.locator('[data-message-role="user"]').last(), "the comment is sent quoting the line").toContainText(/Changes requested/, { timeout: 15000 });
+      await waitForReply(page, { before, timeoutMs: 240000 });
+      await expect(plan, "the revised plan awaits review again").toHaveAttribute("data-state", "pending", { timeout: 120000 });
+    });
+    await step("Approve → the pane moves to Tasks (plain todos), then to the Walkthrough when the work is done", async () => {
+      await page.getByTestId("plan-proceed").click();
+      await expect(page.getByTestId("todo-panel"), "tasks follow the approval").toBeVisible({ timeout: 240000 });
+      await expect(page.getByTestId("walkthrough-view"), "the walkthrough closes the work").toBeVisible({ timeout: 360000 });
+      await expect.soft(page.getByTestId("artifact-tab-walkthrough")).toHaveAttribute("data-active", "true");
+    });
+  });
+
   test("thinking-only reply folds into a Thought card, prompt spacing", async ({ page, step }) => {
     await step("Ask something that needs only thinking → the thinking lives in the card and folds to 'Thought'", async () => {
       await ask(page, "Think it through step by step first, then answer with just the number: what is 17 * 23? Do not use any tools.");
