@@ -110,35 +110,67 @@ test.describe("chat", () => {
     });
   });
 
-  test("plan, tasks and walkthrough: plan with a line comment, revised, approved, tasks, walkthrough", async ({ page, step }) => {
+  test("plan, tasks and walkthrough: line and selection comments, revised, approved, tasks, walkthrough", async ({ page, step }) => {
     const plan = page.getByTestId("plan-view");
     await step("Brew & Bloom: ask for a launch plan first → the Plan tab opens with the plan awaiting review", async () => {
       await send(
         page,
-        "I am launching Brew & Bloom, an oat-milk café in Koregaon Park, Pune. Use the ui_propose_plan tool to show me a short launch plan (Goal, Steps, Risks) and stop to wait for my review. Do not start the work.",
+        "I am launching Brew & Bloom, an oat-milk café in Koregaon Park, Pune. Use the ui_propose_plan tool to show me a short launch plan (Goal, Steps as a bullet list, Risks) and stop to wait for my review. Do not start the work.",
       );
       await expect(plan, "the plan renders in the artifact pane").toBeVisible({ timeout: 240000 });
       await expect(plan).toHaveAttribute("data-state", "pending", { timeout: 120000 });
       await expect.soft(page.getByTestId("artifact-tab-plan")).toHaveAttribute("data-active", "true");
     });
-    await step("Comment on one line of the plan → it is listed, then Send comments → the plan is revised", async () => {
+    await step("Comment on one line of the plan with the hover button → the comment sits on that line", async () => {
       await plan.locator("li, p").filter({ hasText: /\w{4}/ }).nth(1).hover();
       await page.getByTestId("plan-comment-line").click();
       await page.getByTestId("plan-comment-input").fill("Add a soft-opening week with friends and family before the public launch.");
       await page.getByTestId("plan-comment-submit").click();
       await expect(page.getByTestId("plan-comment")).toHaveCount(1);
+    });
+    await step("Select text across two bullets (a block) → comment on the selection, both comments listed", async () => {
+      const items = plan.locator("li").filter({ hasText: /\w{4}/ });
+      await expect(items.nth(1), "the plan has at least two steps to select across").toBeVisible();
+      // A real drag selection from the start of one bullet to the end of the next.
+      const first = await items.nth(0).boundingBox();
+      const second = await items.nth(1).boundingBox();
+      if (!first || !second) throw new Error("plan bullets have no layout");
+      await page.mouse.move(first.x + 2, first.y + first.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(second.x + second.width - 4, second.y + second.height / 2, { steps: 8 });
+      await page.mouse.up();
+      await page.getByTestId("plan-comment-input").fill("These two steps can happen in the same week; merge them.");
+      await page.getByTestId("plan-comment-submit").click();
+      await expect(page.getByTestId("plan-comment"), "both comments are attached to the plan, none outdated").toHaveCount(2);
+    });
+    await step("Send comments → they go to the agent quoting the text, and the plan comes back revised", async () => {
       await page.getByTestId("plan-review-toggle").click();
       const before = await assistantMessages(page).count();
       await page.getByTestId("plan-send-comments").click();
-      await expect(page.locator('[data-message-role="user"]').last(), "the comment is sent quoting the line").toContainText(/Changes requested/, { timeout: 15000 });
+      const sent = page.locator('[data-message-role="user"]').last();
+      await expect(sent, "the comments are sent quoting the plan").toContainText(/Changes requested/, { timeout: 15000 });
+      await expect.soft(sent).toContainText(/soft-opening/);
+      await expect.soft(sent).toContainText(/merge them/);
       await waitForReply(page, { before, timeoutMs: 240000 });
       await expect(plan, "the revised plan awaits review again").toHaveAttribute("data-state", "pending", { timeout: 120000 });
     });
-    await step("Approve → the pane moves to Tasks (plain todos), then to the Walkthrough when the work is done", async () => {
+    await step("Approve → the Plan stage is ticked and the pane moves to Tasks (plain todos)", async () => {
       await page.getByTestId("plan-proceed").click();
+      await expect(page.getByTestId("artifact-tab-plan"), "an approved plan shows as a finished stage").toHaveAttribute("data-done", "true", { timeout: 60000 });
       await expect(page.getByTestId("todo-panel"), "tasks follow the approval").toBeVisible({ timeout: 240000 });
+    });
+    await step("Work finishes → the Walkthrough opens with the outcome, numbered changes and every task ticked", async () => {
       await expect(page.getByTestId("walkthrough-view"), "the walkthrough closes the work").toBeVisible({ timeout: 360000 });
+      await expect(page.getByTestId("walkthrough-hero")).toBeVisible();
       await expect.soft(page.getByTestId("artifact-tab-walkthrough")).toHaveAttribute("data-active", "true");
+      await expect.soft(page.getByTestId("artifact-tab-tasks")).toHaveAttribute("data-done", "true");
+    });
+    await step("Reload → plan, tasks and walkthrough come back from the transcript", async () => {
+      await page.reload();
+      await page.getByTestId("artifact-tab-plan").click();
+      await expect(plan).toHaveAttribute("data-state", "proceed", { timeout: 30000 });
+      await page.getByTestId("artifact-tab-walkthrough").click();
+      await expect(page.getByTestId("walkthrough-hero")).toBeVisible();
     });
   });
 
