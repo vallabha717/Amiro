@@ -62,6 +62,40 @@ pnpm build && pnpm --dir tests e2e --project <journey>     # user-visible change
 
 - [ ] New/updated `step(...)` in the owning journey (`tests/e2e/specs/NN-*.spec.ts`).
       Give your tests titles that name the feature, so they can be picked out
+- [ ] Write the test as a **real-life scenario** (see below), not a checklist of
+      clicks or a "what is your name?" probe
+
+### Real-life scenarios
+
+The recorded test is also the demo the owner watches, so it should show the
+feature doing a job someone actually has, end to end.
+
+1. **Pick one believable situation** with a goal, named people/agents and
+   concrete details: "launching Brew & Bloom, an oat-milk café in Koregaon
+   Park, Pune", not "test message 1". Use the same situation across the steps
+   so the video tells one story.
+2. **List every capability first.** Write down what the feature can do (each
+   route, mode, option, view and limit) and give each one at least one step.
+   Include the default path (no options), each explicit option, how the parts
+   combine (one action that leads to another), every view of the result, and
+   persistence (reload). Example — Huddle: default answer, @mention, mention
+   picker, an agent delegating and getting the answer back, `@all`, the "You"
+   chat, the per-pair view, the admin view, reload.
+3. **Make each step need the feature.** Ask for something new that the feature
+   is the natural way to do; a model will skip a step that has no reason to
+   happen (an agent won't hand off a question that's already answered).
+4. **Hard-assert the mechanism, soft-assert the words.** Check state through
+   the API (who a message went to, what it replied to, the hop count) and the
+   UI (test ids, URLs); use `expect.soft` for model wording. Never let a step
+   pass while waiting (a poll's "not found yet" value must not match).
+5. **Step titles tell the story**: `"Delegate: Amiro asks Scout for a local
+   detail, Scout's answer goes back to Amiro, who writes the caption"`.
+6. **List what the scenario could not cover** (for example a limit that needs
+   many model turns) in the final answer, with the unit/integration test that
+   covers it instead.
+
+A scenario that cannot be written for a capability usually means the
+capability is incomplete: fix the feature, then write the step.
 - [ ] Run only what you touched: `pnpm --dir tests e2e --project <journey> -g "<your test titles>"`
       (onboarding/provider always run first to set up a fresh instance)
 - [ ] Cut the recording of **only your feature** and watch it:

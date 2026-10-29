@@ -45,6 +45,25 @@ export function agentScopedPath(
   return `${prefix}${clean}`;
 }
 
+/** Team with the Huddle (every agent's group chat) open beside the list. */
+export const TEAM_HUDDLE_PATH = "/team?view=huddle";
+
+/** `?with=` value for your own chat with the space's agent. */
+export const TEAM_WITH_YOU = "you";
+
+/**
+ * Team inside an agent's space: the Huddle, or with `withId` the space
+ * agent's conversation with you (`TEAM_WITH_YOU`) or with a teammate.
+ * E.g. /amiro/team-room, /<space>/team-room?with=<id>.
+ */
+export function teamRoomPath(
+  spaceAgentId: string | null | undefined,
+  withId?: string | null,
+): string {
+  const base = agentScopedPath(spaceAgentId, "/team-room");
+  return withId ? `${base}?with=${encodeURIComponent(withId)}` : base;
+}
+
 /** Pre-#19 chat-area roots that now live under an agent's space. */
 const LEGACY_CHAT_ROOTS = new Set([
   "connectors",

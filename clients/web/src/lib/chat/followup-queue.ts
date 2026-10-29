@@ -53,6 +53,16 @@ export function createPendingFollowUp(
   return { id: generateUUID(), kind, text, attachmentParts, fileIds, files };
 }
 
+/** The message a parked follow-up sends: its files, then what was typed. */
+export function followUpParts(
+  pending: Pick<PendingFollowUp, "text" | "attachmentParts">,
+): ComposerAttachmentPart[] {
+  const text = pending.text.trim();
+  return text
+    ? [...pending.attachmentParts, { type: "text", text }]
+    : pending.attachmentParts;
+}
+
 /** The `/login` command opens a local panel and must never become a message. */
 export function isLoginCommand(text: string): boolean {
   return text.trim().toLowerCase() === "/login";

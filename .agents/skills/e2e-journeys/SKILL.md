@@ -35,7 +35,9 @@ reviewing agent; it already contains the review instructions.
    to `JOURNEYS` in `tests/playwright.config.ts` (order = file number).
 2. Import from `../support/fixtures` (`test`, `expect`, `need`) and
    `../support/chat` (`newChat`, `selectModel`, `send`, `ask`, `waitForReply`).
-3. Wrap every user-visible action in `step("What the user does → what they see", ...)`.
+3. Write the test as one real-life scenario that walks through every
+   capability of the feature (develop-feature → "Real-life scenarios").
+   Wrap every user-visible action in `step("What the user does → what they see", ...)`.
    The title becomes the on-video caption and the report line — write it for a reviewer.
 4. Any value the user must supply (API key, model, URL) goes in
    `tests/e2e.config.example.json` + the `E2EConfig` type + an `AMIRO_E2E_*`

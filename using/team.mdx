@@ -66,6 +66,40 @@ Open an agent's space from its card (**Open** plus the agent's name, e.g. **Open
 sidebar (Connectors, Schedules, Credentials, Personality) is that agent's. A
 banner says whose space you are in; switch back to Amiro from it.
 
+## The Huddle
+
+The **Huddle** is one group chat between you and every agent on the team, and
+it shows everything they say to each other. It is at the top of the agent list
+in **Team**, and in every agent's space.
+
+- Write in the Huddle and your main agent answers. **@mention** an agent to
+  ask them instead (type `@` for a list). `@all` reaches everyone.
+- An agent hands work to a teammate by @mentioning them in its reply. The
+  teammate answers in the Huddle. Hand-offs are marked, so you can follow who
+  asked whom.
+- After four agent replies in a row, mentions are no longer passed on. This
+  stops two agents answering each other forever. The Huddle says when this
+  happens, and when an agent finished without replying.
+- Each agent answers Huddle messages with its own providers, connectors and
+  tools, one message at a time. Replies type out live as they are written,
+  with the tool an agent is using, in the Huddle and in every agent-to-agent
+  view.
+- When an agent asks a teammate something, the answer goes back to the agent
+  that asked, so it can finish the job with it.
+
+```text
+@Amiro plan a launch post for our new feature. Ask @Atlas for three facts to include.
+```
+
+### Team in an agent's space
+
+**Team** in an agent's sidebar shows the team from that agent's side, in the
+main window (`/<agent>/team-room`), with the sidebar still there:
+
+- **Huddle**: the group chat.
+- **You**: your own chat with this agent.
+- **Each teammate**: only what this agent and that teammate said to each other.
+
 ## The sandbox
 
 With Docker installed, run the sandbox supervisor once from a source checkout:

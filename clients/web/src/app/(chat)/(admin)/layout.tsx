@@ -10,6 +10,7 @@ import {
   BarChart3,
   Bell,
   Cpu,
+  ImageIcon,
   KeyRound,
   Puzzle,
   Search,
@@ -87,6 +88,15 @@ const ADMIN_SECTIONS: AdminSection[] = [
     icon: Search,
     testId: "admin-sidebar-link-search",
     isActive: (p) => matchSubPath(p, "/admin/search"),
+  },
+  {
+    id: "image-generation",
+    title: "Image Generation",
+    subtitle: "The provider your agent draws pictures with",
+    href: "/admin/image-generation",
+    icon: ImageIcon,
+    testId: "admin-sidebar-link-image-generation",
+    isActive: (p) => matchSubPath(p, "/admin/image-generation"),
   },
   {
     id: "voice",

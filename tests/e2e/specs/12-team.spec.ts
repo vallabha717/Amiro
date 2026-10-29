@@ -31,7 +31,7 @@ test.describe.serial("team", () => {
       await expect(page.getByTestId("team-window")).toBeVisible();
       await expect(page.getByTestId("sidebar-team-link")).toHaveCount(0);
       await expect(page.getByTestId("sidebar-user-button")).toBeVisible();
-      await expect(page.getByTestId("team-sidebar-new-agent")).toBeVisible();
+      await expect(page.getByTestId("team-new-agent")).toBeVisible();
       await expect(page.getByTestId("team-agent-main")).toContainText(agent.name);
       await expect(page.getByTestId("team-pick-agent")).toBeVisible();
     });
@@ -360,6 +360,164 @@ test.describe.serial("team", () => {
       await expect(page.getByTestId("debug-team-agent-banner")).toBeVisible();
       await page.getByTestId("terminal-connect-button").click();
       await expect(page.getByTestId("terminal-error-banner")).toContainText("Shell access is disabled");
+    });
+  });
+
+  test("huddle: launching a café with the team — default answer, @mentions, a delegation round-trip, an @all standup and each agent's view", async ({ page, step, amiro }) => {
+    const { body } = await amiro.api<{ agents: TeamAgent[] }>("/api/agents");
+    const main = body.agents.find((a) => a.isMain)!;
+    const scout = body.agents.find((a) => a.name === SCOUT)!;
+    const log = page.getByTestId("team-room-log");
+    const fromAgent = (id: string) => log.locator(`[data-testid="team-room-message"][data-sender="${id}"]`);
+    const replyWait = { timeout: 240000 };
+    type RoomMessage = {
+      id: string;
+      text: string;
+      from: { type: string; id?: string };
+      to: string[];
+      hop: number;
+      replyTo?: string;
+      kind?: string;
+      agentId?: string;
+    };
+    const roomMessages = async () =>
+      (await amiro.api<{ messages: RoomMessage[] }>("/api/team/room")).body.messages;
+    /** Waits until `pick` finds a message in the Huddle, then returns it. */
+    const waitFor = async (what: string, pick: (all: RoomMessage[]) => RoomMessage | undefined) => {
+      await expect.poll(async () => Boolean(pick(await roomMessages())), { ...replyWait, message: what }).toBe(true);
+      return pick(await roomMessages())!;
+    };
+    const lastFromUser = async () => (await roomMessages()).filter((m) => m.from.type === "user").at(-1)!;
+    const send = async (text: string) => {
+      await page.getByTestId("team-room-input").fill(text);
+      await page.getByTestId("team-room-send").click();
+      await expect(log.locator('[data-from="user"]').last()).toContainText(text.slice(0, 40));
+      return lastFromUser();
+    };
+
+    await step(`${main.name}'s space → sidebar Team → Team opens beside the sidebar, from ${main.name}'s side`, async () => {
+      await page.goto("/amiro");
+      await page.getByTestId("sidebar-team-link").click();
+      await expect(page).toHaveURL(/\/amiro\/team-room$/);
+      await expect(page.getByTestId("sidebar-team-link")).toBeVisible();
+      await expect(page.getByTestId("team-room-heading")).toHaveText("Huddle");
+      await expect(page.getByTestId("team-with-you")).toContainText(`Your chat with ${main.name}`);
+      await expect(page.getByTestId(`team-room-agent-${scout.id}`)).toContainText(SCOUT);
+      await expect(page.getByTestId("team-room-agent-main")).toHaveCount(0);
+    });
+
+    await step(`Share the plan with no @mention → ${main.name}, the main agent, answers`, async () => {
+      const plan = await send(
+        "Morning team! We're opening Brew & Bloom, an oat-milk café in Koregaon Park, Pune, next Saturday. Reply in one short line.",
+      );
+      expect(plan.to, "a message with no @mention goes to the main agent").toEqual(["main"]);
+      await waitFor(`${main.name} answers the plan`, (all) =>
+        all.find((m) => m.replyTo === plan.id && m.from.id === main.id),
+      );
+      await expect(fromAgent(main.id).last()).toBeVisible();
+    });
+
+    await step("Type @Sc → pick Scout → ask for local research → Scout is working, then answers", async () => {
+      const input = page.getByTestId("team-room-input");
+      await input.click();
+      await input.pressSequentially("@Sc");
+      await expect(page.getByTestId("team-room-mention-list")).toBeVisible();
+      await page.getByTestId(`team-room-mention-${scout.id}`).click();
+      await expect(input).toHaveValue(`@${SCOUT} `);
+      await input.pressSequentially("list three things Pune café-goers care about most, one short line each.");
+      await page.getByTestId("team-room-send").click();
+      const ask = await lastFromUser();
+      expect(ask.to, "@Scout goes to Scout only").toEqual([scout.id]);
+      // Live: Scout's reply appears as it is written, before it is finished.
+      const live = log.locator(`[data-streaming="true"][data-sender="${scout.id}"]`);
+      await expect(live).toBeVisible({ timeout: 15000 });
+      await expect(live.getByTestId("team-room-live-status")).toBeVisible();
+      await expect(page.getByTestId(`team-room-agent-${scout.id}`)).toHaveAttribute("data-working", "true");
+      const answer = await waitFor("Scout answers the research ask", (all) =>
+        all.find((m) => m.replyTo === ask.id && m.from.id === scout.id),
+      );
+      expect.soft(answer.text.split("\n").filter((l) => l.trim()).length, "three short lines").toBeGreaterThanOrEqual(3);
+      await expect(page.getByTestId(`team-room-agent-${scout.id}`)).toHaveAttribute("data-working", "false", replyWait);
+    });
+
+    await step(`Delegate, watched live in the ${main.name} ↔ Scout view: ${main.name} asks Scout for a local detail, Scout's answer streams back to ${main.name}, who writes the caption`, async () => {
+      // "Scout" without an @ so the message reaches the main agent only, which must then hand off.
+      const brief = await send(
+        `@${main.name} draft a two-line Instagram caption for our launch day. First ask Scout for one local Koregaon Park detail to include, then write the caption using it.`,
+      );
+      expect(brief.to).toEqual(["main"]);
+      // Switch to just the two agents' conversation and watch it happen there.
+      await page.getByTestId(`team-room-agent-${scout.id}`).click();
+      await expect(page.getByTestId("team-channel-title")).toHaveText(`${main.name} and ${SCOUT}`);
+      const pair = page.getByTestId("team-pair-log");
+      await expect(pair.locator(`[data-handoff="true"][data-sender="${main.id}"]`).last()).toBeVisible(replyWait);
+      await expect(pair.locator('[data-streaming="true"]').first()).toBeVisible(replyWait);
+      const handoff = await waitFor(`${main.name} hands off to Scout`, (all) =>
+        all.find((m) => m.replyTo === brief.id && m.from.id === main.id && m.to.includes(scout.id)),
+      );
+      expect(handoff.hop).toBe(1);
+      const detail = await waitFor(`Scout's answer goes back to ${main.name}`, (all) =>
+        all.find((m) => m.replyTo === handoff.id && m.from.id === scout.id),
+      );
+      expect(detail.to, "the answer is addressed back to the agent that asked").toContain(main.id);
+      const caption = await waitFor(`${main.name} writes the caption with Scout's detail`, (all) =>
+        all.find((m) => m.replyTo === detail.id && (m.from.id === main.id || m.agentId === main.id)),
+      );
+      expect(caption.hop, "the round trip stays inside the hop limit").toBeLessThan(4);
+      expect.soft(caption.kind, `${main.name} replies with the caption, not an empty turn`).toBeUndefined();
+      // The finished replies replaced their live drafts in this view.
+      await expect(pair.locator('[data-testid="team-room-message"], [data-testid="team-room-notice"]').nth(2)).toBeVisible();
+      await expect(pair.locator('[data-streaming="true"]')).toHaveCount(0, { timeout: 30000 });
+      await page.getByTestId("team-room-entry").click();
+      await expect(page.getByTestId("team-room-heading")).toBeVisible();
+    });
+
+    await step("@all standup → every agent answers the same message", async () => {
+      const standup = await send("@all quick standup: in one line, what will you each do on launch day?");
+      expect(new Set(standup.to)).toEqual(new Set([main.id, scout.id]));
+      for (const agent of [main, scout]) {
+        await waitFor(`${agent.name} answers the standup`, (all) =>
+          all.find((m) => m.replyTo === standup.id && (m.from.id === agent.id || m.agentId === agent.id)),
+        );
+      }
+    });
+
+    await step(`Click You → your own chat with ${main.name}, separate from the Huddle`, async () => {
+      await page.getByTestId("team-with-you").click();
+      await expect(page).toHaveURL(/\/amiro\/team-room\?with=you$/);
+      await expect(page.getByTestId("team-channel-title")).toHaveText(`You and ${main.name}`);
+      await expect(page.getByTestId("team-channel")).not.toContainText("Brew & Bloom");
+    });
+
+    await step(`Scout's space → Team → ${main.name} → only what the two said to each other`, async () => {
+      await page.goto(`/${scout.id}`);
+      await page.getByTestId("sidebar-team-link").click();
+      await expect(page).toHaveURL(new RegExp(`/${scout.id}/team-room$`));
+      await expect(page.getByTestId("agent-scope-banner")).toContainText(`${SCOUT}'s space`);
+      await expect(page.getByTestId(`team-room-agent-${scout.id}`)).toHaveCount(0);
+      await page.getByTestId("team-room-agent-main").click();
+      await expect(page.getByTestId("team-channel-title")).toHaveText(`${SCOUT} and ${main.name}`);
+      const pair = page.getByTestId("team-pair-log");
+      await expect(pair.locator('[data-handoff="true"]').first()).toBeVisible();
+      await expect(pair.locator('[data-testid="team-room-message"], [data-testid="team-room-notice"]').nth(2)).toBeVisible();
+      await expect(pair.locator('[data-from="user"]')).toHaveCount(0);
+      await expect(pair).not.toContainText("quick standup");
+    });
+
+    await step("Admin Team view → Huddle → the whole launch conversation beside the agent list", async () => {
+      await page.goto("/team");
+      await page.getByTestId("team-huddle-entry").click();
+      await expect(page).toHaveURL(/\/team\?view=huddle$/);
+      await expect(page.getByTestId("team-room-heading")).toHaveText("Huddle");
+      await expect(log).toContainText("Brew & Bloom");
+      await expect(log.locator('[data-handoff="true"]').first()).toBeVisible();
+      await expect(page.getByTestId("team-room-manage")).toHaveCount(0);
+    });
+
+    await step("Reload → the conversation is still in the Huddle", async () => {
+      await page.reload();
+      await expect(log).toContainText("quick standup", { timeout: 30000 });
+      await expect(fromAgent(scout.id).first()).toBeVisible();
     });
   });
 

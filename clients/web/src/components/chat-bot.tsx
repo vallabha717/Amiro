@@ -46,6 +46,7 @@ import { useShallow } from "zustand/shallow";
 
 import { chatUxStore } from "@/app/store/chat-ux-store";
 import {
+  followUpParts,
   type PendingFollowUp,
   restoreParkedFiles,
 } from "@/lib/chat/followup-queue";
@@ -54,6 +55,11 @@ import { applyRuntimeThreadTitle } from "@/lib/backend/runtime-thread-title";
 import { useFileDragOverlay } from "@/hooks/use-file-drag-overlay";
 import { useToRef } from "@/hooks/use-latest";
 import { useMounted } from "@/hooks/use-mounted";
+import { useIsMobile } from "@/hooks/use-mobile";
+import {
+  stopChatTurn,
+  useResumeChatTurn,
+} from "@/hooks/use-resume-chat-turn";
 import { useThreadFileUploader } from "@/hooks/use-thread-file-uploader";
 import { useMessageReadAloudStore } from "@/lib/ai/speech/read-aloud-store";
 import { deleteThread } from "@/lib/backend/chat-api";
@@ -247,6 +253,11 @@ export default function ChatBot({
   // by the very next sendAutomaticallyWhen check so that one, and only
   // that one, resumption is suppressed.
   const suppressNextAutoResumeRef = useRef(false);
+  // Set once useResumeChatTurn exists (it needs useChat's result).
+  const noteFinishRef = useRef<
+    | ((event: { isDisconnect?: boolean; isError?: boolean; isAbort?: boolean }) => void)
+    | null
+  >(null);
 
   const {
     messages,
@@ -256,6 +267,8 @@ export default function ChatBot({
     error,
     sendMessage,
     stop,
+    resumeStream,
+    clearError,
   } = useChat({
     id: threadId,
     sendAutomaticallyWhen: (params) => {
@@ -351,7 +364,10 @@ export default function ChatBot({
         applyRuntimeThreadTitle(part.data, threadId);
       }
     },
-    onFinish,
+    onFinish: (event) => {
+      noteFinishRef.current?.(event);
+      onFinish(event);
+    },
   });
   const [isDeleteThreadPopupOpen, setIsDeleteThreadPopupOpen] = useState(false);
   // `/login` is intercepted in the composer (see handleComposerSend below) and
@@ -366,12 +382,27 @@ export default function ChatBot({
     [_addToolResult],
   );
 
+  // A turn keeps running on the server when the stream drops (a phone
+  // locking its screen); this reconnects to it.
+  const { markStopped, noteFinish } = useResumeChatTurn({
+    threadId,
+    status,
+    setMessages,
+    resumeStream,
+    abortStream: stop,
+    clearError,
+  });
+  noteFinishRef.current = noteFinish;
+
   // Stop must mean stop -- see suppressNextAutoResumeRef above for why the
-  // library's own abort isn't enough on its own.
+  // library's own abort isn't enough on its own. Closing the stream no longer
+  // ends the turn on the server, so Stop says so explicitly.
   const handleStop = useCallback(() => {
     suppressNextAutoResumeRef.current = true;
+    markStopped();
+    stopChatTurn(threadId);
     stop();
-  }, [stop]);
+  }, [stop, markStopped, threadId]);
 
   const mounted = useMounted();
 
@@ -411,6 +442,9 @@ export default function ChatBot({
     [messages, isLoading],
   );
   const sessionPanelOpen = chatUxStore((state) => state.panelOpen);
+  // On a phone the chat needs the whole width: a column beside it left the
+  // conversation one letter wide.
+  const isMobile = useIsMobile();
 
   const hasArtifact = Boolean(
     artifacts.plan ||
@@ -645,7 +679,7 @@ export default function ChatBot({
     try {
       await sendAnsweringPlanRef.current({
         role: "user",
-        parts: pending.attachmentParts as any,
+        parts: followUpParts(pending) as any,
       });
     } catch {
       // The turn failed (offline, provider down): hand the text back so
@@ -1235,7 +1269,7 @@ export default function ChatBot({
         {/* The session panel shares the row with the chat column, not the
             artifact pane: with a plan open the chat is already squeezed to
             380px, and a third column would leave nothing readable. */}
-        {sessionPanelOpen && !emptyMessage && !isArtifactViewActive && (
+        {sessionPanelOpen && !isMobile && !emptyMessage && !isArtifactViewActive && (
           <SessionPanel
             threadId={threadId}
             summary={sessionSummary}

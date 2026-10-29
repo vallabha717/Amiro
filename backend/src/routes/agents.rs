@@ -534,16 +534,22 @@ async fn agent_json(state: &AppState, id: &str, uid: &str) -> Result<Value, ApiE
     team_agent(state, &record, uid).await
 }
 
-async fn list_agents(State(state): State<AppState>, user: AuthUser) -> Result<Json<Value>, ApiError> {
-    let uid = user_id(&user);
-    let mut out = vec![main_agent(&state, &uid).await?];
-    let registry = read_registry(&state).await?;
+/// Every agent as `GET /api/agents` lists it for `uid`: main first, then by
+/// creation time.
+pub async fn roster(state: &AppState, uid: &str) -> Result<Vec<Value>, ApiError> {
+    let mut out = vec![main_agent(state, uid).await?];
+    let registry = read_registry(state).await?;
     let mut records = registry["agents"].as_array().cloned().unwrap_or_default();
     records.sort_by(|a, b| a["createdAt"].as_str().cmp(&b["createdAt"].as_str()));
     for record in records {
-        out.push(team_agent(&state, &record, &uid).await?);
+        out.push(team_agent(state, &record, uid).await?);
     }
-    Ok(Json(json!({ "agents": out })))
+    Ok(out)
+}
+
+async fn list_agents(State(state): State<AppState>, user: AuthUser) -> Result<Json<Value>, ApiError> {
+    let uid = user_id(&user);
+    Ok(Json(json!({ "agents": roster(&state, &uid).await? })))
 }
 
 async fn create_agent(

@@ -1,10 +1,11 @@
 "use client";
 
-import { FileTextIcon } from "lucide-react";
+import { FileTextIcon, ImageIcon, Loader2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Button } from "ui/button";
 import { cn } from "lib/utils";
 import { kindLabel } from "@/lib/backend/artifacts-api";
+import { useArtifactImage } from "@/lib/backend/image-generation-api";
 import { useOpenArtifactFile } from "../artifacts/file-artifacts";
 import {
   extractOpenUIPayload,
@@ -158,6 +159,103 @@ const artifactUpdate: ToolPresenter = {
 
 artifactUpdate.Expanded = artifactUpdate.Compact;
 
+/** A picture the agent drew: shown inline, opens in Files. */
+function ImageCard({ input, output, status, errorText }: PresenterProps) {
+  const t = useTranslations("ImageGeneration");
+  const tArtifact = useTranslations("Chat.Artifact");
+  const openFile = useOpenArtifactFile();
+  const ref = status === "success" ? extractArtifact({}, output) : undefined;
+  const id = typeof ref?.id === "string" ? ref.id : undefined;
+  const src = useArtifactImage(id);
+  const prompt = typeof input?.prompt === "string" ? input.prompt : "";
+  return (
+    <div
+      className={cn(
+        "w-full overflow-hidden rounded-lg border bg-card",
+        status === "error" && "border-destructive/50",
+      )}
+      data-testid="image-generate-card"
+      data-status={status}
+    >
+      <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2">
+        <ImageIcon className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="truncate text-xs font-medium">
+          {status === "pending"
+            ? t("toolDrawing")
+            : status === "error"
+              ? t("toolFailed")
+              : (ref?.title as string) || t("toolDrew")}
+        </span>
+        {id && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="ml-auto h-7 shrink-0 text-xs"
+            onClick={() => openFile(id)}
+          >
+            {tArtifact("open")}
+          </Button>
+        )}
+      </div>
+      <div className="p-2">
+        {status === "pending" && (
+          <div className="flex items-center gap-2 px-1 py-6 text-xs text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" />
+            {prompt}
+          </div>
+        )}
+        {status === "error" && (
+          <p className="px-1 py-2 text-xs text-destructive">{errorText}</p>
+        )}
+        {status === "success" &&
+          (src ? (
+            <img
+              src={src}
+              alt={prompt || (ref?.title as string) || ""}
+              className="max-h-[28rem] w-auto rounded-md"
+              data-testid="image-generate-picture"
+            />
+          ) : (
+            <Loader2 className="m-2 size-4 animate-spin" />
+          ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The arguments of an `image_generate` call, whether the model called it
+ * directly (`mcp__amiro__image_generate`) or through the runtime's `mcp_call`
+ * wrapper; undefined for any other tool.
+ */
+export function imageGenerateArgs(toolName: string, input: any): any | undefined {
+  const bare = toolName.replace(/^mcp__amiro__|^amiro__|^amiro_/, "");
+  if (bare === "image_generate") return input ?? {};
+  if (toolName === "mcp_call") {
+    const target = mcpArtifactTarget(input);
+    if (target?.tool === "image_generate") return target.args ?? {};
+  }
+  return undefined;
+}
+
+/** A drawn picture as its own card, for the transcript outside the fold. */
+export function DrawnImage(props: PresenterProps) {
+  return <ImageCard {...props} />;
+}
+
+export const imageGenerate: ToolPresenter = {
+  glance: ({ input, status }) => {
+    const prompt = typeof input?.prompt === "string" ? input.prompt.slice(0, 40) : "";
+    if (status === "error") return "⚠ image failed";
+    if (status === "pending") return `drawing · ${prompt}…`;
+    return `image · ${prompt}`;
+  },
+  Compact: ImageCard,
+};
+
+imageGenerate.Expanded = imageGenerate.Compact;
+
 const artifactDelete: ToolPresenter = {
   glance: ({ status }) =>
     status === "error" ? "⚠ artifact delete failed" : "artifact deleted",
@@ -216,6 +314,7 @@ function mcpArtifactTarget(input: any): { tool: string; args: any } | undefined 
       "artifact_update",
       "artifact_delete",
       "ui_render_openui",
+      "image_generate",
     ].includes(bare)
   ) {
     return undefined;
@@ -239,6 +338,9 @@ export function withArtifactMcpCard(base: ToolPresenter): ToolPresenter {
     if (target.tool === "ui_render_openui") {
       return uiRenderOpenUI.glance(adapted as PresenterProps);
     }
+    if (target.tool === "image_generate") {
+      return imageGenerate.glance(adapted as PresenterProps);
+    }
     if (target.tool === "artifact_delete") {
       return artifactDelete.glance(adapted as PresenterProps);
     }
@@ -258,6 +360,9 @@ export function withArtifactMcpCard(base: ToolPresenter): ToolPresenter {
             input: target.args,
           })
         : null;
+    }
+    if (target.tool === "image_generate") {
+      return <ImageCard {...props} input={target.args} />;
     }
     return (
       <ArtifactCard
@@ -281,6 +386,9 @@ export function withArtifactMcpCard(base: ToolPresenter): ToolPresenter {
           })
         : null;
     }
+    if (target.tool === "image_generate") {
+      return <ImageCard {...props} input={target.args} />;
+    }
     return (
       <ArtifactCard
         input={target.args}
@@ -298,4 +406,5 @@ export const artifactPresenters = {
   artifact_update: artifactUpdate,
   artifact_delete: artifactDelete,
   ui_render_openui: uiRenderOpenUI,
+  image_generate: imageGenerate,
 };

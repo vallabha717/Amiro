@@ -163,13 +163,13 @@ export function AppSidebarMenus({
             <SidebarMenu>
               <SidebarMenuItem>
                 <Link
-                  href="/team"
+                  href={agentScopedPath(agentScope, "/team-room")}
                   data-testid="sidebar-team-link"
                   onClick={() => setOpenMobile(false)}
                 >
                   <SidebarMenuButton
                     className="font-semibold"
-                    isActive={pathname.startsWith("/team")}
+                    isActive={matchSubPath(pathname, "/team-room")}
                   >
                     <UsersRoundIcon className="size-4" />
                     {t("Layout.team")}

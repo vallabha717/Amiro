@@ -139,6 +139,8 @@ export function kindLabel(kind: string) {
   switch (kind) {
     case "markdown":
       return "Markdown";
+    case "image":
+      return "Image";
     case "html":
       return "HTML";
     case "code":

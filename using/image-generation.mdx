@@ -1,0 +1,43 @@
+---
+title: "Image generation"
+description: "Choose the provider your agent draws pictures with, try it, then ask for pictures in chat."
+---
+
+The agent can draw pictures when you ask for one. It draws with the provider
+you choose in **Admin → Image Generation**, and every picture is saved to
+**Files**, so you can open, download or reuse it later.
+
+## Set it up
+
+<Steps>
+<Step title="Open Image Generation">
+Click **Admin** in the sidebar, then **Image Generation**. The page is owner-only.
+</Step>
+<Step title="Pick a provider">
+- **9Router**: your own 9Router (the same one Vellum draws with). Its model
+  starts as `ag/gemini-3.1-flash-image`.
+- **OpenAI**: `gpt-image-1` or a DALL·E model.
+- **Google Gemini**: a Gemini image model such as `gemini-2.5-flash-image`.
+- **OpenAI-compatible**: any other OpenAI-style images API at your own address.
+</Step>
+<Step title="Enter the address and key, then save">
+9Router and OpenAI-compatible need their API base URL (for example
+`https://router.example.com/v1`). The key goes into Amiro's encrypted vault and
+is never shown again; leave the field empty later to keep it.
+</Step>
+<Step title="Try it">
+Describe a picture under **Try it** and click **Draw**. It can take up to a
+minute; the picture appears on the page and in Files.
+</Step>
+</Steps>
+
+## Ask for pictures in chat
+
+```text
+Draw a small square poster for "Brew & Bloom café, Koregaon Park":
+a cup of filter coffee with jasmine flowers.
+```
+
+The picture shows in the chat as it is drawn, with an **Open** button for Files.
+You can also ask the agent to set up image generation itself; it asks for the
+key with the secure card, never in the chat.

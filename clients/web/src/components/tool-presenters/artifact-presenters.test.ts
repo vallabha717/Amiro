@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
-import { extractArtifact, withArtifactMcpCard } from "./artifact-presenters";
+import {
+  extractArtifact,
+  imageGenerateArgs,
+  withArtifactMcpCard,
+} from "./artifact-presenters";
 import type { ToolPresenter } from "./types";
 
 vi.mock("next-intl", () => ({
@@ -97,5 +101,17 @@ describe("withArtifactMcpCard", () => {
       status: "success" as const,
     };
     expect(wrapped.glance(foreign)).toBe("base card");
+  });
+});
+
+describe("imageGenerateArgs", () => {
+  it("spots a drawing call made directly or through mcp_call", () => {
+    expect(imageGenerateArgs("mcp__amiro__image_generate", { prompt: "a cup" })).toEqual({ prompt: "a cup" });
+    expect(
+      imageGenerateArgs("mcp_call", { server: "amiro", tool: "image_generate", arguments: { prompt: "a cup" } }),
+    ).toEqual({ prompt: "a cup" });
+    expect(imageGenerateArgs("mcp_call", { server: "amiro", tool: "artifact_create", arguments: {} })).toBeUndefined();
+    expect(imageGenerateArgs("mcp_call", { server: "other", tool: "image_generate" })).toBeUndefined();
+    expect(imageGenerateArgs("websearch", { query: "x" })).toBeUndefined();
   });
 });

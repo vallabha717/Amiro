@@ -58,8 +58,13 @@ import {
   ToolApprovalCard,
   type ToolApprovalRequest,
   getToolPresenter,
+  type PresenterProps,
   presenterPropsFromToolPart,
 } from "./tool-presenters";
+import {
+  DrawnImage,
+  imageGenerateArgs,
+} from "./tool-presenters/artifact-presenters";
 import { isDesktopToolCall } from "./tool-presenters/desktop-presenters";
 import {
   SiteFavicon,
@@ -581,6 +586,9 @@ const PurePreviewMessage = ({
             // Every image the turn's tools returned, kept even for calls the
             // filter hides so a screenshot never disappears with its row.
             const turnImages: InlineImage[] = [];
+            // Pictures the agent drew this turn: shown with the answer, not
+            // only inside the folded work log.
+            const drawnImages: { id: string; props: PresenterProps }[] = [];
             // The previous todo write, so each one can show what changed.
             let prevTodos: RuntimeTodo[] | undefined;
             // Parts that must stay visible under hideAllTools because the
@@ -801,6 +809,13 @@ const PurePreviewMessage = ({
                   ? extractInlineImages(part.output)
                   : [];
               turnImages.push(...partImages);
+              const drawnArgs = imageGenerateArgs(toolName, partInput);
+              if (drawnArgs !== undefined) {
+                drawnImages.push({
+                  id: part.toolCallId,
+                  props: { ...presenterPropsFromToolPart(part), input: drawnArgs },
+                });
+              }
 
               if (
                 toolName === "websearch" ||
@@ -1113,6 +1128,9 @@ const PurePreviewMessage = ({
                 {!hideAllTools && turnSources.length ? (
                   <SourcesStrip searches={webSearches} />
                 ) : null}
+                {drawnImages.map((drawn) => (
+                  <DrawnImage key={drawn.id} {...drawn.props} />
+                ))}
                 {tailParts.map((part, i) => {
                   // Already on the card's timeline (see above).
                   if (part.type === "reasoning" && !hideAllTools) return null;
