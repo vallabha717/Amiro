@@ -110,6 +110,102 @@ test.describe("chat", () => {
     });
   });
 
+  test("plan, tasks and walkthrough: line and selection comments, revised, approved, tasks, walkthrough", async ({ page, step }) => {
+    const plan = page.getByTestId("plan-view");
+    await step("Brew & Bloom: ask for a launch plan first → the Plan tab opens with the plan awaiting review", async () => {
+      await send(
+        page,
+        "I am launching Brew & Bloom, an oat-milk café in Koregaon Park, Pune. Use the ui_propose_plan tool to show me a short launch plan (Goal, Steps as a bullet list, Risks) and stop to wait for my review. Do not start the work.",
+      );
+      await expect(plan, "the plan renders in the artifact pane").toBeVisible({ timeout: 240000 });
+      await expect(plan).toHaveAttribute("data-state", "pending", { timeout: 120000 });
+      await expect.soft(page.getByTestId("artifact-tab-plan")).toHaveAttribute("data-active", "true");
+    });
+    await step("Comment on one line of the plan with the hover button → the comment sits on that line", async () => {
+      await plan.locator("li, p").filter({ hasText: /\w{4}/ }).nth(1).hover();
+      await page.getByTestId("plan-comment-line").click();
+      await page.getByTestId("plan-comment-input").fill("Add a soft-opening week with friends and family before the public launch.");
+      await page.getByTestId("plan-comment-submit").click();
+      await expect(page.getByTestId("plan-comment")).toHaveCount(1);
+    });
+    await step("Select text across two bullets (a block) → comment on the selection, both comments listed", async () => {
+      const items = plan.locator("li").filter({ hasText: /\w{4}/ });
+      await expect(items.nth(1), "the plan has at least two steps to select across").toBeVisible();
+      // A real drag selection from the start of one bullet to the end of the next.
+      const first = await items.nth(0).boundingBox();
+      const second = await items.nth(1).boundingBox();
+      if (!first || !second) throw new Error("plan bullets have no layout");
+      await page.mouse.move(first.x + 2, first.y + first.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(second.x + second.width * 0.6, second.y + Math.min(12, second.height / 2), { steps: 8 });
+      await page.mouse.up();
+      await page.getByTestId("plan-comment-input").fill("These two steps can happen in the same week; merge them.");
+      await page.getByTestId("plan-comment-submit").click();
+      await expect(page.getByTestId("plan-comment"), "both comments are attached to the plan, none outdated").toHaveCount(2);
+    });
+    await step("Send comments → they go to the agent quoting the text, and the plan comes back revised", async () => {
+      await page.getByTestId("plan-review-toggle").click();
+      const before = await assistantMessages(page).count();
+      await page.getByTestId("plan-send-comments").click();
+      const sent = page.locator('[data-message-role="user"]').last();
+      await expect(sent, "the comments are sent quoting the plan").toContainText(/Changes requested/, { timeout: 15000 });
+      await expect.soft(sent).toContainText(/soft-opening/);
+      // Long quotes fold behind "Show more", so check the mechanism: two anchored comments.
+      await expect(sent, "both comments are sent, each quoting its anchor").toContainText(/- On «[\s\S]+- On «/);
+      await waitForReply(page, { before, timeoutMs: 240000 });
+      await expect(plan, "the revised plan awaits review again").toHaveAttribute("data-state", "pending", { timeout: 120000 });
+    });
+    await step("On a phone: the plan opens as a full-screen sheet and a tap on a line adds a comment", async () => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      const pane = page.getByTestId("artifact-pane");
+      await expect(pane).toHaveAttribute("data-mobile", "true");
+      const box = await pane.boundingBox();
+      expect(box?.width ?? 0, "the pane takes the phone's whole width").toBeGreaterThanOrEqual(380);
+      await expect(page.getByTestId("artifact-pane-close"), "close stays reachable").toBeInViewport();
+      await expect(page.getByTestId("plan-proceed"), "approve stays reachable").toBeInViewport();
+      const before = await page.getByTestId("plan-comment").count();
+      // No hover on a phone: a touch on the line is what shows its comment button.
+      await plan.locator("li, p").filter({ hasText: /\w{4}/ }).first().dispatchEvent("pointerdown", { pointerType: "touch", bubbles: true });
+      await page.getByTestId("plan-comment-line").click();
+      const input = page.getByTestId("plan-comment-input");
+      await expect(input).toBeInViewport();
+      await input.fill("Keep the opening budget under ₹40 lakh.");
+      await page.getByTestId("plan-comment-submit").click();
+      await expect(page.getByTestId("plan-comment")).toHaveCount(before + 1);
+      await page.setViewportSize({ width: 1440, height: 900 });
+    });
+    await step("Approve → the Plan stage is ticked and the pane moves to Tasks (plain todos)", async () => {
+      await page.getByTestId("plan-proceed").click();
+      await expect(page.getByTestId("artifact-tab-plan"), "an approved plan shows as a finished stage").toHaveAttribute("data-done", "true", { timeout: 60000 });
+      await expect(page.getByTestId("todo-panel"), "tasks follow the approval").toBeVisible({ timeout: 240000 });
+      await expect(page.getByTestId("plan-card-proceed"), "answered plan cards in the chat no longer offer Proceed").toHaveCount(0);
+    });
+    await step("Work finishes → the Walkthrough opens with the outcome, numbered changes and every task ticked", async () => {
+      await expect(page.getByTestId("walkthrough-view"), "the walkthrough closes the work").toBeVisible({ timeout: 360000 });
+      await expect(page.getByTestId("walkthrough-hero")).toBeVisible();
+      await expect.soft(page.getByTestId("artifact-tab-walkthrough")).toHaveAttribute("data-active", "true");
+      await expect.soft(page.getByTestId("artifact-tab-tasks")).toHaveAttribute("data-done", "true");
+    });
+    await step("Reload → plan, tasks and walkthrough come back from the transcript", async () => {
+      await page.reload();
+      await page.getByTestId("artifact-tab-plan").click();
+      await expect(plan).toHaveAttribute("data-state", "proceed", { timeout: 30000 });
+      await page.getByTestId("artifact-tab-walkthrough").click();
+      await expect(page.getByTestId("walkthrough-hero")).toBeVisible();
+    });
+    await step("On a phone: the walkthrough reads full width, and closing it goes back to the chat", async () => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expect(page.getByTestId("walkthrough-hero")).toBeInViewport();
+      const hero = await page.getByTestId("walkthrough-hero").boundingBox();
+      expect(hero?.width ?? 0, "the walkthrough is not squeezed beside the chat").toBeGreaterThan(330);
+      await page.getByTestId("artifact-pane-close").click();
+      await expect(page.getByTestId("artifact-pane")).toBeHidden();
+      const reply = await assistantMessages(page).last().boundingBox();
+      expect(reply?.width ?? 0, "the chat gets the phone's width back").toBeGreaterThan(250);
+      await page.setViewportSize({ width: 1440, height: 900 });
+    });
+  });
+
   test("thinking-only reply folds into a Thought card, prompt spacing", async ({ page, step }) => {
     await step("Ask something that needs only thinking → the thinking lives in the card and folds to 'Thought'", async () => {
       await ask(page, "Think it through step by step first, then answer with just the number: what is 17 * 23? Do not use any tools.");

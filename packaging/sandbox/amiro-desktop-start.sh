@@ -25,8 +25,16 @@ chmod 700 "$XDG_RUNTIME_DIR"
 mkdir -p "$XDG_CONFIG_HOME/gtk-3.0"
 printf 'file://%s %s%s workspace\n' "$AMIRO_DESKTOP_HOME" "$AGENT_LABEL" "'s" > "$XDG_CONFIG_HOME/gtk-3.0/bookmarks"
 
+# Is the VNC server listening on 5999? Read from the kernel's socket table
+# (176F is 5999, 0A is LISTEN) rather than by connecting: TigerVNC counts a
+# connection that closes before its handshake as a failed attempt, and five
+# of them blacklist 127.0.0.1 -- the address every TV viewer arrives from.
+vnc_listening() {
+  grep -qs ':176F [0:]* 0A ' /proc/net/tcp /proc/net/tcp6
+}
+
 # If VNC server is already listening on 5999, exit 0 immediately
-if (echo > /dev/tcp/127.0.0.1/5999) >/dev/null 2>&1; then
+if vnc_listening; then
   exit 0
 fi
 
@@ -46,10 +54,11 @@ nohup Xtigervnc :99 \
   -AcceptSetDesktopSize=0 \
   -depth 24 \
   -desktop "${AGENT_LABEL} OS" \
+  -BlacklistThreshold 1000000 \
   </dev/null >/tmp/xvnc.log 2>&1 &
 
 for _ in $(seq 1 80); do
-  if (echo > /dev/tcp/127.0.0.1/5999) >/dev/null 2>&1; then
+  if vnc_listening; then
     break
   fi
   sleep 0.1

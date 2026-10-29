@@ -2,7 +2,9 @@
 
 import { type UIMessage, getToolName, isToolUIPart } from "ai";
 import { DefaultToolName } from "lib/ai/tools";
+import { parseMarkerJson } from "lib/chat-ux/ask-user";
 import { useMemo } from "react";
+import { readPlanDecisionMessage } from "./plan-messages";
 
 /**
  * Artifacts are a *projection of the transcript*, never state of their own.
@@ -108,6 +110,12 @@ export interface PlanArtifact {
   pending: boolean;
   /** The answer, once given. Undefined while streaming or pending. */
   decision?: PlanDecision;
+  /**
+   * How the answer travels. `suspended`: the call is held open and answered
+   * with a tool result. `message`: `ui_propose_plan` ended the turn and the
+   * answer is the user's next chat message.
+   */
+  mode?: "suspended" | "message";
 }
 
 export interface TodoItem {
@@ -160,6 +168,12 @@ export interface Artifacts {
   plan?: PlanArtifact;
   todos?: TodoArtifact;
   walkthrough?: WalkthroughArtifact;
+  /**
+   * The tab the work is on right now: the walkthrough once it is written,
+   * the plan until it is approved, then the tasks. Undefined when no plan or
+   * walkthrough exists, so a routine todo list never opens the pane alone.
+   */
+  stage?: ArtifactTab;
 }
 
 /* ------------------------------------------------------------------ */
@@ -255,6 +269,8 @@ function deriveArtifacts(messages: UIMessage[], isRunning: boolean): Artifacts {
   let todos: TodoArtifact | undefined;
   let walkthrough: WalkthroughArtifact | undefined;
   let todosFromLastMessage = false;
+  let planIndex = -1;
+  let walkthroughIndex = -1;
 
   messages.forEach((message, messageIndex) => {
     const isLast = messageIndex === messages.length - 1;
@@ -264,6 +280,48 @@ function deriveArtifacts(messages: UIMessage[], isRunning: boolean): Artifacts {
       const name = getToolName(part);
       const input = (part as any).input ?? {};
       const output = (part as any).output;
+
+      // The agent-tool path: `ui_propose_plan` / `ui_show_walkthrough` return
+      // their card as `PLAN {json}` / `WALKTHROUGH {json}` in the result text
+      // and end the turn. Found by that text, not the tool name, because the
+      // tool reaches the chat under several names (bare, `mcp__amiro__…`).
+      if (output !== undefined) {
+        const planCard = parseMarkerJson(output, "PLAN");
+        if (planCard && typeof planCard.plan === "string") {
+          plan = {
+            toolCallId: (part as any).toolCallId,
+            messageId: message.id,
+            title: typeof planCard.title === "string" ? planCard.title : "",
+            markdown: planCard.plan,
+            streaming: false,
+            pending: false,
+            mode: "message",
+          };
+          planIndex = messageIndex;
+          continue;
+        }
+        const card = parseMarkerJson(output, "WALKTHROUGH");
+        if (card && typeof card.summary === "string") {
+          const changes: WalkthroughChange[] = Array.isArray(card.changes)
+            ? card.changes
+            : [];
+          const mentioned = changes.map((c) => c?.path).filter(Boolean);
+          walkthrough = {
+            toolCallId: (part as any).toolCallId,
+            messageId: message.id,
+            streaming: false,
+            summary: card.summary,
+            changes,
+            testing: card.testing || undefined,
+            followUps: Array.isArray(card.follow_ups) ? card.follow_ups : [],
+            unmentioned: Array.from(new Set(editedPaths(message))).filter(
+              (p) => !mentions(mentioned, p),
+            ),
+          };
+          walkthroughIndex = messageIndex;
+          continue;
+        }
+      }
 
       if (name === DefaultToolName.ProposePlan) {
         // The latest proposal wins outright. A revised plan supersedes the
@@ -277,7 +335,9 @@ function deriveArtifacts(messages: UIMessage[], isRunning: boolean): Artifacts {
           streaming: isStreaming(part),
           pending: isSuspended(part),
           decision: asPlanDecision(output),
+          mode: "suspended",
         };
+        planIndex = messageIndex;
         continue;
       }
 
@@ -366,12 +426,41 @@ function deriveArtifacts(messages: UIMessage[], isRunning: boolean): Artifacts {
               )
             : [],
         };
+        walkthroughIndex = messageIndex;
       }
     }
   });
 
   if (todos) todos.live = isRunning && todosFromLastMessage;
-  return { plan, todos, walkthrough };
+
+  // A message-mode plan is answered by the first user message after it.
+  // Until then it is waiting on the user, but only once the agent has
+  // stopped: a plan whose turn is still running is not yet actionable.
+  if (plan?.mode === "message") {
+    const reply = messages
+      .slice(planIndex + 1)
+      .find((m) => m.role === "user");
+    if (reply) {
+      const text = (reply.parts ?? [])
+        .map((p) => (p.type === "text" ? p.text : ""))
+        .join("");
+      plan.decision = { decision: readPlanDecisionMessage(text) };
+    } else {
+      plan.pending = !isRunning;
+    }
+  }
+
+  let stage: ArtifactTab | undefined;
+  if (walkthrough && walkthroughIndex >= planIndex) stage = "walkthrough";
+  else if (plan) {
+    stage = plan.decision?.decision === "proceed" && todos ? "tasks" : "plan";
+  }
+  return { plan, todos, walkthrough, stage };
+}
+
+/** Identity of the current stage of the work; see the auto-open effect. */
+export function artifactStageKey(a: Artifacts): string {
+  return `${a.stage ?? ""}:${a.plan?.toolCallId ?? ""}:${a.walkthrough?.toolCallId ?? ""}`;
 }
 
 export function useArtifacts(

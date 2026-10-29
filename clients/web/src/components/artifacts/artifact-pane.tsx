@@ -5,6 +5,8 @@ import type { UseChatHelpers } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import { cn } from "lib/utils";
 import {
+  CheckIcon,
+  ChevronRightIcon,
   ClipboardListIcon,
   FileTextIcon,
   FolderOpenIcon,
@@ -12,13 +14,17 @@ import {
   XIcon,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useEffect } from "react";
+import { Fragment, useEffect } from "react";
 import { useShallow } from "zustand/shallow";
 import type { ChatFile } from "lib/file-preview/chat-files";
 import { FilesTabView } from "./files-tab-view";
 import { PlanArtifactView } from "./plan-artifact";
 import { TodoPanel } from "./todo-panel";
-import type { ArtifactTab, Artifacts } from "./use-artifacts";
+import {
+  type ArtifactTab,
+  type Artifacts,
+  artifactStageKey,
+} from "./use-artifacts";
 import { usePlanDecision } from "./use-plan-decision";
 import { WalkthroughView } from "./walkthrough-artifact";
 
@@ -28,6 +34,7 @@ interface Props {
   chatFiles?: ChatFile[];
   threadId?: string;
   addToolResult?: UseChatHelpers<UIMessage>["addToolResult"];
+  sendMessage?: UseChatHelpers<UIMessage>["sendMessage"];
   busy?: boolean;
 }
 
@@ -52,13 +59,14 @@ export function ArtifactPane({
   chatFiles,
   threadId,
   addToolResult,
+  sendMessage,
   busy,
 }: Props) {
   const t = useTranslations("Chat.Artifact");
   const [tab, mutate] = appStore(
     useShallow((state) => [state.artifactView.tab, state.mutate]),
   );
-  const { grantedMode, decide } = usePlanDecision(addToolResult);
+  const { grantedMode, decide } = usePlanDecision(addToolResult, sendMessage);
 
   const { plan, todos, walkthrough } = artifacts;
 
@@ -90,44 +98,72 @@ export function ArtifactPane({
     // transcript projection, so the pane has no count to badge with here.
     files: undefined,
   };
+  // Plan → Tasks → Walkthrough is one piece of work in three stages; a
+  // finished stage shows a tick so the tab row reads as progress.
+  const stageDone: Record<ArtifactTab, boolean> = {
+    plan: plan?.decision?.decision === "proceed",
+    tasks:
+      !!todos && todos.items.length > 0 && todos.done === todos.items.length,
+    walkthrough: !!walkthrough && !walkthrough.streaming,
+    files: false,
+  };
 
   return (
     <div className="flex h-full flex-col">
-      <nav className="flex shrink-0 items-center gap-1 border-b px-2 py-1.5">
-        {TABS.map(({ id, icon: Icon }) => {
+      <nav className="flex shrink-0 items-center gap-1 overflow-x-auto border-b px-2 py-1.5">
+        {TABS.map(({ id, icon: Icon }, index) => {
           const active = tab === id;
           return (
-            <button
-              key={id}
-              type="button"
-              onClick={() =>
-                mutate((s) => ({
-                  artifactView: { ...s.artifactView, tab: id },
-                }))
-              }
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium",
-                "transition-colors duration-[120ms] ease-[var(--ease-out)]",
-                active
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:bg-muted/60",
+            <Fragment key={id}>
+              {index > 0 && index < 3 && (
+                <ChevronRightIcon
+                  aria-hidden
+                  className="size-3 shrink-0 text-muted-foreground/50"
+                />
               )}
-            >
-              <Icon className="size-3.5" />
-              {t(`tab_${id}`)}
-              {badge[id] && (
-                <span
-                  className={cn(
-                    "rounded-full px-1.5 text-[10px]",
-                    id === "plan" && planNeedsAttention
-                      ? "bg-amber-500/20 text-amber-700 dark:text-amber-300"
-                      : "bg-muted text-muted-foreground",
-                  )}
-                >
-                  {badge[id]}
-                </span>
+              {index === 3 && (
+                <span aria-hidden className="mx-1 h-4 w-px bg-border" />
               )}
-            </button>
+              <button
+                type="button"
+                data-testid={`artifact-tab-${id}`}
+                data-active={active}
+                data-done={stageDone[id]}
+                onClick={() =>
+                  mutate((s) => ({
+                    artifactView: { ...s.artifactView, tab: id },
+                  }))
+                }
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium",
+                  "transition-colors duration-[120ms] ease-[var(--ease-out)]",
+                  active
+                    ? "bg-accent text-accent-foreground"
+                    : "text-muted-foreground hover:bg-muted/60",
+                )}
+              >
+                {stageDone[id] ? (
+                  <span className="flex size-3.5 items-center justify-center rounded-full bg-emerald-500 text-white">
+                    <CheckIcon className="size-2.5" strokeWidth={3} />
+                  </span>
+                ) : (
+                  <Icon className="size-3.5" />
+                )}
+                {t(`tab_${id}`)}
+                {badge[id] && (
+                  <span
+                    className={cn(
+                      "rounded-full px-1.5 text-[10px]",
+                      id === "plan" && planNeedsAttention
+                        ? "bg-amber-500/20 text-amber-700 dark:text-amber-300"
+                        : "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {badge[id]}
+                  </span>
+                )}
+              </button>
+            </Fragment>
           );
         })}
 
@@ -145,14 +181,14 @@ export function ArtifactPane({
               artifactView: {
                 ...s.artifactView,
                 isOpen: false,
-                openedFor:
-                  plan?.messageId ??
-                  walkthrough?.messageId ??
-                  s.artifactView.openedFor,
+                openedFor: artifacts.stage
+                  ? artifactStageKey(artifacts)
+                  : s.artifactView.openedFor,
               },
             }))
           }
-          className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors duration-[120ms] ease-[var(--ease-out)] hover:bg-muted/60 hover:text-foreground"
+          data-testid="artifact-pane-close"
+          className="sticky right-0 ml-auto inline-flex shrink-0 items-center gap-1 rounded-md bg-background px-2 py-1 text-xs text-muted-foreground transition-colors duration-[120ms] ease-[var(--ease-out)] hover:bg-muted/60 hover:text-foreground"
         >
           <XIcon className="size-3.5" />
         </button>
@@ -174,8 +210,20 @@ export function ArtifactPane({
             <EmptyState text={t("noPlanYet")} />
           ))}
         {tab === "tasks" && <TodoPanel todos={todos} />}
-        {tab === "walkthrough" && <WalkthroughView walkthrough={walkthrough} />}
-        {tab === "files" && <FilesTabView todos={todos} threadId={threadId} chatFiles={chatFiles} />}
+        {tab === "walkthrough" && (
+          <WalkthroughView
+            walkthrough={walkthrough}
+            plan={plan}
+            todos={todos}
+          />
+        )}
+        {tab === "files" && (
+          <FilesTabView
+            todos={todos}
+            threadId={threadId}
+            chatFiles={chatFiles}
+          />
+        )}
       </div>
     </div>
   );

@@ -254,7 +254,13 @@
       "comment": "Comment",
       "commentPlaceholder": "What should change here?",
       "outdatedComments": "No longer in the plan",
-      "commentOnLine": "Comment on this line"
+      "commentOnLine": "Comment on this line",
+      "walkthroughDone": "Work complete",
+      "walkthroughFor": "Delivered from the plan “{title}”",
+      "statChanges": "{count} changes",
+      "statFollowUps": "{count} follow-ups",
+      "whatHappened": "What happened",
+      "tasksCompleted": "Tasks completed"
     },
     "OpenUI": {
       "badge": "OpenUI Live",

@@ -16,7 +16,11 @@ import {
 import { toast } from "sonner";
 import { chatFilesFrom } from "lib/file-preview/chat-files";
 import { ArtifactPane } from "./artifacts/artifact-pane";
-import { buildPlanDecision, useArtifacts } from "./artifacts/use-artifacts";
+import {
+  artifactStageKey,
+  buildPlanDecision,
+  useArtifacts,
+} from "./artifacts/use-artifacts";
 import { ChatGreeting } from "./chat-greeting";
 import { LoginPanel } from "./chat/login-panel";
 import { ErrorMessage, PreviewMessage } from "./message";
@@ -531,28 +535,22 @@ export default function ChatBot({
   // shows the same live list.
   useEffect(() => {
     if (!latestAssistantMessageId) return;
-    if (artifactView.openedFor === latestAssistantMessageId) return;
-    const tab = artifacts.plan
-      ? "plan"
-      : artifacts.walkthrough
-        ? "walkthrough"
-        : undefined;
+    const tab = artifacts.stage;
     if (!tab) return;
+    // One key per stage of one piece of work, so the pane follows the work
+    // from Plan to Tasks to Walkthrough, but a user who closed it is not
+    // fought on every render within a stage.
+    const key = artifactStageKey(artifacts);
+    if (artifactView.openedFor === key) return;
     appStoreMutate((state) => ({
       artifactView: {
         ...state.artifactView,
         isOpen: true,
         tab,
-        openedFor: latestAssistantMessageId,
+        openedFor: key,
       },
     }));
-  }, [
-    latestAssistantMessageId,
-    artifacts.plan,
-    artifacts.walkthrough,
-    artifactView.openedFor,
-    appStoreMutate,
-  ]);
+  }, [latestAssistantMessageId, artifacts, artifactView.openedFor, appStoreMutate]);
 
   const isInitialThreadEntry = useMemo(
     () =>
@@ -1036,13 +1034,20 @@ export default function ChatBot({
       <div
         className={cn(
           "flex min-w-0 w-full h-full max-w-full overflow-hidden",
-          isArtifactViewActive && "gap-2 p-1.5 bg-muted/20",
+          isArtifactViewActive && !isMobile && "gap-2 p-1.5 bg-muted/20",
         )}
       >
         {isArtifactViewActive ? (
           <div
+            data-testid="artifact-pane"
+            data-mobile={isMobile}
             className={cn(
-              "flex-1 min-w-0 h-full relative z-40 rounded-xl border border-border shadow-xl overflow-hidden bg-background",
+              // A phone has no room for the pane beside the chat, so it is a
+              // full-screen sheet over it; the chat stays mounted underneath
+              // and keeps whatever was being typed.
+              isMobile
+                ? "fixed inset-0 z-50 overflow-hidden bg-background pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+                : "flex-1 min-w-0 h-full relative z-40 rounded-xl border border-border shadow-xl overflow-hidden bg-background",
               // Enter and exit along one path, on the drawer curve the rest
               // of the app uses. The chat column's width transition below is
               // deliberately the same duration and curve, so the two read as
@@ -1055,6 +1060,7 @@ export default function ChatBot({
               chatFiles={chatFiles}
               threadId={threadId}
               addToolResult={addToolResult}
+              sendMessage={sendMessage}
               // isLoading alone, not isPendingToolCall: isPendingToolCall is
               // true for the very call Proceed/Send exist to resolve, so
               // including it here would deadlock the pane's own buttons.
@@ -1069,7 +1075,9 @@ export default function ChatBot({
           direction="horizontal"
           className={cn(
             "min-w-0 transition-[width] duration-[240ms] ease-[var(--ease-drawer)] motion-reduce:transition-none",
-            isArtifactViewActive ? "!w-[380px] shrink-0 flex-none" : "flex-1",
+            isArtifactViewActive && !isMobile
+              ? "!w-[380px] shrink-0 flex-none"
+              : "flex-1",
           )}
         >
           <ResizablePanel

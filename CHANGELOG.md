@@ -19,6 +19,16 @@ last one as its own version). New work accumulates under `Unreleased`.
 
 ### Added
 
+- **Plan, Tasks and Walkthrough artifacts.** The agent proposes a plan
+  (`ui_propose_plan`); you comment on any block or on a selected line, request
+  changes or approve. Once approved, the work shows as ticking tasks, and it
+  ends with a walkthrough (`ui_show_walkthrough`): what happened, the changes
+  in reading order, how to verify, completed tasks and follow-ups. On phones
+  the pane opens as a full-screen sheet with touch comments.
+- **The TV browser opens workspace files** (HTML pages, images, PDFs) by path.
+  A `localhost` URL nothing serves inside the desktop is refused with an
+  explanation instead of a blank page.
+
 - **Self-update for every build**, in Admin → General → Version & updates:
   - Servers installed with `install.sh` update in one click through
     `amiro update`, with the release notes, live progress, and a result that
@@ -38,6 +48,10 @@ last one as its own version). New work accumulates under `Unreleased`.
 
 ### Fixed
 
+- **The TV stream stays connected.** The desktop's own port checks no longer
+  get `127.0.0.1` blacklisted by the VNC server, and Chromium clears a profile
+  lock left by a previous container and can read workspace paths under
+  `/root`.
 - One-click updates on servers installed as a service (`install.sh --service`)
   no longer leave the old version running: the update now goes through
   `amiro update`, which restarts the systemd/launchd service, instead of

@@ -220,8 +220,22 @@ const PurePreviewMessage = ({
    * shows the thread-wide latest; these are the entry points to it.
    */
   const justThisMessage = useMemo(() => [message], [message]);
-  const { plan, walkthrough } = useArtifacts(justThisMessage, isLoading);
-  const { grantedMode, decide } = usePlanDecision(addToolResult);
+  const { plan: ownPlan, walkthrough } = useArtifacts(
+    justThisMessage,
+    isLoading,
+  );
+  // A `ui_propose_plan` plan is answered by the user's next message, which
+  // this message alone cannot see. Any message after it means the plan was
+  // approved or sent back, so its card must stop offering Proceed -- a second
+  // click would send a second approval.
+  const plan = useMemo(
+    () =>
+      ownPlan?.mode === "message" && !isLastMessage && ownPlan.pending
+        ? { ...ownPlan, pending: false }
+        : ownPlan,
+    [ownPlan, isLastMessage],
+  );
+  const { grantedMode, decide } = usePlanDecision(addToolResult, sendMessage);
   // Subscribing here (not in the memo comparator) is fine: zustand re-renders
   // this component itself when the filter changes, memo or not.
   const [onlyToolCategories, hideAllTools] = chatUxStore(

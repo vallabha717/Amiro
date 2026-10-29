@@ -43,7 +43,7 @@ export function TodoPanel({ todos }: { todos?: TodoArtifact }) {
   const pct = total === 0 ? 0 : Math.round((todos.done / total) * 100);
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col" data-testid="todo-panel">
       <header className="shrink-0 border-b px-4 py-2.5">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-medium">{t("tasksTitle")}</h2>

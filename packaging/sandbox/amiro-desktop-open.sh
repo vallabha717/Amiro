@@ -2,7 +2,8 @@
 # Open something on the agent's virtual desktop (started by amiro-desktop-start)
 # and print the desktop state afterwards.
 #
-#   amiro-desktop-open browser <http(s) URL>    a Chromium tab
+#   amiro-desktop-open browser <URL or file>    a Chromium tab: an http(s) URL,
+#                                               or a file (path or file://)
 #   amiro-desktop-open files [folder]           a Files (Thunar) window
 #   amiro-desktop-open terminal [folder]        a terminal starting in folder
 #
@@ -18,25 +19,58 @@ fail() {
   exit 2
 }
 
-# A folder as the desktop shows it: under the agent's real path when that is
+# A path as the desktop shows it: under the agent's real path when that is
 # mounted (see desktop-env), so Files and the terminal name it exactly.
-folder() {
-  local dir="${1:-$AMIRO_DESKTOP_HOME}"
-  case "$dir" in
-    /home/agent) dir="$AMIRO_DESKTOP_HOME" ;;
-    /home/agent/*) dir="$AMIRO_DESKTOP_HOME/${dir#/home/agent/}" ;;
+desktop_path() {
+  local path="${1:-$AMIRO_DESKTOP_HOME}"
+  case "$path" in
+    /home/agent) path="$AMIRO_DESKTOP_HOME" ;;
+    /home/agent/*) path="$AMIRO_DESKTOP_HOME/${path#/home/agent/}" ;;
     /*) ;;
-    *) dir="$AMIRO_DESKTOP_HOME/$dir" ;;
+    *) path="$AMIRO_DESKTOP_HOME/$path" ;;
   esac
+  printf '%s\n' "$path"
+}
+
+folder() {
+  local dir
+  dir="$(desktop_path "${1:-}")"
   [ -d "$dir" ] || fail "no such folder: $dir"
   (cd "$dir" && pwd -L)
+}
+
+# A workspace file as a file:// URL for the browser.
+open_file() {
+  local file
+  file="$(desktop_path "$1")"
+  [ -f "$file" ] || fail "no such file: $file (for a website, pass an http(s) URL)"
+  printf 'file://%s\n' "$file"
+}
+
+# Is anything listening on this TCP port inside the desktop? (hex, LISTEN=0A)
+listening_here() {
+  local hex
+  hex="$(printf '%04X' "$1")"
+  grep -qs ":$hex [0-9A-F:]* 0A " /proc/net/tcp /proc/net/tcp6
 }
 
 case "$APP" in
   browser)
     case "$TARGET" in
+      http://localhost*|https://localhost*|http://127.0.0.1*|https://127.0.0.1*|http://\[::1\]*|https://\[::1\]*)
+        # The desktop is its own machine: its localhost is not wherever the
+        # agent's shell started a server. Say so instead of a dead tab.
+        hostport="${TARGET#*://}"; hostport="${hostport%%/*}"; hostport="${hostport%%\?*}"
+        port="${hostport##*:}"
+        case "$port" in
+          ''|*[!0-9]*) case "$TARGET" in https:*) port=443 ;; *) port=80 ;; esac ;;
+        esac
+        listening_here "$port" || fail "nothing is listening on port $port inside your desktop. The desktop is a separate machine, so a server started in your shell is not reachable from it. To show a workspace file (an HTML page, image or PDF), pass its path instead, e.g. /home/agent/apps/page.html"
+        ;;
       http://*|https://*) ;;
-      *) fail "browser needs an http:// or https:// URL" ;;
+      file://*|/*) TARGET="$(open_file "${TARGET#file://}")" || exit 2 ;;
+      *://*) fail "browser needs an http(s) URL or a file path" ;;
+      *) TARGET="$(open_file "$TARGET")" || exit 2 ;;
     esac
     nohup /usr/local/bin/amiro-desktop-chrome "$TARGET" </dev/null >>/tmp/chrome.log 2>&1 &
     ;;

@@ -101,7 +101,11 @@ export function PlanArtifactView({
   const actionable = !plan.streaming && plan.pending;
 
   return (
-    <div className="flex h-full flex-col">
+    <div
+      className="flex h-full flex-col"
+      data-testid="plan-view"
+      data-state={plan.streaming ? "writing" : plan.pending ? "pending" : (plan.decision?.decision ?? "answered")}
+    >
       <header className="flex shrink-0 items-center gap-2 border-b px-4 py-2.5">
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-sm font-medium">
@@ -125,6 +129,7 @@ export function PlanArtifactView({
           <>
             <Button
               size="sm"
+              data-testid="plan-review-toggle"
               variant={reviewing ? "secondary" : "ghost"}
               className="h-7 rounded-full text-xs"
               onClick={() => setReviewing((open) => !open)}
@@ -140,6 +145,7 @@ export function PlanArtifactView({
             <Separator orientation="vertical" className="h-4" />
             <Button
               size="sm"
+              data-testid="plan-proceed"
               className="h-7 rounded-full text-xs active:scale-[0.97] transition-transform duration-[160ms] ease-[var(--ease-out)]"
               disabled={busy}
               onClick={() => decide("proceed")}
@@ -235,6 +241,7 @@ function ReviewList({
       <div className="flex items-center gap-2 pt-1">
         <Button
           size="sm"
+          data-testid="plan-send-comments"
           className="h-7 rounded-full text-xs active:scale-[0.97] transition-transform duration-[160ms] ease-[var(--ease-out)]"
           disabled={busy}
           onClick={onSend}
