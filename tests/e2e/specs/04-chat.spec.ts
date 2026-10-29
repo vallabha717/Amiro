@@ -150,7 +150,8 @@ test.describe("chat", () => {
       const sent = page.locator('[data-message-role="user"]').last();
       await expect(sent, "the comments are sent quoting the plan").toContainText(/Changes requested/, { timeout: 15000 });
       await expect.soft(sent).toContainText(/soft-opening/);
-      await expect.soft(sent).toContainText(/merge them/);
+      // Long quotes fold behind "Show more", so check the mechanism: two anchored comments.
+      await expect(sent, "both comments are sent, each quoting its anchor").toContainText(/- On «[\s\S]+- On «/);
       await waitForReply(page, { before, timeoutMs: 240000 });
       await expect(plan, "the revised plan awaits review again").toHaveAttribute("data-state", "pending", { timeout: 120000 });
     });
@@ -158,6 +159,7 @@ test.describe("chat", () => {
       await page.getByTestId("plan-proceed").click();
       await expect(page.getByTestId("artifact-tab-plan"), "an approved plan shows as a finished stage").toHaveAttribute("data-done", "true", { timeout: 60000 });
       await expect(page.getByTestId("todo-panel"), "tasks follow the approval").toBeVisible({ timeout: 240000 });
+      await expect(page.getByTestId("plan-card-proceed"), "answered plan cards in the chat no longer offer Proceed").toHaveCount(0);
     });
     await step("Work finishes → the Walkthrough opens with the outcome, numbered changes and every task ticked", async () => {
       await expect(page.getByTestId("walkthrough-view"), "the walkthrough closes the work").toBeVisible({ timeout: 360000 });
