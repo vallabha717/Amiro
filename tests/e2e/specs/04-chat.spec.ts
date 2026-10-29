@@ -137,7 +137,7 @@ test.describe("chat", () => {
       if (!first || !second) throw new Error("plan bullets have no layout");
       await page.mouse.move(first.x + 2, first.y + first.height / 2);
       await page.mouse.down();
-      await page.mouse.move(second.x + second.width - 4, second.y + second.height / 2, { steps: 8 });
+      await page.mouse.move(second.x + second.width * 0.6, second.y + Math.min(12, second.height / 2), { steps: 8 });
       await page.mouse.up();
       await page.getByTestId("plan-comment-input").fill("These two steps can happen in the same week; merge them.");
       await page.getByTestId("plan-comment-submit").click();

@@ -162,6 +162,12 @@ export function CommentableMarkdown({
   const trackLine = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (readonly || pending) return;
+      // A held mouse button is a selection being dragged: the line button
+      // would chase the cursor and land under the release point.
+      if (event.pointerType === "mouse" && event.buttons) {
+        setHovered(null);
+        return;
+      }
       const container = containerRef.current;
       const target = event.target as HTMLElement | null;
       if (!container || !target) return;
