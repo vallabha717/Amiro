@@ -120,7 +120,9 @@ export function CommentableMarkdown({
     const quote = normalizeQuote(selection.toString());
     if (!quote) return;
 
-    const anchorNode = selection.anchorNode;
+    // The range's start, not the selection's anchor: dragged upwards, the
+    // anchor is where the drag ended, the last block of the quote.
+    const anchorNode = selection.getRangeAt(0).startContainer;
     const element =
       anchorNode?.nodeType === Node.ELEMENT_NODE
         ? (anchorNode as HTMLElement)

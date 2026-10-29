@@ -87,6 +87,44 @@ describe("anchorState", () => {
     expect(state.kind).toBe("outdated");
   });
 
+  // The quote comes from the rendered page, the blocks are markdown source.
+  it("attaches a quote taken from formatted text", () => {
+    const formatted = planBlocks(
+      "## Steps\n\n- Run a **soft opening** week for [friends](https://x.test) with `oat milk` tastings\n\n| Day | Event |\n| --- | --- |\n| Fri | Launch party |",
+    );
+    for (const quote of [
+      "Run a soft opening week for friends with oat milk tastings",
+      "Fri Launch party",
+      "Steps",
+    ]) {
+      expect(anchorState({ quote, blockId: "x" }, formatted).kind).toBe(
+        "attached",
+      );
+    }
+  });
+
+  it("attaches a selection dragged across two blocks to the first", () => {
+    const span = planBlocks(
+      "## Goal\n\nOpen Brew & Bloom in Pune.\n\n- Book the space\n- Hire baristas",
+    );
+    const state = anchorState(
+      { quote: "Open Brew & Bloom in Pune. Book the space", blockId: "x" },
+      span,
+    );
+    expect(state).toEqual({
+      kind: "attached",
+      blockId: span.find((b) => b.source.startsWith("Open"))!.id,
+    });
+  });
+
+  it("matches a capped quote by its visible part", () => {
+    const long = `${"word ".repeat(60)}end`;
+    const quote = normalizeQuote(long);
+    expect(anchorState({ quote, blockId: "x" }, planBlocks(long)).kind).toBe(
+      "attached",
+    );
+  });
+
   it("treats an empty quote as outdated rather than matching everything", () => {
     expect(anchorState({ quote: "   ", blockId: "x" }, blocks).kind).toBe(
       "outdated",

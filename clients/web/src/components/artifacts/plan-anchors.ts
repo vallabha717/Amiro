@@ -87,6 +87,57 @@ function normalize(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
+/**
+ * A block's source as the reader sees it once rendered.
+ *
+ * The quote is taken from the rendered page, so `**soft opening**` in the
+ * source arrives as `soft opening`, a link as its label, a list item without
+ * its bullet. Matching against the raw source alone would mark any quote
+ * that touches formatting as outdated the moment it was made.
+ */
+function rendered(source: string): string {
+  return normalize(
+    source
+      .replace(/^```.*$/gm, "")
+      .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+      .replace(
+        /^\s{0,3}(?:#{1,6}\s+|>\s?|[-*+]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+)/gm,
+        "",
+      )
+      .replace(/^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)*\|?\s*$/gm, "")
+      .replace(/\|/g, " ")
+      .replace(/(\*\*|__|~~|`)/g, "")
+      .replace(/(^|[^\w*])[*_](?=\S)([^*_\n]+?)[*_](?!\w)/g, "$1$2"),
+  );
+}
+
+function contains(block: PlanBlock, quote: string): boolean {
+  return (
+    normalize(block.source).includes(quote) ||
+    rendered(block.source).includes(quote)
+  );
+}
+
+/**
+ * The first block of a run of consecutive blocks whose rendered text holds
+ * the quote -- a selection dragged across two bullets or a heading and its
+ * paragraph. Capped at a handful of blocks: normalizeQuote already caps the
+ * quote, so a longer run could never be the match.
+ */
+function spanStart(blocks: PlanBlock[], quote: string): PlanBlock | undefined {
+  for (let j = 1; j < blocks.length; j++) {
+    // Grow the run backwards from each end block, so the first match is the
+    // tightest run -- the block the selection actually started in, not the
+    // heading above it that a longer run would also contain.
+    let text = rendered(blocks[j].source);
+    for (let i = j - 1; i >= Math.max(0, j - 8); i--) {
+      text = `${rendered(blocks[i].source)} ${text}`;
+      if (text.includes(quote)) return blocks[i];
+    }
+  }
+  return undefined;
+}
+
 export type AnchorState =
   | { kind: "attached"; blockId: string }
   /** The quote is gone from the document -- usually because it was rewritten. */
@@ -104,17 +155,19 @@ export function anchorState(
   comment: Pick<PlanComment, "quote" | "blockId">,
   blocks: PlanBlock[],
 ): AnchorState {
-  const quote = normalize(comment.quote);
+  // A capped selection ends in "…", which the document never contains.
+  const quote = normalize(comment.quote.replace(/…$/, ""));
   if (!quote) return { kind: "outdated" };
 
   // The recorded block first: when nothing moved, this is the answer and it
   // avoids a comment jumping to a coincidental match elsewhere.
   const recorded = blocks.find((b) => b.id === comment.blockId);
-  if (recorded && normalize(recorded.source).includes(quote)) {
+  if (recorded && contains(recorded, quote)) {
     return { kind: "attached", blockId: recorded.id };
   }
 
-  const moved = blocks.find((b) => normalize(b.source).includes(quote));
+  const moved =
+    blocks.find((b) => contains(b, quote)) ?? spanStart(blocks, quote);
   if (moved) return { kind: "attached", blockId: moved.id };
 
   return { kind: "outdated" };
