@@ -309,6 +309,7 @@ export function CommentableMarkdown({
             <button
               type="button"
               data-line-affordance
+              data-testid="plan-comment-line"
               onClick={commentOnLine}
               aria-label={t("commentOnLine")}
               title={t("commentOnLine")}
@@ -360,6 +361,7 @@ export function CommentableMarkdown({
           </p>
           <textarea
             autoFocus
+            data-testid="plan-comment-input"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
@@ -372,6 +374,7 @@ export function CommentableMarkdown({
           <div className="flex items-center gap-2 pt-2">
             <Button
               size="sm"
+              data-testid="plan-comment-submit"
               className="h-7 rounded-full text-xs"
               disabled={!draft.trim()}
               onClick={submit}
@@ -406,6 +409,7 @@ function CommentBubble({
   const t = useTranslations("Chat.Artifact");
   return (
     <div
+      data-testid="plan-comment"
       className={cn(
         "group/comment flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-xs",
         // Entry is a 4px slide plus a fade -- enough to say "this appeared

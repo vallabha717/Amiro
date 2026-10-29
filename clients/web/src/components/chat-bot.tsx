@@ -16,7 +16,11 @@ import {
 import { toast } from "sonner";
 import { chatFilesFrom } from "lib/file-preview/chat-files";
 import { ArtifactPane } from "./artifacts/artifact-pane";
-import { buildPlanDecision, useArtifacts } from "./artifacts/use-artifacts";
+import {
+  artifactStageKey,
+  buildPlanDecision,
+  useArtifacts,
+} from "./artifacts/use-artifacts";
 import { ChatGreeting } from "./chat-greeting";
 import { LoginPanel } from "./chat/login-panel";
 import { ErrorMessage, PreviewMessage } from "./message";
@@ -531,28 +535,22 @@ export default function ChatBot({
   // shows the same live list.
   useEffect(() => {
     if (!latestAssistantMessageId) return;
-    if (artifactView.openedFor === latestAssistantMessageId) return;
-    const tab = artifacts.plan
-      ? "plan"
-      : artifacts.walkthrough
-        ? "walkthrough"
-        : undefined;
+    const tab = artifacts.stage;
     if (!tab) return;
+    // One key per stage of one piece of work, so the pane follows the work
+    // from Plan to Tasks to Walkthrough, but a user who closed it is not
+    // fought on every render within a stage.
+    const key = artifactStageKey(artifacts);
+    if (artifactView.openedFor === key) return;
     appStoreMutate((state) => ({
       artifactView: {
         ...state.artifactView,
         isOpen: true,
         tab,
-        openedFor: latestAssistantMessageId,
+        openedFor: key,
       },
     }));
-  }, [
-    latestAssistantMessageId,
-    artifacts.plan,
-    artifacts.walkthrough,
-    artifactView.openedFor,
-    appStoreMutate,
-  ]);
+  }, [latestAssistantMessageId, artifacts, artifactView.openedFor, appStoreMutate]);
 
   const isInitialThreadEntry = useMemo(
     () =>
@@ -1055,6 +1053,7 @@ export default function ChatBot({
               chatFiles={chatFiles}
               threadId={threadId}
               addToolResult={addToolResult}
+              sendMessage={sendMessage}
               // isLoading alone, not isPendingToolCall: isPendingToolCall is
               // true for the very call Proceed/Send exist to resolve, so
               // including it here would deadlock the pane's own buttons.

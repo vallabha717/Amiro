@@ -31,7 +31,7 @@ export function WalkthroughView({
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col" data-testid="walkthrough-view">
       <header className="shrink-0 border-b px-4 py-2.5">
         <h2 className="text-sm font-medium">{t("walkthroughTitle")}</h2>
         {walkthrough.streaming && (

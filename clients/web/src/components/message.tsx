@@ -221,7 +221,7 @@ const PurePreviewMessage = ({
    */
   const justThisMessage = useMemo(() => [message], [message]);
   const { plan, walkthrough } = useArtifacts(justThisMessage, isLoading);
-  const { grantedMode, decide } = usePlanDecision(addToolResult);
+  const { grantedMode, decide } = usePlanDecision(addToolResult, sendMessage);
   // Subscribing here (not in the memo comparator) is fine: zustand re-renders
   // this component itself when the filter changes, memo or not.
   const [onlyToolCategories, hideAllTools] = chatUxStore(

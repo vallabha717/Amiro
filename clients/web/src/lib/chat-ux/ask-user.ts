@@ -117,6 +117,32 @@ export function parseAskUser(output: unknown): AskUserRequest | null {
   return null;
 }
 
+/**
+ * The JSON object that follows `MARKER {` in a tool result, or null. The plan
+ * and walkthrough cards ride the same text convention as the question card.
+ */
+export function parseMarkerJson(
+  output: unknown,
+  marker: string,
+): Record<string, any> | null {
+  const texts: string[] = [];
+  collectText(output, texts);
+  const needle = `${marker} {`;
+  for (const text of texts) {
+    const at = text.indexOf(needle);
+    if (at < 0) continue;
+    const json = balancedObject(text, at + marker.length + 1);
+    if (!json) continue;
+    try {
+      const value = JSON.parse(json);
+      if (value && typeof value === "object") return value;
+    } catch {
+      // A malformed card is not a card; keep looking.
+    }
+  }
+  return null;
+}
+
 /** True when the answer to this question has something in it. */
 export function isAnswered(answer: AskUserAnswer | undefined): boolean {
   if (!answer) return false;

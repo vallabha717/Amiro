@@ -18,7 +18,11 @@ import type { ChatFile } from "lib/file-preview/chat-files";
 import { FilesTabView } from "./files-tab-view";
 import { PlanArtifactView } from "./plan-artifact";
 import { TodoPanel } from "./todo-panel";
-import type { ArtifactTab, Artifacts } from "./use-artifacts";
+import {
+  type ArtifactTab,
+  type Artifacts,
+  artifactStageKey,
+} from "./use-artifacts";
 import { usePlanDecision } from "./use-plan-decision";
 import { WalkthroughView } from "./walkthrough-artifact";
 
@@ -28,6 +32,7 @@ interface Props {
   chatFiles?: ChatFile[];
   threadId?: string;
   addToolResult?: UseChatHelpers<UIMessage>["addToolResult"];
+  sendMessage?: UseChatHelpers<UIMessage>["sendMessage"];
   busy?: boolean;
 }
 
@@ -52,13 +57,17 @@ export function ArtifactPane({
   chatFiles,
   threadId,
   addToolResult,
+  sendMessage,
   busy,
 }: Props) {
   const t = useTranslations("Chat.Artifact");
   const [tab, mutate] = appStore(
     useShallow((state) => [state.artifactView.tab, state.mutate]),
   );
-  const { grantedMode, decide } = usePlanDecision(addToolResult);
+  const { grantedMode, decide } = usePlanDecision(
+    addToolResult,
+    sendMessage,
+  );
 
   const { plan, todos, walkthrough } = artifacts;
 
@@ -100,6 +109,8 @@ export function ArtifactPane({
             <button
               key={id}
               type="button"
+              data-testid={`artifact-tab-${id}`}
+              data-active={active}
               onClick={() =>
                 mutate((s) => ({
                   artifactView: { ...s.artifactView, tab: id },
@@ -145,10 +156,9 @@ export function ArtifactPane({
               artifactView: {
                 ...s.artifactView,
                 isOpen: false,
-                openedFor:
-                  plan?.messageId ??
-                  walkthrough?.messageId ??
-                  s.artifactView.openedFor,
+                openedFor: artifacts.stage
+                  ? artifactStageKey(artifacts)
+                  : s.artifactView.openedFor,
               },
             }))
           }

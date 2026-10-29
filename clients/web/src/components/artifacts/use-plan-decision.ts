@@ -7,6 +7,7 @@ import { DefaultToolName } from "lib/ai/tools";
 import { useCallback, useMemo } from "react";
 import { useShallow } from "zustand/shallow";
 import type { GrantedMode } from "./plan-artifact";
+import { formatPlanDecisionMessage } from "./plan-messages";
 import {
   type PlanArtifact,
   type PlanComment,
@@ -24,6 +25,7 @@ import {
  */
 export function usePlanDecision(
   addToolResult?: UseChatHelpers<UIMessage>["addToolResult"],
+  sendMessage?: UseChatHelpers<UIMessage>["sendMessage"],
 ) {
   const [permissionMode, modeBeforePlan, mutate] = appStore(
     useShallow((state) => [
@@ -58,7 +60,8 @@ export function usePlanDecision(
       comments: PlanComment[],
       mode: GrantedMode,
     ) => {
-      if (!addToolResult) return;
+      const viaMessage = plan.mode === "message";
+      if (viaMessage ? !sendMessage : !addToolResult) return;
 
       if (decision === "proceed" && permissionMode === "plan") {
         // Cleared alongside the switch: leaving it set would make a *later*
@@ -66,13 +69,27 @@ export function usePlanDecision(
         mutate({ permissionMode: mode, modeBeforePlan: undefined });
       }
 
-      addToolResult({
+      if (viaMessage) {
+        // The agent ended its turn on the plan, so the answer is a message.
+        sendMessage?.({
+          role: "user",
+          parts: [
+            {
+              type: "text",
+              text: formatPlanDecisionMessage(decision, plan.title, comments),
+            },
+          ],
+        });
+        return;
+      }
+
+      addToolResult?.({
         tool: DefaultToolName.ProposePlan,
         toolCallId: plan.toolCallId,
         output: buildPlanDecision(decision, comments, mode),
       });
     },
-    [addToolResult, mutate, permissionMode],
+    [addToolResult, sendMessage, mutate, permissionMode],
   );
 
   return { grantedMode, decide };
