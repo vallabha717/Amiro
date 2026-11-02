@@ -92,3 +92,28 @@ crates.io. Those crates keep their own licences and are not vendored here;
 | Date | From | To | How |
 |---|---|---|---|
 | 2026-10-19 | `11952e02` (0.98.1) | `48aa83e9` (0.99.0+54) | Normalized with `scripts/runtime-update/normalize_upstream.py` (transform v2), three-way merged with the tracked runtime per `docs/runtime-upstream-update.md`. Conflicts: root `Cargo.toml` (kept `amiro-runtime`, took `0.99.0`), `Cargo.lock` (re-resolved by Cargo). 10 upstream deletions (swarm task-graph DAG) reviewed: unused by Amiro. |
+| 2026-11-02 | `48aa83e9` | `48aa83e9` + 25 ported fixes | Base unchanged. Individual fixes from upstream `master` and the owner's fork (`vallabha717/jcode`, branch `fix/muse-ga-antigravity-latest`), each normalized with transform v3 and merged file by file (`git merge-file`). Listed in `docs/runtime-customizations.json` under `portedFixes`; a later full update will find them already present. |
+
+### Fixes ported on top of the base (2026-11-02)
+
+Each is one Amiro commit named `fix(runtime): port <upstream subject>`.
+
+| Upstream commit | Source | What it fixes |
+|---|---|---|
+| `b0706e840` | fork | Muse: tool mapping and the launcher User-Agent Muse needs to treat requests as subscription use |
+| `926cca658` | fork | Muse native subscription login without the experimental opt-in |
+| `cd255711b`, `f4b50936f` | fork | Muse quota usage windows; plan tier sanitized |
+| `27717c5d5` | fork | Antigravity client version refresh; Gemini 3.8 effort and thinking |
+| `aac3a2d10` | fork | Nullable tool type unions lowered for Gemini protobuf requests |
+| `8a32da6c1` | fork | `execute_command` / `exec_command` resolve to bash |
+| `91eabcd4d` | upstream | Antigravity context budget from the routed model catalog (needed by `27717c5d5`) |
+| `aba7d5a49`, `11c33f3b5` | upstream | Assistant text that looks like a tool call is never executed |
+| `742bd69f4` | upstream | OpenAI SSE idle detection and completion (applied by hand to `openai_stream_runtime.rs`) |
+| `ce5d3cb4a` | upstream | UTF-8 kept intact across Responses SSE chunks |
+| `4bb16b96c` | upstream | RUSTSEC-2026-0385/0387: unused AWS features dropped, `ctutils` 0.4.5 |
+| `86d9efe05` | upstream | Account store transactions serialized across processes |
+| `0e966d904`, `b8f1e46b0`, `a10284963` | upstream | Session resume and completed-turn reconciliation |
+| `5e7e0457c`, `812c174c3` | upstream | Configured model honoured for fresh sessions; model catalogs refreshed every 30 minutes |
+| `b882d84be`, `9fb8fbf35`, `7e6dec1e6`, `a2e805328`, `9d22cbb8e` | upstream | Tool schema dialect fixes; canonical edit operations; stale patch hunks rejected. `7e6dec1e6`'s todo-tool half is not applied: Amiro's todo tool has no `add` operation |
+
+Not ported: `bf264b9d6` (swallowed server errors) needs upstream refactors Amiro lacks (task progress plumbing, turn ownership, todo dependencies); `81d9d2e79` changes only the TUI.
