@@ -92,7 +92,7 @@ crates.io. Those crates keep their own licences and are not vendored here;
 | Date | From | To | How |
 |---|---|---|---|
 | 2026-10-19 | `11952e02` (0.98.1) | `48aa83e9` (0.99.0+54) | Normalized with `scripts/runtime-update/normalize_upstream.py` (transform v2), three-way merged with the tracked runtime per `docs/runtime-upstream-update.md`. Conflicts: root `Cargo.toml` (kept `amiro-runtime`, took `0.99.0`), `Cargo.lock` (re-resolved by Cargo). 10 upstream deletions (swarm task-graph DAG) reviewed: unused by Amiro. |
-| 2026-11-02 | `48aa83e9` | `48aa83e9` + 25 ported fixes | Base unchanged. Individual fixes from upstream `master` and the owner's fork (`vallabha717/jcode`, branch `fix/muse-ga-antigravity-latest`), each normalized with transform v3 and merged file by file (`git merge-file`). Listed in `docs/runtime-customizations.json` under `portedFixes`; a later full update will find them already present. |
+| 2026-11-02 | `48aa83e9` | `48aa83e9` + 26 ported fixes | Base unchanged. Individual fixes from upstream `master` and the owner's fork (`vallabha717/jcode`, branch `fix/muse-ga-antigravity-latest`), each normalized with transform v3 and merged file by file (`git merge-file`). Listed in `docs/runtime-customizations.json` under `portedFixes`; a later full update will find them already present. |
 
 ### Fixes ported on top of the base (2026-11-02)
 
@@ -106,6 +106,7 @@ Each is one Amiro commit named `fix(runtime): port <upstream subject>`.
 | `27717c5d5` | fork | Antigravity client version refresh; Gemini 3.8 effort and thinking |
 | `aac3a2d10` | fork | Nullable tool type unions lowered for Gemini protobuf requests |
 | `8a32da6c1` | fork | `execute_command` / `exec_command` resolve to bash |
+| `8eb35c7a4` | fork | Antigravity reasoning streamed live through `streamGenerateContent` (SSE) instead of arriving with the finished turn |
 | `91eabcd4d` | upstream | Antigravity context budget from the routed model catalog (needed by `27717c5d5`) |
 | `aba7d5a49`, `11c33f3b5` | upstream | Assistant text that looks like a tool call is never executed |
 | `742bd69f4` | upstream | OpenAI SSE idle detection and completion (applied by hand to `openai_stream_runtime.rs`) |

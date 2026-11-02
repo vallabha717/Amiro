@@ -26,6 +26,8 @@ last one as its own version). New work accumulates under `Unreleased`.
   is never executed, OpenAI streams no longer cut off while alive or hang after
   completion, UTF-8 across stream chunks, session resume races, and
   RUSTSEC-2026-0385/0387.
+- **Antigravity thinking streams live.** Reasoning from Antigravity models
+  appears as the model produces it, instead of all at once when the reply ends.
 
 ### Added
 
