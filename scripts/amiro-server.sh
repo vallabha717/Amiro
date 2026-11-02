@@ -24,6 +24,11 @@
 #   uninstall-service [--user|--system]     disable + remove the unit
 #   service-status                           systemctl status for the unit
 #   print-unit                              print the generated unit (no write)
+#   update [COMMIT]                          fast-forward this checkout to its
+#                                            branch on origin (or COMMIT on it),
+#                                            rebuild the web UI, backend and
+#                                            runtime, then restart the service
+#                                            or daemon (Admin → General runs this)
 #
 # Options:
 #   --host H        bind host (default $AMIRO_HOST, or 127.0.0.1; 0.0.0.0
@@ -89,7 +94,7 @@ err()  { printf 'error: %s\n' "$*" >&2; }
 warn() { printf 'warn: %s\n' "$*" >&2; }
 die()  { printf 'error: %s\n' "$*" >&2; exit 1; }
 
-usage() { sed -n '3,45p' "${BASH_SOURCE[0]}"; }
+usage() { sed -n '3,51p' "${BASH_SOURCE[0]}"; }
 
 # ---------------------------------------------------------------------------
 # Backend binary resolution (release build, then debug, then PATH)
@@ -446,6 +451,75 @@ cmd_service_status() {
 }
 
 # ---------------------------------------------------------------------------
+# update: follow the branch on origin, rebuild, restart
+# ---------------------------------------------------------------------------
+# Run by the backend for Admin → General → Update (it passes AMIRO_HOME,
+# AMIRO_BUILD_PROFILE and, under systemd, AMIRO_RESTART_UNIT/_SCOPE). A failed
+# build leaves the checkout on the new commit and the running server on the
+# old one; running update again resumes from the build.
+restart_after_update() {
+  local unit="${AMIRO_RESTART_UNIT:-}" scope="${AMIRO_RESTART_SCOPE:-system}"
+  if [ -n "$unit" ] && command -v systemctl >/dev/null 2>&1; then
+    say "==> Restarting $unit"
+    # --no-block: the restart stops this script too (it runs in the unit).
+    if [ "$scope" = "user" ]; then
+      systemctl --user --no-block restart "$unit"
+    else
+      systemctl --no-block restart "$unit"
+    fi
+    return 0
+  fi
+  if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE" 2>/dev/null)" 2>/dev/null; then
+    say "==> Restarting the background server"
+    cmd_stop
+    cmd_start --daemon
+    return 0
+  fi
+  say "Built. Restart Amiro to run the new version (it was not started as a service or with --daemon)."
+}
+
+cmd_update() {
+  local target="${1:-}"
+  # A service starts with a bare environment: find the toolchains.
+  export HOME="${HOME:-$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6)}"
+  export PATH="$HOME/.cargo/bin:/usr/local/bin:$PATH"
+  local profile="${AMIRO_BUILD_PROFILE:-release}"
+  command -v git >/dev/null || die "git is required"
+  command -v cargo >/dev/null || die "cargo is required (Rust toolchain)"
+  command -v pnpm >/dev/null || die "pnpm is required"
+  cd "$REPO_ROOT"
+
+  local branch
+  branch="$(git symbolic-ref --short -q HEAD)" || die "this checkout is not on a branch"
+  [ -z "$(git status --porcelain --untracked-files=no)" ] \
+    || die "this checkout has uncommitted changes to tracked files; commit or discard them first"
+  say "==> Fetching $branch from origin"
+  git fetch --quiet origin "$branch"
+  target="${target:-$(git rev-parse "origin/$branch")}"
+  git merge-base --is-ancestor "$target" "origin/$branch" 2>/dev/null \
+    || die "$target is not on origin/$branch"
+  if git merge-base --is-ancestor "$target" HEAD; then
+    say "==> Checkout already has $(git rev-parse --short "$target"); rebuilding"
+  else
+    say "==> Updating $branch: $(git rev-parse --short HEAD) → $(git rev-parse --short "$target")"
+    git merge --ff-only --quiet "$target" || die "cannot fast-forward $branch to $target (local commits?)"
+  fi
+
+  local cargo_flags=(--locked)
+  [ "$profile" = release ] && cargo_flags+=(--release)
+  say "==> Installing web dependencies"
+  pnpm install --frozen-lockfile
+  say "==> Building the backend ($profile)"
+  cargo build --manifest-path backend/Cargo.toml --target-dir backend/target --bin amiro-backend "${cargo_flags[@]}"
+  say "==> Building the runtime ($profile)"
+  cargo build --manifest-path runtime/Cargo.toml --target-dir runtime/target --bin amiro-runtime "${cargo_flags[@]}"
+  say "==> Building the web UI"
+  pnpm build
+  say "==> Built $(git rev-parse --short HEAD)"
+  restart_after_update
+}
+
+# ---------------------------------------------------------------------------
 # Argument parsing (global flags first, then the command)
 # ---------------------------------------------------------------------------
 COMMAND="${1:-help}"
@@ -461,6 +535,7 @@ case "$COMMAND" in
   install-service)   cmd_install_service "$@" ;;
   uninstall-service) cmd_uninstall_service "$@" ;;
   service-status)    cmd_service_status ;;
+  update)            cmd_update "$@" ;;
   help|--help|-h)    usage ;;
   *)
     err "unknown command: $COMMAND"

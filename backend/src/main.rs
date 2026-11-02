@@ -38,10 +38,11 @@ fn unauthorized(msg: &str) -> (StatusCode, Json<serde_json::Value>) {
     (StatusCode::UNAUTHORIZED, Json(json!({"error": msg})))
 }
 
-/// Liveness plus the running version: open tabs and phones compare it with
-/// the UI they loaded and offer a reload after the server updates.
+/// Liveness plus the running version and commit: open tabs and phones
+/// compare them with the UI they loaded and reload after the server updates.
 async fn health() -> Json<serde_json::Value> {
-    Json(json!({"status":"ok","version":backend::updates::current_version()}))
+    let commit = backend::updates::running_commit().map(|c| c.chars().take(7).collect::<String>());
+    Json(json!({"status":"ok","version":backend::updates::current_version(),"commit":commit}))
 }
 
 /// `host[:port]` of a URL, with the scheme's default port filled in so
