@@ -5,21 +5,38 @@ import { RefreshCw, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
-import { getServerVersion } from "@/lib/backend/update-api";
+import { getServerBuild } from "@/lib/backend/update-api";
 import { isDesktopApp } from "@/lib/updates/desktop-updater";
-import { displayVersion, isStaleUi } from "@/lib/updates/version";
+import { type Build, displayBuild, isStaleUi } from "@/lib/updates/version";
 
 const POLL_MS = 5 * 60 * 1000;
 const DISMISS_KEY = "amiro.reload-banner.dismissed";
 
+function buildKey(build: Build | null): string {
+  return build ? `${build.version ?? ""}+${build.commit ?? ""}` : "";
+}
+
+/** Text typed into a composer or form that a reload would lose. */
+function hasUnsentText(): boolean {
+  const fields = document.querySelectorAll<HTMLTextAreaElement | HTMLElement>(
+    "textarea, [contenteditable='true']",
+  );
+  return Array.from(fields).some((field) =>
+    ("value" in field ? field.value : field.textContent ?? "").trim(),
+  );
+}
+
 /**
  * Browsers and phones load the screens from the server. After the server
- * updates, an open tab still runs the old screens: offer a reload. The
- * desktop app bundles its screens and updates them with the app instead.
+ * updates, an open tab still runs the old screens. Coming back to it (a
+ * phone app reopened from the Home Screen, a tab switched back to) reloads
+ * it by itself unless something typed would be lost; otherwise a banner
+ * offers the reload. The desktop app bundles its screens and updates them
+ * with the app instead.
  */
 export function ReloadBanner() {
   const t = useTranslations("Updates");
-  const [serverVersion, setServerVersion] = useState<string | null>(null);
+  const [server, setServer] = useState<Build | null>(null);
   const [dismissed, setDismissed] = useState<string | null>(null);
 
   useEffect(() => {
@@ -30,35 +47,39 @@ export function ReloadBanner() {
       // Storage can be blocked; the banner then simply shows again.
     }
     let cancelled = false;
-    const check = async () => {
+    const check = async (resumed: boolean) => {
       try {
-        const version = await getServerVersion();
-        if (!cancelled) setServerVersion(version);
+        const build = await getServerBuild();
+        if (cancelled) return;
+        if (resumed && isStaleUi(build) && !hasUnsentText()) {
+          window.location.reload();
+          return;
+        }
+        setServer(build);
       } catch {
         // Offline or restarting: try again on the next tick or focus.
       }
     };
-    void check();
-    const timer = setInterval(check, POLL_MS);
+    void check(false);
+    const timer = setInterval(() => void check(false), POLL_MS);
     const onVisible = () => {
-      if (document.visibilityState === "visible") void check();
+      if (document.visibilityState === "visible") void check(true);
     };
     document.addEventListener("visibilitychange", onVisible);
-    window.addEventListener("focus", onVisible);
     return () => {
       cancelled = true;
       clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener("focus", onVisible);
     };
   }, []);
 
-  if (!isStaleUi(serverVersion) || dismissed === serverVersion) return null;
+  if (!isStaleUi(server) || dismissed === buildKey(server)) return null;
 
   const dismiss = () => {
-    setDismissed(serverVersion);
+    const key = buildKey(server);
+    setDismissed(key);
     try {
-      if (serverVersion) sessionStorage.setItem(DISMISS_KEY, serverVersion);
+      sessionStorage.setItem(DISMISS_KEY, key);
     } catch {
       // ignore
     }
@@ -71,7 +92,7 @@ export function ReloadBanner() {
       data-testid="update-reload-banner"
     >
       <RefreshCw className="size-4 shrink-0 text-primary" />
-      <span className="flex-1">{t("banner.text", { version: displayVersion(serverVersion) })}</span>
+      <span className="flex-1">{t("banner.text", { version: displayBuild(server) })}</span>
       <Button size="sm" onClick={() => window.location.reload()} data-testid="update-reload-button">
         {t("banner.reload")}
       </Button>

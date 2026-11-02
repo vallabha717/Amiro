@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type { NextConfig } from "next";
@@ -13,6 +14,18 @@ const PROJECT_ROOT = path.join(import.meta.dirname, "../..");
 const AMIRO_VERSION: string = JSON.parse(
   fs.readFileSync(path.join(PROJECT_ROOT, "package.json"), "utf8"),
 ).version;
+// The commit it was built from: a server that follows a branch (a source
+// checkout) changes commit, not version, so tabs compare this too.
+const AMIRO_COMMIT: string = (() => {
+  try {
+    return execFileSync("git", ["-C", PROJECT_ROOT, "rev-parse", "--short=7", "HEAD"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return "";
+  }
+})();
 
 export default () => {
   const isDev = process.env.NODE_ENV === "development";
@@ -72,6 +85,7 @@ export default () => {
       NO_HTTPS: process.env.NO_HTTPS,
       NEXT_PUBLIC_BACKEND_URL: isDev ? "" : process.env.NEXT_PUBLIC_BACKEND_URL,
       NEXT_PUBLIC_AMIRO_VERSION: AMIRO_VERSION,
+      NEXT_PUBLIC_AMIRO_COMMIT: AMIRO_COMMIT,
     },
     // authInterrupts (forbidden()/unauthorized()) and serverActions are
     // both RSC-server features -- static export has no server, and Phase 7

@@ -24,7 +24,7 @@ export function UpdateSettings({
 }) {
   const t = useTranslations("Updates");
   const [saving, setSaving] = useState<keyof Settings | null>(null);
-  const canAutoInstall = method === "installer";
+  const canAutoInstall = method === "installer" || method === "source";
 
   const save = async (key: keyof Settings, value: boolean) => {
     setSaving(key);

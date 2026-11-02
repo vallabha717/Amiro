@@ -47,6 +47,14 @@ export const metadata: Metadata = {
   icons: {
     icon: "/Vrnda_logo.svg",
   },
+  // iPhone: Share → Add to Home Screen opens Amiro full screen, named Amiro,
+  // with app/apple-touch-icon.png. It always loads this server's screens,
+  // so it updates with the server.
+  appleWebApp: {
+    capable: true,
+    title: "Amiro",
+    statusBarStyle: "default",
+  },
 };
 
 // Phones: match the browser bar to the theme. Pinch zoom stays allowed.
