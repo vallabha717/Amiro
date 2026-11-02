@@ -172,7 +172,7 @@ impl Tool for EditTool {
                 },
                 "edits": {
                     "type": "array",
-                    "description": "Required nonempty array of replacements applied in order. Each edit requires old_string and new_string. Each old_string must match exactly once unless replace_all is set.",
+                    "description": "Required replacements in order. Each old_string must match once unless replace_all is set.",
                     "minItems": 1,
                     "items": {
                         "type": "object",

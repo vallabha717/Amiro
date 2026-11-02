@@ -1849,9 +1849,11 @@ fn the_dialect_sweep_catches_the_issue_754_schema() {
 async fn only_the_known_open_world_tools_are_ineligible_for_openai_strict_mode() {
     /// Built-ins that legitimately cannot be strict. Verified against master
     /// before the #711/#713 eligibility changes, so this is pre-existing.
-    // applet and swarm used to be ineligible only because of a root combiner;
-    // root combiners are now flattened (OpenAI rejects them outright).
-    const KNOWN_OPEN_WORLD_TOOLS: &[&str] = &["batch", "browser"];
+    // Root combiners are now flattened (OpenAI rejects them outright), which
+    // made applet and swarm strict upstream. Amiro's applet keeps the web UI's
+    // recursive, open-ended view/state nodes and swarm keeps free-form
+    // objects, so both stay ineligible here for those reasons instead.
+    const KNOWN_OPEN_WORLD_TOOLS: &[&str] = &["applet", "batch", "browser", "swarm"];
 
     let provider: Arc<dyn Provider> = Arc::new(MockProvider);
     let registry = Registry::new(provider).await;
@@ -1948,3 +1950,4 @@ async fn post_tool_feedback_hook_appends_stdout_to_tool_result() {
     );
     assert!(output.contains("stdin-ok"), "{output}");
 }
+
