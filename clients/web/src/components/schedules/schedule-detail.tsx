@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertCircle, Clock3, Coins, ExternalLink, Play, Repeat, XCircle } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { AlertCircle, ExternalLink, Pencil, Play, Sparkles, XCircle } from "lucide-react";
 
 import { Alert, AlertDescription } from "ui/alert";
 import { Badge } from "ui/badge";
 import { Button } from "ui/button";
-import { Card } from "ui/card";
+import { SheetDescription, SheetHeader, SheetTitle } from "ui/sheet";
 import { Skeleton } from "ui/skeleton";
 import type {
   Schedule,
@@ -18,39 +19,37 @@ import {
   formatDuration,
   formatInTimezone,
   formatScheduleCost,
-  formatScheduleRunCount,
   isOneShotSchedule,
   isPastOneTimeSchedule,
 } from "./schedule-helpers";
 
-function runStatusBadge(status: string) {
+function runVariant(status: string) {
   const s = status.toLowerCase();
-  if (s === "ok" || s === "done") return { label: "Succeeded", variant: "secondary" as const };
-  if (s === "failed" || s === "error") return { label: "Failed", variant: "destructive" as const };
-  if (s === "skipped") return { label: "Skipped", variant: "outline" as const };
-  if (s === "running") return { label: "Running", variant: "secondary" as const };
-  if (s === "interrupted") return { label: "Interrupted", variant: "outline" as const };
-  return { label: status, variant: "outline" as const };
+  if (s === "failed" || s === "error") return "destructive" as const;
+  if (s === "ok" || s === "done" || s === "running") return "secondary" as const;
+  return "outline" as const;
 }
 
+/** The body of the schedule side sheet: what it does, when, and how it went. */
 export function ScheduleDetailSheet({
   schedule,
   usageSummary,
-  onClose,
   onEdit,
+  onRefine,
   onRunNow,
   onCancelOneTime,
   refreshKey,
 }: {
   schedule: Schedule;
   usageSummary?: ScheduleUsageSummary | null;
-  onClose: () => void;
   onEdit: () => void;
-  onRunNow?: () => void;
-  onCancelOneTime?: () => void;
+  onRefine: () => void;
+  onRunNow: () => void;
+  onCancelOneTime: () => void;
   /** Bumps when parent observes lastRunAt/lastStatus change or a run-now completes. */
   refreshKey?: number;
 }) {
+  const t = useTranslations("Schedules");
   const [runs, setRuns] = useState<ScheduleRun[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -62,7 +61,7 @@ export function ScheduleDetailSheet({
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    setLoading((was) => was && runs === null);
     setError(null);
     listScheduleRuns(schedule.id)
       .then((r) => {
@@ -70,7 +69,7 @@ export function ScheduleDetailSheet({
       })
       .catch((e: unknown) => {
         if (cancelled) return;
-        setError(e instanceof Error ? e.message : "Could not load runs.");
+        setError(e instanceof Error ? e.message : t("runsLoadError"));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -78,306 +77,196 @@ export function ScheduleDetailSheet({
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schedule.id, refreshKey, schedule.lastRunAt, schedule.lastStatus]);
 
+  const status =
+    schedule.status === "cancelled"
+      ? t("whenCancelled")
+      : schedule.status === "fired"
+        ? t("whenCompleted")
+        : schedule.enabled
+          ? t("statusOn")
+          : t("whenPaused");
+  const facts: [string, string][] = [
+    [t("whenItRuns"), schedule.cadenceDescription || "—"],
+    [t("nextRun"), formatInTimezone(schedule.nextRunAt, schedule.timezone)],
+    [t("howItRuns"), t(`modeLong.${schedule.mode}`)],
+    [t("status"), status],
+  ];
+  if (schedule.lastRunAt) facts.push([t("lastRun"), formatInTimezone(schedule.lastRunAt, schedule.timezone)]);
+  facts.push([t("timezone"), schedule.timezone]);
+  if (schedule.model) facts.push([t("model"), schedule.model]);
+  if (usageSummary && usageSummary.runCount > 0) {
+    facts.push([t("costLabel"), formatScheduleCost(usageSummary.totalEstimatedCostUsd)]);
+    facts.push([t("runsLabel"), usageSummary.runCount.toLocaleString()]);
+  }
+
   return (
-    <div
-      data-testid="schedule-detail"
-      className="flex h-full flex-col overflow-hidden rounded-xl border bg-card shadow-sm"
-    >
-      <div className="shrink-0 border-b px-5 py-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h3 className="truncate text-sm font-semibold">{schedule.name}</h3>
-            {schedule.description ? (
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {schedule.description}
-              </p>
-            ) : null}
-            <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
-              {schedule.mode === "script"
-                ? schedule.script || schedule.prompt
-                : schedule.prompt}
-            </p>
-          </div>
-          <Button variant="ghost" size="sm" onClick={onClose} data-testid="schedule-detail-close">
-            Close
+    <div data-testid="schedule-detail" className="flex h-full min-h-0 flex-col">
+      <SheetHeader className="shrink-0 border-b pr-12">
+        <SheetTitle className="break-words">{schedule.name}</SheetTitle>
+        <SheetDescription className={schedule.description ? "" : "sr-only"}>
+          {schedule.description || t("detailDescription")}
+        </SheetDescription>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Button size="sm" className="gap-1.5 rounded-full" onClick={onRunNow} data-testid="schedule-detail-run-now">
+            <Play className="size-3.5" />
+            {t("runNow")}
           </Button>
-        </div>
-        <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-          <div>
-            <dt className="text-muted-foreground">Mode</dt>
-            <dd className="font-medium">
-              {schedule.mode === "agent"
-                ? "Agent (tools and connectors)"
-                : schedule.mode === "execute"
-                  ? "Text only"
-                  : schedule.mode === "script"
-                    ? "Script (shell command)"
-                    : "Reminder"}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">Status</dt>
-            <dd className="font-medium">
-              {schedule.status === "cancelled"
-                ? "Cancelled"
-                : schedule.status === "fired"
-                  ? "Completed"
-                  : schedule.enabled
-                    ? "Enabled"
-                    : "Paused"}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">Timezone</dt>
-            <dd className="font-medium">{schedule.timezone}</dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">Next run</dt>
-            <dd className="font-medium">
-              {formatInTimezone(schedule.nextRunAt, schedule.timezone)}
-            </dd>
-          </div>
-          {schedule.lastRunAt ? (
-            <div>
-              <dt className="text-muted-foreground">Last run</dt>
-              <dd className="font-medium">
-                {formatInTimezone(schedule.lastRunAt, schedule.timezone)}
-              </dd>
-            </div>
-          ) : null}
-          {schedule.reuseConversation || schedule.quiet ? (
-            <div>
-              <dt className="text-muted-foreground">Options</dt>
-              <dd className="font-medium">
-                {[
-                  schedule.reuseConversation ? "Reuses conversation" : null,
-                  schedule.quiet ? "Quiet" : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </dd>
-            </div>
-          ) : null}
-          {schedule.model ? (
-            <div className="col-span-2">
-              <dt className="text-muted-foreground">Model</dt>
-              <dd className="font-medium truncate">{schedule.model}</dd>
-            </div>
-          ) : null}
-          <div className="col-span-2">
-            <dt className="text-muted-foreground">Schedule</dt>
-            <dd className="break-all">
-              {schedule.cadenceDescription ? (
-                <>
-                  {schedule.cadenceDescription}
-                  {schedule.schedule.kind === "cron" ? (
-                    <span className="ml-2 font-mono text-[11px] text-muted-foreground">
-                      {schedule.schedule.expression}
-                    </span>
-                  ) : null}
-                </>
-              ) : schedule.schedule.kind === "once"
-                ? `once at ${schedule.schedule.at}`
-                : schedule.schedule.kind === "cron"
-                  ? schedule.schedule.expression
-                  : `every ${schedule.schedule.minutes} min`}
-            </dd>
-          </div>
-        </dl>
-        {usageSummary ? (
-          <div
-            className="mt-3 grid grid-cols-2 gap-2"
-            data-testid="schedule-detail-usage"
-          >
-            <div className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-xs">
-              <Coins className="size-3.5 text-muted-foreground shrink-0" />
-              <div>
-                <div className="font-semibold">
-                  {formatScheduleCost(usageSummary.totalEstimatedCostUsd)}
-                </div>
-                <div className="text-[11px] text-muted-foreground">
-                  30 Day Cost
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-xs">
-              <Repeat className="size-3.5 text-muted-foreground shrink-0" />
-              <div>
-                <div className="font-semibold">
-                  {formatScheduleRunCount(usageSummary.runCount)}
-                </div>
-                <div className="text-[11px] text-muted-foreground">
-                  30 Day Runs
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : null}
-        <div className="mt-3 flex flex-wrap gap-2">
           <Button
             size="sm"
             variant="outline"
+            className="gap-1.5 rounded-full"
+            onClick={onRefine}
+            data-testid="schedule-detail-refine"
+          >
+            <Sparkles className="size-3.5" />
+            {t("refineWithAmiro")}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="gap-1.5 rounded-full"
             onClick={onEdit}
             data-testid="schedule-detail-edit"
           >
-            Edit
+            <Pencil className="size-3.5" />
+            {t("edit")}
           </Button>
-          {onRunNow ? (
+          {canCancelPending ? (
             <Button
               size="sm"
-              variant="outline"
-              onClick={onRunNow}
-              data-testid="schedule-detail-run-now"
-              className="gap-1.5"
-            >
-              <Play className="size-3.5" />
-              Run now
-            </Button>
-          ) : null}
-          {canCancelPending && onCancelOneTime ? (
-            <Button
-              size="sm"
-              variant="outline"
+              variant="ghost"
               onClick={onCancelOneTime}
               data-testid="schedule-detail-cancel-once"
-              className="gap-1.5 text-destructive hover:text-destructive"
+              className="gap-1.5 rounded-full text-destructive hover:text-destructive"
             >
               <XCircle className="size-3.5" />
-              Cancel reminder
+              {t("cancelOneTime")}
             </Button>
+          ) : null}
+        </div>
+      </SheetHeader>
+
+      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+          {facts.map(([label, value]) => (
+            <div key={label} className="min-w-0">
+              <dt className="text-muted-foreground">{label}</dt>
+              <dd className="break-words font-medium">{value}</dd>
+            </div>
+          ))}
+        </dl>
+
+        <div>
+          <h4 className="mb-1 text-xs font-semibold">{t("itsInstructions")}</h4>
+          <p className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-lg border bg-muted/40 p-2.5 text-xs leading-relaxed">
+            {schedule.mode === "script" ? schedule.script || schedule.prompt : schedule.prompt}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-3 text-xs font-medium">
+          {schedule.threadId ? (
+            <a
+              href={`/?thread=${encodeURIComponent(schedule.threadId)}`}
+              data-testid="schedule-detail-open-thread"
+              className="inline-flex items-center gap-1 text-primary hover:underline"
+            >
+              {t("openConversation")} <ExternalLink className="size-3" />
+            </a>
           ) : null}
           {schedule.createdBy === "agent" && schedule.createdFromThreadId ? (
             <a
               href={`/?thread=${encodeURIComponent(schedule.createdFromThreadId)}`}
               data-testid="schedule-detail-created-in-chat"
-              className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-3 text-xs font-medium hover:bg-accent"
+              className="inline-flex items-center gap-1 text-primary hover:underline"
             >
-              Created in chat <ExternalLink className="size-3.5" />
-            </a>
-          ) : null}
-          {schedule.threadId ? (
-            <a
-              href={`/?thread=${encodeURIComponent(schedule.threadId)}`}
-              data-testid="schedule-detail-open-thread"
-              className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-3 text-xs font-medium hover:bg-accent"
-            >
-              Open conversation <ExternalLink className="size-3.5" />
+              {t("createdInChat")} <ExternalLink className="size-3" />
             </a>
           ) : null}
         </div>
-      </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-        <h4 className="flex items-center gap-1.5 text-sm font-semibold">
-          <Clock3 className="size-4 opacity-70" />
-          Run history
-        </h4>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Latest runs for this schedule. Output is preview only; open the
-          conversation for full history.
-        </p>
-
-        <div className="mt-4 space-y-2" data-testid="schedule-runs-list">
-          {loading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-16 w-full" />
-              <Skeleton className="h-16 w-full" />
-            </div>
-          ) : error ? (
-            <Alert variant="destructive" data-testid="schedule-runs-error">
-              <AlertCircle className="size-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          ) : !runs || runs.length === 0 ? (
-            <Card className="p-4 text-center text-sm text-muted-foreground" data-testid="schedule-runs-empty">
-              No runs yet. Use Run now to fire immediately, or wait for the
-              next scheduled tick (daemon must be running).
-            </Card>
-          ) : (
-            runs.map((r) => {
-              const badge = runStatusBadge(r.status);
-              const isExpanded = expandedId === r.id;
-              return (
-                <Card
-                  key={r.id}
-                  data-testid={`schedule-run-${r.id}`}
-                  className={`p-3 ${isExpanded ? "bg-accent/30" : ""}`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant={badge.variant} className="text-[11px]">
-                          {badge.label}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground">
-                          {formatInTimezone(r.startedAt ?? r.scheduledAt, schedule.timezone)}
-                        </span>
-                        {r.durationMs != null || r.estimatedCostUsd != null ? (
-                          <span className="text-[11px] text-muted-foreground">
-                            · {formatDuration(r.durationMs)}
-                            {r.estimatedCostUsd != null
-                              ? ` · ${formatScheduleCost(r.estimatedCostUsd)}`
-                              : ""}
-                          </span>
+        <div>
+          <h4 className="text-xs font-semibold">{t("runHistory")}</h4>
+          <div className="mt-2 space-y-2" data-testid="schedule-runs-list">
+            {loading ? (
+              <>
+                <Skeleton className="h-14 w-full" />
+                <Skeleton className="h-14 w-full" />
+              </>
+            ) : error ? (
+              <Alert variant="destructive" data-testid="schedule-runs-error">
+                <AlertCircle className="size-4" />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            ) : !runs || runs.length === 0 ? (
+              <p
+                className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground"
+                data-testid="schedule-runs-empty"
+              >
+                {t("noRunsYet")}
+              </p>
+            ) : (
+              runs.map((r) => {
+                const isExpanded = expandedId === r.id;
+                const statusLabel = t.has(`runStatus.${r.status}`) ? t(`runStatus.${r.status}`) : r.status;
+                return (
+                  <div key={r.id} data-testid={`schedule-run-${r.id}`} className="rounded-lg border p-3">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+                      <Badge variant={runVariant(r.status)} className="text-[11px]">
+                        {statusLabel}
+                      </Badge>
+                      <span>{formatInTimezone(r.startedAt ?? r.scheduledAt, schedule.timezone)}</span>
+                      {r.durationMs != null ? <span>· {formatDuration(r.durationMs)}</span> : null}
+                      {r.estimatedCostUsd != null ? <span>· {formatScheduleCost(r.estimatedCostUsd)}</span> : null}
+                      {r.threadId ? (
+                        <a
+                          href={`/?thread=${encodeURIComponent(r.threadId)}`}
+                          data-testid={`schedule-run-open-thread-${r.id}`}
+                          className="ml-auto inline-flex items-center gap-1 font-medium text-primary hover:underline"
+                        >
+                          {t("open")} <ExternalLink className="size-3" />
+                        </a>
+                      ) : null}
+                    </div>
+                    {isExpanded ? (
+                      <div className="mt-2 space-y-2">
+                        {r.output || r.outputPreview ? (
+                          <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md border bg-muted/40 p-2 text-xs">
+                            {r.output || r.outputPreview}
+                          </pre>
+                        ) : null}
+                        {r.error ? (
+                          <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md border border-destructive/20 bg-destructive/10 p-2 text-xs text-destructive">
+                            {r.error}
+                          </pre>
                         ) : null}
                       </div>
-                      {r.outputPreview ? (
-                        <p className="mt-1.5 line-clamp-3 whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">
-                          {r.outputPreview}
-                        </p>
-                      ) : r.error ? (
-                        <p className="mt-1.5 line-clamp-3 whitespace-pre-wrap break-words text-xs text-destructive">
-                          {r.error}
-                        </p>
-                      ) : null}
-                    </div>
-                    {r.threadId ? (
-                      <a
-                        href={`/?thread=${encodeURIComponent(r.threadId)}`}
-                        data-testid={`schedule-run-open-thread-${r.id}`}
-                        className="shrink-0 inline-flex items-center gap-1 rounded-md border bg-background px-2 py-1 text-xs font-medium hover:bg-accent"
+                    ) : r.outputPreview ? (
+                      <p className="mt-1.5 line-clamp-3 whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">
+                        {r.outputPreview}
+                      </p>
+                    ) : r.error ? (
+                      <p className="mt-1.5 line-clamp-3 whitespace-pre-wrap break-words text-xs text-destructive">
+                        {r.error}
+                      </p>
+                    ) : null}
+                    {(r.outputPreview && r.outputPreview.length > 220) || r.output || r.error ? (
+                      <button
+                        type="button"
+                        data-testid={`schedule-run-toggle-${r.id}`}
+                        onClick={() => setExpandedId(isExpanded ? null : r.id)}
+                        className="mt-1.5 text-xs font-medium text-primary hover:underline"
                       >
-                        Open <ExternalLink className="size-3" />
-                      </a>
+                        {isExpanded ? t("showLess") : t("showMore")}
+                      </button>
                     ) : null}
                   </div>
-                  {(r.outputPreview && r.outputPreview.length > 220) ||
-                  r.output ||
-                  r.error ? (
-                    <button
-                      type="button"
-                      data-testid={`schedule-run-toggle-${r.id}`}
-                      onClick={() => setExpandedId(isExpanded ? null : r.id)}
-                      className="mt-2 text-xs font-medium text-primary hover:underline"
-                    >
-                      {isExpanded ? "Show less" : "Show more"}
-                    </button>
-                  ) : null}
-                  {isExpanded ? (
-                    <div className="mt-2 space-y-2">
-                      {r.output || r.outputPreview ? (
-                        <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md border bg-muted/40 p-2 text-xs">
-                          {r.output || r.outputPreview}
-                        </pre>
-                      ) : null}
-                      {r.error ? (
-                        <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md border border-destructive/20 bg-destructive/10 p-2 text-xs text-destructive">
-                          {r.error}
-                        </pre>
-                      ) : null}
-                      <div className="text-[11px] text-muted-foreground">
-                        {r.scheduledAt ? `Scheduled: ${formatInTimezone(r.scheduledAt, schedule.timezone)} · ` : ""}
-                        {r.finishedAt ? `Finished: ${formatInTimezone(r.finishedAt, schedule.timezone)}` : ""}
-                        {r.jobId ? ` · job ${r.jobId.slice(0, 8)}` : ""}
-                      </div>
-                    </div>
-                  ) : null}
-                </Card>
-              );
-            })
-          )}
+                );
+              })
+            )}
+          </div>
         </div>
       </div>
     </div>

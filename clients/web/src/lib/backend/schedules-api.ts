@@ -39,6 +39,8 @@ export interface Schedule {
   createdBy?: "user" | "agent";
   /** The chat it was created in, when known. */
   createdFromThreadId?: string | null;
+  /** The built-in template this started from. */
+  templateId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -67,7 +69,33 @@ export interface ScheduleUsageSummary {
   eventCount: number;
 }
 
+/** A ready-made schedule that ships with Amiro. */
+export interface ScheduleTemplate {
+  id: string;
+  category: string;
+  icon: string;
+  featured?: boolean;
+  name: string;
+  summary: string;
+  mode: ScheduleMode;
+  cadence: {
+    kind: "daily" | "weekdays" | "weekly";
+    time: string;
+    weekday?: number;
+  };
+  needs: string[];
+  prompt: string;
+}
+
 export const SCHEDULES_KEY = "/api/schedules";
+
+export async function listScheduleTemplates(): Promise<ScheduleTemplate[]> {
+  const res = await apiJson<{ templates: ScheduleTemplate[] }>(
+    `${SCHEDULES_KEY}/templates`,
+    { method: "GET" },
+  );
+  return res.templates ?? [];
+}
 
 export async function listSchedules(): Promise<Schedule[]> {
   const res = await apiJson<{ schedules: Schedule[] }>(SCHEDULES_KEY, {
@@ -99,6 +127,7 @@ export interface CreateScheduleInput {
   timeoutMs?: number | null;
   maxRetries?: number;
   retryBackoffMs?: number;
+  templateId?: string;
 }
 
 export async function createSchedule(

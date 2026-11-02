@@ -108,6 +108,8 @@ export interface ScheduleDraft {
   weekday?: number;
   quiet?: boolean;
   reuseConversation?: boolean;
+  /** The built-in template this draft came from. */
+  templateId?: string;
 }
 
 export function ScheduleDialog({
@@ -389,6 +391,9 @@ export function ScheduleDialog({
         ...(mode === "script"
           ? { timeoutMs: Math.max(1, Math.min(1800, timeoutSec)) * 1000 }
           : {}),
+        ...(!schedule && initial?.templateId
+          ? { templateId: initial.templateId }
+          : {}),
       };
       const { createSchedule, updateSchedule } = await import(
         "@/lib/backend/schedules-api"
@@ -526,9 +531,9 @@ export function ScheduleDialog({
                 <Label htmlFor="schedule-model">Model</Label>
                 {allModels.length === 0 ? (
                   <p className="text-xs text-muted-foreground rounded-md border border-dashed px-3 py-2">
-                    No models configured yet. Configure a provider in Settings,
-                    then pick a model here. Saving without a model uses the
-                    server default.
+                    No models configured yet. Add a provider in Admin, then pick a
+                    model here. Without one, saving only works if this server
+                    has a default model.
                   </p>
                 ) : (
                   <Select value={model} onValueChange={setModel}>
@@ -923,13 +928,14 @@ export function ScheduleDialog({
             </div>
           </div>
 
-          {formError ? (
-            <Alert variant="destructive" data-testid="schedule-form-error">
-              <AlertCircle className="size-4" />
-              <AlertDescription>{formError}</AlertDescription>
-            </Alert>
-          ) : null}
         </div>
+
+        {formError ? (
+          <Alert variant="destructive" data-testid="schedule-form-error">
+            <AlertCircle className="size-4" />
+            <AlertDescription>{formError}</AlertDescription>
+          </Alert>
+        ) : null}
 
         <DialogFooter className="pt-3 border-t">
           <Button
