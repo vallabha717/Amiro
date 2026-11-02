@@ -14,6 +14,7 @@ pub mod notify;
 pub mod onboarding;
 pub mod runtime;
 pub mod sandbox;
+pub mod schedule_templates;
 pub mod schedules;
 pub mod state;
 pub mod swarm;

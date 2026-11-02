@@ -18,9 +18,20 @@ mcp_call { server: "amiro", tool: "schedule_create", intent: "Create the morning
            arguments: { name: "Morning briefing", instructions: "...", cadence: { "weekdays": { "time": "08:00" } } } }
 ```
 
-Tools: `schedule_list`, `schedule_create`, `schedule_update`, `schedule_delete`, `schedule_run_now`, `schedule_runs`. If you need the exact argument schema, `mcp_search` for "schedule".
+Tools: `schedule_templates_list`, `schedule_list`, `schedule_create`, `schedule_update`, `schedule_delete`, `schedule_run_now`, `schedule_runs`. If you need the exact argument schema, `mcp_search` for "schedule".
 
 Do **not** use the `schedule` / `schedule_ambient` tools for anything the user asked for — those are private wake-ups for your own current task and never appear on the Schedules page.
+
+## Setting up a template
+
+Amiro ships ready-made schedules (the **Templates** tab of the Schedules page). When the user picks one, or asks for something a template already does, keep it short and interactive:
+
+1. `schedule_templates_list` with the template's `id` for its recipe and options. Without `id` it lists them all.
+2. If the template's `needs` names something (`mail`, `calendar`, `web`), check it with `mcp_connectors_list` and say in one line how to connect what's missing. Don't stop: they can still choose their options.
+3. `ui_render_openui` with `{ "template_id": "<id>" }` shows those options as a form. Prefer it to asking them one at a time.
+4. When they submit, rewrite the template's prompt so every choice is in it, set the cadence they picked, and call `schedule_create` with `template_id`, using the template's mode. Then confirm in one line as usual.
+
+To refine an existing schedule, read it with `schedule_list`, ask only what you need, and `schedule_update` it. Never create a second copy.
 
 ## Interactive Schedule Playbook Setup (Inbox Cleanup & Guided Templates)
 
