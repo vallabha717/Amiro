@@ -360,6 +360,8 @@ fn test_service_tier_can_be_changed_while_a_request_snapshot_is_held() {
 /// endpoints. If these ever diverge, OpenAI returns 401.
 #[test]
 fn openai_catalog_and_chat_endpoints_agree_on_credential_shape() {
+    // responses_url honours AMIRO_OPENAI_API_BASE, which the HTTP idle tests set.
+    let _env_lock = amiro_base::storage::lock_test_env();
     // API-key-shaped credential: no refresh token, no id token.
     let api_key_creds = CodexCredentials {
         access_token: "sk-platform-key".to_string(),
