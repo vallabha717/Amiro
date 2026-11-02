@@ -17,6 +17,18 @@ last one as its own version). New work accumulates under `Unreleased`.
 
 ## [Unreleased]
 
+### Added
+
+- **One-click updates for a server run from a source checkout.** Admin →
+  General shows the new commits on `main` and **Update to the latest main**
+  pulls them, rebuilds the web UI, backend and runtime, and restarts the
+  service (`scripts/amiro-server.sh update`). Automatic installs work too, so
+  the server can follow every merge by itself.
+- **Phones and open tabs reload themselves after an update.** Coming back to
+  a tab or a Home Screen app that runs older screens reloads it, unless
+  something typed would be lost. It also notices a new commit, not only a
+  new release. The iPhone Home Screen app opens full screen as "Amiro".
+
 ### Fixed
 
 - **Runtime provider fixes from jcode.** 25 fixes ported onto the vendored

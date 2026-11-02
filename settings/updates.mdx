@@ -1,6 +1,6 @@
 ---
 title: "Updates"
-description: "Keep Amiro up to date from Admin → General: one-click server updates, a self-updating desktop app, automatic installs, and a reload banner for phones and open tabs."
+description: "Keep Amiro up to date from Admin → General: one-click server updates (from a release or a source checkout), a self-updating desktop app, automatic installs, and phones and open tabs that reload themselves."
 ---
 
 Everything about updating lives in **Admin → General → Version & updates**:
@@ -14,8 +14,9 @@ that matches how you installed Amiro, and the automatic-update switches.
 | A server or VM installed with `install.sh` | Runs `amiro update <version>`: downloads the release, checks its SHA-256, keeps the two previous versions for a rollback, and restarts Amiro the way it was started (systemd or launchd service, or the background process). |
 | The desktop app (macOS, Windows, Linux AppImage) | Downloads the signed update with a progress bar, verifies its signature, installs it and relaunches the app. The server inside the app updates with it. |
 | The desktop app from a `.deb` | apt manages it, so the card links to the new `.deb` (`sudo apt install ./amiro-desktop-linux-x86_64.deb`). |
-| A source checkout or a container | It cannot replace itself; the card says to update it the way you installed it (`git pull`, then `pnpm build` and `scripts/build-native.sh`). |
-| A phone or another browser | Nothing to install: it uses the server's screens. After the server updates, an open tab shows **Amiro was updated to vX. Reload**. |
+| A source checkout (`scripts/amiro-server.sh`, for example its `install-service`) | Follows its branch on GitHub instead of releases: every new commit on `main` is an update. Runs `scripts/amiro-server.sh update`: fast-forwards the checkout, rebuilds the web UI, backend and runtime, and restarts the service or background process. |
+| A container | It cannot replace itself; the card says to update it the way you installed it. |
+| A phone or another browser | Nothing to install: it uses the server's screens. When you come back to an open tab or a Home Screen app after the server updated, it reloads itself with the new screens (unless you have typed something, then **Amiro was updated to vX. Reload** asks first). |
 
 ## Update a server
 
@@ -43,6 +44,38 @@ The same thing from a terminal on the server:
 amiro update            # the latest release
 amiro update v1.27.0    # a specific one
 ```
+
+## Update a server run from a source checkout
+
+When Amiro runs from a git checkout (`backend/target/release/amiro-backend`),
+**Version & updates** shows the commit it runs, the latest commit on its
+branch, and **What's new on main** with the new commits. **Update to the
+latest main** pulls them, builds everything (a few minutes) and restarts
+Amiro; the card says *Updated to `<commit>`* when the server is back on it.
+**Install server updates automatically** works here too: it updates by
+itself after each merge to `main`, while nothing is running.
+
+The checkout must be on a branch with no uncommitted changes to tracked
+files; otherwise the card says so and does not touch it. If a build fails,
+the card shows the build output and the server keeps running the old
+version; **Try again** resumes from the build. The same from a terminal:
+
+```bash
+scripts/amiro-server.sh update            # the branch's latest commit
+scripts/amiro-server.sh update 9ecb917    # a specific commit on it
+```
+
+## Use Amiro as an app on your phone
+
+Open your Amiro's address in the phone's browser and sign in (or pair it at
+`/pair`). Then add it to the Home Screen:
+
+- **iPhone (Safari):** Share → **Add to Home Screen**.
+- **Android (Chrome):** ⋮ → **Add to Home screen** (or **Install app**).
+
+It opens full screen with the Amiro icon. It always loads this server's
+screens, so there is nothing to update on the phone: when the server
+updates, the app reloads itself the next time you open it.
 
 ## Update the desktop app
 

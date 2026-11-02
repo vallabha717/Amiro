@@ -18,8 +18,10 @@ Still to do here:
 - Android: allow plain-HTTP traffic for private network addresses only (Wi-Fi).
 - iOS: safe-area insets, App Transport Security exceptions for Wi-Fi addresses.
 - Later: push notifications, voice, Face ID / fingerprint.
-- Updates: today a phone uses the server's screens in the browser, so it is
-  always on the server's version (an open tab offers a reload after the server
-  updates). A built app bundles the screens, so it will need its own update
-  path: the app stores, or the desktop app's signed `latest.json` feed for
-  sideloaded builds (see `settings/updates.mdx`).
+- Updates: today a phone uses the server's screens, either in the browser or
+  added to the Home Screen (Safari: Share → Add to Home Screen; Chrome: Add to
+  Home screen). It is always on the server's version: coming back to it after
+  the server updated reloads it with the new screens. A built app bundles the
+  screens, so it will need its own update path: the app stores, or the
+  desktop app's signed `latest.json` feed for sideloaded builds (see
+  `settings/updates.mdx`).
