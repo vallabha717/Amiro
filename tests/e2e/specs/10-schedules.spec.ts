@@ -259,8 +259,29 @@ test.describe("schedules", () => {
       await scriptRow.click();
       await expect(page.getByTestId("schedule-detail")).toBeVisible();
       await page.getByTestId("schedule-detail-run-now").click();
-      await expect.soft(page.getByText(/e2e-script-ok/i).first()).toBeVisible({ timeout: 30000 });
+      await expect(page.getByTestId("schedule-runs-list")).toContainText("e2e-script-ok", { timeout: 30000 });
       await page.keyboard.press("Escape");
+    });
+
+    await step("A script that fails moves to Needs attention, with Ask Amiro to fix it", async () => {
+      await page.getByRole("button", { name: "New schedule" }).first().click();
+      const d = page.getByRole("dialog");
+      await d.getByTestId("schedule-name-input").fill("E2E failing check");
+      await d.getByTestId("schedule-mode-script").click();
+      await d.getByTestId("schedule-prompt-input").fill("echo broken >&2; exit 3");
+      await d.getByTestId("schedule-dialog-save").click();
+      await expect(d).toBeHidden();
+      await page.getByTestId("schedule-row").filter({ hasText: "E2E failing check" }).click();
+      await page.getByTestId("schedule-detail-run-now").click();
+      await expect(page.getByTestId("schedule-runs-list"), "the run updates without a reload").toContainText(/failed/i, { timeout: 30000 });
+      await page.keyboard.press("Escape");
+      const attention = page.getByTestId("schedules-attention");
+      await expect(attention).toContainText("E2E failing check");
+      await expect(attention.getByRole("button", { name: "Ask Amiro to fix it" })).toBeVisible();
+      await attention.getByRole("button", { name: "More for E2E failing check" }).click();
+      await page.getByRole("menuitem", { name: "Delete" }).click();
+      await page.getByTestId("schedule-delete-confirm").click();
+      await expect(attention).toBeHidden({ timeout: 15000 });
     });
 
     await step("Create a one-time reminder and cancel it from the detail panel", async () => {

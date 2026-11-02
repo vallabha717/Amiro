@@ -57,6 +57,11 @@ const TABS: Tab[] = ["yours", "templates", "activity"];
 const FILTERS = ["all", "active", "paused", "failed"] as const;
 type StatusFilter = (typeof FILTERS)[number];
 
+/** Changes when a schedule records a finished run. */
+function runMarker(s: Schedule): string {
+  return `${s.lastRunAt ?? ""}|${s.lastStatus ?? ""}`;
+}
+
 function tabFromUrl(): Tab | null {
   if (typeof window === "undefined") return null;
   const tab = new URLSearchParams(window.location.search).get("tab");
@@ -87,6 +92,8 @@ export function SchedulesPage() {
   const [deleting, setDeleting] = useState<Schedule | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [detailRefresh, setDetailRefresh] = useState(0);
+  // Runs started with Run now finish in the background; schedule id -> marker at start.
+  const [watching, setWatching] = useState<Record<string, string>>({});
   const [rebaseOpen, setRebaseOpen] = useState(false);
   const [rebasing, setRebasing] = useState(false);
 
@@ -148,10 +155,22 @@ export function SchedulesPage() {
   // Poll while any schedule is in a running state or a run-now is in flight,
   // so timer ticks and history/output appear without manual refresh.
   const isPollingNeeded = useMemo(() => {
-    if (busyId) return true;
+    if (busyId || Object.keys(watching).length > 0) return true;
     if (!schedules) return false;
     return schedules.some((s) => (s.lastStatus ?? "").toLowerCase() === "running");
-  }, [schedules, busyId]);
+  }, [schedules, busyId, watching]);
+
+  // A watched run is over once its schedule records it (or the schedule is gone).
+  useEffect(() => {
+    if (!schedules) return;
+    setWatching((current) => {
+      const still = Object.entries(current).filter(([id, marker]) => {
+        const s = schedules.find((x) => x.id === id);
+        return s && runMarker(s) === marker;
+      });
+      return still.length === Object.keys(current).length ? current : Object.fromEntries(still);
+    });
+  }, [schedules]);
 
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
@@ -305,7 +324,11 @@ export function SchedulesPage() {
       }),
     onRunNow: (s) =>
       void withBusy(s.id, async () => {
-        replace((await runScheduleNow(s.id)).schedule);
+        const { schedule, run } = await runScheduleNow(s.id);
+        replace(schedule);
+        if (run.status === "running") {
+          setWatching((current) => ({ ...current, [s.id]: runMarker(schedule) }));
+        }
         setDetailRefresh((n) => n + 1);
         toast.success(t("toastTriggered"));
       }),
@@ -473,6 +496,7 @@ export function SchedulesPage() {
                   templates={templates ?? []}
                   selectedId={selectedId}
                   busyId={busyId}
+                  runningIds={Object.keys(watching)}
                   actions={actions}
                 />
               )}
