@@ -86,8 +86,139 @@ test.describe("updates", () => {
     });
 
     await step("Dismiss hides it for this version", async () => {
-      await page.getByRole("button", { name: "Dismiss" }).click();
+      await page.getByTestId("update-reload-banner").getByRole("button", { name: "Dismiss" }).click();
       await expect(page.getByTestId("update-reload-banner")).toHaveCount(0);
+    });
+  });
+
+  test("updates: a phone app reloads itself with the new screens when you come back to it", async ({ page, step }) => {
+    // A server run from a source checkout keeps its version and changes
+    // commit with every update; the Home Screen app compares both.
+    const NEW_COMMIT = "4b1d2c9";
+    let serverCommit: string | null = null;
+    await page.route("**/health", async (route) => {
+      const res = await route.fetch();
+      const body = await res.json();
+      route.fulfill({ json: serverCommit ? { ...body, commit: serverCommit } : body });
+    });
+
+    await step("Same release, new commit on the server → the banner names the build", async () => {
+      await page.goto("/");
+      const { version } = await page.evaluate(async () => (await fetch("/health")).json());
+      serverCommit = NEW_COMMIT;
+      await page.reload();
+      const banner = page.getByTestId("update-reload-banner");
+      await expect(banner).toBeVisible({ timeout: 20000 });
+      await expect(banner).toContainText(`Amiro was updated to v${version} (${NEW_COMMIT})`);
+    });
+
+    await step("Something typed in the composer: coming back keeps the page and the text", async () => {
+      const composer = page.locator("[contenteditable='true']").first();
+      await composer.click();
+      await page.keyboard.type("Draft for Brew & Bloom's opening post");
+      await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+      await page.waitForTimeout(1500);
+      await expect(composer).toContainText("Draft for Brew & Bloom's opening post");
+      await expect(page.getByTestId("update-reload-banner")).toBeVisible();
+    });
+
+    await step("Nothing typed: coming back to the app reloads it by itself", async () => {
+      await page.locator("[contenteditable='true']").first().click();
+      await page.keyboard.press("ControlOrMeta+a");
+      await page.keyboard.press("Backspace");
+      await page.evaluate(() => {
+        (window as unknown as { __beforeReload?: boolean }).__beforeReload = true;
+      });
+      const reloaded = page.waitForEvent("load");
+      await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+      await reloaded;
+      expect(await page.evaluate(() => (window as unknown as { __beforeReload?: boolean }).__beforeReload)).toBeUndefined();
+    });
+  });
+
+  test("updates: a server run from a source checkout lists the new commits, rebuilds itself and comes back on the new commit", async ({
+    page,
+    step,
+  }) => {
+    // The test server is an install.sh-style build (fake updater), so the
+    // checkout's API answers are stood in here; backend/tests/updates.rs runs
+    // the real thing against a git checkout with a local origin.
+    const RUNNING = "9ecb917";
+    const LATEST = "4b1d2c9";
+    let job: Record<string, unknown> = { state: "idle" };
+    let current = RUNNING;
+    let polls = 0;
+    await page.route(/\/api\/system\/update(\?refresh=1)?$/, async (route) => {
+      if (route.request().method() === "POST") {
+        job = { state: "installing", kind: "source", branch: "main", from: RUNNING, target: LATEST, trigger: "manual" };
+        return route.fulfill({ json: { started: true, version: LATEST, job } });
+      }
+      const res = await route.fetch();
+      const real = await res.json();
+      return route.fulfill({
+        json: {
+          ...real,
+          method: "source",
+          canSelfUpdate: true,
+          updateAvailable: current !== LATEST,
+          job,
+          source: {
+            branch: "main",
+            running: current,
+            latest: LATEST,
+            behind: current === LATEST ? 0 : 2,
+            commits:
+              current === LATEST
+                ? []
+                : [
+                    { sha: LATEST, subject: "feat(schedules): agenda page with templates", date: "2026-11-02T14:40:00Z" },
+                    { sha: "091e80b", subject: "fix(runtime): stream Antigravity thinking live", date: "2026-11-02T14:20:00Z" },
+                  ],
+            dirty: false,
+            checkFailed: false,
+            error: null,
+            checkedAt: new Date().toISOString(),
+          },
+        },
+      });
+    });
+    await page.route("**/api/system/update/job", (route) => {
+      polls += 1;
+      if (job.state === "installing" && polls > 2) job = { ...job, state: "restarting" };
+      else if (job.state === "restarting" && polls > 4) {
+        job = { ...job, state: "succeeded", finishedAt: new Date().toISOString() };
+        current = LATEST;
+      }
+      return route.fulfill({ json: { current: "1.27.0", commit: current, job } });
+    });
+    const card = page.getByTestId("general-version");
+
+    await step("Admin → General: the server follows main and is 2 changes behind", async () => {
+      await page.goto("/admin/general");
+      await expect(card.getByTestId("update-available-badge")).toHaveText("2 new changes on main");
+      await expect(card.getByTestId("general-version-value")).toContainText(`(${RUNNING})`);
+      await expect(card.getByTestId("general-version-latest")).toContainText(`${LATEST} on main`);
+      await expect(card.getByTestId("update-server-source")).toContainText("follows main on GitHub");
+    });
+
+    await step("What's new on main lists the commits", async () => {
+      await card.getByTestId("update-notes").locator("summary").click();
+      await expect(card.getByTestId("update-notes")).toContainText("feat(schedules): agenda page with templates");
+      await expect(card.getByTestId("update-notes")).toContainText("091e80b");
+    });
+
+    await step("Update to the latest main → it pulls and builds, restarts, and reports the new commit", async () => {
+      await expect(card.getByTestId("update-server-now")).toHaveText("Update to the latest main (2 changes)");
+      await card.getByTestId("update-server-now").click();
+      await expect(card.getByTestId("update-job")).toContainText(`Pulling and building ${LATEST}`);
+      await expect(card.getByTestId("update-job")).toHaveAttribute("data-state", "restarting", { timeout: 15000 });
+      await expect(card.getByTestId("update-job")).toHaveAttribute("data-state", "succeeded", { timeout: 15000 });
+      await expect(card.getByTestId("update-job")).toContainText(`Updated to ${LATEST}.`);
+    });
+
+    await step("Automatic updates are available for a source checkout too", async () => {
+      await expect(card.getByTestId("update-auto-install")).toBeEnabled();
+      await expect(card.getByTestId("update-settings")).toContainText("Only while no chat or schedule is running");
     });
   });
 
