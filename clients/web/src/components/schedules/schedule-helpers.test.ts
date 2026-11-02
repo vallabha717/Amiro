@@ -9,6 +9,8 @@ import {
   formatScheduleCost,
   formatScheduleRunCount,
   groupSchedules,
+  agendaBucket,
+  groupByAgenda,
 } from "./schedule-helpers";
 
 describe("wallTimeToAt", () => {
@@ -145,5 +147,48 @@ describe("Vellum schedule formatters and grouping", () => {
     expect(grouped.recurring.map((x) => x.id)).toEqual(["r1"]);
     expect(grouped.upcomingOneTime.map((x) => x.id)).toEqual(["u1"]);
     expect(grouped.pastOneTime.map((x) => x.id)).toEqual(["p1", "p2"]);
+  });
+});
+
+describe("agenda grouping", () => {
+  const now = new Date(2026, 10, 2, 10, 0);
+  const at = (day: number, hour = 9) => new Date(2026, 10, day, hour).toISOString();
+  const recurring = (nextRunAt: string | null, enabled = true) => ({
+    schedule: { kind: "cron" },
+    enabled,
+    nextRunAt,
+    lastStatus: null,
+  });
+
+  it("places each schedule by its next run in the viewer's calendar", () => {
+    expect(agendaBucket(recurring(at(2, 18)), now)).toBe("today");
+    expect(agendaBucket(recurring(at(3)), now)).toBe("tomorrow");
+    expect(agendaBucket(recurring(at(8)), now)).toBe("thisWeek");
+    expect(agendaBucket(recurring(at(9)), now)).toBe("later");
+    expect(agendaBucket(recurring(at(3), false), now)).toBe("paused");
+    expect(agendaBucket(recurring(null), now)).toBe("paused");
+  });
+
+  it("treats an overdue run as today and a finished one-time schedule as past", () => {
+    expect(agendaBucket(recurring(at(1)), now)).toBe("today");
+    expect(
+      agendaBucket(
+        { schedule: { kind: "once" }, status: "fired", enabled: false, nextRunAt: null },
+        now,
+      ),
+    ).toBe("past");
+  });
+
+  it("orders sections and sorts each one soonest first, dropping empty sections", () => {
+    const groups = groupByAgenda(
+      [
+        { ...recurring(at(2, 18)), id: "late" },
+        { ...recurring(null, false), id: "paused" },
+        { ...recurring(at(2, 11)), id: "soon" },
+      ],
+      now,
+    );
+    expect(groups.map((g) => g.bucket)).toEqual(["today", "paused"]);
+    expect(groups[0].items.map((s) => s.id)).toEqual(["soon", "late"]);
   });
 });

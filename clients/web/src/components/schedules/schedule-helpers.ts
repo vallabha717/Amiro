@@ -217,6 +217,61 @@ export function formatScheduleRunCount(count: number): string {
   return `${count.toLocaleString()} ${count === 1 ? "run" : "runs"}`;
 }
 
+export type AgendaBucket =
+  | "today"
+  | "tomorrow"
+  | "thisWeek"
+  | "later"
+  | "paused"
+  | "past";
+
+export const AGENDA_ORDER: AgendaBucket[] = [
+  "today",
+  "tomorrow",
+  "thisWeek",
+  "later",
+  "paused",
+  "past",
+];
+
+/** Which agenda section a schedule belongs in, in the viewer's own calendar. */
+export function agendaBucket(
+  s: {
+    isOneShot?: boolean;
+    schedule: { kind: string };
+    status?: string;
+    enabled: boolean;
+    nextRunAt: string | null;
+    lastStatus?: string | null;
+  },
+  now: Date = new Date(),
+): AgendaBucket {
+  if (isPastOneTimeSchedule(s, now.getTime())) return "past";
+  if (!s.enabled || !s.nextRunAt) return "paused";
+  const next = new Date(s.nextRunAt);
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const days = Math.floor((next.getTime() - startOfDay.getTime()) / 86_400_000);
+  if (days <= 0) return "today";
+  if (days === 1) return "tomorrow";
+  return days < 7 ? "thisWeek" : "later";
+}
+
+/** Soonest-first agenda sections, leaving out the empty ones. */
+export function groupByAgenda<
+  T extends Parameters<typeof agendaBucket>[0] & { nextRunAt: string | null },
+>(
+  schedules: T[],
+  now: Date = new Date(),
+): { bucket: AgendaBucket; items: T[] }[] {
+  const byNext = [...schedules].sort((a, b) =>
+    (a.nextRunAt ?? "\uffff").localeCompare(b.nextRunAt ?? "\uffff"),
+  );
+  return AGENDA_ORDER.map((bucket) => ({
+    bucket,
+    items: byNext.filter((s) => agendaBucket(s, now) === bucket),
+  })).filter((group) => group.items.length > 0);
+}
+
 export interface GroupedSchedules<T> {
   recurring: T[];
   upcomingOneTime: T[];

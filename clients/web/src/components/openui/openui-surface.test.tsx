@@ -120,6 +120,29 @@ describe("OpenUISurface and OpenUI Lang integration", () => {
     expect(inboxCleanupHtml).toContain("Create Inbox Cleanup Schedule");
   });
 
+  // The exact shape backend/src/schedule_templates.rs::openui_form generates.
+  it("renders a schedule template's generated customization form", () => {
+    const html = render(
+      createElement(OpenUISurface, {
+        code: [
+          "root = Stack([header, form, followUps])",
+          'header = CardHeader("Week ahead", "Every Monday: the week.", "Customize")',
+          'form = InteractiveForm("Make it yours", [f0, f1, f2], "Create schedule", "Create my Week ahead schedule with these choices")',
+          'f0 = FormInput("priorities", "Anything to keep in view?", "e.g. Q4 hiring", "")',
+          'f1 = FormSwitch("update_now", "Update NOW.md", true)',
+          'f2 = FormSelect("cadence", "When should it run?", ["Sunday at 6:00 PM","Monday at 8:00 AM"], "Monday at 8:00 AM")',
+          "followUps = FollowUpBlock([fuDefaults])",
+          'fuDefaults = FollowUpItem("Use the recommended defaults", "Create my Week ahead schedule now with the recommended defaults.")',
+        ].join("\n"),
+      }),
+    );
+    expect(html).toContain('data-testid="openui-input-priorities"');
+    expect(html).toContain('data-testid="openui-switch-update_now"');
+    expect(html).toContain('data-testid="openui-form-submit"');
+    expect(html).toContain("Create schedule");
+    expect(html).toContain("Use the recommended defaults");
+  });
+
   it("extracts OpenUI payloads from tool inputs and MCP text outputs", () => {
     const fromPreset = extractOpenUIPayload({ preset: "sprint_tracker" }, null);
     expect(fromPreset?.preset).toBe("sprint_tracker");
