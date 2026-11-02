@@ -17,6 +17,16 @@ last one as its own version). New work accumulates under `Unreleased`.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Runtime provider fixes from jcode.** 25 fixes ported onto the vendored
+  runtime (listed in `runtime/PROVENANCE.md`): Muse subscription requests
+  (launcher User-Agent, tool mapping, native login, quota windows), Antigravity
+  and Gemini 3.8 effort and schemas, assistant text that looks like a tool call
+  is never executed, OpenAI streams no longer cut off while alive or hang after
+  completion, UTF-8 across stream chunks, session resume races, and
+  RUSTSEC-2026-0385/0387.
+
 ### Added
 
 - **Plan, Tasks and Walkthrough artifacts.** The agent proposes a plan

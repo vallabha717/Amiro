@@ -303,5 +303,47 @@
     "backend/tests/runtime_titles.rs",
     "backend/tests/native_acceptance.rs",
     ".github/workflows/ci.yml"
-  ]
+  ],
+  "portedFixes": {
+    "note": "Individual upstream/fork commits merged on top of recordedUpstreamCommit on 2026-11-02; see runtime/PROVENANCE.md. A full update past these commits should find them already applied.",
+    "upstream": [
+      "91eabcd4d",
+      "aba7d5a49",
+      "11c33f3b5",
+      "742bd69f4",
+      "ce5d3cb4a",
+      "4bb16b96c",
+      "86d9efe05",
+      "0e966d904",
+      "b8f1e46b0",
+      "a10284963",
+      "5e7e0457c",
+      "812c174c3",
+      "b882d84be",
+      "9fb8fbf35",
+      "7e6dec1e6",
+      "a2e805328",
+      "9d22cbb8e"
+    ],
+    "fork": {
+      "repository": "https://github.com/vallabha717/jcode",
+      "branch": "fix/muse-ga-antigravity-latest",
+      "commits": [
+        "b0706e840",
+        "926cca658",
+        "cd255711b",
+        "f4b50936f",
+        "27717c5d5",
+        "aac3a2d10",
+        "8a32da6c1"
+      ]
+    },
+    "partial": {
+      "7e6dec1e6": "todo.rs half not applied; Amiro's todo tool has no add operation"
+    },
+    "notPorted": {
+      "bf264b9d6": "depends on upstream refactors Amiro lacks",
+      "81d9d2e79": "TUI only"
+    }
+  }
 }
