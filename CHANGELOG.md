@@ -28,6 +28,13 @@ last one as its own version). New work accumulates under `Unreleased`.
   RUSTSEC-2026-0385/0387.
 - **Antigravity thinking streams live.** Reasoning from Antigravity models
   appears as the model produces it, instead of all at once when the reply ends.
+- **Cut-off Antigravity replies fail instead of looking finished.** A reply
+  whose stream closes before the model finishes is reported as an error.
+- **Custom tools keep their names on Muse.** A tool you add named like Muse's
+  wire names (`exec_command`, `execute_command`, `MultiEdit`) runs as itself
+  instead of being sent to the built-in shell or patch tool.
+- **Muse quota says how old it is.** The quota comes from a snapshot saved at
+  sign-in; it now shows its age and drops windows that have since reset.
 
 ### Added
 
