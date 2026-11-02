@@ -12,6 +12,8 @@ Reach it from other machines and keep it running across reboots: `… | bash -s 
 
 **Desktop app**: download the file for your system below and open it.
 
+**Phone** (iPhone or Android): nothing to download. Open your Amiro's address in Safari or Chrome, sign in (or pair at `/pair`), then **Share → Add to Home Screen** (Chrome: **Add to Home screen**). It opens full screen and always runs your server's version.
+
 ## Which file do I need?
 
 | File | For | How |

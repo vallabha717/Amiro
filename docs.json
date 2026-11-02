@@ -54,7 +54,7 @@
     ]
   },
   "banner": {
-    "content": "**Amiro v1.27.0 is out:** the agent's live desktop (TV), Team agents, phone pairing with a code, and the Inbox cleanup playbook. [See it in action \u2192](/showcase) \u00b7 [Download \u2192](https://github.com/vallabha717/Amiro/releases/latest)",
+    "content": "**Amiro v1.28.0 is out:** one-click updates for every build, Schedules as an agenda with templates, Plan and Walkthrough artifacts, and the Team room. [See what's new \u2192](/settings/updates) \u00b7 [Download \u2192](https://github.com/vallabha717/Amiro/releases/latest)",
     "dismissible": true,
     "color": {
       "light": "#E9642F",

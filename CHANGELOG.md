@@ -17,6 +17,8 @@ last one as its own version). New work accumulates under `Unreleased`.
 
 ## [Unreleased]
 
+## [1.28.0] - 2026-11-02
+
 ### Added
 
 - **One-click updates for a server run from a source checkout.** Admin →
@@ -28,27 +30,6 @@ last one as its own version). New work accumulates under `Unreleased`.
   a tab or a Home Screen app that runs older screens reloads it, unless
   something typed would be lost. It also notices a new commit, not only a
   new release. The iPhone Home Screen app opens full screen as "Amiro".
-
-### Fixed
-
-- **Runtime provider fixes from jcode.** 25 fixes ported onto the vendored
-  runtime (listed in `runtime/PROVENANCE.md`): Muse subscription requests
-  (launcher User-Agent, tool mapping, native login, quota windows), Antigravity
-  and Gemini 3.8 effort and schemas, assistant text that looks like a tool call
-  is never executed, OpenAI streams no longer cut off while alive or hang after
-  completion, UTF-8 across stream chunks, session resume races, and
-  RUSTSEC-2026-0385/0387.
-- **Antigravity thinking streams live.** Reasoning from Antigravity models
-  appears as the model produces it, instead of all at once when the reply ends.
-- **Cut-off Antigravity replies fail instead of looking finished.** A reply
-  whose stream closes before the model finishes is reported as an error.
-- **Custom tools keep their names on Muse.** A tool you add named like Muse's
-  wire names (`exec_command`, `execute_command`, `MultiEdit`) runs as itself
-  instead of being sent to the built-in shell or patch tool.
-- **Muse quota says how old it is.** The quota comes from a snapshot saved at
-  sign-in; it now shows its age and drops windows that have since reset.
-
-### Added
 
 - **Schedules redesign and templates**: the Schedules page is now an agenda
   (needs attention, today, tomorrow, this week) with Templates and Activity
@@ -84,6 +65,23 @@ last one as its own version). New work accumulates under `Unreleased`.
     `PUT /api/system/update/settings`; docs: `settings/updates.mdx`.
 
 ### Fixed
+
+- **Runtime provider fixes from jcode.** 25 fixes ported onto the vendored
+  runtime (listed in `runtime/PROVENANCE.md`): Muse subscription requests
+  (launcher User-Agent, tool mapping, native login, quota windows), Antigravity
+  and Gemini 3.8 effort and schemas, assistant text that looks like a tool call
+  is never executed, OpenAI streams no longer cut off while alive or hang after
+  completion, UTF-8 across stream chunks, session resume races, and
+  RUSTSEC-2026-0385/0387.
+- **Antigravity thinking streams live.** Reasoning from Antigravity models
+  appears as the model produces it, instead of all at once when the reply ends.
+- **Cut-off Antigravity replies fail instead of looking finished.** A reply
+  whose stream closes before the model finishes is reported as an error.
+- **Custom tools keep their names on Muse.** A tool you add named like Muse's
+  wire names (`exec_command`, `execute_command`, `MultiEdit`) runs as itself
+  instead of being sent to the built-in shell or patch tool.
+- **Muse quota says how old it is.** The quota comes from a snapshot saved at
+  sign-in; it now shows its age and drops windows that have since reset.
 
 - **The TV stream stays connected.** The desktop's own port checks no longer
   get `127.0.0.1` blacklisted by the VNC server, and Chromium clears a profile
@@ -305,7 +303,8 @@ last one as its own version). New work accumulates under `Unreleased`.
 - Removed the chat Workflow View, including its toggle.
 - Removed manual agent runs, which native schedules replace.
 
-[Unreleased]: https://github.com/vallabha717/Amiro/compare/v1.27.0...HEAD
+[Unreleased]: https://github.com/vallabha717/Amiro/compare/v1.28.0...HEAD
+[1.28.0]: https://github.com/vallabha717/Amiro/compare/v1.27.0...v1.28.0
 [1.27.0]: https://github.com/vallabha717/Amiro/compare/v1.26.1...v1.27.0
 
 ## Prior development

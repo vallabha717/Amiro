@@ -290,6 +290,23 @@ from **Admin**.
 
 ---
 
+## What's new in v1.28.0
+
+Since v1.27.0:
+
+- **Self-update for every build**: one-click server updates from Admin →
+  General (release installs and source checkouts that follow `main`), a
+  self-updating desktop app with signed updates, and phones and open tabs that
+  reload themselves ([#37](https://github.com/vallabha717/Amiro/pull/37), [#46](https://github.com/vallabha717/Amiro/pull/46)).
+- **Schedules as an agenda, with templates** ([#45](https://github.com/vallabha717/Amiro/pull/45)).
+- **Plan, Tasks and Walkthrough artifacts**, and a TV that stays connected ([#42](https://github.com/vallabha717/Amiro/pull/42)).
+- **Team room and Huddle**, reliable phone chats, 9Router search and image generation ([#41](https://github.com/vallabha717/Amiro/pull/41)).
+- **Runtime provider fixes**: live Antigravity thinking, Muse subscription and tool-name fixes, OpenAI stream fixes ([#43](https://github.com/vallabha717/Amiro/pull/43), [#44](https://github.com/vallabha717/Amiro/pull/44)).
+
+The full list is in [CHANGELOG.md](CHANGELOG.md).
+
+---
+
 ## What's new in v1.27.0
 
 Since v1.26.1:
