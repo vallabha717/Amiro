@@ -3,6 +3,4 @@ pub(super) use amiro_provider_openai::stream::{
 };
 
 #[cfg(test)]
-pub(super) use amiro_provider_openai::stream::{
-    handle_openai_output_item, parse_text_wrapped_tool_call,
-};
+pub(super) use amiro_provider_openai::stream::handle_openai_output_item;
