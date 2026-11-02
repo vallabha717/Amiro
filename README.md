@@ -178,7 +178,7 @@ the weather and the top 3 tech headlines"* — or use the page:
 | **Agent** (`agent`) | A full agent turn with tools, connectors and the agent home, like a chat. |
 | **Script** (`script`) | A shell command in the workspace; its output is the run result. |
 
-**Inbox cleanup playbook.** Click *Set up this schedule for me* and Amiro
+**Inbox cleanup template.** Click *Customize* and Amiro
 renders the rules as switches (keep reservations and recent bills, clean up
 promotions and notifications), then saves the schedule:
 

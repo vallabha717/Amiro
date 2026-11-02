@@ -72,6 +72,10 @@ for a deleted id answers `404`. Source: `backend/src/routes/schedules.rs`,
 
 ## System tasks
 
+`GET /api/schedules/templates` returns `{ "templates": [...] }`, the schedules
+that ship with Amiro. Pass a template's `id` as `templateId` when creating a
+schedule to record where it came from; an unknown id is a 400.
+
 `GET /api/schedules/system` returns `{ "tasks": [...] }`, the built-in heartbeat
 and memory-upkeep tasks with their state.
 Source: `backend/src/routes/schedules.rs`.
