@@ -519,11 +519,14 @@ fn test_build_tools_rewrites_oneof_to_anyof_for_openai() {
 }
 
 #[test]
-fn test_build_tools_keeps_strict_for_anyof_object_branches_with_properties() {
+fn test_build_tools_keeps_strict_for_nested_anyof_object_branches_with_properties() {
     let defs = vec![ToolDefinition {
         name: "schedule".to_string(),
         description: "schedule work".to_string(),
         input_schema: serde_json::json!({
+            "type": "object",
+            "required": ["request"],
+            "properties": { "request": {
             "type": "object",
             "required": ["task"],
             "anyOf": [
@@ -549,17 +552,17 @@ fn test_build_tools_keeps_strict_for_anyof_object_branches_with_properties() {
                 "wake_in_minutes": { "type": "integer" },
                 "wake_at": { "type": "string" }
             }
-        }),
+        } } }),
         defer_loading: false,
     }];
     let api_tools = build_tools(&defs);
     assert_eq!(api_tools[0]["strict"], serde_json::json!(true));
     assert_eq!(
-        api_tools[0]["parameters"]["anyOf"][0]["additionalProperties"],
+        api_tools[0]["parameters"]["properties"]["request"]["anyOf"][0]["additionalProperties"],
         serde_json::json!(false)
     );
     assert_eq!(
-        api_tools[0]["parameters"]["anyOf"][1]["additionalProperties"],
+        api_tools[0]["parameters"]["properties"]["request"]["anyOf"][1]["additionalProperties"],
         serde_json::json!(false)
     );
 }
