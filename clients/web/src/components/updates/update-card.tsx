@@ -20,7 +20,7 @@ import {
   useUpdateStatus,
 } from "@/lib/backend/update-api";
 import { isDesktopApp } from "@/lib/updates/desktop-updater";
-import { displayVersion } from "@/lib/updates/version";
+import { displayBuild, displayVersion } from "@/lib/updates/version";
 
 import { DesktopUpdateSection } from "./desktop-update-section";
 import { ServerUpdateSection } from "./server-update-section";
@@ -29,15 +29,23 @@ import { UpdateSettings } from "./update-settings";
 function StatusBadge({ status, loading }: { status?: UpdateStatus; loading: boolean }) {
   const t = useTranslations("Updates");
   if (loading) return <Badge variant="secondary">{t("status.checking")}</Badge>;
-  if (status?.checkFailed) {
+  const source = status?.method === "source" ? status.source : undefined;
+  if (source && !source.checkFailed && source.behind > 0) {
+    return (
+      <Badge className="bg-primary text-primary-foreground" data-testid="update-available-badge">
+        {t("status.changes", { count: source.behind, branch: source.branch ?? "main" })}
+      </Badge>
+    );
+  }
+  if (source ? source.checkFailed : status?.checkFailed) {
     return (
       <Badge variant="outline" className="border-amber-500/30 text-amber-600 dark:text-amber-400">
         {t("status.checkFailed")}
       </Badge>
     );
   }
-  if (status?.noReleases) return <Badge variant="secondary">{t("status.noReleases")}</Badge>;
-  if (status?.updateAvailable && status.latest) {
+  if (!source && status?.noReleases) return <Badge variant="secondary">{t("status.noReleases")}</Badge>;
+  if (!source && status?.updateAvailable && status.latest) {
     return (
       <Badge className="bg-primary text-primary-foreground" data-testid="update-available-badge">
         {t("status.available", { version: displayVersion(status.latest) })}
@@ -63,7 +71,9 @@ export function UpdateCard() {
     try {
       const fresh = await refreshUpdateStatus();
       await mutate(fresh, { revalidate: false });
-      if (fresh.checkFailed) toast.error(t("toast.checkFailed"));
+      if (fresh.method === "source" ? fresh.source?.checkFailed : fresh.checkFailed) {
+        toast.error(t("toast.checkFailed"));
+      }
     } catch {
       toast.error(t("toast.checkFailed"));
     } finally {
@@ -72,6 +82,7 @@ export function UpdateCard() {
   };
 
   const reload = useCallback(() => void mutate(), [mutate]);
+  const source = status?.method === "source" ? status.source : undefined;
 
   return (
     <Card data-testid="general-version">
@@ -92,10 +103,24 @@ export function UpdateCard() {
           <div className="flex gap-6">
             <span className="w-32 text-muted-foreground">{t("current")}</span>
             <span className="font-mono" data-testid="general-version-value">
-              {status ? displayVersion(status.current) : "—"}
+              {status ? displayBuild({ version: status.current, commit: source?.running }) : "—"}
             </span>
           </div>
-          {status?.latest ? (
+          {source?.latest ? (
+            <div className="flex gap-6">
+              <span className="w-32 text-muted-foreground">{t("latest")}</span>
+              <a
+                href={`https://github.com/${status?.repo ?? "vallabha717/Amiro"}/commit/${source.latest}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 font-mono text-primary hover:underline"
+                data-testid="general-version-latest"
+              >
+                {t("latestOnBranch", { commit: source.latest, branch: source.branch ?? "main" })}
+                <ExternalLink className="size-3 shrink-0 opacity-70" />
+              </a>
+            </div>
+          ) : !source && status?.latest ? (
             <div className="flex gap-6">
               <span className="w-32 text-muted-foreground">{t("latest")}</span>
               <a
@@ -115,12 +140,30 @@ export function UpdateCard() {
               {t("checkedAt", { time: new Date(status.checkedAt).toLocaleString() })}
             </p>
           ) : null}
-          {status?.checkFailed ? (
+          {source?.checkFailed ? (
+            <p className="text-xs text-muted-foreground" data-testid="update-source-error">
+              {t("sourceCheckFailed", { error: source.error ?? "" })}
+            </p>
+          ) : !source && status?.checkFailed ? (
             <p className="text-xs text-muted-foreground">{t("checkFailedHint")}</p>
           ) : null}
         </div>
 
-        {status?.updateAvailable && status.latest && status.notes ? (
+        {source && source.behind > 0 && source.commits.length > 0 ? (
+          <details data-testid="update-notes">
+            <summary className="cursor-pointer text-sm font-medium">
+              {t("whatsNewOnBranch", { branch: source.branch ?? "main", count: source.behind })}
+            </summary>
+            <ul className="mt-2 max-h-64 space-y-1 overflow-auto rounded-md bg-muted p-3 text-xs">
+              {source.commits.map((commit) => (
+                <li key={commit.sha} className="flex gap-2">
+                  <span className="shrink-0 font-mono text-muted-foreground">{commit.sha}</span>
+                  <span>{commit.subject}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : !source && status?.updateAvailable && status.latest && status.notes ? (
           <details data-testid="update-notes">
             <summary className="cursor-pointer text-sm font-medium">
               {t("whatsNew", { version: displayVersion(status.latest) })}

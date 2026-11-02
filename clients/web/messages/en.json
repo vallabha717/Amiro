@@ -2193,7 +2193,8 @@
       "checkFailed": "Could not check",
       "noReleases": "No releases yet",
       "available": "Update available: {version}",
-      "upToDate": "Up to date"
+      "upToDate": "Up to date",
+      "changes": "{count, plural, one {# new change} other {# new changes}} on {branch}"
     },
     "current": "Current",
     "latest": "Latest",
@@ -2205,8 +2206,11 @@
       "title": "Server",
       "update": "Update to {version}",
       "installerHint": "Runs the same amiro update as the terminal: it checks the download's SHA-256, keeps the two previous versions for a rollback, and restarts Amiro.",
-      "manual": "This server runs from a source checkout or a container, so it cannot update itself. Update it the way you installed it: for a checkout, git pull, then pnpm build and scripts/build-native.sh.",
-      "insideDesktop": "The server runs inside the desktop app and updates with it."
+      "manual": "This server runs in a container or from a build that can't replace itself. Update it the way you installed it.",
+      "insideDesktop": "The server runs inside the desktop app and updates with it.",
+      "updateSource": "Update to the latest {branch} ({count, plural, one {# change} other {# changes}})",
+      "sourceHint": "This server runs from a source checkout and follows {branch} on GitHub. Update pulls the new commits, rebuilds the web UI, backend and runtime, and restarts Amiro. It takes a few minutes.",
+      "sourceDirty": "This checkout has uncommitted changes, so it can't update itself. Commit or discard them first."
     },
     "job": {
       "installing": "Downloading and installing {version}…",
@@ -2217,7 +2221,8 @@
       "log": "Installer output",
       "retry": "Try again",
       "reload": "Reload now",
-      "reloadHint": "Reload to load the new version's screens."
+      "reloadHint": "Reload to load the new version's screens.",
+      "building": "Pulling and building {version}… this takes a few minutes."
     },
     "desktop": {
       "title": "Desktop app",
@@ -2239,11 +2244,11 @@
       "autoCheckHint": "Every few hours. A Bell notification tells you when a new version is out.",
       "autoInstall": "Install server updates automatically",
       "autoInstallHint": "Only while no chat or schedule is running. The Bell tells you when it is done.",
-      "autoInstallUnavailable": "Only for servers installed with install.sh.",
+      "autoInstallUnavailable": "Only for servers installed with install.sh or run from a source checkout.",
       "saved": "Saved",
       "saveFailed": "Could not save: {error}"
     },
-    "devicesNote": "Phones and other browsers use this server's screens: after an update they offer a reload.",
+    "devicesNote": "Phones and other browsers use this server's screens. After an update they reload by themselves when you come back to them.",
     "toast": {
       "started": "Updating to {version}. The server restarts; this page reconnects by itself.",
       "startFailed": "Could not start the update: {error}",
@@ -2253,7 +2258,10 @@
       "text": "Amiro was updated to {version}. Reload to use the new version.",
       "reload": "Reload",
       "dismiss": "Dismiss"
-    }
+    },
+    "latestOnBranch": "{commit} on {branch}",
+    "whatsNewOnBranch": "What's new on {branch} ({count})",
+    "sourceCheckFailed": "Could not check GitHub for new changes: {error}"
   },
   "ChatStream": {
     "Timeline": {
