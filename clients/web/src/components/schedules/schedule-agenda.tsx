@@ -74,19 +74,20 @@ function ScheduleRow({
   template,
   selected,
   busy,
+  running,
   actions,
 }: {
   schedule: Schedule;
   template?: ScheduleTemplate;
   selected: boolean;
   busy: boolean;
+  running: boolean;
   actions: ScheduleRowActions;
 }) {
   const t = useTranslations("Schedules");
   const format = useFormatter();
   const when = useWhenLabel();
   const failed = s.lastStatus === "failed";
-  const running = (s.lastStatus as string | null) === "running" || s.status === "firing";
   const finished = isFinishedOnce(s);
   const Icon = template ? templateIcon(template.icon) : (MODE_ICON[s.mode] ?? Bot);
   return (
@@ -209,12 +210,15 @@ export function ScheduleAgenda({
   templates,
   selectedId,
   busyId,
+  runningIds,
   actions,
 }: {
   schedules: Schedule[];
   templates: ScheduleTemplate[];
   selectedId: string | null;
   busyId: string | null;
+  /** Schedules whose Run now is still going in the background. */
+  runningIds: string[];
   actions: ScheduleRowActions;
 }) {
   const t = useTranslations("Schedules");
@@ -228,6 +232,7 @@ export function ScheduleAgenda({
       template={templates.find((x) => x.id === s.templateId)}
       selected={selectedId === s.id}
       busy={busyId === s.id}
+      running={runningIds.includes(s.id) || s.status === "firing"}
       actions={actions}
     />
   );
