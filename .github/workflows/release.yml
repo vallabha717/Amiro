@@ -81,6 +81,13 @@ jobs:
     needs: prepare
     uses: ./.github/workflows/desktop.yml
     secrets: inherit
+    # desktop.yml's Update feed job (hand-started runs only) attests its
+    # files; a caller must grant what any called job asks for, or the whole
+    # release fails at startup.
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     with:
       tag: ${{ needs.prepare.outputs.tag }}
 
