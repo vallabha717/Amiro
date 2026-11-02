@@ -136,6 +136,9 @@ fn clear_env() {
         ("AMIRO_UPDATE_API_BASE", None),
         ("AMIRO_UPDATE_COMMAND", None),
         ("AMIRO_DESKTOP", None),
+        ("AMIRO_SOURCE_DIR", None),
+        ("AMIRO_SOURCE_UPDATE_COMMAND", None),
+        ("AMIRO_RUNNING_COMMIT", None),
     ]);
 }
 
@@ -313,5 +316,164 @@ async fn a_restart_on_the_target_version_marks_the_job_succeeded() {
     assert_eq!(body["current"], CURRENT);
     assert_eq!(body["job"]["state"], "succeeded");
     assert!(body["job"]["finishedAt"].is_string());
+    let _ = std::fs::remove_dir_all(&fx.root);
+}
+
+// ---------------------------------------------------------------------------
+// Source checkouts: a real git checkout with a local `origin`, and a stand-in
+// for `scripts/amiro-server.sh update` (AMIRO_SOURCE_UPDATE_COMMAND).
+// ---------------------------------------------------------------------------
+
+fn git(dir: &std::path::Path, args: &[&str]) -> String {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(["-c", "user.name=Amiro Test", "-c", "user.email=test@example.com", "-c", "init.defaultBranch=main"])
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+struct Source {
+    checkout: std::path::PathBuf,
+    /// The commit the checkout (and the "running" server) is on.
+    old: String,
+    /// The newer commit on origin/main.
+    new: String,
+}
+
+/// `origin` (bare) has two commits on main; the checkout is one behind.
+fn source_checkout(root: &std::path::Path) -> Source {
+    let origin = root.join("origin.git");
+    let work = root.join("work");
+    let checkout = root.join("checkout");
+    std::fs::create_dir_all(&origin).unwrap();
+    git(&origin, &["init", "--bare", "-q", "-b", "main"]);
+    git(root, &["clone", "-q", origin.to_str().unwrap(), work.to_str().unwrap()]);
+    std::fs::create_dir_all(work.join("scripts")).unwrap();
+    std::fs::write(work.join("scripts/amiro-server.sh"), "#!/bin/sh\n").unwrap();
+    git(&work, &["add", "."]);
+    git(&work, &["commit", "-q", "-m", "feat: the running version"]);
+    git(&work, &["push", "-q", "origin", "HEAD:main"]);
+    let old = git(&work, &["rev-parse", "HEAD"]);
+    git(root, &["clone", "-q", origin.to_str().unwrap(), checkout.to_str().unwrap()]);
+    std::fs::write(work.join("NEW.md"), "new\n").unwrap();
+    git(&work, &["add", "."]);
+    git(&work, &["commit", "-q", "-m", "fix(chat): keep agent UI where the agent called it"]);
+    git(&work, &["push", "-q", "origin", "HEAD:main"]);
+    let new = git(&work, &["rev-parse", "HEAD"]);
+    Source { checkout, old, new }
+}
+
+fn use_source(fx: &Fixture, source: &Source, running: &str, script_code: i32) {
+    let script = updater_script(&fx.root.join("source-bin"), script_code);
+    set_env(&[
+        ("AMIRO_UPDATE_COMMAND", None),
+        ("AMIRO_DESKTOP", None),
+        ("AMIRO_SOURCE_DIR", Some(source.checkout.to_str().unwrap())),
+        ("AMIRO_SOURCE_UPDATE_COMMAND", Some(script.to_str().unwrap())),
+        ("AMIRO_RUNNING_COMMIT", Some(running)),
+    ]);
+}
+
+#[tokio::test]
+async fn a_source_checkout_follows_its_branch_on_origin() {
+    let _lock = ENV_LOCK.lock().await;
+    let fx = fixture();
+    let base = github_stub("v99.0.0").await;
+    let source = source_checkout(&fx.root);
+    use_source(&fx, &source, &source.old, 0);
+    set_env(&[("AMIRO_UPDATE_API_BASE", Some(&base))]);
+
+    let (status, body) = call(&fx.app, "GET", "/api/system/update?refresh=1", Some("tok"), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["method"], "source");
+    assert_eq!(body["canSelfUpdate"], true);
+    assert_eq!(body["updateAvailable"], true);
+    let found = &body["source"];
+    assert_eq!(found["branch"], "main");
+    assert_eq!(found["behind"], 1);
+    assert_eq!(found["running"], &source.old[..7]);
+    assert_eq!(found["latest"], &source.new[..7]);
+    assert_eq!(found["dirty"], false);
+    assert_eq!(found["commits"][0]["subject"], "fix(chat): keep agent UI where the agent called it");
+
+    // Running the newest commit: nothing to do, and Update is refused.
+    use_source(&fx, &source, &source.new, 0);
+    let (_, body) = call(&fx.app, "GET", "/api/system/update?refresh=1", Some("tok"), None).await;
+    assert_eq!(body["updateAvailable"], false);
+    assert_eq!(body["source"]["behind"], 0);
+    let (status, body) = call(&fx.app, "POST", "/api/system/update", Some("tok"), Some(json!({}))).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(body.to_string().contains("already on the latest main"), "{body}");
+    clear_env();
+    let _ = std::fs::remove_dir_all(&fx.root);
+}
+
+#[tokio::test]
+async fn a_source_update_runs_the_script_and_records_a_failed_build() {
+    let _lock = ENV_LOCK.lock().await;
+    let fx = fixture();
+    let source = source_checkout(&fx.root);
+    use_source(&fx, &source, &source.old, 4);
+
+    let (status, _) = call(&fx.app, "POST", "/api/system/update", Some("tok"), Some(json!({"version": "--upload-pack=x"}))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "only commit ids reach git");
+
+    let (status, body) = call(&fx.app, "POST", "/api/system/update", Some("tok"), Some(json!({}))).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["job"]["kind"], "source");
+    assert_eq!(body["job"]["branch"], "main");
+    assert_eq!(body["job"]["from"], &source.old[..7]);
+    assert_eq!(body["job"]["target"], &source.new[..7]);
+
+    let job = settled_job(&fx.app).await;
+    assert_eq!(job["state"], "failed");
+    let error = job["error"].as_str().unwrap();
+    assert!(error.contains("exit code 4") && error.contains(&source.old[..7]), "{error}");
+    assert!(job["log"].as_str().unwrap().contains(&format!("args: update {}", source.new)));
+    clear_env();
+    let _ = std::fs::remove_dir_all(&fx.root);
+}
+
+#[tokio::test]
+async fn a_source_checkout_with_local_changes_is_not_updated() {
+    let _lock = ENV_LOCK.lock().await;
+    let fx = fixture();
+    let source = source_checkout(&fx.root);
+    use_source(&fx, &source, &source.old, 0);
+    std::fs::write(source.checkout.join("scripts/amiro-server.sh"), "#!/bin/sh\n# edited\n").unwrap();
+
+    let (_, body) = call(&fx.app, "GET", "/api/system/update?refresh=1", Some("tok"), None).await;
+    assert_eq!(body["source"]["dirty"], true);
+    let (status, body) = call(&fx.app, "POST", "/api/system/update", Some("tok"), Some(json!({}))).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(body.to_string().contains("uncommitted changes"), "{body}");
+    clear_env();
+    let _ = std::fs::remove_dir_all(&fx.root);
+}
+
+#[tokio::test]
+async fn a_source_update_succeeds_when_the_server_restarts_on_the_new_commit() {
+    let _lock = ENV_LOCK.lock().await;
+    let fx = fixture();
+    let source = source_checkout(&fx.root);
+    let pending = json!({"state": "restarting", "kind": "source", "from": &source.old[..7], "target": &source.new[..7], "trigger": "manual"});
+
+    std::fs::write(fx.state.home.join("store/update-state.json"), pending.to_string()).unwrap();
+    use_source(&fx, &source, &source.old, 0);
+    backend::updates::reconcile_on_start(&fx.state).await;
+    let (_, body) = call(&fx.app, "GET", "/api/system/update/job", Some("tok"), None).await;
+    assert_eq!(body["job"]["state"], "failed");
+    assert!(body["job"]["error"].as_str().unwrap().contains(&format!("restarted on {} instead of {}", &source.old[..7], &source.new[..7])));
+
+    std::fs::write(fx.state.home.join("store/update-state.json"), pending.to_string()).unwrap();
+    use_source(&fx, &source, &source.new, 0);
+    backend::updates::reconcile_on_start(&fx.state).await;
+    let (_, body) = call(&fx.app, "GET", "/api/system/update/job", Some("tok"), None).await;
+    assert_eq!(body["job"]["state"], "succeeded");
+    clear_env();
     let _ = std::fs::remove_dir_all(&fx.root);
 }

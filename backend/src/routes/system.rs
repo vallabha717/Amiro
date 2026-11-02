@@ -326,6 +326,7 @@ async fn get_update_job(
     require_admin(&user)?;
     Ok(Json(json!({
         "current": updates::current_version(),
+        "commit": updates::running_commit().map(|c| c.chars().take(7).collect::<String>()),
         "job": updates::load_job(&state).await,
     })))
 }
