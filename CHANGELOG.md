@@ -38,6 +38,12 @@ last one as its own version). New work accumulates under `Unreleased`.
 
 ### Added
 
+- **Schedules redesign and templates**: the Schedules page is now an agenda
+  (needs attention, today, tomorrow, this week) with Templates and Activity
+  tabs. Ten built-in templates can be added as they are or customized with the
+  agent, through the new `schedule_templates_list` tool and
+  `GET /api/schedules/templates`.
+
 - **Plan, Tasks and Walkthrough artifacts.** The agent proposes a plan
   (`ui_propose_plan`); you comment on any block or on a selected line, request
   changes or approve. Once approved, the work shows as ticking tasks, and it
