@@ -21,7 +21,7 @@ import {
 } from "./openui/openui-surface";
 import { VisualPlaceholder, VisualSurface } from "./visual/visual-surface";
 import equal from "lib/equal";
-import { type ReactNode, memo, useMemo, useState } from "react";
+import { Fragment, type ReactNode, memo, useMemo, useState } from "react";
 
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { ChatMetadata, ManualToolConfirmTag } from "app-types/chat";
@@ -58,7 +58,6 @@ import {
   ToolApprovalCard,
   type ToolApprovalRequest,
   getToolPresenter,
-  type PresenterProps,
   presenterPropsFromToolPart,
 } from "./tool-presenters";
 import {
@@ -78,7 +77,7 @@ import {
   type TurnEdit,
   collectTurnChanges,
 } from "./chat-stream/turn-changes-card";
-import { type AskUserRequest, parseAskUser } from "lib/chat-ux/ask-user";
+import { parseAskUser } from "lib/chat-ux/ask-user";
 import { narrateStep, thoughtPreview } from "lib/chat-ux/step-narration";
 import { parseToolTiming } from "lib/ai/tools/timing";
 import {
@@ -162,6 +161,16 @@ function expandInlineThinkingParts(
   }
   return out;
 }
+
+type WorkBlock = {
+  type: "work";
+  rows: WorkLogRow[];
+  stepCount: number;
+  images: InlineImage[];
+  pending: boolean;
+};
+/** One stretch of a reply: a run of work, or something drawn in the transcript. */
+type ReplyBlock = WorkBlock | { type: "node"; node: ReactNode };
 
 const PurePreviewMessage = ({
   message,
@@ -590,54 +599,95 @@ const PurePreviewMessage = ({
 
             const reasoningTexts: string[] = [];
             let isReasoningActive = false;
-            const rows: WorkLogRow[] = [];
+            let rows: WorkLogRow[] = [];
+            // The reply in the order it happened. Anything the agent puts on
+            // screen stays where it called it, so the work log splits around
+            // it instead of everything landing after the answer.
+            const blocks: ReplyBlock[] = [];
+            let hasStep = false;
+            let blockStepCount = 0;
+            let blockImages: InlineImage[] = [];
+            let blockPending = false;
+            let placedHere: ReactNode[] = [];
+            const closeWork = () => {
+              // The opening thought needs a card even with no steps before it.
+              if (rows.length || !blocks.some((b) => b.type === "work")) {
+                blocks.push({
+                  type: "work",
+                  rows,
+                  stepCount: blockStepCount,
+                  images: blockImages,
+                  pending: blockPending,
+                });
+              }
+              rows = [];
+              blockStepCount = 0;
+              blockImages = [];
+              blockPending = false;
+            };
+            // Puts this part's UI into the reply. What the agent wrote just
+            // before introduces it, so that text stays readable beside it
+            // rather than folding away. `calledNow`: the last row is this call.
+            const placeUI = (calledNow: boolean) => {
+              if (!placedHere.length) return;
+              const call = calledNow ? rows.pop() : undefined;
+              const intro: ReactNode[] = [];
+              for (
+                let last = rows[rows.length - 1];
+                last?.type === "prose" && !last.thought;
+                last = rows[rows.length - 1]
+              ) {
+                rows.pop();
+                intro.unshift(last.children);
+              }
+              if (call) rows.push(call);
+              if (!hideAllTools) closeWork();
+              for (const node of [...intro, ...placedHere]) {
+                blocks.push({ type: "node", node });
+              }
+              placedHere = [];
+            };
+            const sendText =
+              isLastMessage && sendMessage
+                ? (text: string) =>
+                    sendMessage({
+                      role: "user",
+                      parts: [{ type: "text", text }],
+                    })
+                : undefined;
+            // The last desktop call owns the reply's one live TV stream.
+            const lastDesktopCall = workParts.reduce(
+              (found, p, index) =>
+                isToolUIPart(p) &&
+                isDesktopToolCall(getToolName(p), (p as any).input)
+                  ? index
+                  : found,
+              -1,
+            );
+            // An answer that writes its own openui block already shows it.
+            const answerHasOpenUI = tailParts.some(
+              (p) =>
+                p.type === "text" &&
+                typeof p.text === "string" &&
+                p.text.includes("```openui"),
+            );
             // Every completed or in-flight `websearch` call this turn made.
             // Rendered as the sources bar above the answer, so the evidence
             // does not live only inside the (auto-collapsing) work log.
             const webSearches: WebSearchSourceEntry[] = [];
-            let toolCount = 0;
             let hiddenCount = 0;
             // Every image the turn's tools returned, kept even for calls the
             // filter hides so a screenshot never disappears with its row.
             const turnImages: InlineImage[] = [];
-            // Pictures the agent drew this turn: shown with the answer, not
-            // only inside the folded work log.
-            const drawnImages: { id: string; props: PresenterProps }[] = [];
             // The previous todo write, so each one can show what changed.
             let prevTodos: RuntimeTodo[] | undefined;
-            // Parts that must stay visible under hideAllTools because the
-            // user has to act on them (a manual-confirm call awaiting input).
-            const mustShow: ReactNode[] = [];
-            // The agent added a connector that still needs a key: the user
-            // types it into a secure card, whatever the tool filter says.
-            const connectorSetups: { server: string; missingSecrets: string[]; id: string }[] = [];
+            // Parts that stay visible under hideAllTools because the user has
+            // to act on them (a manual-confirm call awaiting input).
+            let mustShowCount = 0;
             const oauthConnects: OAuthConnectRequest[] = [];
-            // Vellum-style inline visuals (applet html view) and secret prompt cards
-            // render directly in the transcript outside the collapsed work log.
-            const inlineVisuals: {
-              id: string;
-              html: string;
-              height?: number;
-              title?: string;
-              pending: boolean;
-            }[] = [];
-            const inlineOpenUIs: {
-              id: string;
-              code: string;
-              title?: string;
-              preset?: string;
-              pending: boolean;
-            }[] = [];
-            // The latest desktop tool call's TV card (one live stream per reply).
-            let inlineDesktop: { id: string; node: ReactNode } | null = null;
             const secretPrompts: SecretPromptRequest[] = [];
-            // Questions the agent put to the user with ui_ask_user.
-            const askUsers: { id: string; request: AskUserRequest }[] = [];
             // Every write the turn made, for the "files changed" card.
             const turnEdits: TurnEdit[] = [];
-            // Reasoning that came after a step, drawn on the rail where it
-            // happened rather than merged into the opening thought.
-            let thoughtCount = 0;
             // The opening thought is the part still streaming.
             let leadingActive = false;
             const thoughtRow = (
@@ -670,8 +720,7 @@ const PurePreviewMessage = ({
                   if (active) isReasoningActive = true;
                   // Thinking before the first step leads the timeline;
                   // thinking between steps is a step of its own, in order.
-                  if (!hideAllTools && rows.some((r) => r.type === "group")) {
-                    thoughtCount++;
+                  if (!hideAllTools && hasStep) {
                     rows.push(thoughtRow(part.text ?? "", active, i));
                   } else {
                     if (active) leadingActive = true;
@@ -682,16 +731,36 @@ const PurePreviewMessage = ({
                 if (part.type === "text" && part.text) {
                   const sp = parseSecretPrompt(part.text);
                   if (sp && !secretPrompts.some((x) => x.service === sp.service && x.field === sp.field)) {
-                    secretPrompts.push({ ...sp, id: `${message.id}-sp-${i}-${sp.id}` });
+                    const prompt = { ...sp, id: `${message.id}-sp-${i}-${sp.id}` };
+                    secretPrompts.push(prompt);
+                    placedHere.push(
+                      <SecretPromptCard
+                      key={prompt.id}
+                      prompt={prompt}
+                      readonly={readonly}
+                      onSaved={sendText}
+                    />,
+                    );
                   }
                   const oc = parseOAuthConnect(part.text);
                   if (oc && !oauthConnects.some((x) => x.id === oc.id || (x.provider && x.provider === oc.provider) || (x.server && x.server === oc.server) || (x.toolkit && x.toolkit === oc.toolkit))) {
-                    oauthConnects.push({ ...oc, id: `${message.id}-oc-${i}-${oc.id}` });
+                    const connect = { ...oc, id: `${message.id}-oc-${i}-${oc.id}` };
+                    oauthConnects.push(connect);
+                    placedHere.push(
+                      <OAuthConnectCard
+                      key={connect.id}
+                      connect={connect}
+                      readonly={readonly}
+                      onDone={sendText}
+                    />,
+                    );
                   }
                 }
                 // Filtering hides tool calls only; the agent's prose stays.
                 if (hideAllTools) {
-                  mustShow.push(renderPart(part, i));
+                  blocks.push({ type: "node", node: renderPart(part, i) });
+                  mustShowCount++;
+                  placeUI(false);
                   continue;
                 }
                 rows.push({
@@ -702,13 +771,24 @@ const PurePreviewMessage = ({
                       : undefined,
                   children: renderPart(part, i),
                 });
+                placeUI(false);
                 continue;
               }
 
               const toolName = getToolName(part);
               if (toolName === "mcp" && part.state === "output-available") {
                 const setup = parseConnectorSetup(part.output);
-                if (setup) connectorSetups.push({ ...setup, id: part.toolCallId });
+                if (setup) {
+                  placedHere.push(
+                    <ConnectorSetupCard
+                      key={part.toolCallId}
+                      server={setup.server}
+                      missingSecrets={setup.missingSecrets}
+                      readonly={readonly}
+                      onDone={sendText}
+                    />,
+                  );
+                }
               }
               const partInput = (part as any).input;
               const isOpenUITool =
@@ -729,22 +809,25 @@ const PurePreviewMessage = ({
                   toolArgs,
                   part.state === "output-available" ? (part as any).output : null,
                 );
-                if (openuiPayload) {
-                  inlineOpenUIs.push({
-                    id: part.toolCallId,
-                    code: openuiPayload.code,
-                    title: openuiPayload.title,
-                    preset: openuiPayload.preset,
-                    pending: !part.state.startsWith("output"),
-                  });
+                if (openuiPayload && !answerHasOpenUI) {
+                  placedHere.push(
+                    <OpenUISurface
+                      key={part.toolCallId}
+                      code={openuiPayload.code}
+                      title={openuiPayload.title}
+                      preset={openuiPayload.preset}
+                      isStreaming={!part.state.startsWith("output")}
+                      onSendPrompt={sendText}
+                    />,
+                  );
                 }
               }
-              if (isDesktopToolCall(toolName, partInput)) {
+              if (i === lastDesktopCall) {
                 const card = getToolPresenter(toolName)?.Expanded?.(
                   presenterPropsFromToolPart(part),
                 );
                 if (card) {
-                  inlineDesktop = { id: part.toolCallId, node: card as ReactNode };
+                  placedHere.push(<div key={part.toolCallId}>{card as ReactNode}</div>);
                 }
               }
               if (toolName === "applet") {
@@ -762,13 +845,25 @@ const PurePreviewMessage = ({
                       : typeof partInput?.height === "number"
                         ? partInput.height
                         : 320;
-                  inlineVisuals.push({
-                    id: partInput?.instance || part.toolCallId,
-                    html: htmlSource,
-                    height,
-                    title: partInput?.title,
-                    pending: !part.state.startsWith("output"),
-                  });
+                  const surfaceId = partInput?.instance || part.toolCallId;
+                  placedHere.push(
+                    part.state.startsWith("output") ? (
+                      <VisualSurface
+                        key={part.toolCallId}
+                        surfaceId={surfaceId}
+                        html={htmlSource}
+                        height={height}
+                        title={partInput?.title}
+                        onSendPrompt={sendText}
+                      />
+                    ) : (
+                      <VisualPlaceholder
+                        key={part.toolCallId}
+                        title={partInput?.title}
+                        height={height}
+                      />
+                    ),
+                  );
                 }
               }
               const spFromTool =
@@ -784,10 +879,19 @@ const PurePreviewMessage = ({
                     x.field === spFromTool.field,
                 )
               ) {
-                secretPrompts.push({
+                const prompt = {
                   ...spFromTool,
                   id: `${part.toolCallId}-${spFromTool.id}`,
-                });
+                };
+                secretPrompts.push(prompt);
+                placedHere.push(
+                  <SecretPromptCard
+                      key={prompt.id}
+                      prompt={prompt}
+                      readonly={readonly}
+                      onSaved={sendText}
+                    />,
+                );
               }
 
               const ocFromTool =
@@ -805,14 +909,34 @@ const PurePreviewMessage = ({
                     (x.toolkit && x.toolkit === ocFromTool.toolkit),
                 )
               ) {
-                oauthConnects.push({
+                const connect = {
                   ...ocFromTool,
                   id: `${part.toolCallId}-${ocFromTool.id}`,
-                });
+                };
+                oauthConnects.push(connect);
+                placedHere.push(
+                  <OAuthConnectCard
+                      key={connect.id}
+                      connect={connect}
+                      readonly={readonly}
+                      onDone={sendText}
+                    />,
+                );
               }
               if (part.state === "output-available") {
                 const ask = parseAskUser(part.output);
-                if (ask) askUsers.push({ id: part.toolCallId, request: ask });
+                if (ask) {
+                  placedHere.push(
+                    <AskUserCard
+                      key={part.toolCallId}
+                      request={ask}
+                      // Answered or moved past: a later message exists.
+                      settled={!isLastMessage}
+                      readonly={readonly}
+                      onSubmit={!isLoading ? sendText : undefined}
+                    />,
+                  );
+                }
               }
               if (stepKindOf(toolName, partInput) === "edit") {
                 const props = presenterPropsFromToolPart(part);
@@ -823,12 +947,17 @@ const PurePreviewMessage = ({
                   ? extractInlineImages(part.output)
                   : [];
               turnImages.push(...partImages);
+              blockImages.push(...partImages);
+              if (!part.state.startsWith("output")) blockPending = true;
               const drawnArgs = imageGenerateArgs(toolName, partInput);
               if (drawnArgs !== undefined) {
-                drawnImages.push({
-                  id: part.toolCallId,
-                  props: { ...presenterPropsFromToolPart(part), input: drawnArgs },
-                });
+                placedHere.push(
+                  <DrawnImage
+                    key={part.toolCallId}
+                    {...presenterPropsFromToolPart(part)}
+                    input={drawnArgs}
+                  />,
+                );
               }
 
               if (
@@ -929,10 +1058,13 @@ const PurePreviewMessage = ({
                     )));
               if (filtered) {
                 hiddenCount++;
+                placeUI(false);
                 continue;
               }
               if (hideAllTools) {
-                mustShow.push(renderPart(part, i));
+                blocks.push({ type: "node", node: renderPart(part, i) });
+                mustShowCount++;
+                placeUI(false);
                 continue;
               }
 
@@ -945,7 +1077,8 @@ const PurePreviewMessage = ({
               const glance = narration.title;
               const glanceTone =
                 narration.kind === "ask" ? "ask" : undefined;
-              toolCount++;
+              blockStepCount++;
+              hasStep = true;
 
               // A web call gets a rich glance node: the collapsed log should
               // still show the favicon source chips, not just a sentence.
@@ -1003,7 +1136,11 @@ const PurePreviewMessage = ({
                   children: [renderPart(part, i)] as ReactNode[],
                 });
               }
+              placeUI(true);
             }
+            // Cards found in the answer itself are drawn after it, below.
+            const answerSecretsFrom = secretPrompts.length;
+            const answerOAuthFrom = oauthConnects.length;
 
             // While the turn runs, nothing it writes leaves the card: text
             // after the last tool call may be a note before the next call,
@@ -1020,7 +1157,6 @@ const PurePreviewMessage = ({
                 );
                 if (active) isReasoningActive = true;
                 if (hideAllTools) return;
-                thoughtCount++;
                 rows.push(thoughtRow(part.text ?? "", active, index));
               } else if (liveTail && part.type === "text" && part.text?.trim()) {
                 rows.push({
@@ -1032,6 +1168,7 @@ const PurePreviewMessage = ({
               }
             });
 
+            if (!hideAllTools) closeWork();
             const hasPendingTool = workParts.some(
               (p) => isToolUIPart(p) && !p.state.startsWith("output"),
             );
@@ -1048,7 +1185,7 @@ const PurePreviewMessage = ({
               !isWorkLogRunning &&
               !isReasoningActive &&
               !hasPendingTool &&
-              mustShow.length === 0 &&
+              mustShowCount === 0 &&
               (!turnRunning ||
                 tailParts.some((p) => p.type === "text" && p.text?.trim()));
 
@@ -1083,6 +1220,17 @@ const PurePreviewMessage = ({
                 </span>
               ) : null;
 
+            const workIndexes = blocks.flatMap((b, index) =>
+              b.type === "work" ? [index] : [],
+            );
+            const firstWork = workIndexes[0];
+            // The card with the turn's status and totals: the last one with
+            // anything on it, even when the turn ended on a form.
+            const latestWork =
+              workIndexes.findLast(
+                (index) => (blocks[index] as WorkBlock).rows.length > 0,
+              ) ?? firstWork;
+
             const reasoningNode =
               reasoningTexts.length > 0 || leadingActive ? (
                 <ReasoningPart
@@ -1095,56 +1243,62 @@ const PurePreviewMessage = ({
 
             return (
               <>
-                {hideAllTools ? (
-                  <>
-                    {reasoningNode}
-                    {/* With every tool hidden a long turn would otherwise
-                        show nothing at all until its answer lands, which
-                        reads as a hung chat. One quiet line says it is
-                        still moving without bringing the log back. */}
-                    {isWorkLogRunning ? (
-                      <TextShimmer
-                        as="span"
-                        className="text-xs"
-                      >{`Working… · ${hiddenCount} ${hiddenCount === 1 ? "step" : "steps"} hidden`}</TextShimmer>
-                    ) : null}
-                    {mustShow}
-                    {turnImages.length ? (
-                      <InlineImageStrip images={turnImages} size="sm" />
-                    ) : null}
-                  </>
-                ) : (
-                  <FoldedWork
-                    rows={rows}
-                    thought={
-                      reasoningTexts.length > 0 ||
-                      isReasoningActive ||
-                      thoughtCount > 0
-                    }
-                    reasoning={reasoningNode}
-                    reasoningTitle={
-                      leadingActive
-                        ? undefined
-                        : thoughtPreview(reasoningTexts.join(" "))
-                    }
-                    reasoningActive={leadingActive}
-                    turnSettled={turnSettled}
-                    isRunning={isWorkLogRunning}
-                    images={turnImages}
-                    hiddenCount={hiddenCount}
-                    trailing={foldTrailing}
-                    stepCount={toolCount}
-                    durationMs={
-                      (message.metadata as ChatMetadata | undefined)?.durationMs
-                    }
-                  />
-                )}
+                {hideAllTools ? reasoningNode : null}
+                {/* With every tool hidden a long turn would otherwise show
+                    nothing at all until its answer lands, which reads as a
+                    hung chat. One quiet line says it is still moving without
+                    bringing the log back. */}
+                {hideAllTools && isWorkLogRunning ? (
+                  <TextShimmer
+                    as="span"
+                    className="text-xs"
+                  >{`Working… · ${hiddenCount} ${hiddenCount === 1 ? "step" : "steps"} hidden`}</TextShimmer>
+                ) : null}
+                {blocks.map((block, index) => {
+                  if (block.type === "node") {
+                    return <Fragment key={index}>{block.node}</Fragment>;
+                  }
+                  const isFirst = index === firstWork;
+                  const isLatest = index === latestWork;
+                  return (
+                    <FoldedWork
+                      key={index}
+                      rows={block.rows}
+                      thought={
+                        (isFirst &&
+                          (reasoningTexts.length > 0 || leadingActive)) ||
+                        block.rows.some(
+                          (r) => r.type === "prose" && r.thought,
+                        )
+                      }
+                      reasoning={isFirst ? reasoningNode : null}
+                      reasoningTitle={
+                        !isFirst || leadingActive
+                          ? undefined
+                          : thoughtPreview(reasoningTexts.join(" "))
+                      }
+                      reasoningActive={isFirst && leadingActive}
+                      turnSettled={isLatest ? turnSettled : !block.pending}
+                      isRunning={isLatest && isWorkLogRunning}
+                      images={block.images}
+                      hiddenCount={isLatest ? hiddenCount : undefined}
+                      trailing={isLatest ? foldTrailing : undefined}
+                      stepCount={block.stepCount}
+                      durationMs={
+                        isLatest
+                          ? (message.metadata as ChatMetadata | undefined)
+                              ?.durationMs
+                          : undefined
+                      }
+                    />
+                  );
+                })}
+                {hideAllTools && turnImages.length ? (
+                  <InlineImageStrip images={turnImages} size="sm" />
+                ) : null}
                 {!hideAllTools && turnSources.length ? (
                   <SourcesStrip searches={webSearches} />
                 ) : null}
-                {drawnImages.map((drawn) => (
-                  <DrawnImage key={drawn.id} {...drawn.props} />
-                ))}
                 {tailParts.map((part, i) => {
                   // Already on the card's timeline (see above).
                   if (part.type === "reasoning" && !hideAllTools) return null;
@@ -1183,129 +1337,25 @@ const PurePreviewMessage = ({
                   }
                   return renderPart(part, lastToolIndex + 1 + i);
                 })}
-                {inlineOpenUIs
-                  .filter(
-                    () =>
-                      !tailParts.some(
-                        (p) =>
-                          p.type === "text" &&
-                          typeof p.text === "string" &&
-                          p.text.includes("```openui"),
-                      ),
-                  )
-                  .map((oui) => (
-                    <OpenUISurface
-                      key={oui.id}
-                      code={oui.code}
-                      title={oui.title}
-                      preset={oui.preset}
-                      isStreaming={oui.pending}
-                      onSendPrompt={
-                        sendMessage
-                          ? (prompt) =>
-                              sendMessage({
-                                role: "user",
-                                parts: [{ type: "text", text: prompt }],
-                              })
-                          : undefined
-                      }
-                    />
-                  ))}
-                {inlineDesktop && (
-                  <div key={inlineDesktop.id}>{inlineDesktop.node}</div>
-                )}
-                {inlineVisuals.map((vis) =>
-                  vis.pending ? (
-                    <VisualPlaceholder
-                      key={vis.id}
-                      title={vis.title}
-                      height={vis.height}
-                    />
-                  ) : (
-                    <VisualSurface
-                      key={vis.id}
-                      surfaceId={vis.id}
-                      html={vis.html}
-                      height={vis.height}
-                      title={vis.title}
-                      onSendPrompt={
-                        sendMessage
-                          ? (prompt) =>
-                              sendMessage({
-                                role: "user",
-                                parts: [{ type: "text", text: prompt }],
-                              })
-                          : undefined
-                      }
-                    />
-                  ),
-                )}
                 {turnChanges.length ? (
                   <TurnChangesCard changes={turnChanges} />
                 ) : null}
                 {artifactCards}
                 {approvals}
-                {askUsers.map((ask) => (
-                  <AskUserCard
-                    key={ask.id}
-                    request={ask.request}
-                    // Answered or moved past: a later message exists.
-                    settled={!isLastMessage}
-                    readonly={readonly}
-                    onSubmit={
-                      isLastMessage && sendMessage && !isLoading
-                        ? (text) =>
-                            sendMessage({
-                              role: "user",
-                              parts: [{ type: "text", text }],
-                            })
-                        : undefined
-                    }
-                  />
-                ))}
-                {connectorSetups.map((setup) => (
-                  <ConnectorSetupCard
-                    key={setup.id}
-                    server={setup.server}
-                    missingSecrets={setup.missingSecrets}
-                    readonly={readonly}
-                    onDone={
-                      isLastMessage && sendMessage
-                        ? (text) => sendMessage({ role: "user", parts: [{ type: "text", text }] })
-                        : undefined
-                    }
-                  />
-                ))}
-                {oauthConnects.map((oc) => (
+                {oauthConnects.slice(answerOAuthFrom).map((oc) => (
                   <OAuthConnectCard
                     key={oc.id}
                     connect={oc}
                     readonly={readonly}
-                    onDone={
-                      isLastMessage && sendMessage
-                        ? (text) =>
-                            sendMessage({
-                              role: "user",
-                              parts: [{ type: "text", text }],
-                            })
-                        : undefined
-                    }
+                    onDone={sendText}
                   />
                 ))}
-                {secretPrompts.map((sp) => (
+                {secretPrompts.slice(answerSecretsFrom).map((sp) => (
                   <SecretPromptCard
                     key={sp.id}
                     prompt={sp}
                     readonly={readonly}
-                    onSaved={
-                      isLastMessage && sendMessage
-                        ? (text) =>
-                            sendMessage({
-                              role: "user",
-                              parts: [{ type: "text", text }],
-                            })
-                        : undefined
-                    }
+                    onSaved={sendText}
                   />
                 ))}
               </>

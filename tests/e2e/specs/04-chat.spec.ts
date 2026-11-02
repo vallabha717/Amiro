@@ -241,6 +241,31 @@ test.describe("chat", () => {
     });
   });
 
+  test("agent UI stays where the agent called it: a form sits between what it said before and after", async ({ page, step }) => {
+    await step("Ask for a sentence, then a form, then another sentence", async () => {
+      await ask(
+        page,
+        'Do exactly this in order. 1) Write the sentence "Priya, here is your cost planner." 2) Call the ui_render_openui tool on the amiro MCP server with preset="budget_planner". 3) Write the sentence "CHECK-THE-SLIDERS-ABOVE and tell me what to change."',
+        { timeoutMs: 180000 },
+      );
+    });
+    await step("The form comes before the closing sentence, not after the whole answer", async () => {
+      const surface = page.getByTestId("openui-surface").last();
+      const closing = page.getByText("CHECK-THE-SLIDERS-ABOVE").last();
+      await expect(surface).toBeVisible({ timeout: 30000 });
+      await expect(closing).toBeVisible();
+      const position = await surface.evaluate(
+        (el, other) => el.compareDocumentPosition(other as Node),
+        await closing.elementHandle(),
+      );
+      expect(position & Node.DOCUMENT_POSITION_FOLLOWING, "the closing sentence follows the form").toBeTruthy();
+    });
+    await step("The sentence that introduces it stays readable right above it", async () => {
+      const intro = page.getByText("here is your cost planner").last();
+      await expect.soft(intro).toBeVisible();
+    });
+  });
+
   test("openui generative ui: daily executive command center, interactive cloud cost planner and sprint release tracker", async ({ page, step, amiro }) => {
     await step("Greeting screen shows quick-launch OpenUI demo pills → click Daily Command Center", async () => {
       await newChat(page);
