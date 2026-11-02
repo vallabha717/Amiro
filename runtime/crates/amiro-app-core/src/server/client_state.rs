@@ -1317,6 +1317,7 @@ mod tests {
 }
 
 pub(super) fn spawn_model_prefetch_update(provider: Arc<dyn Provider>, agent: Arc<Mutex<Agent>>) {
+    super::model_refresh::ensure_periodic_refresh(&provider);
     tokio::spawn(async move {
         let (provider_name, initial_models) = {
             let agent_guard = agent.lock().await;
