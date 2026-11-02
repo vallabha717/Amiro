@@ -17,7 +17,7 @@ test("schedules: a weekday morning brief, set up by asking", async ({ page, step
   });
 
   await step("Schedules page: Morning brief is listed with its next run", async () => {
-    await page.goto("/schedules");
+    await page.goto("/schedules?tab=yours");
     await expect(page.getByRole("heading", { name: "Schedules", level: 1 })).toBeVisible();
     const row = page.getByTestId("schedule-row").filter({ hasText: /Morning brief/i }).last();
     await expect(row).toBeVisible({ timeout: 30000 });
@@ -51,15 +51,15 @@ test("schedules: a weekday morning brief, set up by asking", async ({ page, step
 test("schedules: the Inbox cleanup playbook", async ({ page, step }) => {
   scene("schedules-inbox-cleanup");
 
-  await step("Schedules → the Inbox cleanup playbook: what it keeps, what it cleans up", async () => {
-    await page.goto("/schedules");
+  await step("Schedules → the Inbox cleanup template: what it keeps, what it cleans up", async () => {
+    await page.goto("/schedules?tab=templates");
     const card = page.getByTestId("schedule-playbook-inbox-cleanup");
     await expect(card).toBeVisible();
     await card.scrollIntoViewIfNeeded();
     await hold(page, 3000);
   });
 
-  await step("Set up this schedule for me → Amiro opens a chat with the rules as switches", async () => {
+  await step("Customize with Amiro → Amiro opens a chat with the rules as switches", async () => {
     await page.getByTestId("schedule-setup-chat-inbox-cleanup").click();
     await waitForReply(page, { before: 0, timeoutMs: 300000 });
     const surface = page.getByTestId("openui-surface").last();
@@ -79,7 +79,7 @@ test("schedules: the Inbox cleanup playbook", async ({ page, step }) => {
   });
 
   await step("Back on Schedules: Inbox cleanup is saved, marked Created in chat", async () => {
-    await page.goto("/schedules");
+    await page.goto("/schedules?tab=yours");
     const row = page.getByTestId("schedule-row").filter({ hasText: /Inbox cleanup/i }).last();
     await expect(row).toBeVisible({ timeout: 30000 });
     await hold(page, 3000);
