@@ -8,6 +8,7 @@
 //! - `POST /api/schedules/:id/run` -> `{schedule, run}`
 //! - `GET /api/schedules/:id/runs` -> `{runs}`
 //! - `GET /api/schedules/system` -> `{tasks}` (heartbeat + memory upkeep)
+//! - `GET /api/schedules/templates` -> `{templates}` (built-in catalog)
 //! - `POST /api/schedules/preview` -> `{nextRuns}` (read-only, validated)
 //!
 //! Cross-owner access is 404 (existence is never leaked). Malformed
@@ -21,6 +22,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::{json, Value};
 
+use crate::schedule_templates;
 use crate::schedules;
 use crate::routes::agents::AgentState;
 use crate::state::{ApiError, AppState, AuthUser};
@@ -120,6 +122,10 @@ async fn system_tasks(
     Ok(Json(schedules::system_tasks(&state).await?))
 }
 
+async fn templates(_user: AuthUser) -> Json<Value> {
+    Json(json!({ "templates": schedule_templates::all() }))
+}
+
 async fn cancel_schedule(
     AgentState(state): AgentState,
     user: AuthUser,
@@ -151,6 +157,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/schedules", post(create_schedule).get(list_schedules))
         .route("/api/schedules/preview", post(preview))
         .route("/api/schedules/system", get(system_tasks))
+        .route("/api/schedules/templates", get(templates))
         .route("/api/schedules/usage-summary", get(usage_summary))
         .route("/api/schedules/reassign-model", post(reassign_model))
         .route(

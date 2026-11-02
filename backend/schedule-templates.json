@@ -1,0 +1,157 @@
+[
+  {
+    "id": "inbox-cleanup",
+    "category": "inbox",
+    "icon": "mail-check",
+    "featured": true,
+    "name": "Inbox cleanup",
+    "summary": "Clears promotions, noisy alerts and expired codes while protecting reservations, bills and VIP threads.",
+    "mode": "agent",
+    "cadence": { "kind": "daily", "time": "07:30" },
+    "needs": ["mail"],
+    "preset": "inbox_cleanup_setup",
+    "prompt": "Inbox cleanup. Using my connected Gmail or mail connector: 1) CLEAN UP (archive/remove from Inbox): all promotional emails, marketing deals, unwanted automated notifications, social media alerts, and expired OTPs/newsletters older than 14 days. 2) KEEP & PROTECT in Inbox: all travel/dining/event reservations for this month, all utility bills, bank statements, and invoices from the last 2 months, active package deliveries, receipts, and starred/VIP threads. Post a concise summary of how many clutter threads were cleaned and highlight any upcoming reservations or due bills.",
+    "customize": [
+      { "key": "clean_promotions", "type": "switch", "label": "Clear promotions and marketing deals", "default": true },
+      { "key": "keep_bills_2_months", "type": "switch", "label": "Keep bills from the last 2 months", "default": true },
+      { "key": "cleanup_cadence", "type": "select", "label": "When should it run?", "options": ["Every day at 7:30 AM", "Every evening at 8:00 PM", "Weekdays at 8:00 AM", "Every Sunday at 6:00 PM"], "default": "Every day at 7:30 AM" }
+    ]
+  },
+  {
+    "id": "morning-briefing",
+    "category": "daily",
+    "icon": "sunrise",
+    "name": "Morning briefing",
+    "summary": "Today's meetings, the emails that matter, the weather and your focus.",
+    "mode": "agent",
+    "cadence": { "kind": "weekdays", "time": "08:00" },
+    "needs": ["mail", "calendar"],
+    "prompt": "Morning briefing. Using my connected calendar and mail if they're available: list today's meetings with times, the 3 most important unread emails and why they matter, today's weather where I am (see USER.md), and my focus from NOW.md. Keep it skimmable — short headings and bullets, under 200 words. If a connector isn't set up, skip that part and mention once how to connect it.",
+    "customize": [
+      { "key": "sections", "type": "input", "label": "What should it cover?", "default": "Meetings, top emails, weather, focus" },
+      { "key": "length", "type": "select", "label": "How long?", "options": ["Under 100 words", "Under 200 words", "As long as needed"], "default": "Under 200 words" },
+      { "key": "cadence", "type": "select", "label": "When should it run?", "options": ["Weekdays at 7:00 AM", "Weekdays at 8:00 AM", "Weekdays at 9:00 AM", "Every day at 8:00 AM"], "default": "Weekdays at 8:00 AM" }
+    ]
+  },
+  {
+    "id": "daily-focus",
+    "category": "daily",
+    "icon": "target",
+    "name": "Daily focus",
+    "summary": "Three concrete focus lines for the day, from what your agent knows about you.",
+    "mode": "execute",
+    "cadence": { "kind": "daily", "time": "09:00" },
+    "needs": [],
+    "prompt": "Write three short focus lines for today based on NOW.md and USER.md: one concrete sentence each, no preamble.",
+    "customize": [
+      { "key": "goal", "type": "input", "label": "What matters most right now?", "placeholder": "e.g. shipping the v2 launch" },
+      { "key": "cadence", "type": "select", "label": "When should it run?", "options": ["Every day at 8:00 AM", "Every day at 9:00 AM", "Weekdays at 9:00 AM"], "default": "Every day at 9:00 AM" }
+    ]
+  },
+  {
+    "id": "evening-wrap-up",
+    "category": "daily",
+    "icon": "moon",
+    "name": "Evening wrap-up",
+    "summary": "What got done, what's still open and what comes first tomorrow.",
+    "mode": "agent",
+    "cadence": { "kind": "weekdays", "time": "18:00" },
+    "needs": [],
+    "prompt": "Evening wrap-up. Review today's conversations and NOW.md: what got done, what's still open, and what should come first tomorrow. Update NOW.md to match and add a short entry to today's journal (journal/<today>.md). Reply with at most 5 bullets.",
+    "customize": [
+      { "key": "update_now", "type": "switch", "label": "Update NOW.md and today's journal", "default": true },
+      { "key": "cadence", "type": "select", "label": "When do you wrap up?", "options": ["Weekdays at 5:00 PM", "Weekdays at 6:00 PM", "Weekdays at 7:00 PM", "Every day at 9:00 PM"], "default": "Weekdays at 6:00 PM" }
+    ]
+  },
+  {
+    "id": "meeting-prep",
+    "category": "work",
+    "icon": "calendar-check",
+    "name": "Meeting prep",
+    "summary": "A short note for each of today's meetings: who's attending, recent context and what to decide.",
+    "mode": "agent",
+    "cadence": { "kind": "weekdays", "time": "08:30" },
+    "needs": ["calendar"],
+    "prompt": "Meeting prep. Using my connected calendar, and mail if available, go through today's meetings. For each one, write: time, attendees, the most recent related context, and the one thing I should decide or ask. Skip all-day events and focus blocks. If there are no meetings, say so in one line. If the calendar isn't connected, say once how to connect it and stop.",
+    "customize": [
+      { "key": "skip", "type": "input", "label": "Which meetings should it skip?", "placeholder": "e.g. daily standup, 1:1 with Priya" },
+      { "key": "cadence", "type": "select", "label": "When should it run?", "options": ["Weekdays at 8:00 AM", "Weekdays at 8:30 AM", "Weekdays at 9:00 AM"], "default": "Weekdays at 8:30 AM" }
+    ]
+  },
+  {
+    "id": "week-ahead",
+    "category": "work",
+    "icon": "calendar-range",
+    "name": "Week ahead",
+    "summary": "Every Monday: the week's big meetings, deadlines and your top three priorities.",
+    "mode": "agent",
+    "cadence": { "kind": "weekly", "weekday": 1, "time": "08:00" },
+    "needs": ["calendar"],
+    "prompt": "Week ahead. Using my connected calendar if available and NOW.md: list this week's important meetings and deadlines by day, flag anything that clashes or needs preparation, and suggest my top 3 priorities for the week. Keep it under 200 words. If the calendar isn't connected, plan from NOW.md alone and mention once how to connect it.",
+    "customize": [
+      { "key": "priorities", "type": "input", "label": "Anything to always keep in view?", "placeholder": "e.g. Q4 hiring, the Pune launch" },
+      { "key": "cadence", "type": "select", "label": "When should it run?", "options": ["Sunday at 6:00 PM", "Monday at 8:00 AM", "Monday at 9:00 AM"], "default": "Monday at 8:00 AM" }
+    ]
+  },
+  {
+    "id": "weekly-review",
+    "category": "work",
+    "icon": "clipboard-check",
+    "name": "Weekly review",
+    "summary": "Every Friday: what you finished, what slipped and what to carry into next week.",
+    "mode": "agent",
+    "cadence": { "kind": "weekly", "weekday": 5, "time": "17:00" },
+    "needs": [],
+    "prompt": "Weekly review. Read this week's journal entries, conversations and NOW.md. Summarise what I finished, what slipped and why, and what should carry into next week. Update NOW.md to match. Reply with three short sections and at most 8 bullets in total.",
+    "customize": [
+      { "key": "update_now", "type": "switch", "label": "Update NOW.md with the carry-overs", "default": true },
+      { "key": "cadence", "type": "select", "label": "When should it run?", "options": ["Friday at 4:00 PM", "Friday at 5:00 PM", "Sunday at 7:00 PM"], "default": "Friday at 5:00 PM" }
+    ]
+  },
+  {
+    "id": "bills-watch",
+    "category": "inbox",
+    "icon": "receipt",
+    "name": "Bills watch",
+    "summary": "Every week: bills and renewals in your mail that are due in the next 10 days.",
+    "mode": "agent",
+    "cadence": { "kind": "weekly", "weekday": 6, "time": "10:00" },
+    "needs": ["mail"],
+    "prompt": "Bills watch. Using my connected mail, find bills, invoices, subscription renewals and payment reminders due in the next 10 days. List each with the payee, amount, due date and a link to the email, soonest first. Never pay anything or change any account. If nothing is due, say so in one line. If mail isn't connected, say once how to connect it and stop.",
+    "customize": [
+      { "key": "window", "type": "select", "label": "How far ahead should it look?", "options": ["7 days", "10 days", "30 days"], "default": "10 days" },
+      { "key": "cadence", "type": "select", "label": "When should it run?", "options": ["Saturday at 10:00 AM", "Monday at 9:00 AM", "Every day at 9:00 AM"], "default": "Saturday at 10:00 AM" }
+    ]
+  },
+  {
+    "id": "topic-digest",
+    "category": "learning",
+    "icon": "newspaper",
+    "name": "Topic digest",
+    "summary": "A short, sourced roundup of what's new on a topic you follow.",
+    "mode": "agent",
+    "cadence": { "kind": "daily", "time": "08:00" },
+    "needs": ["web"],
+    "prompt": "Topic digest. Search the web for the most important news from the last 24 hours on the topics listed in USER.md, or on AI agents if none are listed. Give me the 5 items that matter most, each with one sentence on why it matters and its source link. Skip anything you already covered in this conversation. If web search isn't available, say once how to set it up and stop.",
+    "customize": [
+      { "key": "topics", "type": "input", "label": "Which topics do you follow?", "placeholder": "e.g. Indian startups, AI agents, cricket" },
+      { "key": "items", "type": "select", "label": "How many items?", "options": ["3 items", "5 items", "10 items"], "default": "5 items" },
+      { "key": "cadence", "type": "select", "label": "When should it run?", "options": ["Every day at 8:00 AM", "Weekdays at 8:00 AM", "Sunday at 9:00 AM"], "default": "Every day at 8:00 AM" }
+    ]
+  },
+  {
+    "id": "afternoon-reset",
+    "category": "wellbeing",
+    "icon": "coffee",
+    "name": "Afternoon reset",
+    "summary": "A plain reminder to stand up, stretch and drink some water.",
+    "mode": "notify",
+    "cadence": { "kind": "weekdays", "time": "15:00" },
+    "needs": [],
+    "prompt": "Time for a reset: stand up, stretch for two minutes and drink some water.",
+    "customize": [
+      { "key": "message", "type": "input", "label": "What should the reminder say?", "default": "Time for a reset: stand up, stretch for two minutes and drink some water." },
+      { "key": "cadence", "type": "select", "label": "When should it remind you?", "options": ["Weekdays at 11:00 AM", "Weekdays at 3:00 PM", "Every day at 3:00 PM"], "default": "Weekdays at 3:00 PM" }
+    ]
+  }
+]

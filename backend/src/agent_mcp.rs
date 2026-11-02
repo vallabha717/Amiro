@@ -28,6 +28,7 @@ use rand::RngCore;
 use serde_json::{json, Value};
 use subtle::ConstantTimeEq;
 
+use crate::schedule_templates;
 use crate::schedules;
 use crate::state::{ApiError, AppState};
 
@@ -311,8 +312,10 @@ pub fn tool_definitions() -> Vec<Value> {
     let id = json!({"type":"string","description":"Schedule id from schedule_list"});
     vec![
         json!({"name":"schedule_list","description":"List the owner's schedules (the same ones shown on the Schedules page).","inputSchema":{"type":"object","properties":{},"additionalProperties":false}}),
+        json!({"name":"schedule_templates_list","description":"The schedule templates that ship with Amiro (the Templates tab of the Schedules page). Without id: a short list. With id: the full recipe and its customization options. Use it when the user wants a ready-made schedule or picked a template.","inputSchema":{"type":"object","properties":{"id":{"type":"string","description":"Template id for the full recipe"}},"additionalProperties":false}}),
         json!({"name":"schedule_create","description":"Create a recurring or one-time schedule. It appears on the Schedules page.","inputSchema":{"type":"object","properties":{
             "name":{"type":"string"},
+            "template_id":{"type":"string","description":"The schedule_templates_list id this was customized from, if any"},
             "description":{"type":"string","description":"Short summary of what this schedule does"},
             "instructions":{"type":"string","description":"What the agent should do each run"},
             "message":{"type":"string","description":"Alias for instructions (Vellum compatibility)"},
@@ -535,7 +538,8 @@ pub fn tool_definitions() -> Vec<Value> {
         json!({"name":"ui_render_openui","description":"Render a live interactive OpenUI Generative UI surface inline in the chat transcript (KPI metric cards, interactive Recharts bar/line/pie charts, sortable status tables, interactive Q&A QuestionCard, value-pasting FormInput/FormTextarea/FormSlider/FormSwitch, encrypted SecretVaultCard for API keys/passwords, tabbed comparisons, step trackers, and clickable follow-up chips). Pass an OpenUI Lang program (`root = Stack([...])`) in `code` or pick a built-in daily-use `preset` (`daily_brief`, `budget_planner`, `sprint_tracker`, `agent_data_intake`, `inbox_cleanup_setup`). Never include raw secret values in OpenUI code; use SecretVaultCard to prompt the user into the encrypted vault.","inputSchema":{"type":"object","properties":{
             "title":{"type":"string","description":"Short card title displayed in the OpenUI surface header"},
             "code":{"type":"string","description":"OpenUI Lang program starting with `root = ...` (optional when `preset` is specified)"},
-            "preset":{"type":"string","enum":["daily_brief","budget_planner","sprint_tracker","agent_data_intake","inbox_cleanup_setup"],"description":"Optional built-in daily-use interactive OpenUI template when `code` is omitted"}
+            "preset":{"type":"string","enum":["daily_brief","budget_planner","sprint_tracker","agent_data_intake","inbox_cleanup_setup"],"description":"Optional built-in daily-use interactive OpenUI template when `code` is omitted"},
+            "template_id":{"type":"string","description":"A schedule_templates_list id: renders that template's customization form when `code` and `preset` are omitted"}
         },"additionalProperties":false}}),
     ]
 }
@@ -746,6 +750,33 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<(String
             };
             Ok((text, json!({"schedules": items})))
         }
+        "schedule_templates_list" => {
+            if let Some(id) = arg_str(args, "id")?.filter(|s| !s.trim().is_empty()) {
+                let template = schedule_templates::find(id.trim())
+                    .ok_or_else(|| format!("unknown schedule template \"{}\"; call schedule_templates_list without id", id.trim()))?;
+                let detail = schedule_templates::agent_detail(template);
+                return Ok((
+                    format!(
+                        "{}\n\nPrompt: {}\n\n{}",
+                        template["name"].as_str().unwrap_or(""),
+                        template["prompt"].as_str().unwrap_or(""),
+                        detail["nextSteps"].as_str().unwrap_or("")
+                    ),
+                    detail,
+                ));
+            }
+            let short: Vec<Value> = schedule_templates::all()
+                .iter()
+                .map(|t| {
+                    json!({"id":t["id"],"name":t["name"],"summary":t["summary"],"category":t["category"],"cadence":t["cadence"],"needs":t["needs"]})
+                })
+                .collect();
+            let lines: Vec<String> = short
+                .iter()
+                .map(|t| format!("- {} ({}): {}", t["name"].as_str().unwrap_or(""), t["id"].as_str().unwrap_or(""), t["summary"].as_str().unwrap_or("")))
+                .collect();
+            Ok((lines.join("\n"), json!({"templates": short})))
+        }
         "schedule_create" => {
             let mode = arg_str(args, "mode")?
                 .filter(|m| !m.is_empty())
@@ -784,6 +815,9 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<(String
             });
             if let Some(desc) = arg_str(args, "description")? {
                 body["description"] = json!(desc);
+            }
+            if let Some(template) = arg_str(args, "template_id")?.filter(|s| !s.trim().is_empty()) {
+                body["templateId"] = json!(template.trim());
             }
             if let Some(sc) = arg_str(args, "script")?.filter(|s| !s.trim().is_empty()) {
                 body["script"] = json!(sc);
@@ -2016,10 +2050,21 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<(String
             Ok((describe_desktop(&desktop), json!({"agentId": crate::routes::agents::MAIN_AGENT_ID, "desktop": desktop})))
         }
         "ui_render_openui" => {
-            let preset = arg_str(args, "preset")?;
+            let template = match arg_str(args, "template_id")?.filter(|s| !s.trim().is_empty()) {
+                Some(id) => Some(
+                    schedule_templates::find(id.trim())
+                        .ok_or_else(|| format!("unknown schedule template \"{}\"", id.trim()))?,
+                ),
+                None => None,
+            };
+            let preset = arg_str(args, "preset")?
+                .or_else(|| template.and_then(|t| t["preset"].as_str()));
             let raw_code = arg_str(args, "code")?;
             let code = match (raw_code.map(str::trim).filter(|s| !s.is_empty()), preset) {
                 (Some(c), _) => c.to_string(),
+                (None, None) if template.is_some() => {
+                    schedule_templates::openui_form(template.unwrap_or(&Value::Null))
+                }
                 (None, Some("daily_brief")) => openui_preset_code("daily_brief").to_string(),
                 (None, Some("budget_planner")) => openui_preset_code("budget_planner").to_string(),
                 (None, Some("sprint_tracker")) => openui_preset_code("sprint_tracker").to_string(),
@@ -2040,7 +2085,9 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<(String
                 Some("sprint_tracker") => "Sprint Release Readiness & Triage",
                 Some("agent_data_intake") => "Interactive Deployment & Credential Intake",
                 Some("inbox_cleanup_setup") => "Inbox Cleanup Schedule Studio",
-                _ => "Interactive OpenUI Surface",
+                _ => template
+                    .and_then(|t| t["name"].as_str())
+                    .unwrap_or("Interactive OpenUI Surface"),
             };
             let title = arg_str(args, "title")?
                 .map(str::trim)
@@ -2870,6 +2917,61 @@ mod tests {
         assert!(call_tool(&state, "notify_channel_bind", &json!({"channel": "telegram"}))
             .await
             .is_err());
+    }
+
+    #[tokio::test]
+    async fn schedule_templates_can_be_listed_customized_and_recorded() {
+        let state = state();
+        write_json(
+            &state.home.join("users.json"),
+            &json!({"users":[{"id":"owner","role":"admin"}]}),
+        )
+        .await
+        .unwrap();
+
+        let (_, list) = call_tool(&state, "schedule_templates_list", &json!({})).await.unwrap();
+        assert_eq!(list["templates"].as_array().unwrap().len(), schedule_templates::all().len());
+        assert!(list["templates"][0].get("prompt").is_none());
+
+        let (text, detail) = call_tool(&state, "schedule_templates_list", &json!({"id":"week-ahead"}))
+            .await
+            .unwrap();
+        assert!(text.contains("Week ahead"));
+        assert!(detail["template"]["prompt"].as_str().unwrap().contains("Week ahead"));
+        assert!(call_tool(&state, "schedule_templates_list", &json!({"id":"nope"})).await.is_err());
+
+        let (_, form) = call_tool(&state, "ui_render_openui", &json!({"template_id":"week-ahead"}))
+            .await
+            .unwrap();
+        assert_eq!(form["title"], json!("Week ahead"));
+        assert!(form["code"].as_str().unwrap().contains("InteractiveForm"));
+        let (_, inbox) = call_tool(&state, "ui_render_openui", &json!({"template_id":"inbox-cleanup"}))
+            .await
+            .unwrap();
+        assert_eq!(inbox["preset"], json!("inbox_cleanup_setup"));
+    }
+
+    #[tokio::test]
+    async fn schedule_create_records_its_template_for_the_page() {
+        let h = harness().await;
+        let spec = json!({"name":"My week","instructions":"Plan it","mode":"notify","cadence":{"weekly":{"day":"monday","time":"08:00"}},"timezone":"UTC"});
+        let mut from_template = spec.clone();
+        from_template["template_id"] = json!("week-ahead");
+        let (is_error, text, _) = tool(&h, "schedule_create", from_template).await;
+        assert!(!is_error, "{text}");
+        let (status, list) = http_get(&h, "/api/schedules", "owner").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(list["schedules"][0]["templateId"], json!("week-ahead"));
+
+        let mut unknown = spec;
+        unknown["template_id"] = json!("nope");
+        let (is_error, text, _) = tool(&h, "schedule_create", unknown).await;
+        assert!(is_error);
+        assert!(text.contains("unknown schedule template"), "{text}");
+
+        let (status, catalog) = http_get(&h, "/api/schedules/templates", "owner").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(catalog["templates"].as_array().unwrap().len(), schedule_templates::all().len());
     }
 
     #[tokio::test]

@@ -26,6 +26,8 @@ For common daily workflows, invoke `amiro` MCP's `ui_render_openui` tool with a 
 - `preset: "agent_data_intake"` — **Interactive Deployment & Credential Intake** (Vellum-style interactive `QuestionCard` where the user picks an answer + custom note, an `InteractiveForm` where the user pastes endpoints/JSON/ENV values, and a `SecretVaultCard` where the user pastes an API key or password into the encrypted vault).
 - `preset: "inbox_cleanup_setup"` — **Inbox Cleanup Schedule Studio** (step tracker for mail connection + rules + schedule activation, `QuestionCard` for cleanup action mode, `InteractiveForm` with toggles for clearing promotions/unwanted notifications/social clutter while keeping this month's reservations and the last 2 months' bills, plus 1-click activation chips).
 
+For a schedule template, pass `template_id` instead (an id from `schedule_templates_list`): it renders that template's customization form.
+
 ## 2. Authoring Custom ```` ```openui ```` Blocks Inline
 
 Every OpenUI Lang program assigns `root = Stack([...])` and defines child statements line by line. Forward references resolve automatically as tokens stream.

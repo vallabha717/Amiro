@@ -144,6 +144,9 @@ pub struct Schedule {
     /// Chat thread the agent created this from, when it said so.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_from_thread_id: Option<String>,
+    /// The built-in template this started from (`schedule_templates`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template_id: Option<String>,
     /// The team agent whose space this schedule belongs to and whose runtime
     /// runs it; `None` is the main agent (docs/multi-agent-team).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -898,6 +901,12 @@ pub async fn create_schedule_from(
         .ok_or_else(|| bad("schedule is required"))?;
     let kind = normalize_kind(&parse_incoming_kind(kind_raw)?, tz)?;
     let model = pin_model(body, mode)?;
+    let template_id = match body.get("templateId").and_then(|v| v.as_str()) {
+        Some(id) if crate::schedule_templates::find(id).is_none() => {
+            return Err(bad(format!("unknown schedule template \"{id}\"")));
+        }
+        id => id.map(str::to_string),
+    };
     let enabled = body
         .get("enabled")
         .and_then(|v| v.as_bool())
@@ -991,6 +1000,7 @@ pub async fn create_schedule_from(
         thread_id: None,
         created_by: created_by.to_string(),
         created_from_thread_id,
+        template_id,
         agent_id: state.agent_scope(),
         created_at: now.clone(),
         updated_at: now,
@@ -3434,6 +3444,7 @@ mod tests {
             last_status: None,
             thread_id: None,
             created_by: "user".to_string(),
+            template_id: None,
             created_from_thread_id: None,
             agent_id: None,
             created_at: "2026-10-23T00:00:00.000Z".to_string(),
