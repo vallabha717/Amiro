@@ -21,7 +21,7 @@ export function TeamShell({ children }: { children: React.ReactNode }) {
       <div className="flex h-svh min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-2 md:py-4 md:pr-4 md:pl-2">
         <main
           data-testid="team-window"
-          className="custom-scrollbar relative flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden rounded-2xl border bg-background shadow-panel"
+          className="custom-scrollbar relative flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden rounded-2xl border bg-window shadow-panel"
         >
           {children}
         </main>

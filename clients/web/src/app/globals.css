@@ -1876,6 +1876,8 @@
    * plane of `--background`:
    *
    *   bg-canvas         the desk the shell's floating panels sit on
+   *   bg-window         the main window panel itself, and fades/bars that
+   *                     must blend into it (black in dark mode)
    *   shadow-elevated   a resting card
    *   shadow-floating   a popover, dropdown, select or combobox panel
    *   shadow-modal      a dialog, sheet or drawer
@@ -1887,6 +1889,7 @@
    * Shadow values are per-*mode*, not per-palette (see §2), because elevation is
    * about how much light is in the room, not about the room's hue. */
   --color-canvas: var(--canvas);
+  --color-window: var(--window);
   --color-overlay: var(--overlay);
   --color-control-focus: var(--control-focus);
   --color-control-knob: var(--control-knob);
@@ -1949,6 +1952,9 @@
   --radius: 12px;
 
   --background: hsl(0 0% 100%);
+  /* The main window panel. Follows each palette's background, except in dark
+   * mode, where every palette's window is black (see the end of this section). */
+  --window: var(--background);
   --foreground: hsl(222.2 84% 4.9%);
   --card: hsl(0 0% 100%);
   --card-foreground: hsl(222.2 84% 4.9%);
@@ -3289,16 +3295,37 @@
   --canvas-texture: radial-gradient(ellipse 80% 60% at 15% -5%, rgba(96, 165, 250, 0.18), transparent 65%), radial-gradient(ellipse 75% 55% at 85% 85%, rgba(29, 78, 216, 0.14), transparent 65%), linear-gradient(160deg, #091328, #040816 65%);
 }
 
-/* --- every palette, dark: Graphite's black windows ---------------------------
- * In dark mode every palette shares Graphite's true-black content surfaces
- * (windows, menus, table headers). Each palette keeps its own desk, sidebar,
- * actions and accents. Same specificity as the palette blocks above, so this
- * block wins by coming last; keep it after every registered theme. */
+/* --- every palette, dark: black windows, tinted blocks ------------------------
+ * In dark mode the two big panels, the main window (`--window`) and the
+ * sidebar, are true black in every palette. The desk behind them keeps the
+ * palette's own shade, and everything on top (cards, rows, menus, dialogs,
+ * inputs, tooltips, which paint with `--background`, `--card` or
+ * `--popover`) keeps the palette's own tinted colours, as do its actions and
+ * accents. Same specificity as the palette blocks above, so these win by
+ * coming last; keep them after every registered theme. */
 :root.dark[data-theme] {
-  --card: hsl(0 0% 0%);
-  --popover: hsl(0 0% 4%);
-  --table-header: hsl(0 0% 3%);
-  --table-row-hover: hsl(0 0% 6%);
+  --window: hsl(0 0% 0%);
+  --sidebar: hsl(0 0% 0%);
+}
+
+/* --- every palette, light: white windows, tinted blocks -----------------------
+ * The mirror of dark mode: the sidebar and the main window are pure white in
+ * every palette, over the palette's tinted desk, and the blocks inside
+ * (cards, rows, tables) take a light wash of the palette's own action colour,
+ * so they stand apart from the white panels. Dialogs and menus float in
+ * white; inputs keep the palette's background tint. */
+:root:not(.dark)[data-theme] {
+  --window: hsl(0 0% 100%);
+  --sidebar: hsl(0 0% 100%);
+  --card: color-mix(in oklab, var(--primary) 6%, hsl(0 0% 100%));
+}
+
+/* Graphite's own blocks were black; on black windows they take a charcoal. */
+:root.dark[data-theme="default"] {
+  --card: hsl(0 0% 12%);
+  --popover: hsl(0 0% 16%);
+  --table-header: hsl(0 0% 15%);
+  --table-row-hover: hsl(0 0% 18%);
 }
 
 /* =============================================================================
@@ -3600,44 +3627,57 @@
     background-color: color-mix(in oklab, var(--background) 86%, transparent) !important;
   }
 
+  /* Light chrome: the sidebar and the main window are solid white panels
+   * (`--sidebar`, `--window`) over the palette's tinted desk. */
   :root:not(.dark) [data-slot="sidebar-inner"],
-  :root:not(.dark) [data-testid="main-window"] {
-    background-color: color-mix(in oklab, var(--background) 86%, transparent) !important;
-    border: 1px solid rgba(255, 255, 255, 0.75) !important;
+  :root:not(.dark) [data-testid="main-window"],
+  :root:not(.dark) #dashboard-root {
+    background-color: var(--window) !important;
+    border: 1px solid color-mix(in oklab, var(--border) 70%, transparent) !important;
     box-shadow:
       0 16px 40px -12px rgba(31, 38, 135, 0.12),
       inset 0 1px 0 0 rgba(255, 255, 255, 0.95) !important;
   }
 
   :root:not(.dark) [data-slot="sidebar-inner"] {
-    background-color: color-mix(in oklab, var(--sidebar) 86%, transparent) !important;
-    border: 1px solid rgba(255, 255, 255, 0.75) !important;
+    background-color: var(--sidebar) !important;
   }
 
-  :root:not(.dark) #dashboard-root {
-    background-color: color-mix(in oklab, var(--background) 86%, transparent) !important;
-  }
-
-  /* Dark chrome is a unified charcoal plane, never a light glass wash.
-   * A restrained accent at the top fades into the shared base surface. */
+  /* Dark chrome: the sidebar and the main window are solid black panels
+   * (`--sidebar`, `--window`) over the palette's shaded desk. */
   :root.dark [data-slot="sidebar-inner"],
   :root.dark [data-testid="main-window"],
   :root.dark #dashboard-root {
-    background-image: linear-gradient(
-      155deg,
-      color-mix(in oklab, var(--background) 96%, var(--primary) 4%),
-      var(--background) 48%,
-      color-mix(in oklab, var(--background) 96%, black 4%)
-    ) !important;
-    background-color: color-mix(in oklab, var(--background) 86%, transparent) !important;
+    background-image: none !important;
+    background-color: var(--window) !important;
     border-color: rgba(255, 255, 255, 0.08) !important;
     box-shadow:
       0 16px 40px -12px rgba(0, 0, 0, 0.5),
       inset 0 1px 0 0 rgba(255, 255, 255, 0.08) !important;
   }
 
-  /* In dark mode, cards, stat boxes, tables, dialogs, popovers, and sheets are pure full black (#000000)
-   * with a crisp, subtle border and deep floating elevation shadows over the charcoal workspace. */
+  :root.dark [data-slot="sidebar-inner"] {
+    background-color: var(--sidebar) !important;
+  }
+
+  /* In dark mode, blocks on those black panels take the palette's own colours:
+   * cards, stat boxes and tables the block colour, floating surfaces (dialogs,
+   * popovers, menus, sheets) the menu colour, with a crisp, subtle border and
+   * deep floating elevation shadows. */
+  :root.dark [data-slot="card"],
+  :root.dark [data-slot="stat-card"],
+  :root.dark [data-slot="table-container"],
+  :root.dark div:has(> table) {
+    background-color: var(--card) !important;
+  }
+
+  :root.dark [data-slot="dialog-content"],
+  :root.dark [data-slot="popover-content"],
+  :root.dark [data-slot="dropdown-menu-content"],
+  :root.dark [data-slot="sheet-content"] {
+    background-color: var(--popover) !important;
+  }
+
   :root.dark [data-slot="card"],
   :root.dark [data-slot="stat-card"],
   :root.dark [data-slot="table-container"],
@@ -3646,7 +3686,6 @@
   :root.dark [data-slot="popover-content"],
   :root.dark [data-slot="dropdown-menu-content"],
   :root.dark [data-slot="sheet-content"] {
-    background-color: hsl(0 0% 0%) !important;
     border-color: rgba(255, 255, 255, 0.12) !important;
     box-shadow:
       0 1px 3px 0 rgba(0, 0, 0, 0.7),

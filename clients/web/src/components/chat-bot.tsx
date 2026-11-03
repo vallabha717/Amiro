@@ -969,13 +969,13 @@ export default function ChatBot({
             </div>
 
             <div className="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
-              <div className="w-full h-full bg-gradient-to-t from-background to-50% to-transparent z-20" />
+              <div className="w-full h-full bg-gradient-to-t from-window to-50% to-transparent z-20" />
             </div>
             <div className="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
-              <div className="w-full h-full bg-gradient-to-l from-background to-20% to-transparent z-20" />
+              <div className="w-full h-full bg-gradient-to-l from-window to-20% to-transparent z-20" />
             </div>
             <div className="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
-              <div className="w-full h-full bg-gradient-to-r from-background to-20% to-transparent z-20" />
+              <div className="w-full h-full bg-gradient-to-r from-window to-20% to-transparent z-20" />
             </div>
           </motion.div>
         )}
