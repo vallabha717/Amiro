@@ -1,10 +1,14 @@
 /**
  * Journey 10 — Schedules: the agenda, the built-in templates (as they are or
  * customized with the agent), create one by hand, run now, pause, delete; the
- * built-in heartbeat can be run on demand.
+ * built-in heartbeat can be run on demand; the built-in Cleanup is set up
+ * from one chat message, previewed, run and changed on the page.
  */
+import * as fs from "node:fs";
+import * as path from "node:path";
 import type { Page } from "@playwright/test";
-import { assistantMessages, waitForReply } from "../support/chat";
+import { ask, assistantMessages, newChat, selectModel, waitForReply } from "../support/chat";
+import { readInstance } from "../support/config";
 import { expect, test } from "../support/fixtures";
 
 /** A template's Review & add opens the Create schedule form pre-filled; confirm it. */
@@ -199,6 +203,92 @@ test.describe("schedules", () => {
       const hb = page.getByTestId("system-task-heartbeat");
       await hb.getByRole("button", { name: "Run now" }).click();
       await expect.soft(page.getByText(/ran (just now|a few seconds|\d+ seconds?)|running/i).first()).toBeVisible({ timeout: 120000 });
+    });
+  });
+
+  test("Cleanup: one message sets up a nightly cleanup of untouched chats and logs, the page previews it, cleans now and changes the age", async ({ page, step, amiro }) => {
+    // Meera runs Brew & Bloom from Amiro; old supplier chats and logs pile up.
+    const home = (() => {
+      const state = readInstance();
+      return state.sandbox?.home ?? path.join(state.root!, "home");
+    })();
+    const oldChatId = `e2e-old-supplier-${Date.now()}`;
+    const oldLog = path.join(home, "logs", "e2e-old-cleanup.log");
+    type Cleanup = { settings: { enabled: boolean; olderThanHours: number; time: string; chats: boolean; scheduleRuns: boolean; logFiles: boolean } };
+    const cleanup = async () => (await amiro.api<Cleanup>("/api/housekeeping")).body.settings;
+    const chatExists = async () => (await amiro.api(`/api/thread/${oldChatId}`)).status === 200;
+
+    await step("An old supplier chat and an old log file nobody has touched for 5 days", async () => {
+      const users = JSON.parse(fs.readFileSync(path.join(home, "users.json"), "utf8")) as { users: { id: string }[] };
+      const threadsFile = path.join(home, "threads.json");
+      const threads = JSON.parse(fs.readFileSync(threadsFile, "utf8")) as Record<string, unknown>;
+      const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 3600 * 1000).toISOString();
+      threads[oldChatId] = {
+        title: "Sahyadri Oat Co. delivery call",
+        userId: users.users[0].id,
+        createdAt: fiveDaysAgo,
+        lastMessageAt: fiveDaysAgo,
+        archived: false,
+      };
+      fs.writeFileSync(threadsFile, JSON.stringify(threads, null, 2));
+      fs.mkdirSync(path.dirname(oldLog), { recursive: true });
+      fs.writeFileSync(oldLog, "old log line\n".repeat(200));
+      const fiveDays = (Date.now() - 5 * 24 * 3600 * 1000) / 1000;
+      fs.utimesSync(oldLog, fiveDays, fiveDays);
+      expect(await chatExists()).toBe(true);
+    });
+
+    await step("Ask once in chat: Amiro sets up the built-in Cleanup in seconds, not a hand-made schedule", async () => {
+      const schedulesBefore = (await listSchedules(amiro)).length;
+      await page.goto("/");
+      await newChat(page);
+      await selectModel(page);
+      const started = Date.now();
+      await ask(page, "Every night at 2 am, delete chats, schedule run logs and log files that nobody has touched for 2 days.");
+      const seconds = (Date.now() - started) / 1000;
+      await expect.poll(cleanup, { timeout: 30000 }).toMatchObject({ enabled: true, olderThanHours: 48, time: "02:00", chats: true, scheduleRuns: true, logFiles: true });
+      expect((await listSchedules(amiro)).length, "no agent schedule for a cleanup").toBe(schedulesBefore);
+      expect.soft(seconds, "set up in well under the 5-10 minutes it used to take").toBeLessThan(90);
+      expect(await chatExists(), "setting it up deletes nothing yet").toBe(true);
+    });
+
+    await step("Schedules → System tasks: Cleanup is on, nightly at 2:00 AM", async () => {
+      await page.goto("/schedules");
+      await page.getByTestId("schedules-tab-activity").click();
+      const row = page.getByTestId("system-task-cleanup");
+      await expect(row).toContainText("Daily at 2:00 AM");
+      await expect(row).toContainText("untouched for 2 days");
+      await expect(row.getByTestId("cleanup-toggle")).toHaveAttribute("data-state", "checked");
+    });
+
+    await step("Set up → Preview lists the old supplier chat; Clean up now deletes it and the old log", async () => {
+      await page.getByTestId("cleanup-setup").click();
+      const dialog = page.getByTestId("cleanup-dialog");
+      await expect(dialog.getByTestId("cleanup-run-button"), "cleaning needs a preview first").toBeDisabled();
+      await dialog.getByTestId("cleanup-preview-button").click();
+      const preview = dialog.getByTestId("cleanup-preview");
+      await expect(preview).toContainText("Sahyadri Oat Co. delivery call");
+      await expect(preview).toContainText(/Would delete \d+ chats/);
+      expect(await chatExists(), "a preview deletes nothing").toBe(true);
+      await dialog.getByTestId("cleanup-run-button").click();
+      await expect(preview).toContainText(/Deleted \d+ chats/, { timeout: 15000 });
+      expect(await chatExists()).toBe(false);
+      expect(fs.existsSync(oldLog)).toBe(false);
+    });
+
+    await step("Change the age to 1 week and save: the row says so", async () => {
+      const dialog = page.getByTestId("cleanup-dialog");
+      await dialog.getByTestId("cleanup-age").click();
+      await page.getByTestId("cleanup-age-168").click();
+      await dialog.getByTestId("cleanup-save").click();
+      await expect(dialog).toBeHidden();
+      await expect(page.getByTestId("system-task-cleanup")).toContainText("untouched for 1 week");
+      expect((await cleanup()).olderThanHours).toBe(168);
+    });
+
+    await step("Turn it off from the row", async () => {
+      await page.getByTestId("system-task-cleanup").getByTestId("cleanup-toggle").click();
+      await expect.poll(async () => (await cleanup()).enabled).toBe(false);
     });
   });
 
