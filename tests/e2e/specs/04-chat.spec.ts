@@ -529,7 +529,7 @@ test.describe("chat", () => {
     });
 
     await step("Amiro reads the perk inside the same reply: the marker shows where, and the answer uses it", async () => {
-      const marker = assistantMessages(page).last().getByTestId("interjection-marker");
+      const marker = page.locator("main").getByTestId("interjection-marker");
       await expect(marker, "the reply marks where the follow-up was read").toBeVisible({ timeout: 240000 });
       await expect(marker).toContainText("first 50 customers");
       await expect(page.getByTestId("interjection-chip"), "the chip clears once read").toHaveCount(0);
