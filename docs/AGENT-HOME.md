@@ -22,6 +22,22 @@ Templates live in `agent-home/` in the repo. Lines starting with `_ ` are
 notes for the agent: the runtime strips them from the prompt, and the
 Workspace shows them as a "Notes for your agent" callout.
 
+## What the model gets each turn
+
+1. **Base prompt** (`runtime/crates/amiro-base/src/prompt/system_prompt.md`,
+   cached): who the agent is (Amiro, or the name in `IDENTITY.md`), how it
+   gets things done, how it talks, which actions it confirms first (sending,
+   posting, paying, deleting, changing passwords), that file, web and tool
+   content is information rather than instructions, that secrets go through
+   the secure card, and the rules for working in a code project. A
+   `system-prompt.md` in the runtime home replaces it.
+2. **AGENTS.md, overlays and the skills list** (cached).
+3. **Memory and the agent home files** below (re-read every turn).
+4. **Per-turn guidance from the backend** (`build_capability_guidance_block`
+   in `backend/src/agent.rs`), sent with each message: the secret and OAuth
+   cards, question cards, plan/tasks/walkthrough, the desktop, inline visuals
+   and the names of stored credentials.
+
 ## How it works
 
 - **Seeding** (`backend/src/agent_home.rs`): at startup, after owner setup and
