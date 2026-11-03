@@ -1738,6 +1738,87 @@ fn usage_of(usage: amiro_sdk::Usage) -> TurnUsage {
     }
 }
 
+/// What happened to a message sent while the agent was working.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Interjection {
+    /// Queued in the running turn; the model reads it at its next gap (after
+    /// the current tools, or where it would have stopped).
+    Queued,
+    /// The session had gone idle, so the runtime started a turn with it. That
+    /// turn is driven to completion here and lands in history.
+    StartedTurn,
+}
+
+/// Hand a message to a session's running turn without stopping it (the
+/// runtime's soft interrupt). `client_id` is echoed back in
+/// `SoftInterruptInjected` on the turn's own stream once the model reads it.
+pub async fn interject(
+    state: &AppState,
+    session_id: &str,
+    content: &str,
+    images: Vec<(String, String)>,
+    client_id: &str,
+) -> Result<Interjection, ApiError> {
+    ensure_bridge(state).await?;
+    let state = state.clone();
+    let (session_id, content, client_id) =
+        (session_id.to_string(), content.to_string(), client_id.to_string());
+    blocking("interject", move || {
+        let client = connect_client(&state, false)?;
+        client.attach_session(&session_id).map_err(runtime_error)?;
+        let stream = client.events(Some(&session_id));
+        client
+            .soft_interrupt_with_id(&session_id, &content, images, false, Some(&client_id))
+            .map_err(runtime_error)?;
+        // An idle session takes the message as a new turn on this connection
+        // and says so before acknowledging. Leaving now would orphan it.
+        let deadline = std::time::Instant::now() + Duration::from_millis(100);
+        let started = std::iter::from_fn(|| {
+            let left = deadline.checked_duration_since(std::time::Instant::now())?;
+            stream.next_timeout(left)
+        })
+        .any(|event| matches!(
+                &event,
+                ApiEvent::SoftInterruptInjected { point, client_ids, .. }
+                    if point == "turn_start" && client_ids.contains(&client_id)
+            ));
+        if !started {
+            let _ = client.detach_session(&session_id);
+            return Ok(Interjection::Queued);
+        }
+        std::thread::spawn(move || {
+            let _ = consume_events(&client, &session_id, &|_| {});
+            let _ = client.detach_session(&session_id);
+        });
+        Ok(Interjection::StartedTurn)
+    })
+    .await
+}
+
+/// Take back interjections the model has not read yet. Returns the ids that
+/// were removed; any other id was already delivered.
+pub async fn withdraw_interjections(
+    state: &AppState,
+    session_id: &str,
+    client_ids: Vec<String>,
+) -> Result<Vec<String>, ApiError> {
+    if client_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    ensure_bridge(state).await?;
+    let state = state.clone();
+    let session_id = session_id.to_string();
+    blocking("withdraw_interjections", move || {
+        let client = connect_client(&state, false)?;
+        client.attach_session(&session_id).map_err(runtime_error)?;
+        let ids: Vec<&str> = client_ids.iter().map(String::as_str).collect();
+        let outcome = client.cancel_soft_interrupts_by_id(&session_id, &ids);
+        let _ = client.detach_session(&session_id);
+        outcome.map(|(cancelled, _)| cancelled).map_err(runtime_error)
+    })
+    .await
+}
+
 /// Cancel an in-flight turn for a session. Used when the browser disconnects.
 pub fn cancel_session(state: AppState, session_id: String) {
     std::thread::spawn(move || {
