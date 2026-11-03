@@ -63,6 +63,55 @@ export function followUpParts(
     : pending.attachmentParts;
 }
 
+/**
+ * A follow-up handed to the running turn instead of parked here: the agent
+ * reads it at its next gap (after the tools it is running, or where it would
+ * have stopped), the way jcode's soft interrupts work. `sending` until the
+ * server has queued it, then `waiting` until the turn says it was read.
+ */
+export interface Interjection {
+  id: string;
+  text: string;
+  status: "sending" | "waiting";
+}
+
+/**
+ * Only plain text can join a running turn; a message with files waits for
+ * the turn to end and is sent as the next one.
+ */
+export function canInterject(
+  pending: Pick<PendingFollowUp, "text" | "attachmentParts">,
+): boolean {
+  return pending.attachmentParts.length === 0 && pending.text.trim() !== "";
+}
+
+/** Several follow-ups sent as one message, in the order they were typed. */
+export function joinFollowUpTexts(texts: string[]): string {
+  return texts
+    .map((text) => text.trim())
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/**
+ * Park `next` behind an already parked follow-up instead of replacing it, so
+ * nothing typed is dropped: texts in order, files from both.
+ */
+export function mergePendingFollowUps(
+  parked: PendingFollowUp | null,
+  next: PendingFollowUp,
+): PendingFollowUp {
+  if (!parked) return next;
+  return {
+    ...parked,
+    kind: next.kind,
+    text: joinFollowUpTexts([parked.text, next.text]),
+    attachmentParts: [...parked.attachmentParts, ...next.attachmentParts],
+    fileIds: [...parked.fileIds, ...next.fileIds],
+    files: [...parked.files, ...next.files],
+  };
+}
+
 /** The `/login` command opens a local panel and must never become a message. */
 export function isLoginCommand(text: string): boolean {
   return text.trim().toLowerCase() === "/login";

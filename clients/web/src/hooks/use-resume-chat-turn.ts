@@ -35,13 +35,33 @@ export async function fetchChatRunState(
   }
 }
 
-/** Tell the server to stop the thread's running turn. Best effort. */
-export function stopChatTurn(threadId: string): void {
-  void backendFetch(backendUrl("/api/chat/stop"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id: threadId }),
-  }).catch(() => {});
+/** A mid-turn message handed back unread by Stop or by the turn ending. */
+export interface ReturnedInterjection {
+  id: string;
+  text: string;
+}
+
+/**
+ * Tell the server to stop the thread's running turn. Best effort. Resolves
+ * with the mid-turn messages the agent had not read yet, taken back.
+ */
+export async function stopChatTurn(
+  threadId: string,
+): Promise<ReturnedInterjection[]> {
+  try {
+    const response = await backendFetch(backendUrl("/api/chat/stop"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: threadId }),
+    });
+    if (!response.ok) return [];
+    const body = (await response.json()) as {
+      returned?: ReturnedInterjection[];
+    };
+    return body.returned ?? [];
+  } catch {
+    return [];
+  }
 }
 
 /** Messages up to and including the last user message: the turn's own reply
