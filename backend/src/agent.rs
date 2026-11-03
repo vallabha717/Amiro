@@ -797,24 +797,41 @@ fn under_base(base: &Path, candidate: &Path) -> bool {
     candidate == base || candidate.starts_with(base)
 }
 
+/// One personality axis: `(slider key, high pole, what it means, low pole, what it means)`.
+/// The slider value is the percentage toward the high pole.
+const PERSONALITY_AXES: [(&str, &str, &str, &str, &str); 5] = [
+    ("companionCoworker", "coworker", "keep it professional and about the work", "companion", "be warm and personal, and take an interest in how they are"),
+    ("genzBoomer", "classic", "write in full, plain sentences without slang", "Gen Z", "keep it casual and current; light slang is fine"),
+    ("executeCollaborate", "collaborating", "check in at decision points and offer options before acting", "executing independently", "get on with it and report back; ask only when you must"),
+    ("playfulSerious", "serious", "stay matter-of-fact with little humour", "playful", "humour and a light touch are welcome"),
+    ("politeUnfiltered", "unfiltered", "be blunt and say what you really think", "polite", "be tactful and diplomatic"),
+];
+
+/// Plain-language personality lines for IDENTITY.md. A slider within 6 points
+/// of the middle is balanced (as in `summarize_personality`); otherwise the
+/// line names the lean, its strength and what it means for how to write.
 fn sliders_to_lines(s: &Value) -> Vec<String> {
     let n = |k: &str| -> i64 { s.get(k).and_then(|v| v.as_i64()).unwrap_or(50) };
-    let lean = |value: i64, high: &str, low: &str| -> String {
-        // `value` is the percentage toward `high`.
-        if value >= 50 {
-            format!("Leans {high} ({value}%) over {low}")
-        } else {
-            format!("Leans {low} ({}%) over {high}", 100 - value)
-        }
-    };
-    vec![
-        lean(n("companionCoworker"), "coworker", "companion"),
-        lean(n("genzBoomer"), "classic", "Gen Z"),
-        lean(n("executeCollaborate"), "collaborating", "executing independently"),
-        lean(n("playfulSerious"), "serious", "playful"),
-        lean(n("politeUnfiltered"), "unfiltered", "polite"),
-    ]
+    PERSONALITY_AXES
+        .iter()
+        .map(|(key, high, high_means, low, low_means)| {
+            let value = n(key);
+            if (value - 50).abs() <= 6 {
+                return format!("Balanced between {low} and {high}");
+            }
+            let (pct, pole, other, means) = if value > 50 {
+                (value, high, low, high_means)
+            } else {
+                (100 - value, low, high, low_means)
+            };
+            let strength = if pct >= 80 { "Strongly" } else { "Leans" };
+            format!("{strength} {pole} ({pct}%) over {other}: {means}")
+        })
+        .collect()
 }
+
+/// First line of every generated `IDENTITY.md`.
+const IDENTITY_GENERATED_NOTE: &str = "_ Generated from the Personality page.";
 
 /// The generated `IDENTITY.md` (workspace root): name, handle, tagline, and
 /// plain-language personality calibration from the Personality page sliders.
@@ -825,9 +842,7 @@ pub(crate) fn build_identity_md(
     personality: &str,
     sliders: &Value,
 ) -> String {
-    let mut out = String::from(
-        "_ Generated from the Personality page. Edit it there; changes here are overwritten.\n\n",
-    );
+    let mut out = format!("{IDENTITY_GENERATED_NOTE} Edit it there; changes here are overwritten.\n\n");
     out.push_str(&format!(
         "# IDENTITY.md\n\n- **Name:** {name}\n- **Handle:** {handle}\n- **Tagline:** {tagline}\n\nYou are **{name}** ({handle}), a Personal Intelligence running on Amiro.\n\n## Personality\n\n"
     ));
@@ -840,13 +855,37 @@ pub(crate) fn build_identity_md(
     out
 }
 
+/// The chatting user's own personality, for a turn's guidance, when it differs
+/// from the workspace-root IDENTITY.md the runtime loads. The root file follows
+/// the owner, so without this another user's Personality settings would never
+/// reach the model. `None` when the user has none or it matches the root.
+pub async fn user_persona_reminder(workspace: &Path, user_id: &str) -> Option<String> {
+    let uid = sanitize_user_id(Some(user_id))?;
+    let read = |path: PathBuf| async move {
+        let text = tokio::fs::read_to_string(path).await.ok()?;
+        let kept: Vec<&str> = text.lines().filter(|line| !line.starts_with("_ ")).collect();
+        Some(kept.join("\n").trim().to_string())
+    };
+    let mine = read(workspace.join("users").join(uid).join("IDENTITY.md")).await?;
+    if mine.is_empty() || read(workspace.join("IDENTITY.md")).await.as_deref() == Some(mine.as_str()) {
+        return None;
+    }
+    Some(format!(
+        "## This user's agent personality\nThis user set their own name and personality for you. In this conversation it replaces IDENTITY.md:\n\n{mine}"
+    ))
+}
+
 /// `syncPersonaFiles` -- never fails the request; failures are logged only.
 /// Write the owner's IDENTITY.md at the workspace root if it is missing, from
 /// the saved identity (or the defaults). Without it a new agent would not know
 /// its own name until someone saved the Personality page.
 pub async fn ensure_owner_identity_file(state: &AppState) {
-    if tokio::fs::try_exists(state.workspace.join("IDENTITY.md")).await.unwrap_or(false) {
-        return;
+    // A file the Personality page generated is rewritten, so an older install
+    // picks up the current wording; a hand-written one is left alone.
+    if let Ok(existing) = tokio::fs::read_to_string(state.workspace.join("IDENTITY.md")).await {
+        if !existing.starts_with(IDENTITY_GENERATED_NOTE) {
+            return;
+        }
     }
     let Some(owner) = crate::agent_home::owner_user(state).await else {
         return;
@@ -2579,6 +2618,24 @@ mod tests {
     }
 
     #[test]
+    fn personality_lines_say_balanced_and_what_a_lean_means() {
+        let balanced = sliders_to_lines(&normalize_sliders(&json!({
+            "companionCoworker": 50, "genzBoomer": 50, "executeCollaborate": 50, "playfulSerious": 50, "politeUnfiltered": 50,
+        })));
+        assert!(balanced.iter().all(|line| line.starts_with("Balanced between ")), "{balanced:?}");
+
+        let leaning = sliders_to_lines(&normalize_sliders(&json!({
+            "companionCoworker": 15, "genzBoomer": 50, "executeCollaborate": 30, "playfulSerious": 50, "politeUnfiltered": 90,
+        })));
+        assert_eq!(
+            leaning[0],
+            "Strongly companion (85%) over coworker: be warm and personal, and take an interest in how they are"
+        );
+        assert!(leaning[2].starts_with("Leans executing independently (70%) over collaborating: "));
+        assert!(leaning[4].starts_with("Strongly unfiltered (90%) over polite: "));
+    }
+
+    #[test]
     fn persona_prompt_block_shape() {
         let identity = json!({
             "name": "Nova",
@@ -2881,6 +2938,48 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn startup_refreshes_a_generated_identity_but_not_a_hand_written_one() {
+        let (state, root) = temp_state();
+        std::fs::write(state.home.join("users.json"), r#"{"users":[{"id":"admin-1","role":"admin"}]}"#).unwrap();
+        let identity = state.workspace.join("IDENTITY.md");
+
+        std::fs::write(&identity, "_ Generated from the Personality page. Edit it there.\n\n- Leans coworker (50%) over companion\n").unwrap();
+        ensure_owner_identity_file(&state).await;
+        let refreshed = std::fs::read_to_string(&identity).unwrap();
+        // Default dials: 65 toward coworker, 55 toward serious (balanced).
+        assert!(refreshed.contains("Leans coworker (65%) over companion: keep it professional"), "{refreshed}");
+        assert!(refreshed.contains("Balanced between playful and serious"));
+        assert!(!refreshed.contains("(50%)"));
+
+        std::fs::write(&identity, "# My own identity\n").unwrap();
+        ensure_owner_identity_file(&state).await;
+        assert_eq!(std::fs::read_to_string(&identity).unwrap(), "# My own identity\n");
+        cleanup(&root);
+    }
+
+    #[tokio::test]
+    async fn another_users_personality_reaches_the_turn_only_when_it_differs() {
+        let (state, root) = temp_state();
+        let ws = &state.workspace;
+        std::fs::create_dir_all(ws.join("users/owner-1")).unwrap();
+        std::fs::create_dir_all(ws.join("users/guest-1")).unwrap();
+        let owner = "_ Generated from the Personality page.\n\n# IDENTITY.md\n\n- **Name:** Amiro\n";
+        std::fs::write(ws.join("IDENTITY.md"), owner).unwrap();
+        std::fs::write(ws.join("users/owner-1/IDENTITY.md"), owner).unwrap();
+        std::fs::write(ws.join("users/guest-1/IDENTITY.md"), "_ note\n# IDENTITY.md\n\n- **Name:** Nova\n").unwrap();
+
+        // The owner's own file is the one the runtime already loads.
+        assert_eq!(user_persona_reminder(ws, "owner-1").await, None);
+        // A user who never saved a personality adds nothing.
+        assert_eq!(user_persona_reminder(ws, "nobody").await, None);
+        let guest = user_persona_reminder(ws, "guest-1").await.expect("guest persona");
+        assert!(guest.contains("replaces IDENTITY.md"));
+        assert!(guest.contains("**Name:** Nova"));
+        assert!(!guest.contains("_ note"), "notes for the agent are stripped");
+        cleanup(&root);
+    }
+
+    #[tokio::test]
     async fn persona_mirrors_are_written_per_user_only() {
         let (state, root) = temp_state();
         let identity = json!({
@@ -2906,11 +3005,11 @@ mod tests {
         assert!(root_identity.starts_with("_ Generated from the Personality page."));
         assert!(root_identity.contains("**Name:** Nova"));
         assert!(root_identity.contains("## Personality"));
-        assert!(root_identity.contains("Leans coworker (65%) over companion"));
-        assert!(root_identity.contains("Leans Gen Z (58%) over classic"));
-        assert!(root_identity.contains("Leans executing independently (65%) over collaborating"));
-        assert!(root_identity.contains("Leans serious (55%) over playful"));
-        assert!(root_identity.contains("Leans unfiltered (60%) over polite"));
+        assert!(root_identity.contains("Leans coworker (65%) over companion: keep it professional"));
+        assert!(root_identity.contains("Leans Gen Z (58%) over classic: keep it casual"));
+        assert!(root_identity.contains("Leans executing independently (65%) over collaborating: get on with it"));
+        assert!(root_identity.contains("Balanced between playful and serious"));
+        assert!(root_identity.contains("Leans unfiltered (60%) over polite: be blunt"));
         let overlay = std::fs::read_to_string(dir.join("prompt-overlay.md")).unwrap();
         assert!(overlay.starts_with("# Agent Identity & Persona (Nova / @nova)"));
 
