@@ -73,7 +73,8 @@ Personality sliders change writing style only. They do not change permissions an
 
 ## What saving does
 
-- The personality summary is stored per user under the app home and mirrored into the agent's `IDENTITY.md`, which the runtime reads on every turn.
+- The personality summary is stored per user under the app home and mirrored into the agent's `IDENTITY.md`, which the runtime reads on every turn. Each dial becomes one plain line: a dial near the middle says it is balanced, and a lean names its side, how strong it is and what it means, for example "Leans companion (70%) over coworker: be warm and personal".
+- On a server with several accounts, `IDENTITY.md` follows the owner. Anyone else who saves their own personality gets it sent with each of their messages instead, so the agent uses their settings in their chats.
 - Saving a personality change rewrites `IDENTITY.md` but never touches the other home files such as `NOW.md`.
 - The sidebar accent color persists to the agent's color trait, so the sidebar and the agent colors stay in sync in both directions.
 
