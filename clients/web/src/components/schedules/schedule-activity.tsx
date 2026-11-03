@@ -3,7 +3,7 @@
 import { apiJson } from "@/lib/backend/client";
 import type { Schedule } from "@/lib/backend/schedules-api";
 import { cn } from "lib/utils";
-import { Activity, Brain, ChevronRight, History, Loader2, Play } from "lucide-react";
+import { Activity, Brain, ChevronRight, Eraser, History, Loader2, Play, Settings2 } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { useState } from "react";
@@ -11,6 +11,8 @@ import { toast } from "sonner";
 import useSWR from "swr";
 import { Button } from "ui/button";
 import { Switch } from "ui/switch";
+import { saveCleanup } from "@/lib/backend/housekeeping-api";
+import { CleanupDialog } from "./cleanup-dialog";
 
 // ---------------------------------------------------------------------------
 // System tasks (GET /api/schedules/system)
@@ -27,9 +29,11 @@ interface SystemTask {
   lastStatus: string | null;
   threadId: string | null;
   editable: boolean;
+  /** Cleanup: what its last run did, in plain words. */
+  lastSummary?: string | null;
 }
 
-const TASK_ICON: Record<string, typeof Activity> = { heartbeat: Activity, memory: Brain };
+const TASK_ICON: Record<string, typeof Activity> = { heartbeat: Activity, memory: Brain, cleanup: Eraser };
 
 export function SystemTasks({ canWrite }: { canWrite: boolean }) {
   const t = useTranslations("Schedules");
@@ -38,7 +42,20 @@ export function SystemTasks({ canWrite }: { canWrite: boolean }) {
     shouldRetryOnError: false,
   });
   const [busy, setBusy] = useState<string | null>(null);
+  const [cleanupOpen, setCleanupOpen] = useState(false);
   if (!data?.tasks?.length) return null;
+
+  const toggleCleanup = async (enabled: boolean) => {
+    setBusy("cleanup");
+    try {
+      await saveCleanup({ enabled });
+      await mutate();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("cleanupFailed"));
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const toggleHeartbeat = async (enabled: boolean) => {
     setBusy("heartbeat");
@@ -80,7 +97,11 @@ export function SystemTasks({ canWrite }: { canWrite: boolean }) {
                 ? t("taskQuiet")
                 : task.lastStatus === "error"
                   ? t("taskFailed")
-                  : null;
+                  : task.lastStatus === "cleaned"
+                    ? t("taskCleaned")
+                    : task.lastStatus === "nothing"
+                      ? t("taskNothingToClean")
+                      : null;
           return (
             <div key={task.id} className="flex flex-wrap items-center gap-3 px-4 py-3" data-testid={`system-task-${task.id}`}>
               <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
@@ -119,6 +140,27 @@ export function SystemTasks({ canWrite }: { canWrite: boolean }) {
                     aria-label={t("heartbeatToggle")}
                   />
                 </div>
+              ) : task.id === "cleanup" ? (
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 text-xs"
+                    data-testid="cleanup-setup"
+                    disabled={!canWrite || busy !== null}
+                    onClick={() => setCleanupOpen(true)}
+                  >
+                    <Settings2 className="size-3.5" />
+                    {t("cleanupSetUp")}
+                  </Button>
+                  <Switch
+                    checked={task.enabled}
+                    disabled={!canWrite || busy !== null}
+                    onCheckedChange={toggleCleanup}
+                    aria-label={t("cleanupToggle")}
+                    data-testid="cleanup-toggle"
+                  />
+                </div>
               ) : (
                 <span className="text-[11px] text-muted-foreground">{t("alwaysOn")}</span>
               )}
@@ -126,6 +168,7 @@ export function SystemTasks({ canWrite }: { canWrite: boolean }) {
           );
         })}
       </div>
+      <CleanupDialog open={cleanupOpen} onOpenChange={setCleanupOpen} onSaved={() => void mutate()} />
     </section>
   );
 }

@@ -291,6 +291,26 @@ fn tool_result(text: &str, data: &Value, is_error: bool) -> Value {
 // Tools
 // ---------------------------------------------------------------------------
 
+/// Fields of the Cleanup tools: settings for `housekeeping_configure`, or
+/// per-run overrides plus `dry_run` for `housekeeping_run`.
+fn cleanup_props(configure: bool) -> Value {
+    let mut props = json!({
+        "older_than_hours":{"type":"integer","minimum":1,"maximum":8760,"description":"Delete what nobody has touched for this many hours (48 = 2 days, 168 = 1 week)"},
+        "older_than_days":{"type":"number","minimum":0.05,"maximum":365,"description":"Same as older_than_hours, in days"},
+        "chats":{"type":"boolean","description":"Chats, including heartbeat and schedule-run chats. Agent channels and running chats are always kept"},
+        "archived":{"type":"boolean","description":"Also delete archived chats"},
+        "schedule_runs":{"type":"boolean","description":"Schedule run logs (the run history on the Schedules page)"},
+        "log_files":{"type":"boolean","description":"Old *.log files in Amiro's and the runtime's log folders and workspace data/logs"}
+    });
+    if configure {
+        props["enabled"] = json!({"type":"boolean","description":"Turn the daily cleanup on or off"});
+        props["time"] = json!({"type":"string","pattern":"^([01][0-9]|2[0-3]):[0-5][0-9]$","description":"Time of day it runs, 24-hour HH:MM in the owner's timezone (default 03:00)"});
+    } else {
+        props["dry_run"] = json!({"type":"boolean","default":true,"description":"Only list what would be deleted"});
+    }
+    props
+}
+
 fn cadence_schema() -> Value {
     let time = json!({"type":"string","pattern":"^([01][0-9]|2[0-3]):[0-5][0-9]$","description":"24-hour HH:MM in the schedule's timezone"});
     json!({
@@ -343,6 +363,9 @@ pub fn tool_definitions() -> Vec<Value> {
         json!({"name":"schedule_delete","description":"Delete a schedule (run history is kept).","inputSchema":{"type":"object","properties":{"id":id},"required":["id"],"additionalProperties":false}}),
         json!({"name":"schedule_run_now","description":"Run a schedule immediately and return the run result.","inputSchema":{"type":"object","properties":{"id":id},"required":["id"],"additionalProperties":false}}),
         json!({"name":"schedule_runs","description":"Recent runs of a schedule (status, times, output or error, result thread). Use this to read logs.","inputSchema":{"type":"object","properties":{"id":id,"limit":{"type":"integer","minimum":1,"maximum":50,"default":5}},"required":["id"],"additionalProperties":false}}),
+        json!({"name":"housekeeping_status","description":"The built-in Cleanup task: whether it is on, its age, time and scope, when it last ran and what it removed, and when it runs next.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}}),
+        json!({"name":"housekeeping_configure","description":"Set up or change the built-in Cleanup task (Schedules page → Activity → System tasks). It runs daily without the model and deletes what nobody has touched for the chosen age. Only the provided fields change.","inputSchema":{"type":"object","properties":cleanup_props(true),"additionalProperties":false}}),
+        json!({"name":"housekeeping_run","description":"Run a cleanup now. dry_run (default true) only lists what would be deleted; call with dry_run false only after the user confirmed. Other fields override the saved settings for this run only.","inputSchema":{"type":"object","properties":cleanup_props(false),"additionalProperties":false}}),
         json!({"name":"notify_send","description":"Send the owner a notification (Bell feed, desktop banner, web push). Use when something the owner asked to be told about happens.","inputSchema":{"type":"object","properties":{
             "title":{"type":"string","description":"Short notification title"},
             "body":{"type":"string","description":"Notification text"},
@@ -946,6 +969,45 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<(String
                 .await
                 .map_err(err_text)?;
             Ok((format!("Deleted schedule {id}."), json!({"deleted": id})))
+        }
+        "housekeeping_status" => {
+            let view = crate::housekeeping::view(state).await.map_err(err_text)?;
+            let on = view["settings"]["enabled"].as_bool().unwrap_or(false);
+            let mut text = format!(
+                "Cleanup is {}: {}.",
+                if on { "on" } else { "off" },
+                view["summary"].as_str().unwrap_or("")
+            );
+            if let Some(last) = view["lastReport"]["text"].as_str() {
+                text.push_str(&format!(" Last run: {last}"));
+            }
+            Ok((text, view))
+        }
+        "housekeeping_configure" => {
+            let view = crate::housekeeping::save_settings(state, args).await.map_err(err_text)?;
+            let on = view["settings"]["enabled"].as_bool().unwrap_or(false);
+            let text = format!(
+                "Cleanup is {}: {} ({}). It is on the Schedules page under Activity → System tasks.",
+                if on { "on" } else { "off" },
+                view["summary"].as_str().unwrap_or(""),
+                view["timezone"].as_str().unwrap_or("UTC"),
+            );
+            Ok((text, view))
+        }
+        "housekeeping_run" => {
+            let dry_run = args.get("dry_run").and_then(Value::as_bool).unwrap_or(true);
+            let report = crate::housekeeping::run_now(state, args, dry_run).await.map_err(err_text)?;
+            let mut text = report["text"].as_str().unwrap_or("").to_string();
+            let titles: Vec<&str> = report["chatList"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|c| c["title"].as_str())
+                .collect();
+            if !titles.is_empty() {
+                text.push_str(&format!("\nChats: {}", titles.join("; ")));
+            }
+            Ok((text, json!({"report": report})))
         }
         "schedule_run_now" => {
             let id = require_str(args, "id")?;
@@ -2812,6 +2874,26 @@ mod tests {
         assert!(listed["schedules"].as_array().unwrap().is_empty());
         let (is_error, _, _) = tool(&h, "schedule_delete", json!({"id":id})).await;
         assert!(is_error);
+    }
+
+    #[tokio::test]
+    async fn cleanup_tools_set_it_up_and_preview_before_deleting() {
+        let h = harness().await;
+        let (is_error, text, data) = tool(&h, "housekeeping_configure", json!({"enabled":true,"older_than_days":7,"time":"02:00"})).await;
+        assert!(!is_error, "{text}");
+        assert!(text.starts_with("Cleanup is on: Daily at 2:00 AM"), "{text}");
+        assert!(text.contains("untouched for 1 week"), "{text}");
+        assert_eq!(data["settings"]["olderThanHours"], 168);
+
+        let (is_error, text, data) = tool(&h, "housekeeping_run", json!({})).await;
+        assert!(!is_error, "{text}");
+        assert_eq!(data["report"]["dryRun"], true, "a run is a preview unless dry_run is false");
+        assert!(text.starts_with("Would delete"), "{text}");
+
+        let (is_error, text, _) = tool(&h, "housekeeping_status", json!({})).await;
+        assert!(!is_error && text.starts_with("Cleanup is on"), "{text}");
+        let (is_error, text, _) = tool(&h, "housekeeping_configure", json!({"time":"7am"})).await;
+        assert!(is_error && text.contains("HH:MM"), "{text}");
     }
 
     #[tokio::test]

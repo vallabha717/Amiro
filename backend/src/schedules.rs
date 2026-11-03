@@ -216,7 +216,7 @@ fn schedules_path(state: &AppState) -> PathBuf {
     state.home.join("store").join("schedules.json")
 }
 
-fn runs_path(state: &AppState) -> PathBuf {
+pub(crate) fn runs_path(state: &AppState) -> PathBuf {
     state.home.join("store").join("schedule-runs.json")
 }
 
@@ -1424,7 +1424,7 @@ pub async fn preview_next_runs(
 // Human cadence
 // ---------------------------------------------------------------------------
 
-fn fmt_clock(hour: u32, minute: u32) -> String {
+pub(crate) fn fmt_clock(hour: u32, minute: u32) -> String {
     let (h12, suffix) = match hour {
         0 => (12, "AM"),
         1..=11 => (hour, "AM"),
@@ -1679,6 +1679,7 @@ pub async fn system_tasks(state: &AppState) -> Result<Value, ApiError> {
             "lastStatus": Value::Null,
             "editable": false,
         },
+        crate::housekeeping::system_task(state).await,
     ]}))
 }
 

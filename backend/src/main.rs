@@ -661,6 +661,7 @@ async fn serve() -> anyhow::Result<()> {
         .merge(backend::models::router())
         .merge(backend::agent::router())
         .merge(backend::heartbeat::router())
+        .merge(backend::housekeeping::router())
         .merge(backend::onboarding::router())
         .merge(backend::devices::router())
         .merge(backend::routes::router())
@@ -737,6 +738,7 @@ async fn serve() -> anyhow::Result<()> {
     backend::devices::load_remote_access(&state).await;
     let remote = spawn_remote_access(remote_app);
     let heartbeat = backend::heartbeat::spawn_heartbeat(state.clone());
+    let housekeeping = backend::housekeeping::spawn_housekeeping(state.clone());
     let updates = backend::updates::spawn_update_checker(state.clone());
     let scheduler = backend::schedules::spawn_scheduler(state);
     tracing::info!(addr=%addr, "listening");
@@ -749,6 +751,7 @@ async fn serve() -> anyhow::Result<()> {
     scheduler.abort();
     updates.abort();
     heartbeat.abort();
+    housekeeping.abort();
     remote.abort();
     Ok(())
 }
