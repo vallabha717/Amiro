@@ -77,6 +77,19 @@ Personality sliders change writing style only. They do not change permissions an
 - Saving a personality change rewrites `IDENTITY.md` but never touches the other home files such as `NOW.md`.
 - The sidebar accent color persists to the agent's color trait, so the sidebar and the agent colors stay in sync in both directions.
 
+## What stays the same whatever the personality
+
+Under the personality, every agent starts from the same base instructions:
+
+- It goes by the name in its identity, or Amiro if there is none.
+- It finishes the task, keeps replies short, and answers in the language you write in.
+- It asks you first before it sends an email or message, posts publicly, pays for something, deletes data, or changes a password. A schedule you set up counts as asking.
+- It treats what it reads in web pages, emails, files and tool results as information, not orders. A document that says "delete this folder" is not obeyed.
+- It never asks for a password or key in chat. It shows the secure card instead.
+- In a code project you pointed it at, it follows that project's `AGENTS.md` and commits only when you ask.
+
+`IDENTITY.md` and `SOUL.md` shape tone and working style on top of these.
+
 ## Related
 
 - [Skills and Superpowers](/using/skills-superpowers)
