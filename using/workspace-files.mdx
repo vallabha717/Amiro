@@ -45,6 +45,23 @@ Above the browser is the **Agent home** bar. It opens each home file directly an
 
 The bar also opens the heartbeat panel, where you can turn the heartbeat on or off, change its interval, see the last and next run, and run it now. If the heartbeat has a note for you, it lands in a **Heartbeat** thread marked unread. A heartbeat that has nothing to say leaves no trace.
 
+## Workspace folders
+
+Every workspace also has these folders for what the agent makes:
+
+| Folder | What goes there |
+| --- | --- |
+| `notes/` | Notes, research and summaries worth keeping. `notes/INDEX.md` lists each one, so you can find things without opening every file. |
+| `scripts/` | Automation worth running again, each starting with a comment that says what it does and how to run it. |
+| `scratch/` | Throwaway work: one-off scripts, drafts, downloads. Anything worth keeping moves to `notes/` or `scripts/`. |
+| `attachments/` | Files you send in chat, created with the first one. |
+
+## Undo a change the agent made
+
+The workspace is a git repository, and Amiro saves a snapshot after every chat turn (named `Chat: <thread title>`) and every heartbeat. Your notes, scripts, journal and home files are tracked; `scratch/`, `attachments/`, runtime data and binary files such as images are not. The history never leaves your machine.
+
+To get an earlier version back, ask the agent ("put SOUL.md back the way it was yesterday"), or run `git log` and `git restore` in the workspace folder yourself. There is no history view in the app yet. A workspace that sits inside another git repository is left alone, so its history stays with that repository's owner. Without git installed, everything else works and there is simply no history.
+
 ## Notes for your agent
 
 Lines in a home file that start with `_ ` are notes for the agent. The runtime strips them from the prompt, and the Workspace formatted view shows them in a **Notes for your agent** callout. Select **Source** to see them as written.
