@@ -68,10 +68,23 @@ Open a schedule to see its detail panel and run history.
 
 ## Built-in tasks
 
-The Schedules page also lists built-in tasks as read-only rows:
+The **Activity** tab of the Schedules page lists built-in tasks under **System tasks**:
 
 - **Heartbeat**: the agent's periodic self-check. Its toggle and interval live in the Workspace heartbeat panel.
 - **Memory upkeep**: a runtime task that is not editable.
+- **Cleanup**: deletes what nobody has touched for a while. It is off until you set it up.
+
+### Cleanup
+
+Cleanup runs once a day without the model, so it costs nothing and takes about a second. Click **Set up** on its row to choose:
+
+- **Untouched for**: 1, 2 or 3 days, 1 or 2 weeks, 30 days, or a custom number of hours. Something counts as touched when a message was last written in a chat, when a run finished, or when a log file was last written.
+- **Time of day**: when it runs, in your timezone.
+- **What to clean**: chats (including heartbeat and schedule-run chats), archived chats too, schedule run logs (the run history), and old `.log` files from Amiro and its runtime.
+
+**Preview** lists what would go right now without deleting anything, and **Clean up now** is available after a preview. Agent channels, chats with a reply still running, run logs still in progress and the schedules themselves are always kept. Deleting can't be undone.
+
+You can also set it up from chat in one message, for example "every night at 2 am, delete chats and logs nobody has touched for 2 days". The agent uses the built-in Cleanup instead of creating a schedule, and asks before deleting anything right away.
 
 ## Create a schedule from chat
 
