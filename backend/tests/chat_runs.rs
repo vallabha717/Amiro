@@ -167,5 +167,41 @@ async fn stop_needs_a_thread_and_reports_whether_anything_ran() {
     call(&app, Some(OWNER_TOKEN), Method::POST, "/api/chat", Some(send_body(&thread))).await;
     let (status, body) = call(&app, Some(OWNER_TOKEN), Method::POST, "/api/chat/stop", Some(json!({"id": thread}))).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(serde_json::from_str::<Value>(&body).unwrap()["stopped"], false, "the turn already ended");
+    let body = serde_json::from_str::<Value>(&body).unwrap();
+    assert_eq!(body["stopped"], false, "the turn already ended");
+    assert_eq!(body["returned"], json!([]));
+}
+
+#[tokio::test]
+async fn interjections_need_a_running_turn_and_their_owner() {
+    let fixture = fixture();
+    let app = app(&fixture);
+    let thread = uuid::Uuid::new_v4().to_string();
+    let uri = format!("/api/chat/{thread}/interject");
+    let note = json!({"clientId": "c1", "text": "Also check the Pune venue"});
+
+    let (status, _) = call(&app, None, Method::POST, &uri, Some(note.clone())).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, _) = call(&app, Some(OWNER_TOKEN), Method::POST, &uri, Some(json!({"clientId": "c1"}))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "text is required");
+    let (status, _) = call(&app, Some(OWNER_TOKEN), Method::POST, &uri, Some(note.clone())).await;
+    assert_eq!(status, StatusCode::CONFLICT, "nothing is running: the page sends it as a turn");
+
+    // Once the turn has ended it takes nothing more, so the page falls back.
+    call(&app, Some(OWNER_TOKEN), Method::POST, "/api/chat", Some(send_body(&thread))).await;
+    let (status, _) = call(&app, Some(OWNER_TOKEN), Method::POST, &uri, Some(note.clone())).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    let (status, _) = call(&app, Some(MEMBER_TOKEN), Method::POST, &uri, Some(note)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "another user's turn is invisible");
+
+    let (status, body) = call(
+        &app,
+        Some(OWNER_TOKEN),
+        Method::POST,
+        &format!("{uri}/withdraw"),
+        Some(json!({"clientIds": ["c1"]})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(serde_json::from_str::<Value>(&body).unwrap()["withdrawn"], json!([]));
 }

@@ -378,6 +378,8 @@ async fn chat_handler(
 
     let run_uid = uid.clone();
     let run_thread = thread_id.clone();
+    let interjections: crate::chat_runs::SharedInterjections = Default::default();
+    let run_interjections = interjections.clone();
     let stream = async_stream::stream! {
         yield frame(json!({"type": "start", "messageId": response_id}));
         // Nothing to answer: no text, no attachments and no tool-card answers.
@@ -658,6 +660,8 @@ async fn chat_handler(
         let turn_started = std::time::Instant::now();
         let mut tool_count: u64 = 0;
         let mut guard = CancelGuard::new(state_for_stream.clone(), session.session_id.clone());
+        // From here a message sent mid-turn can join this turn.
+        interjections.lock().await.session_id = Some(session.session_id.clone());
         // The chat list shows this thread as working until the turn ends.
         let activity = crate::thread_activity::RunningGuard::start(&uid, &thread_id);
         let mut updates = turn.updates;
@@ -808,6 +812,30 @@ async fn chat_handler(
                         ApiEvent::TurnStopped { message, .. } => {
                             stopped_message = Some(message);
                         }
+                        ApiEvent::SoftInterruptInjected { client_ids, point, tools_skipped, display_role, .. } if display_role.is_none() => {
+                            // The model has now read these. Whatever text was
+                            // open belongs to the response before them.
+                            let read = interjections.lock().await.delivered(&client_ids);
+                            if !read.is_empty() {
+                                if text_open {
+                                    yield frame(json!({"type": "text-end", "id": text_id}));
+                                    text_open = false;
+                                }
+                                if reasoning_open {
+                                    yield frame(json!({"type": "reasoning-end", "id": reasoning_id}));
+                                    reasoning_open = false;
+                                }
+                                let items: Vec<Value> = read
+                                    .iter()
+                                    .map(|item| json!({"id": item.id, "text": item.text}))
+                                    .collect();
+                                yield frame(json!({
+                                    "type": "data-interjection",
+                                    "id": read[0].id,
+                                    "data": {"items": items, "point": point, "toolsSkipped": tools_skipped}
+                                }));
+                            }
+                        }
                         ApiEvent::SessionRenamed { session_id, display_title, .. } => {
                             if session_id == session.session_id {
                                 if let Ok(Some(title)) = threads::sync_runtime_title(&state_for_stream, &thread_id, &uid, &session_id, &display_title).await {
@@ -835,6 +863,25 @@ async fn chat_handler(
             }
         }
         guard.disarm();
+
+        // The turn ended before the model read some interjections (sent just
+        // as it finished). Take them back from the runtime so they do not
+        // surface in some later turn; the page sends them as the next one.
+        let (open_session, unread) = interjections.lock().await.close();
+        if let (Some(session_id), false) = (open_session, unread.is_empty()) {
+            let ids = unread.iter().map(|item| item.id.clone()).collect();
+            let withdrawn = runtime::withdraw_interjections(&state_for_stream, &session_id, ids)
+                .await
+                .unwrap_or_default();
+            let items: Vec<Value> = unread
+                .iter()
+                .filter(|item| withdrawn.contains(&item.id))
+                .map(|item| json!({"id": item.id, "text": item.text}))
+                .collect();
+            if !items.is_empty() {
+                yield frame(json!({"type": "data-interjections-returned", "data": {"items": items}, "transient": true}));
+            }
+        }
 
         if let Some(message) = stopped_message {
             failed = true;
@@ -913,12 +960,22 @@ async fn chat_handler(
         yield done_frame();
     };
 
-    let run = crate::chat_runs::start(&run_uid, &run_thread, stream).await;
+    // A turn this one replaces may still hold follow-ups it never read (the
+    // page takes them back before Send now; this covers anything else).
+    // Left queued, the runtime would slip them into this new turn unseen.
+    if let Some(previous) = crate::chat_runs::get(&run_uid, &run_thread).filter(|run| !run.is_done()) {
+        let (session_id, unread) = previous.interjections().lock().await.close();
+        withdraw_unread(&state, &run_thread, session_id, unread).await;
+    }
+    let run = crate::chat_runs::start(&run_uid, &run_thread, run_interjections, stream).await;
     Ok(sse_response(crate::chat_runs::follow(run)))
 }
 
-/// Body: `{ "id": threadId }`. Stops the thread's running turn.
+/// Body: `{ "id": threadId }`. Stops the thread's running turn. Interjections
+/// the model had not read yet are taken back and returned as `returned`, so
+/// the page can hand their text back instead of losing it.
 async fn chat_stop(
+    State(state): State<AppState>,
     user: AuthUser,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
@@ -926,8 +983,113 @@ async fn chat_stop(
     if thread_id.is_empty() {
         return Err(ApiError(StatusCode::BAD_REQUEST, "id is required".into()));
     }
-    let stopped = crate::chat_runs::stop(&uid_of(&user), thread_id);
-    Ok(Json(json!({ "stopped": stopped })))
+    let uid = uid_of(&user);
+    let returned = match crate::chat_runs::get(&uid, thread_id).filter(|run| !run.is_done()) {
+        Some(run) => {
+            let (session_id, unread) = run.interjections().lock().await.close();
+            withdraw_unread(&state, thread_id, session_id, unread).await
+        }
+        None => Vec::new(),
+    };
+    let stopped = crate::chat_runs::stop(&uid, thread_id);
+    Ok(Json(json!({ "stopped": stopped, "returned": returned })))
+}
+
+/// Withdraw unread interjections from the thread's runtime session and return
+/// the ones that were still unread, as `{id, text}`.
+async fn withdraw_unread(
+    state: &AppState,
+    thread_id: &str,
+    session_id: Option<String>,
+    unread: Vec<crate::chat_runs::PendingInterjection>,
+) -> Vec<Value> {
+    let Some(session_id) = session_id.filter(|_| !unread.is_empty()) else {
+        return Vec::new();
+    };
+    let runtime_state = match threads::get_entry(state, thread_id).await {
+        Ok(Some(entry)) => threads::runtime_state(state, &entry).await,
+        _ => state.clone(),
+    };
+    let ids = unread.iter().map(|item| item.id.clone()).collect();
+    let withdrawn = runtime::withdraw_interjections(&runtime_state, &session_id, ids)
+        .await
+        .unwrap_or_default();
+    unread
+        .into_iter()
+        .filter(|item| withdrawn.contains(&item.id))
+        .map(|item| json!({"id": item.id, "text": item.text}))
+        .collect()
+}
+
+/// Body: `{ "clientId", "text" }`. Hands a message to the thread's running
+/// turn; the model reads it at its next gap instead of after the turn ends.
+/// 409 when no turn is taking messages (none running, or it is just ending):
+/// the page then sends it as the next turn.
+async fn chat_interject(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(thread_id): Path<String>,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    let client_id = body.get("clientId").and_then(Value::as_str).unwrap_or("").trim().to_string();
+    let text = body.get("text").and_then(Value::as_str).unwrap_or("").trim().to_string();
+    if client_id.is_empty() || text.is_empty() {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "clientId and text are required".into()));
+    }
+    let uid = uid_of(&user);
+    let not_running = || ApiError(StatusCode::CONFLICT, "no turn is running in this chat".into());
+    let run = crate::chat_runs::get(&uid, &thread_id)
+        .filter(|run| !run.is_done())
+        .ok_or_else(not_running)?;
+    let entry = threads::get_entry(&state, &thread_id).await?.ok_or_else(not_running)?;
+    if !threads::entry_owned(&entry, &uid) {
+        return Err(ApiError(StatusCode::NOT_FOUND, "thread not found".into()));
+    }
+    let runtime_state = threads::runtime_state(&state, &entry).await;
+    // Held across the runtime call: the turn cannot close between the check
+    // and the queueing, so an accepted message is always delivered or returned.
+    let mut slot = run.interjections().lock().await;
+    let session_id = slot.session_id.clone().ok_or_else(not_running)?;
+    let outcome = runtime::interject(&runtime_state, &session_id, &text, Vec::new(), &client_id).await?;
+    if outcome == runtime::Interjection::Queued {
+        slot.pending.push(crate::chat_runs::PendingInterjection { id: client_id, text });
+    }
+    Ok(Json(json!({
+        "state": match outcome {
+            runtime::Interjection::Queued => "queued",
+            runtime::Interjection::StartedTurn => "started",
+        }
+    })))
+}
+
+/// Body: `{ "clientIds": [..] }`. Takes back interjections the model has not
+/// read yet (to send one right now instead, or to cancel it). `withdrawn`
+/// lists the ids removed; any other id was already read.
+async fn chat_withdraw_interjections(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(thread_id): Path<String>,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    let ids: Vec<String> = body
+        .get("clientIds")
+        .and_then(Value::as_array)
+        .map(|ids| ids.iter().filter_map(Value::as_str).map(str::to_string).collect())
+        .unwrap_or_default();
+    let Some(run) = crate::chat_runs::get(&uid_of(&user), &thread_id) else {
+        return Ok(Json(json!({ "withdrawn": [] })));
+    };
+    // Held across the runtime call, like an interjection: one the model reads
+    // meanwhile stays pending, so its delivery still shows in the turn.
+    let mut slot = run.interjections().lock().await;
+    let wanted: Vec<_> = slot.pending.iter().filter(|item| ids.contains(&item.id)).cloned().collect();
+    let withdrawn: Vec<String> = withdraw_unread(&state, &thread_id, slot.session_id.clone(), wanted)
+        .await
+        .into_iter()
+        .filter_map(|item| item.get("id").and_then(Value::as_str).map(str::to_string))
+        .collect();
+    slot.pending.retain(|item| !withdrawn.contains(&item.id));
+    Ok(Json(json!({ "withdrawn": withdrawn })))
 }
 
 /// The thread's latest turn: `running`, `finished` (still replayable) or `none`.
@@ -1351,6 +1513,8 @@ pub fn router() -> Router<AppState> {
         .route("/api/chat/stop", post(chat_stop))
         .route("/api/chat/{id}/run", get(chat_run_state))
         .route("/api/chat/{id}/stream", get(chat_resume))
+        .route("/api/chat/{id}/interject", post(chat_interject))
+        .route("/api/chat/{id}/interject/withdraw", post(chat_withdraw_interjections))
         .route("/api/chat/temporary", post(chat_temporary))
         .route("/api/chat/title", post(chat_title))
         .route("/api/chat/export", post(chat_export))
