@@ -1,0 +1,45 @@
+# Amiro keeps a history of this workspace in git, so any change the agent
+# makes to its own files, notes or scripts can be looked at and undone.
+# Only text you and the agent write is tracked; everything else stays out.
+
+# Runtime data, browser profiles and files sent in chat
+data/
+attachments/
+scratch/
+.browser/
+.local/
+
+# Tooling output
+node_modules/
+__pycache__/
+.venv/
+target/
+*.log
+*.pid
+*.sock
+*.sqlite*
+*.db
+*.db-*
+.DS_Store
+
+# Binaries and media
+*.zip
+*.tar
+*.gz
+*.tgz
+*.7z
+*.rar
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.heic
+*.mp3
+*.wav
+*.m4a
+*.ogg
+*.mp4
+*.mov
+*.webm
+*.pdf

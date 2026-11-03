@@ -21,5 +21,6 @@ pub mod swarm;
 pub mod thread_activity;
 pub mod threads;
 pub mod updates;
+pub mod workspace_history;
 
 pub mod routes;
