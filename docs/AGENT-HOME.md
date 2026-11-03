@@ -36,7 +36,16 @@ Workspace shows them as a "Notes for your agent" callout.
 4. **Per-turn guidance from the backend** (`build_capability_guidance_block`
    in `backend/src/agent.rs`), sent with each message: the secret and OAuth
    cards, question cards, plan/tasks/walkthrough, the desktop, inline visuals
-   and the names of stored credentials.
+   and the names of stored credentials. When the chatting user's own
+   `users/<id>/IDENTITY.md` differs from the root one (another account on a
+   shared server), it goes here too and replaces the root identity for that
+   chat (`user_persona_reminder`).
+
+`IDENTITY.md` is regenerated on every Personality save and at startup while it
+still carries the "Generated from the Personality page" note, so wording
+changes reach older installs. Each dial is one line: "Balanced between …"
+within 6 points of the middle, otherwise "Leans/Strongly <side> (<n>%) over
+<other>: <what it means>".
 
 ## How it works
 
