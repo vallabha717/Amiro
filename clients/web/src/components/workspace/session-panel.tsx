@@ -71,7 +71,7 @@ export const SessionPanel = memo(function SessionPanel({
   return (
     <aside
       data-testid="session-panel"
-      className="relative z-40 flex h-full w-[300px] shrink-0 flex-col gap-2 overflow-y-auto border-l border-border/60 bg-background p-2.5 [scrollbar-width:thin]"
+      className="relative z-40 flex h-full w-[300px] shrink-0 flex-col gap-2 overflow-y-auto border-l border-border/60 bg-window p-2.5 [scrollbar-width:thin]"
     >
       <div className="flex items-center justify-between px-1 pb-0.5">
         <span className="text-xs font-medium text-muted-foreground">

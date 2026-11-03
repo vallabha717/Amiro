@@ -225,10 +225,10 @@ export default function EditSkill({ initialSkill }: EditSkillProps) {
 
   return (
     <ScrollArea className="h-full w-full relative">
-      <div className="w-full h-8 absolute bottom-0 left-0 bg-gradient-to-t from-background to-transparent z-20 pointer-events-none" />
+      <div className="w-full h-8 absolute bottom-0 left-0 bg-gradient-to-t from-window to-transparent z-20 pointer-events-none" />
       <div className="z-10 relative flex flex-col gap-4 px-8 pt-8 pb-14 max-w-3xl h-full mx-auto">
-        <div className="sticky top-0 bg-background z-10 flex items-center justify-between pb-4 gap-2">
-          <div className="w-full h-8 absolute top-[100%] left-0 bg-gradient-to-b from-background to-transparent z-20 pointer-events-none" />
+        <div className="sticky top-0 bg-window z-10 flex items-center justify-between pb-4 gap-2">
+          <div className="w-full h-8 absolute top-[100%] left-0 bg-gradient-to-b from-window to-transparent z-20 pointer-events-none" />
           {isGenerating ? (
             <TextShimmer className="w-full text-2xl font-bold">
               {t("Skill.generatingSkill")}

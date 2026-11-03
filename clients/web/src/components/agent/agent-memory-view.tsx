@@ -698,7 +698,7 @@ export function AgentMemoryView({ className }: { className?: string }) {
         <div className="absolute inset-0 bg-[radial-gradient(60%_45%_at_50%_0%,color-mix(in_oklab,var(--primary)_14%,transparent),transparent_70%)]" />
       </div>
 
-      <header className="sticky top-0 z-30 border-b border-border/60 bg-background/85 backdrop-blur-xl">
+      <header className="sticky top-0 z-30 border-b border-border/60 bg-window/85 backdrop-blur-xl">
         <div className="mx-auto w-full max-w-[1200px] px-4 py-3.5 md:px-7">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">

@@ -171,7 +171,7 @@ export function AgentPane({
     <section
       data-testid="agent-pane"
       data-session-id={member.sessionId}
-      className="flex h-full min-w-0 flex-col bg-background"
+      className="flex h-full min-w-0 flex-col bg-window"
     >
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
         <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground text-xs">
