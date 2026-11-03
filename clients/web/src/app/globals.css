@@ -3289,6 +3289,18 @@
   --canvas-texture: radial-gradient(ellipse 80% 60% at 15% -5%, rgba(96, 165, 250, 0.18), transparent 65%), radial-gradient(ellipse 75% 55% at 85% 85%, rgba(29, 78, 216, 0.14), transparent 65%), linear-gradient(160deg, #091328, #040816 65%);
 }
 
+/* --- every palette, dark: Graphite's black windows ---------------------------
+ * In dark mode every palette shares Graphite's true-black content surfaces
+ * (windows, menus, table headers). Each palette keeps its own desk, sidebar,
+ * actions and accents. Same specificity as the palette blocks above, so this
+ * block wins by coming last; keep it after every registered theme. */
+:root.dark[data-theme] {
+  --card: hsl(0 0% 0%);
+  --popover: hsl(0 0% 4%);
+  --table-header: hsl(0 0% 3%);
+  --table-row-hover: hsl(0 0% 6%);
+}
+
 /* =============================================================================
  * 3. VENDOR LOGO MARKS
  *
@@ -3491,34 +3503,34 @@
     background: linear-gradient(90deg, hsl(0 0% 0%) 0 40%, hsl(252 76% 81%) 40% 75%, hsl(230 9% 76%) 75%);
   }
   :root.dark .palette-preview[data-palette="mist"] {
-    background: linear-gradient(90deg, #2d2d3d 0 40%, #7cc4ff 40% 75%, #b6b6cc 75%);
+    background: linear-gradient(90deg, hsl(0 0% 0%) 0 40%, #7cc4ff 40% 75%, #b6b6cc 75%);
   }
   :root.dark .palette-preview[data-palette="sage"] {
-    background: linear-gradient(90deg, #2e2e46 0 40%, #a78bfa 40% 75%, #b4b4d6 75%);
+    background: linear-gradient(90deg, hsl(0 0% 0%) 0 40%, #a78bfa 40% 75%, #b4b4d6 75%);
   }
   :root.dark .palette-preview[data-palette="clay"] {
-    background: linear-gradient(90deg, #302b21 0 40%, #fcd34d 40% 75%, #cfc5b3 75%);
+    background: linear-gradient(90deg, hsl(0 0% 0%) 0 40%, #fcd34d 40% 75%, #cfc5b3 75%);
   }
   :root.dark .palette-preview[data-palette="obsidian"] {
-    background: linear-gradient(90deg, hsl(240 3% 11.5%) 0 40%, hsl(240 5% 88%) 40% 75%, hsl(240 8% 70%) 75%);
+    background: linear-gradient(90deg, hsl(0 0% 0%) 0 40%, hsl(240 5% 88%) 40% 75%, hsl(240 8% 70%) 75%);
   }
   :root.dark .palette-preview[data-palette="deep-ocean"] {
-    background: linear-gradient(90deg, hsl(205 22% 12%) 0 40%, hsl(190 65% 70%) 40% 75%, hsl(205 8% 70%) 75%);
+    background: linear-gradient(90deg, hsl(0 0% 0%) 0 40%, hsl(190 65% 70%) 40% 75%, hsl(205 8% 70%) 75%);
   }
   :root.dark .palette-preview[data-palette="midnight-violet"] {
-    background: linear-gradient(90deg, hsl(265 16% 13%) 0 40%, hsl(270 65% 78%) 40% 75%, hsl(265 8% 70%) 75%);
+    background: linear-gradient(90deg, hsl(0 0% 0%) 0 40%, hsl(270 65% 78%) 40% 75%, hsl(265 8% 70%) 75%);
   }
   :root.dark .palette-preview[data-palette="warm-stone"] {
-    background: linear-gradient(90deg, hsl(30 8% 13%) 0 40%, hsl(36 68% 72%) 40% 75%, hsl(30 8% 70%) 75%);
+    background: linear-gradient(90deg, hsl(0 0% 0%) 0 40%, hsl(36 68% 72%) 40% 75%, hsl(30 8% 70%) 75%);
   }
   :root.dark .palette-preview[data-palette="terminal"] {
-    background: linear-gradient(90deg, hsl(155 10% 11.5%) 0 40%, hsl(151 48% 70%) 40% 75%, hsl(155 8% 70%) 75%);
+    background: linear-gradient(90deg, hsl(0 0% 0%) 0 40%, hsl(151 48% 70%) 40% 75%, hsl(155 8% 70%) 75%);
   }
   :root.dark .palette-preview[data-palette="aurora"] {
-    background: linear-gradient(90deg, hsl(245 17% 13%) 0 40%, hsl(255 68% 78%) 40% 75%, hsl(245 8% 70%) 75%);
+    background: linear-gradient(90deg, hsl(0 0% 0%) 0 40%, hsl(255 68% 78%) 40% 75%, hsl(245 8% 70%) 75%);
   }
   :root.dark .palette-preview[data-palette="cobalt"] {
-    background: linear-gradient(90deg, hsl(222 24% 12.5%) 0 40%, hsl(218 90% 73%) 40% 75%, hsl(222 8% 70%) 75%);
+    background: linear-gradient(90deg, hsl(0 0% 0%) 0 40%, hsl(218 90% 73%) 40% 75%, hsl(222 8% 70%) 75%);
   }
 
   /* Modal / Dialog / Sheet / Drawer backdrop scrim.
