@@ -1,7 +1,8 @@
 /**
  * Journey 4 — chatting with the configured model: rich rendering (tables,
  * code, mermaid, inline visuals), tool calling (web search), swarm
- * delegation, skills, follow-up queue, message actions and thread management.
+ * delegation, skills, mid-turn follow-ups (read at the next step, Send now,
+ * Cancel), message actions and thread management.
  *
  * Model output varies, so render checks are soft (`expect.soft`): the test is
  * marked failed but the journey keeps going and the video keeps recording.
@@ -509,16 +510,78 @@ test.describe("chat", () => {
     });
   });
 
-  test("follow-up queue, message actions and threads", async ({ page, step }) => {
-    await step("Send a long request, then queue a follow-up while it is still answering", async () => {
-      await send(page, "Write a 300-word story about a lighthouse keeper.");
-      await expect(page.getByText(/^Working…/).or(assistantMessages(page).first())).toBeVisible({ timeout: 60000 });
-      await send(page, "Now give it a title.");
-      await expect.soft(page.getByTestId("queued-followup-chip"), "follow-up should be queued").toBeVisible({ timeout: 5000 });
+  test("Mid-turn follow-ups: Amiro reads them at its next step, Send now stops and sends, Cancel hands back", async ({ page, step }) => {
+    // Launching Brew & Bloom, an oat-milk café in Koregaon Park, Pune. The
+    // owner keeps remembering details while Amiro is still writing.
+    const threadOf = () => new URL(page.url()).searchParams.get("thread") ?? "";
+    const userBubbles = page.locator('[data-message-role="user"]');
+    const working = page.getByText(/^Working…/).or(assistantMessages(page).first());
+    const perk = "Also mention that the first 50 customers get a free oat-milk flat white.";
+
+    await step("Ask for the launch announcement; while Amiro writes, add a perk → it waits for Amiro's next step, not the end of the turn", async () => {
+      await send(page, "Write the launch-day announcement for Brew & Bloom, a new oat-milk café in Koregaon Park, Pune, opening this Saturday. About 250 words.");
+      await expect(working).toBeVisible({ timeout: 60000 });
+      await send(page, perk);
+      const chip = page.getByTestId("interjection-chip");
+      await expect(chip, "the follow-up is handed to the running turn").toBeVisible({ timeout: 10000 });
+      await expect(chip).toContainText("first 50 customers");
+      await expect(page.getByTestId("queued-followup-chip"), "nothing is parked until the turn ends").toHaveCount(0);
     });
-    await step("Both turns complete in order", async () => {
-      await expect.poll(() => assistantMessages(page).count(), { timeout: 240000 }).toBeGreaterThanOrEqual(2);
-      await waitForReply(page, { before: 1 });
+
+    await step("Amiro reads the perk inside the same reply: the marker shows where, and the answer uses it", async () => {
+      const marker = assistantMessages(page).last().getByTestId("interjection-marker");
+      await expect(marker, "the reply marks where the follow-up was read").toBeVisible({ timeout: 240000 });
+      await expect(marker).toContainText("first 50 customers");
+      await expect(page.getByTestId("interjection-chip"), "the chip clears once read").toHaveCount(0);
+      const reply = await waitForReply(page);
+      expect(await assistantMessages(page).count(), "one reply: the follow-up joined the running turn").toBe(1);
+      expect.soft(reply, "the announcement includes the perk").toMatch(/50|flat white/i);
+    });
+
+    await step("Reload: the perk is saved in the conversation where Amiro read it, as my own message", async () => {
+      await page.reload();
+      await expect(userBubbles.filter({ hasText: "first 50 customers" })).toHaveCount(1, { timeout: 30000 });
+      await expect(assistantMessages(page).first()).toBeVisible();
+    });
+
+    await step("Ask for the menu; mid-answer add a correction and press Send now → the reply stops and the correction goes out at once", async () => {
+      const before = await assistantMessages(page).count();
+      await send(page, "Write the full opening menu for Brew & Bloom: 12 drinks and 8 bakes, each with a price in rupees and a one-line description.");
+      await expect.poll(() => assistantMessages(page).count(), { timeout: 120000 }).toBeGreaterThan(before);
+      await send(page, "Correction: we only serve oat milk, so drop any dairy items.");
+      const chip = page.getByTestId("interjection-chip");
+      await expect(chip).toHaveAttribute("data-status", "waiting", { timeout: 10000 });
+      const withdrawal = page.waitForResponse((r) => r.url().includes(`/api/chat/${threadOf()}/interject/withdraw`));
+      await chip.getByTestId("followup-send-now").click();
+      const withdrawn = (await (await withdrawal).json()) as { withdrawn: string[] };
+      expect(withdrawn.withdrawn, "the unread follow-up is taken back from the turn, so it is not read twice").toHaveLength(1);
+      await expect(userBubbles.last(), "the correction is sent right away as my next message").toContainText("only serve oat milk", { timeout: 30000 });
+      await expect(page.getByTestId("interjection-chip")).toHaveCount(0);
+      const reply = await waitForReply(page, { before: before + 1 });
+      expect.soft(reply, "the new answer follows the correction").toMatch(/oat/i);
+    });
+
+    await step("Mid-answer add a note, then cancel it → it is taken back into the composer, unsent", async () => {
+      const before = await assistantMessages(page).count();
+      await send(page, "Write a 300-word story about the first morning at Brew & Bloom.");
+      await expect.poll(() => assistantMessages(page).count(), { timeout: 120000 }).toBeGreaterThan(before);
+      await send(page, "Name the barista Meera.");
+      const chip = page.getByTestId("interjection-chip");
+      await expect(chip).toHaveAttribute("data-status", "waiting", { timeout: 10000 });
+      await chip.getByTestId("interjection-cancel").click();
+      await expect(composer(page), "the note is back in the composer").toContainText("Name the barista Meera.");
+      await expect(chip).toHaveCount(0);
+      await waitForReply(page, { before });
+      await expect(userBubbles.filter({ hasText: "Name the barista Meera." }), "the cancelled note was never sent").toHaveCount(0);
+      await composer(page).click();
+      await page.keyboard.press("ControlOrMeta+A");
+      await page.keyboard.press("Delete");
+    });
+  });
+
+  test("follow-up queue, message actions and threads", async ({ page, step }) => {
+    await step("Send a request and get the reply", async () => {
+      await ask(page, "Write a 100-word story about a lighthouse keeper.");
     });
     await step("Hover the reply: copy and read-aloud actions exist", async () => {
       await assistantMessages(page).last().hover();
