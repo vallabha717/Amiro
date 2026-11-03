@@ -488,6 +488,8 @@ pub async fn run_heartbeat(state: &AppState) -> Value {
     // The exchange lives only in the throwaway session; archive it so it never
     // shows up in the visible thread list.
     let _ = crate::runtime::archive_session(state, &session_id).await;
+    // Whatever the heartbeat wrote (journal, NOW.md) gets its own snapshot.
+    crate::workspace_history::snapshot_later(state.workspace.clone(), format!("Heartbeat {date}"));
     if is_heartbeat_ok(&text) {
         record(state, "quiet", None).await;
         return json!({"result": "quiet"});

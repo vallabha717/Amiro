@@ -8,6 +8,9 @@
 //!   templates in `agent-home/` and are then owned by the agent and the user.
 //!   Seeding never overwrites an existing file.
 //! - `BOOTSTRAP.md` is seeded once, on a genuinely fresh install only.
+//! - The folders in [`WORKSPACE_DIRS`], `notes/INDEX.md` and `.gitignore` are
+//!   created when missing, and the home becomes a git repository whose
+//!   history is snapshotted after each turn (`workspace_history.rs`).
 //!
 //! Small durable state (bootstrap flag, heartbeat settings) lives in
 //! `~/.amiro/store/agent-home.json`.
@@ -24,6 +27,13 @@ pub const USER_TEMPLATE: &str = include_str!("../../agent-home/USER.md");
 pub const NOW_TEMPLATE: &str = include_str!("../../agent-home/NOW.md");
 pub const HEARTBEAT_TEMPLATE: &str = include_str!("../../agent-home/HEARTBEAT.md");
 pub const BOOTSTRAP_TEMPLATE: &str = include_str!("../../agent-home/BOOTSTRAP.md");
+pub const NOTES_INDEX_TEMPLATE: &str = include_str!("../../agent-home/notes-INDEX.md");
+pub const WORKSPACE_GITIGNORE: &str = include_str!("../../agent-home/workspace.gitignore");
+
+/// Folders every agent home has, described to the agent in `SOUL.md`:
+/// dated journal entries, kept notes (indexed in `notes/INDEX.md`), reusable
+/// scripts, and throwaway scratch work (not kept in the workspace history).
+pub const WORKSPACE_DIRS: [&str; 4] = ["journal", "notes", "scripts", "scratch"];
 
 pub const MAX_ATTACHMENT_BYTES: u64 = 25 * 1024 * 1024;
 
@@ -181,12 +191,16 @@ pub fn seed_files(
 ) -> SeedReport {
     let mut report = SeedReport::default();
     let _ = std::fs::create_dir_all(workspace);
-    let _ = std::fs::create_dir_all(workspace.join("journal"));
+    for dir in WORKSPACE_DIRS {
+        let _ = std::fs::create_dir_all(workspace.join(dir));
+    }
     let templates = [
         ("SOUL.md", SOUL_TEMPLATE),
         ("USER.md", USER_TEMPLATE),
         ("NOW.md", NOW_TEMPLATE),
         ("HEARTBEAT.md", HEARTBEAT_TEMPLATE),
+        ("notes/INDEX.md", NOTES_INDEX_TEMPLATE),
+        (".gitignore", WORKSPACE_GITIGNORE),
     ];
     let pre_existing = ["SOUL.md", "USER.md", "NOW.md"]
         .iter()
@@ -209,6 +223,8 @@ pub fn seed_files(
             report.bootstrap_seeded = true;
         }
     }
+    // After the files, so the first snapshot holds the seeded home.
+    crate::workspace_history::init(workspace);
     report
 }
 
@@ -439,14 +455,21 @@ mod tests {
     fn seeding_fills_placeholders_and_never_overwrites() {
         let ws = tmp();
         let report = seed_files(&ws, "Ada", "ada@example.com", "Europe/London", false);
-        assert_eq!(report.written.len(), 4);
+        assert_eq!(
+            report.written,
+            ["SOUL.md", "USER.md", "NOW.md", "HEARTBEAT.md", "notes/INDEX.md", ".gitignore"]
+        );
         let user = std::fs::read_to_string(ws.join("USER.md")).unwrap();
         assert!(user.contains("**Name:** Ada"));
         assert!(user.contains("ada@example.com"));
         assert!(user.contains("Europe/London"));
         assert!(!user.contains("{{"));
-        assert!(ws.join("journal").is_dir());
-        assert!(!ws.join("notes").exists() && !ws.join("attachments").exists());
+        for dir in WORKSPACE_DIRS {
+            assert!(ws.join(dir).is_dir(), "{dir}/ is seeded");
+        }
+        let index = std::fs::read_to_string(ws.join("notes/INDEX.md")).unwrap();
+        assert!(index.contains("Ada") && !index.contains("{{"));
+        assert!(!ws.join("attachments").exists(), "made on the first attachment only");
 
         std::fs::write(ws.join("SOUL.md"), "mine").unwrap();
         let again = seed_files(&ws, "Bob", "b@x.y", "UTC", true);

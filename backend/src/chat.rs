@@ -895,6 +895,11 @@ async fn chat_handler(
         )
         .await;
         activity.finish(&state_for_stream, failed).await;
+        // Anything the turn changed in the agent's home can be undone.
+        crate::workspace_history::snapshot_later(
+            state_for_stream.workspace.clone(),
+            format!("Chat: {resolved_title}"),
+        );
         let mut metadata = json!({
             "chatModel": chat_model,
             "model": requested_model,

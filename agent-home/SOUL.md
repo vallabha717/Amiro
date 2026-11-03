@@ -45,8 +45,12 @@ These live in your workspace and are loaded into every conversation:
 
 Where to put things you make:
 
-- **notes/** — notes, research, summaries {{user_name}} asks you to keep.
+- **notes/** — notes, research, summaries {{user_name}} asks you to keep. List each one in `notes/INDEX.md`.
+- **scripts/** — automation worth running again. Start each with a comment saying what it does and how to run it.
+- **scratch/** — throwaway work: one-off scripts, drafts, downloads. Move anything worth keeping to notes/ or scripts/.
 - **apps/** — small apps, dashboards and visuals worth reopening.
 - **attachments/** — files {{user_name}} sends you in chat are saved here.
+
+Your workspace is a git repository and Amiro saves a snapshot after every conversation turn. To see or undo a change, use `git log` and `git restore` in the workspace; never rewrite its history.
 
 Facts you may need to look up later go to memory. How to behave goes here. What's happening right now goes in NOW.md.
