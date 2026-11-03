@@ -113,6 +113,53 @@ for (const viewport of [
   });
 }
 
+test("Dark palettes: every palette uses Graphite's black windows and keeps its own accent", async ({ page, step }) => {
+  const PALETTES = ["default", "mist", "sage", "clay", "obsidian", "deep-ocean", "midnight-violet", "warm-stone", "terminal", "aurora", "cobalt"];
+  /** The resolved colour of a theme token, as the browser paints it. */
+  const token = (name: string) =>
+    page.evaluate((n) => {
+      const probe = document.createElement("div");
+      probe.style.background = `var(${n})`;
+      document.body.appendChild(probe);
+      const colour = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return colour;
+    }, name);
+  const pickPalette = async (id: string) => {
+    await page.getByTestId("sidebar-user-button").first().click();
+    await page.getByRole("menuitem", { name: /^Theme/ }).hover();
+    await page.getByTestId(`palette-${id}`).click();
+    await page.keyboard.press("Escape");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", id);
+  };
+
+  await step("Switch to dark mode", async () => {
+    await page.goto("/");
+    await page.evaluate(() => localStorage.setItem("app-theme-v2", "dark"));
+    await page.reload();
+    await expect(page.locator("html")).toHaveClass(/\bdark\b/);
+  });
+
+  const accents = new Set<string>();
+  for (const id of PALETTES) {
+    await step(`Dark · ${id}: windows and menus are black, the accent is the palette's own`, async () => {
+      await pickPalette(id);
+      expect(await token("--card"), `${id} window`).toBe("rgb(0, 0, 0)");
+      expect(await token("--popover"), `${id} menu`).toBe("rgb(10, 10, 10)");
+      accents.add(await token("--primary"));
+    });
+  }
+  expect(accents.size, "palettes keep distinct accents").toBeGreaterThan(5);
+
+  await step("Light mode is unchanged: Sapphire's windows stay light", async () => {
+    await pickPalette("mist");
+    await page.evaluate(() => localStorage.setItem("app-theme-v2", "light"));
+    await page.reload();
+    expect(await token("--card")).not.toBe("rgb(0, 0, 0)");
+    await pickPalette("default");
+  });
+});
+
 test("keyboard: shortcuts dialog and new-chat shortcut", async ({ page, step }) => {
   await step("Open keyboard shortcuts (Ctrl+/, then Meta+/)", async () => {
     await page.goto("/");
