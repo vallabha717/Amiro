@@ -48,6 +48,26 @@ pub const BUNDLED_AGENT_SKILLS: &[(&str, &str)] = &[
         "openui",
         include_str!("../../../agent-skills/openui/SKILL.md"),
     ),
+    (
+        "housekeeping",
+        include_str!("../../../agent-skills/housekeeping/SKILL.md"),
+    ),
+    (
+        "settings",
+        include_str!("../../../agent-skills/settings/SKILL.md"),
+    ),
+    (
+        "images-and-artifacts",
+        include_str!("../../../agent-skills/images-and-artifacts/SKILL.md"),
+    ),
+    (
+        "contacts-and-notifications",
+        include_str!("../../../agent-skills/contacts-and-notifications/SKILL.md"),
+    ),
+    (
+        "skill-builder",
+        include_str!("../../../agent-skills/skill-builder/SKILL.md"),
+    ),
 ];
 
 fn bundled_skill(name: &str) -> Option<&'static str> {

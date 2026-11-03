@@ -22,6 +22,8 @@ Tools: `schedule_templates_list`, `schedule_list`, `schedule_create`, `schedule_
 
 Do **not** use the `schedule` / `schedule_ambient` tools for anything the user asked for — those are private wake-ups for your own current task and never appear on the Schedules page.
 
+Deleting old chats, run logs or log files on a cadence is **not** a schedule: it is the built-in Cleanup task. Use `housekeeping_configure` (see the `housekeeping` skill) instead of writing instructions or scripts for it.
+
 ## Setting up a template
 
 Amiro ships ready-made schedules (the **Templates** tab of the Schedules page). When the user picks one, or asks for something a template already does, keep it short and interactive:
