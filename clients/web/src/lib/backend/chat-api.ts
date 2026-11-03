@@ -9,6 +9,34 @@
 import { apiJson } from "./client";
 import type { ChatModel, ChatThread } from "app-types/chat";
 
+/**
+ * Hand a message to the thread's running turn. `queued`: the agent reads it
+ * at its next gap (after the current tools, or where it would have stopped).
+ * `started`: the turn had just ended, so the runtime began a new one with it.
+ * Throws an `ApiError` with status 409 when no turn is taking messages.
+ */
+export async function interjectChat(
+  threadId: string,
+  body: { clientId: string; text: string },
+) {
+  return apiJson<{ state: "queued" | "started" }>(
+    `/api/chat/${encodeURIComponent(threadId)}/interject`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+/** Take back messages the agent has not read yet; returns the ids removed. */
+export async function withdrawInterjections(
+  threadId: string,
+  clientIds: string[],
+) {
+  const result = await apiJson<{ withdrawn: string[] }>(
+    `/api/chat/${encodeURIComponent(threadId)}/interject/withdraw`,
+    { method: "POST", body: JSON.stringify({ clientIds }) },
+  );
+  return result.withdrawn ?? [];
+}
+
 export async function deleteMessage(messageId: string) {
   await apiJson(`/api/thread/messages/${messageId}`, { method: "DELETE" });
 }

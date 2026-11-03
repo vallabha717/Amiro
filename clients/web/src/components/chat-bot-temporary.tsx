@@ -270,9 +270,13 @@ function DrawerTemporaryContent({
     [sendMessage, clearError, setInput],
   );
 
+  // A temporary chat keeps no server turn to hand follow-ups to: Send now
+  // (no draft given) sends the parked one at once.
   const interruptAndSend = useCallback(
-    (pending: PendingFollowUp) => {
-      setPendingFollowUp(pending);
+    (pending?: PendingFollowUp) => {
+      const next = pending ?? pendingRef.current;
+      if (!next) return;
+      setPendingFollowUp({ ...next, kind: "interrupt" });
       void stop();
     },
     [stop],

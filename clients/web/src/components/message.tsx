@@ -46,6 +46,10 @@ import { useArtifacts } from "./artifacts/use-artifacts";
 import { usePlanDecision } from "./artifacts/use-plan-decision";
 import { type CompactionData, CompactionMarker } from "./compaction-marker";
 import {
+  type InterjectionData,
+  InterjectionMarker,
+} from "./chat/interjection-marker";
+import {
   AssistMessagePart,
   FileMessagePart,
   ReasoningPart,
@@ -392,6 +396,15 @@ const PurePreviewMessage = ({
                     data={(part as any).data as CompactionData}
                   />
                 );
+              } else if (part.type === "data-interjection") {
+                // Also a moment in the turn: what follows was written
+                // having read what the user added mid-turn.
+                return (
+                  <InterjectionMarker
+                    key={key}
+                    data={(part as any).data as InterjectionData}
+                  />
+                );
               } else if (part.type.startsWith("data-")) {
                 // Other data parts carry state for dedicated UI, not
                 // something to render in place -- an approval request is
@@ -713,6 +726,13 @@ const PurePreviewMessage = ({
               if (part.type === "step-start") continue;
 
               if (!isToolUIPart(part)) {
+                // What the user added mid-turn splits the work log where the
+                // agent read it, and stays visible when the log folds.
+                if (part.type === "data-interjection") {
+                  if (!hideAllTools) closeWork();
+                  blocks.push({ type: "node", node: renderPart(part, i) });
+                  continue;
+                }
                 if (part.type === "reasoning") {
                   const active = Boolean(
                     i === partsForDisplay.length - 1 && isLastMessage && isLoading,
