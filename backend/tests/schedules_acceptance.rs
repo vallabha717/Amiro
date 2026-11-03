@@ -1514,7 +1514,7 @@ async fn schedules_system_tasks_shape() {
     assert_eq!(response.status(), StatusCode::OK);
     let body: Value = response.json().await.unwrap();
     let tasks = body["tasks"].as_array().unwrap();
-    assert_eq!(tasks.len(), 2);
+    assert_eq!(tasks.len(), 3);
     let hb = &tasks[0];
     assert_eq!(hb["id"], "heartbeat");
     assert_eq!(hb["name"], "Heartbeat");
@@ -1539,4 +1539,20 @@ async fn schedules_system_tasks_shape() {
     assert_eq!(mem["enabled"], true);
     assert_eq!(mem["cadence"], "After each conversation");
     assert!(mem["nextRunAt"].is_null() && mem["lastStatus"].is_null());
+    // The built-in Cleanup is off until the owner sets it up.
+    let cleanup = &tasks[2];
+    assert_eq!(cleanup["id"], "cleanup");
+    assert_eq!(cleanup["editable"], true);
+    assert_eq!(cleanup["enabled"], false);
+    assert_eq!(
+        cleanup["cadence"],
+        "Daily at 3:00 AM \u{b7} chats, run logs and log files untouched for 2 days"
+    );
+    assert!(cleanup["nextRunAt"].is_null() && cleanup["lastStatus"].is_null());
+
+    // Owner only: settings, preview and run.
+    let response = server.get(&admin, "/api/housekeeping").await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body["settings"]["olderThanHours"], 48);
 }

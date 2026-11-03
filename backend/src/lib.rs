@@ -9,6 +9,7 @@ pub mod config;
 pub mod credentials;
 pub mod devices;
 pub mod heartbeat;
+pub mod housekeeping;
 pub mod models;
 pub mod notify;
 pub mod onboarding;
