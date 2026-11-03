@@ -16,7 +16,7 @@ function workspaceDir(): string {
 }
 
 test.describe("agent-hub", () => {
-  test("personality: apply a preset, nudge a dial, update, persists", async ({ page, step }) => {
+  test("personality: apply a preset, nudge a dial, update, persists", async ({ page, step, amiro }) => {
     await step("Agent hub → Personality", async () => {
       await page.goto("/agent");
       await page.locator("main").getByRole("link", { name: /Tune how I talk/ }).click();
@@ -42,6 +42,24 @@ test.describe("agent-hub", () => {
     await step("Reload: the saved signature persists", async () => {
       await page.reload();
       await expect(page.getByRole("link", { name: /Tune how I talk/ })).toContainText(new RegExp(summary.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+    });
+    const companionLine = /(Strongly|Leans) companion \(\d+%\) over coworker: be warm and personal/;
+    await step("IDENTITY.md spells out the lean and what it means; balanced dials say balanced", async () => {
+      const identity = fs.readFileSync(path.join(workspaceDir(), "IDENTITY.md"), "utf8");
+      expect(identity).toMatch(companionLine);
+      expect(identity).not.toMatch(/\(50%\)/);
+    });
+    await step("Chat, then /context: the personality is in the prompt the model gets this turn", async () => {
+      await newChat(page);
+      await selectModel(page);
+      await ask(page, "Say hi in one short sentence.");
+      const threadId = new URL(page.url()).searchParams.get("thread") ?? "";
+      const { status, body } = await amiro.api<{ data?: { system_prompt?: { dynamic?: string } } }>("/api/composer/command", {
+        method: "POST",
+        body: JSON.stringify({ command: "/context", threadId }),
+      });
+      expect(status).toBe(200);
+      expect(String(body.data?.system_prompt?.dynamic ?? "")).toMatch(companionLine);
     });
   });
 
