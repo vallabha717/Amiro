@@ -434,6 +434,13 @@ async fn chat_handler(
         let mut reminder_blocks: Vec<String> = vec![
             crate::agent::build_capability_guidance_block(&state_for_stream.home),
         ];
+        // A team agent has its own persona; the main agent's root IDENTITY.md
+        // follows the owner, so anyone else's Personality settings come here.
+        if !agent_runtime {
+            if let Some(persona) = crate::agent::user_persona_reminder(&state_for_stream.workspace, &uid).await {
+                reminder_blocks.push(persona);
+            }
+        }
         if !mentions_arr.is_empty() {
             let names: Vec<String> = mentions_arr
                 .iter()
