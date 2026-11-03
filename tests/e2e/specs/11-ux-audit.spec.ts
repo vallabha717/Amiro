@@ -113,7 +113,7 @@ for (const viewport of [
   });
 }
 
-test("Dark palettes: every palette uses Graphite's black windows and keeps its own accent", async ({ page, step }) => {
+test("Palettes: black (dark) or white (light) main window and sidebar, blocks and accents in each palette's colour", async ({ page, step }) => {
   const PALETTES = ["default", "mist", "sage", "clay", "obsidian", "deep-ocean", "midnight-violet", "warm-stone", "terminal", "aurora", "cobalt"];
   /** The resolved colour of a theme token, as the browser paints it. */
   const token = (name: string) =>
@@ -141,21 +141,87 @@ test("Dark palettes: every palette uses Graphite's black windows and keeps its o
   });
 
   const accents = new Set<string>();
+  const blocks = new Set<string>();
   for (const id of PALETTES) {
-    await step(`Dark · ${id}: windows and menus are black, the accent is the palette's own`, async () => {
+    await step(`Dark · ${id}: main window and sidebar are black; the desk shade, blocks and accents are the palette's own`, async () => {
       await pickPalette(id);
-      expect(await token("--card"), `${id} window`).toBe("rgb(0, 0, 0)");
-      expect(await token("--popover"), `${id} menu`).toBe("rgb(10, 10, 10)");
+      for (const base of ["--window", "--sidebar"]) {
+        expect(await token(base), `${id} ${base}`).toBe("rgb(0, 0, 0)");
+      }
+      const block = await token("--card");
+      for (const inside of ["--card", "--popover", "--background"]) {
+        expect(await token(inside), `${id} ${inside} (blocks, menus, dialogs, inputs) is not black`).not.toBe("rgb(0, 0, 0)");
+      }
+      await expect(page.locator("main").first()).toBeVisible();
+      blocks.add(block);
       accents.add(await token("--primary"));
+      const desk = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--canvas-texture").trim());
+      expect(desk, `${id} keeps its desk shade`).toContain("gradient");
     });
   }
   expect(accents.size, "palettes keep distinct accents").toBeGreaterThan(5);
+  expect(blocks.size, "palettes keep distinct block colours").toBeGreaterThan(5);
 
-  await step("Light mode is unchanged: Sapphire's windows stay light", async () => {
-    await pickPalette("mist");
+  await step("Dark · Deep Ocean on the Schedules page: black window, tinted rows", async () => {
+    await pickPalette("deep-ocean");
+    await page.goto("/schedules");
+    await page.getByTestId("schedules-tab-activity").click();
+    await expect(page.getByTestId("schedules-system-tasks")).toBeVisible();
+    await page.waitForTimeout(1500);
+  });
+
+  await step("Dark · Deep Ocean: a dialog and its inputs are tinted, not black", async () => {
+    await page.getByTestId("cleanup-setup").click();
+    const dialog = page.getByTestId("cleanup-dialog");
+    await expect(dialog.getByTestId("cleanup-time")).toBeVisible();
+    const paint = (el: Element) => getComputedStyle(el).backgroundColor;
+    expect(await dialog.evaluate(paint), "dialog").not.toBe("rgb(0, 0, 0)");
+    expect(await dialog.getByTestId("cleanup-time").evaluate(paint), "input").not.toBe("rgb(0, 0, 0)");
+    await page.waitForTimeout(1500);
+    await page.keyboard.press("Escape");
+  });
+
+  await step("Dark · Deep Ocean on Superpowers: black window and sidebar, skill cards in the palette's colour", async () => {
+    await page.goto("/agent/superpowers");
+    const card = page.getByTestId("skill-card").first();
+    await expect(card).toBeVisible();
+    const paint = (el: Element) => getComputedStyle(el).backgroundColor;
+    expect(await card.evaluate(paint), "skill card").not.toBe("rgb(0, 0, 0)");
+    expect(await page.getByTestId("main-window").evaluate(paint), "main window").toBe("rgb(0, 0, 0)");
+    expect(await page.locator('[data-slot="sidebar-inner"]').first().evaluate(paint), "sidebar").toBe("rgb(0, 0, 0)");
+    await page.waitForTimeout(1500);
+  });
+
+  await step("Switch to light mode", async () => {
     await page.evaluate(() => localStorage.setItem("app-theme-v2", "light"));
     await page.reload();
-    expect(await token("--card")).not.toBe("rgb(0, 0, 0)");
+    await expect(page.locator("html")).not.toHaveClass(/\bdark\b/);
+  });
+
+  const lightBlocks = new Set<string>();
+  for (const id of PALETTES) {
+    await step(`Light · ${id}: main window and sidebar are white; blocks carry the palette's colour`, async () => {
+      await pickPalette(id);
+      for (const base of ["--window", "--sidebar"]) {
+        expect(await token(base), `${id} ${base}`).toBe("rgb(255, 255, 255)");
+      }
+      const block = await token("--card");
+      expect(block, `${id} blocks are not white`).not.toBe("rgb(255, 255, 255)");
+      lightBlocks.add(block);
+    });
+  }
+  expect(lightBlocks.size, "palettes keep distinct light block colours").toBeGreaterThan(5);
+
+  await step("Light · Deep Ocean on Superpowers: white window and sidebar, tinted skill cards", async () => {
+    await pickPalette("deep-ocean");
+    await page.goto("/agent/superpowers");
+    const card = page.getByTestId("skill-card").first();
+    await expect(card).toBeVisible();
+    const paint = (el: Element) => getComputedStyle(el).backgroundColor;
+    expect(await page.getByTestId("main-window").evaluate(paint), "main window").toBe("rgb(255, 255, 255)");
+    expect(await page.locator('[data-slot="sidebar-inner"]').first().evaluate(paint), "sidebar").toBe("rgb(255, 255, 255)");
+    expect(await card.evaluate(paint), "skill card").not.toBe("rgb(255, 255, 255)");
+    await page.waitForTimeout(1500);
     await pickPalette("default");
   });
 });
