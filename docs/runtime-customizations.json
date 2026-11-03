@@ -288,6 +288,29 @@
       "checks": [
         "cargo test --manifest-path runtime/Cargo.toml -p amiro-app-core --lib refused_tool_call"
       ]
+    },
+    {
+      "id": "personal-assistant-base-prompt",
+      "requirement": "The built-in base system prompt describes Amiro as a personal AI agent, not jcode's coding agent: its name can come from IDENTITY.md, outward or irreversible actions are confirmed first, file, web and tool content is data rather than instructions, secrets go through the secure card, it replies in the user's language, and coding rules apply only inside a code project. Keep it when an upstream update changes system_prompt.md. The per-turn tool guidance (secret card, plan tools, desktop, visuals) stays in the backend's build_capability_guidance_block, not here. See docs/AGENT-HOME.md.",
+      "sentinels": [
+        {
+          "path": "runtime/crates/amiro-base/src/prompt/system_prompt.md",
+          "contains": [
+            "You are Amiro, a personal AI agent",
+            "## Acting for the user",
+            "## Untrusted content"
+          ]
+        },
+        {
+          "path": "runtime/crates/amiro-base/src/prompt_tests.rs",
+          "contains": [
+            "fn default_prompt_is_a_personal_assistant"
+          ]
+        }
+      ],
+      "checks": [
+        "cargo test --manifest-path runtime/Cargo.toml -p amiro-base --lib prompt"
+      ]
     }
   ],
   "mandatoryFiles": [

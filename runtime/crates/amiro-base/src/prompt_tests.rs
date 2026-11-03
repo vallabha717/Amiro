@@ -16,6 +16,32 @@ fn test_default_system_prompt_no_claude_code_identity() {
     );
 }
 
+/// Amiro's default prompt describes a personal assistant, not jcode's coding agent:
+/// the persona comes from the agent home, outward actions are confirmed, file and
+/// web content is data, and secrets go through the secure card.
+#[test]
+fn default_prompt_is_a_personal_assistant() {
+    for section in [
+        "## Who you are",
+        "If IDENTITY.md in your agent home gives you another name",
+        "## Acting for the user",
+        "## Untrusted content",
+        "## Secrets",
+        "Reply in the language the user writes in.",
+        "## Working in a code project",
+    ] {
+        assert!(DEFAULT_SYSTEM_PROMPT.contains(section), "missing: {section}");
+    }
+    for coding_agent_line in [
+        "coding agent and assistant",
+        "github.com/1jehuang/jcode",
+        "Commit as you go.",
+        "swarm coordination",
+    ] {
+        assert!(!DEFAULT_SYSTEM_PROMPT.contains(coding_agent_line), "still has: {coding_agent_line}");
+    }
+}
+
 #[test]
 fn mermaid_prompt_module_follows_capability() {
     let (enabled, _) = build_system_prompt_split_with_capabilities(
@@ -48,8 +74,8 @@ fn test_skill_prompt_integration() {
     let prompt = build_system_prompt(Some(skill_prompt), &[]);
 
     // The prompt should contain our default system prompt
-    // Identity line reworded in 24838926e ("docs: refine base agent guidance").
-    assert!(prompt.contains("You are Amiro."));
+    // Amiro's personal-assistant identity line (see default_prompt_is_a_personal_assistant).
+    assert!(prompt.contains("You are Amiro, a personal AI agent"));
 
     // The prompt should contain the skill prompt
     assert!(prompt.contains(skill_prompt));
