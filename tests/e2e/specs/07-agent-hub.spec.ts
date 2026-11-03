@@ -2,9 +2,18 @@
  * Journey 7 — the agent's own pages: Personality, Memory, Workspace,
  * Superpowers (skills), and renaming/customising the agent.
  */
+import { execFileSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { ask, newChat, selectModel } from "../support/chat";
-import { DEFAULT_AGENT_NAME } from "../support/config";
+import { DEFAULT_AGENT_NAME, STATE_FILE } from "../support/config";
 import { expect, test } from "../support/fixtures";
+
+/** The isolated instance's agent home, from the state global setup wrote. */
+function workspaceDir(): string {
+  const state = JSON.parse(fs.readFileSync(STATE_FILE, "utf8")) as { root: string; sandbox?: { home: string } };
+  return path.join(state.sandbox?.home ?? path.join(state.root, "home"), "workspace");
+}
 
 test.describe("agent-hub", () => {
   test("personality: apply a preset, nudge a dial, update, persists", async ({ page, step }) => {
@@ -80,7 +89,44 @@ test.describe("agent-hub", () => {
     });
   });
 
-  test("workspace: open identity files, create and edit a file", async ({ page, step }) => {
+  test("Workspace history: Amiro files a note in notes/, indexes it, and the change is snapshotted so it can be undone", async ({ page, step, amiro }) => {
+    // Planning Brew & Bloom's opening week: the supplier details are worth keeping.
+    const history = () =>
+      execFileSync("git", ["-C", workspaceDir(), "log", "--format=%s", "--name-only"], { encoding: "utf8" });
+    let before = "";
+    await step("Ask Amiro to keep the supplier details as a note", async () => {
+      test.skip(!fs.existsSync(path.join(workspaceDir(), ".git")), "workspace history is checked on the isolated instance only");
+      before = history();
+      await newChat(page);
+      await selectModel(page);
+      await ask(
+        page,
+        "Save a note for me: our oat-milk supplier for Brew & Bloom is Oatly India, contact Priya Nair, delivers Tuesdays and Fridays before 7am. Keep it in your notes and add it to the notes index.",
+      );
+    });
+    await step("The note is in notes/ and listed in notes/INDEX.md", async () => {
+      const { body: tree } = await amiro.api<{ entries?: Array<{ name: string }> }>("/api/workspace/tree?path=notes");
+      const notes = (tree.entries ?? []).map((entry) => entry.name).filter((name) => name !== "INDEX.md");
+      expect.soft(notes, "a new note file next to the index").not.toHaveLength(0);
+      const { body } = await amiro.api<{ content?: string }>("/api/workspace/file?path=notes/INDEX.md");
+      expect.soft(body.content ?? "", "the index lists the new note").toMatch(/supplier|oat|Oatly/i);
+    });
+    await step("The turn left a snapshot: the note is in the workspace history, ready to restore", async () => {
+      await expect
+        .poll(() => history().length, { timeout: 15000, message: "a snapshot after the turn" })
+        .toBeGreaterThan(before.length);
+      const log = history();
+      expect(log, "the snapshot is named after the chat").toMatch(/^Chat: /m);
+      expect(log, "the new note is in the snapshot").toMatch(/^notes\/.+\.md$/m);
+    });
+    await step("Workspace page: notes/ shows the new note", async () => {
+      await page.goto("/agent/workspace");
+      await page.getByRole("treeitem", { name: /^notes/ }).click();
+      await expect(page.getByRole("treeitem", { name: /INDEX\.md/ })).toBeVisible();
+    });
+  });
+
+  test("workspace: open identity files, create and edit a file", async ({ page, step, amiro }) => {
     await step("Agent hub → Workspace", async () => {
       await page.goto("/agent/workspace");
       await expect(page.getByRole("heading", { name: "Workspace", level: 1 })).toBeVisible();
@@ -88,6 +134,15 @@ test.describe("agent-hub", () => {
     await step("Open SOUL.md from the file tree", async () => {
       await page.getByRole("treeitem", { name: /SOUL\.md/ }).click();
       await expect(page.getByText("Nothing open yet")).toBeHidden();
+    });
+    await step("Workspace folders: the home has journal, notes (with its index), scripts and scratch", async () => {
+      for (const dir of ["journal", "notes", "scripts", "scratch"]) {
+        await expect(page.getByRole("treeitem", { name: new RegExp(`^${dir}`) }), `${dir}/ is in the tree`).toBeVisible();
+      }
+      await expect(page.getByRole("treeitem", { name: /^\.git/ }), "the history folder stays out of sight").toHaveCount(0);
+      const { status, body } = await amiro.api<{ content?: string }>("/api/workspace/file?path=notes/INDEX.md");
+      expect(status).toBe(200);
+      expect(body.content, "the notes index is seeded").toContain("# Notes");
     });
     await step("Agent-home shortcuts: Identity, You, Heartbeat", async () => {
       for (const b of ["Identity", "You", "Heartbeat"]) {
