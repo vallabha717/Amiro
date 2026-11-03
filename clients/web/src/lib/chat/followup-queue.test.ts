@@ -4,12 +4,15 @@ import type { UploadedFile } from "@/app/store";
 import {
   buildAttachmentParts,
   buildAttachmentsSummary,
+  canInterject,
   countParkedFiles,
   createPendingFollowUp,
   followUpParts,
   excludeParkedFiles,
   hasUploadInProgress,
   isLoginCommand,
+  joinFollowUpTexts,
+  mergePendingFollowUps,
   previewQueuedText,
   restoreParkedFiles,
 } from "./followup-queue";
@@ -97,5 +100,33 @@ describe("followUpParts", () => {
       { type: "text", text: "Describe it" },
     ]);
     expect(followUpParts({ text: "  ", attachmentParts: [file] })).toEqual([file]);
+  });
+});
+
+describe("mid-turn follow-ups", () => {
+  test("only plain text joins a running turn", () => {
+    expect(canInterject({ text: "Also book a table", attachmentParts: [] })).toBe(true);
+    expect(canInterject({ text: "  ", attachmentParts: [] })).toBe(false);
+    expect(
+      canInterject({
+        text: "Look at this",
+        attachmentParts: [{ type: "file", url: "u", mediaType: "image/png" }],
+      }),
+    ).toBe(false);
+  });
+
+  test("several follow-ups are sent as one message, in typing order", () => {
+    expect(joinFollowUpTexts([" First ", "", "Second"])).toBe("First\n\nSecond");
+  });
+
+  test("a newer parked follow-up joins the older one instead of replacing it", () => {
+    const older = createPendingFollowUp("queued", "Book for Saturday", [], ["file-1"], [file()]);
+    const newer = createPendingFollowUp("interrupt", "Make it four people", [], [], []);
+    expect(mergePendingFollowUps(null, newer)).toBe(newer);
+    const merged = mergePendingFollowUps(older, newer);
+    expect(merged.id).toBe(older.id);
+    expect(merged.kind).toBe("interrupt");
+    expect(merged.text).toBe("Book for Saturday\n\nMake it four people");
+    expect(merged.fileIds).toEqual(["file-1"]);
   });
 });

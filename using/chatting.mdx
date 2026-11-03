@@ -63,11 +63,14 @@ API keys and OAuth codes typed here are held in the panel only. They are never w
 
 ## Send a follow-up while the agent responds
 
-You do not have to wait for the turn to finish. Type your next message and press Enter: the composer clears right away and your message is parked in a **Queued** chip above the composer. It sends automatically as the next turn the moment the current one settles.
+You do not have to wait for the turn to finish. Type your next message and press Enter: the composer clears right away and a chip above it says **Amiro reads this at its next step**. The agent keeps working and reads your message at the next gap in its turn: right after the tools it is running finish, or at the point where it would otherwise have stopped. A marker in the reply shows where it read it, and everything after that marker was written with your message in mind. After a reload the message shows in the thread as your own, where the agent read it.
 
-- Only one follow-up is parked at a time. Typing another one replaces the older draft, so there is never a hidden backlog.
-- Click the X on the chip to cancel. Your text (and any attached files) is handed back to the composer untouched.
-- Need it sent right now instead? Press **Cmd+Enter** (macOS) or **Ctrl+Enter** (Windows/Linux). That stops the live turn and sends your message immediately. It is also listed in the keyboard shortcuts popup.
+- Send several in a row: each gets its own chip and they are read together, in order.
+- Click the X on a chip to take it back before the agent reads it. Your text goes back into the composer.
+- Need it acted on right now instead? Click **Send now** on the chip, or press **Cmd+Enter** (macOS) or **Ctrl+Enter** (Windows/Linux) while typing. That stops the live turn and sends everything still waiting as your next message at once. The shortcut is also listed in the keyboard shortcuts popup.
+- Click stop while messages are waiting and they come back into the composer unsent.
+- A message with attached files, or one sent while the first reply is still starting, cannot join the running turn. It waits in a **Queued** chip and sends as the next turn the moment the current one settles. A newer one joins it rather than replacing it.
+- Sent just as the turn ended? It goes out as the next turn by itself, so nothing you typed is lost.
 - If a plan is waiting for review when your follow-up sends, your message counts as the reply to that plan: the agent reads it before doing any work.
 - While the agent works through a confirmation (approve or deny a tool call), the queued message waits until you resolve the prompt.
 

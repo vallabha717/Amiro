@@ -50,7 +50,12 @@ import { useShallow } from "zustand/shallow";
 
 import { chatUxStore } from "@/app/store/chat-ux-store";
 import {
+  canInterject,
+  createPendingFollowUp,
   followUpParts,
+  type Interjection,
+  joinFollowUpTexts,
+  mergePendingFollowUps,
   type PendingFollowUp,
   restoreParkedFiles,
 } from "@/lib/chat/followup-queue";
@@ -66,7 +71,11 @@ import {
 } from "@/hooks/use-resume-chat-turn";
 import { useThreadFileUploader } from "@/hooks/use-thread-file-uploader";
 import { useMessageReadAloudStore } from "@/lib/ai/speech/read-aloud-store";
-import { deleteThread } from "@/lib/backend/chat-api";
+import {
+  deleteThread,
+  interjectChat,
+  withdrawInterjections,
+} from "@/lib/backend/chat-api";
 import { useFileArtifacts } from "@/lib/backend/artifacts-api";
 import { backendFetch } from "@/lib/backend/client";
 import { backendUrl } from "@/lib/backend/config";
@@ -245,6 +254,23 @@ export default function ChatBot({
   const pendingRef = useRef<PendingFollowUp | null>(null);
   pendingRef.current = pendingFollowUp;
 
+  // Plain-text follow-ups handed to the running turn instead: the agent reads
+  // them at its next gap, without waiting for the turn to end. Each leaves
+  // the list when the turn says it was read, or comes back unread when the
+  // turn ends or is stopped first.
+  const [interjections, setInterjections] = useState<Interjection[]>([]);
+  const interjectionsRef = useRef<Interjection[]>([]);
+  interjectionsRef.current = interjections;
+  const dropInterjections = useCallback((ids: string[]) => {
+    setInterjections((list) => list.filter((item) => !ids.includes(item.id)));
+  }, []);
+  // The stream's interjection frames, handled further down once the parking
+  // helpers exist.
+  const onInterjectionDataRef = useRef<(part: { type: string; data?: any }) => void>(
+    () => {},
+  );
+  const tChat = useTranslations("Chat");
+
   // The ai SDK's makeRequest re-checks sendAutomaticallyWhen after *every*
   // request settles, including one the user just aborted via stop() --
   // gated only on the request not having errored, and an abort is not an
@@ -367,6 +393,7 @@ export default function ChatBot({
       if (part.type === "data-thread-title") {
         applyRuntimeThreadTitle(part.data, threadId);
       }
+      onInterjectionDataRef.current(part as { type: string; data?: any });
     },
     onFinish: (event) => {
       noteFinishRef.current?.(event);
@@ -401,10 +428,18 @@ export default function ChatBot({
   // Stop must mean stop -- see suppressNextAutoResumeRef above for why the
   // library's own abort isn't enough on its own. Closing the stream no longer
   // ends the turn on the server, so Stop says so explicitly.
+  // Follow-ups the agent had not read yet come back into the composer: Stop
+  // means stop, so they are not sent on their own.
   const handleStop = useCallback(() => {
     suppressNextAutoResumeRef.current = true;
     markStopped();
-    stopChatTurn(threadId);
+    void stopChatTurn(threadId).then((returned) => {
+      setInterjections([]);
+      if (returned.length === 0) return;
+      setInput((typed) =>
+        joinFollowUpTexts([...returned.map((item) => item.text), typed]),
+      );
+    });
     stop();
   }, [stop, markStopped, threadId]);
 
@@ -703,6 +738,60 @@ export default function ChatBot({
   );
 
   /**
+   * Send now (the chip's button, or Cmd/Ctrl+Enter): stop the turn and send
+   * everything still waiting as one message at once, like Vellum's steer.
+   * Follow-ups the agent has not read are taken back from the turn first so
+   * they are not read twice; one it already read is left out.
+   */
+  const sendAllNow = useCallback(
+    async (typed?: PendingFollowUp) => {
+      const waiting = interjectionsRef.current;
+      const ids = waiting.map((item) => item.id);
+      const withdrawn = ids.length
+        ? await withdrawInterjections(threadId, ids).catch((): string[] => [])
+        : [];
+      dropInterjections(ids);
+      const unread = waiting
+        .filter((item) => withdrawn.includes(item.id))
+        .map((item) => createPendingFollowUp("interrupt", item.text, [], [], []));
+      const all = [...unread, pendingRef.current, typed].filter(
+        (item): item is PendingFollowUp => Boolean(item),
+      );
+      if (all.length === 0) {
+        toast.info(tChat("followUpAlreadyRead"));
+        return;
+      }
+      const combined = all.reduce<PendingFollowUp | null>(
+        (parked, next) => mergePendingFollowUps(parked, next),
+        null,
+      )!;
+      interruptAndSend({ ...combined, kind: "interrupt" });
+    },
+    [threadId, dropInterjections, interruptAndSend, tChat],
+  );
+
+  /**
+   * Cancel one follow-up handed to the turn: taken back and returned to the
+   * composer, unless the agent already read it.
+   */
+  const cancelInterjection = useCallback(
+    async (id: string) => {
+      const item = interjectionsRef.current.find((entry) => entry.id === id);
+      if (!item) return;
+      const withdrawn = await withdrawInterjections(threadId, [id]).catch(
+        (): string[] => [],
+      );
+      dropInterjections([id]);
+      if (withdrawn.includes(id)) {
+        setInput((typed) => joinFollowUpTexts([item.text, typed]));
+      } else {
+        toast.info(tChat("followUpAlreadyRead"));
+      }
+    },
+    [threadId, dropInterjections, tChat],
+  );
+
+  /**
    * Cancel the parked follow-up. The composer is empty (parking cleared it),
    * so hand the text and its files back untouched.
    */
@@ -728,14 +817,78 @@ export default function ChatBot({
   }, [threadId, appStoreMutate]);
 
   /**
-   * Park a follow-up typed while the agent responds. Single slot: a newer
-   * follow-up replaces the older one. If it arrives mid-stop (the previous
-   * turn was just interrupted and has not settled yet), it takes over as the
-   * message that flushes; otherwise it waits for the live turn to finish.
+   * Park a follow-up to send as the next turn. A newer one joins the parked
+   * one rather than replacing it, so nothing typed is lost. If it arrives
+   * mid-stop (the previous turn was just interrupted and has not settled
+   * yet), it rides along with the message that flushes.
    */
-  const queuePendingFollowUp = useCallback((pending: PendingFollowUp) => {
-    setPendingFollowUp(pending);
+  const parkFollowUp = useCallback((pending: PendingFollowUp) => {
+    setPendingFollowUp((parked) => mergePendingFollowUps(parked, pending));
   }, []);
+
+  /**
+   * A follow-up typed while the agent responds. Plain text goes straight to
+   * the running turn, which reads it at its next gap; a message with files,
+   * or one the turn can no longer take (it is ending), is parked and sent as
+   * the next turn.
+   */
+  const queuePendingFollowUp = useCallback(
+    async (pending: PendingFollowUp) => {
+      if (!canInterject(pending) || pendingRef.current) {
+        parkFollowUp(pending);
+        return;
+      }
+      setInterjections((list) => [
+        ...list,
+        { id: pending.id, text: pending.text, status: "sending" },
+      ]);
+      try {
+        const { state } = await interjectChat(threadId, {
+          clientId: pending.id,
+          text: pending.text,
+        });
+        if (state === "started") {
+          // The turn had just ended; the runtime started a new one with it.
+          dropInterjections([pending.id]);
+          toast.info(tChat("followUpStartedTurn"));
+          return;
+        }
+        setInterjections((list) =>
+          list.map((item) =>
+            item.id === pending.id ? { ...item, status: "waiting" } : item,
+          ),
+        );
+      } catch {
+        dropInterjections([pending.id]);
+        parkFollowUp(pending);
+      }
+    },
+    [threadId, parkFollowUp, dropInterjections, tChat],
+  );
+
+  onInterjectionDataRef.current = (part) => {
+    const items: Array<{ id: string; text: string }> = part.data?.items ?? [];
+    if (part.type === "data-interjection") {
+      dropInterjections(items.map((item) => item.id));
+    } else if (part.type === "data-interjections-returned") {
+      // Sent just as the turn finished: it goes out as the next turn.
+      dropInterjections(items.map((item) => item.id));
+      for (const item of items) {
+        parkFollowUp(createPendingFollowUp("queued", item.text, [], [], []));
+      }
+    }
+  };
+
+  // A settled turn has answered for every follow-up it was handed (read, or
+  // returned above); a chip still showing would never clear.
+  useEffect(() => {
+    if (status !== "ready" && status !== "error") return;
+    setInterjections((list) =>
+      list.some((item) => item.status === "waiting")
+        ? list.filter((item) => item.status !== "waiting")
+        : list,
+    );
+  }, [status]);
 
   /**
    * Flush the parked follow-up once the transcript is idle again. Gated on
@@ -1241,9 +1394,11 @@ export default function ChatBot({
                   onStop={handleStop}
                   onFocus={isFirstTime ? undefined : handleFocus}
                   pendingFollowUp={pendingFollowUp}
+                  interjections={interjections}
                   onQueueFollowUp={queuePendingFollowUp}
                   onCancelFollowUp={cancelPendingFollowUp}
-                  onInterruptAndSend={interruptAndSend}
+                  onCancelInterjection={cancelInterjection}
+                  onInterruptAndSend={sendAllNow}
                   workspaceLabel={workspaceLabel}
                 />
               </div>

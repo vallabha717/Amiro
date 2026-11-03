@@ -12,7 +12,6 @@ import equal from "lib/equal";
 import {
   AudioWaveformIcon,
   ChevronDown,
-  Clock,
   CornerRightUp,
   FolderIcon,
   ImagesIcon,
@@ -68,10 +67,11 @@ import {
   createPendingFollowUp,
   hasUploadInProgress,
   isIngestable,
+  type Interjection,
   isLoginCommand,
   type PendingFollowUp,
-  previewQueuedText,
 } from "@/lib/chat/followup-queue";
+import { FollowUpChips } from "./chat/follow-up-chips";
 import { useVoiceStore } from "@/lib/voice/voice-store";
 import {
   ComposerSecretNoticeBar,
@@ -93,17 +93,21 @@ interface PromptInputProps {
   threadId?: string;
   disabledMention?: boolean;
   onFocus?: () => void;
-  /** Follow-up parked while the agent responds; rendered as a chip. */
+  /** Follow-up parked to send as the next turn; rendered as a chip. */
   pendingFollowUp?: PendingFollowUp | null;
-  /** Park the current draft instead of sending it right away. */
+  /** Follow-ups handed to the running turn; each rendered as a chip. */
+  interjections?: Interjection[];
+  /** Hand the draft to the running turn (or park it) while the agent works. */
   onQueueFollowUp?: (followUp: PendingFollowUp) => void;
   /** Cancel the parked follow-up and hand its text back to the composer. */
   onCancelFollowUp?: () => void;
+  /** Take back one follow-up the running turn has not read yet. */
+  onCancelInterjection?: (id: string) => void;
   /**
-   * Interrupt the live turn (stop it) and send the current draft at once.
-   * Wired to Cmd/Ctrl+Enter while streaming.
+   * Stop the live turn and send at once: the draft (Cmd/Ctrl+Enter while
+   * streaming) plus every follow-up still waiting (the chips' Send now).
    */
-  onInterruptAndSend?: (followUp: PendingFollowUp) => void;
+  onInterruptAndSend?: (followUp?: PendingFollowUp) => void;
   /**
    * Shown instead of the folder picker when the folder is fixed (a team
    * agent always works in its own folder).
@@ -132,8 +136,10 @@ export default function PromptInput({
   threadId,
   disabledMention,
   pendingFollowUp,
+  interjections,
   onQueueFollowUp,
   onCancelFollowUp,
+  onCancelInterjection,
   onInterruptAndSend,
   workspaceLabel,
 }: PromptInputProps) {
@@ -665,9 +671,9 @@ export default function PromptInput({
     }
 
     if (isLoading) {
-      // While the agent responds, Enter parks the draft as the next turn
-      // and Cmd/Ctrl+Enter interrupts the live turn to send it at once.
-      // Single slot: a newer follow-up replaces the older one.
+      // While the agent responds, Enter hands the draft to the running turn
+      // (read at its next gap) and Cmd/Ctrl+Enter stops the turn to send it
+      // at once. The chip above the composer says which.
       const draft = captureDraft(userMessage);
       const pending = createPendingFollowUp(
         options?.interrupt ? "interrupt" : "queued",
@@ -682,7 +688,6 @@ export default function PromptInput({
         onInterruptAndSend?.(pending);
       } else {
         onQueueFollowUp?.(pending);
-        toast.success(t("followUpQueued"));
       }
       return;
     }
@@ -700,8 +705,8 @@ export default function PromptInput({
 
   const handleComposerKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      // Cmd/Ctrl+Enter interrupts the live turn and sends the follow-up
-      // immediately, Jcode-style. Plain Enter just queues it.
+      // Cmd/Ctrl+Enter stops the live turn and sends the follow-up
+      // immediately. Plain Enter hands it to the turn for its next gap.
       if (
         isLoading &&
         (e.metaKey || e.ctrlKey) &&
@@ -772,42 +777,14 @@ export default function PromptInput({
             ref={composerBoxRef}
             className="shadow-lg overflow-hidden rounded-4xl backdrop-blur-sm transition-all duration-200 bg-muted/60 relative flex w-full flex-col cursor-text z-10 items-stretch focus-within:bg-muted hover:bg-muted focus-within:ring-muted hover:ring-muted"
           >
-            {pendingFollowUp ? (
-              <div
-                data-testid="queued-followup-chip"
-                className="mx-2 mt-2 flex items-center gap-2 rounded-2xl border border-primary/30 bg-primary/10 px-3 py-2 text-left"
-              >
-                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
-                  <Clock className="size-3.5" />
-                </span>
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <span className="text-xs font-semibold text-primary">
-                    {pendingFollowUp.kind === "interrupt"
-                      ? t("followUpInterrupting")
-                      : t("followUpQueuedLabel")}
-                  </span>
-                  <span className="truncate text-sm text-foreground">
-                    {previewQueuedText(pendingFollowUp.text)}
-                    {queuedFileCount > 0
-                      ? t("followUpQueuedFiles", {
-                          count: queuedFileCount,
-                        })
-                      : null}
-                  </span>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  data-testid="queued-followup-cancel"
-                  className="size-6 shrink-0 rounded-full"
-                  aria-label={t("followUpCancel")}
-                  title={t("followUpCancel")}
-                  onClick={() => onCancelFollowUp?.()}
-                >
-                  <XIcon className="size-3.5" />
-                </Button>
-              </div>
-            ) : null}
+            <FollowUpChips
+              interjections={interjections ?? []}
+              pendingFollowUp={pendingFollowUp}
+              queuedFileCount={queuedFileCount}
+              onSendNow={onInterruptAndSend ? () => onInterruptAndSend() : undefined}
+              onCancelInterjection={onCancelInterjection}
+              onCancelFollowUp={onCancelFollowUp}
+            />
             {mentions.length > 0 && (
               <div className="bg-input rounded-b-sm rounded-t-3xl p-3 flex flex-col gap-4 mx-2 my-2">
                 {mentions.map((mention, i) => {
