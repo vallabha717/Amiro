@@ -200,6 +200,13 @@ test.describe("agent-hub", () => {
       await search.fill("cli");
       await expect(page.getByTestId("skill-card").filter({ hasText: "CLI Discovery" }).first()).toBeVisible();
     });
+    await step("The built-in skills for doing things in Amiro: Housekeeping, Settings, Images & Files, Contacts & Notifications, Skill Builder", async () => {
+      const search = page.getByTestId("superpowers-search-input");
+      for (const name of ["Housekeeping", "Settings", "Images & Files", "Contacts & Notifications", "Skill Builder"]) {
+        await search.fill(name);
+        await expect(page.getByTestId("skill-card").filter({ hasText: name }).first()).toBeVisible();
+      }
+    });
   });
 
   test("superpowers: browse, search and open a skill", async ({ page, step }) => {
