@@ -428,4 +428,49 @@ test.describe("Phone by touch", () => {
 
     expect(diagnostics.pageErrors.map((e) => e.message)).toEqual([]);
   });
+
+  test("Phone: the browser tab and Add to Home Screen show the Vrnda leaf", async ({ page, step }) => {
+    const pngSize = (buf: Buffer) => `${buf.readUInt32BE(16)}x${buf.readUInt32BE(20)}`;
+    await page.goto("/");
+    const href = (sel: string) => page.locator(`head ${sel}`).first().getAttribute("href");
+
+    await step("Browser tab: the icon is the Vrnda leaf SVG (it follows light/dark), with a favicon.ico fallback", async () => {
+      const svgHref = await href('link[rel="icon"][type="image/svg+xml"]');
+      expect(svgHref).toMatch(/^\/icon\.svg/);
+      const svg = await (await page.request.get(svgHref!)).text();
+      const logo = await (await page.request.get("/Vrnda_logo.svg")).text();
+      expect(svg, "tab icon is the Vrnda logo").toBe(logo);
+      const ico = await page.request.get((await href('link[rel="icon"][type="image/x-icon"]'))!);
+      expect(ico.status()).toBe(200);
+      await page.goto(svgHref!);
+      await page.waitForTimeout(800);
+    });
+
+    await step("iPhone Add to Home Screen: a 180×180 Vrnda leaf on white (apple-touch-icon)", async () => {
+      await page.goto("/");
+      const appleHref = await href('link[rel="apple-touch-icon"]');
+      expect(appleHref).toMatch(/^\/apple-icon\.png/);
+      const r = await page.request.get(appleHref!);
+      expect(r.headers()["content-type"]).toContain("image/png");
+      expect(pngSize(await r.body())).toBe("180x180");
+      // Safari also asks for /apple-touch-icon.png directly.
+      expect(pngSize(await (await page.request.get("/apple-touch-icon.png")).body())).toBe("180x180");
+      await page.goto(appleHref!);
+      await page.waitForTimeout(800);
+    });
+
+    await step("Android Add to Home Screen: the manifest lists 192 and 512 px Vrnda leaf icons, also maskable", async () => {
+      const manifest = await (await page.request.get("/manifest.webmanifest")).json();
+      expect(manifest.name).toBe("Amiro");
+      const purposes = new Set(manifest.icons.map((i: { purpose: string }) => i.purpose));
+      expect([...purposes].sort()).toEqual(["any", "maskable"]);
+      for (const icon of manifest.icons as { src: string; sizes: string }[]) {
+        const r = await page.request.get(icon.src);
+        expect(r.status(), icon.src).toBe(200);
+        expect(pngSize(await r.body()), icon.src).toBe(icon.sizes);
+      }
+      await page.goto("/web-app-manifest-512x512.png");
+      await page.waitForTimeout(800);
+    });
+  });
 });

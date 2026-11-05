@@ -82,7 +82,7 @@ reviewing agent; it already contains the review instructions.
 | agent-driven | 08 | agent configures search/MCP/OAuth/voice/model/schedules via chat |
 | voice-live | 09 | read-aloud, dictation, live voice room (fake mic) |
 | schedules | 10 | schedules page, heartbeat |
-| ux-audit | 11 | every page × desktop/phone: a11y names, h1, overflow; phone by touch (model lists, model picker, chat scroll, sidebar, theme menu, Team) |
+| ux-audit | 11 | every page × desktop/phone: a11y names, h1, overflow; phone by touch (model lists, model picker, chat scroll, sidebar, theme menu, Team); tab and home-screen icons |
 | team | 12 | Team view, channels, New agent wizard, agent page, per-agent workspace |
 | notifications | 13 | Bell inbox, chat replies notify only after you leave, chat-list status marks |
 | channels-contacts | 14 | Channels bot check, Contacts code verification, delivery outside Amiro (offline provider stub) |
