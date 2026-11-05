@@ -57,7 +57,12 @@ reviewing agent; it already contains the review instructions.
    `main.innerText()` or any API response.
 9. External services: prefer the offline fixtures — `fixtures/mcp-http-server.mjs`
    (MCP: open / bearer / API-key / OAuth with consent page, `GET /__calls` log)
-   and `tests/fixtures/mcp/server/server.mjs` (stdio).
+   and `tests/fixtures/mcp/server/server.mjs` (stdio). A step that needs a chat
+   reply but not a real model can use `fixtures/openai-stub-server.mjs` (an
+   OpenAI-compatible server: 40 models, a long fixed answer, `GET /__calls`).
+   Phone layouts: `test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })`
+   and swipe with `support/touch.ts` (real touch events; `mouse.wheel` scrolls
+   what a finger can't and hides touch bugs).
 10. Run your journey alone (`--project <journey> -g "<your titles>"`), then cut
    the video of only your tests: `pnpm --dir tests e2e:feature --grep "<your titles>"`.
    Watch it and put the printed absolute paths (`feature-<slug>.mp4`,
@@ -77,7 +82,7 @@ reviewing agent; it already contains the review instructions.
 | agent-driven | 08 | agent configures search/MCP/OAuth/voice/model/schedules via chat |
 | voice-live | 09 | read-aloud, dictation, live voice room (fake mic) |
 | schedules | 10 | schedules page, heartbeat |
-| ux-audit | 11 | every page × desktop/phone: a11y names, h1, overflow |
+| ux-audit | 11 | every page × desktop/phone: a11y names, h1, overflow; phone by touch (model lists, model picker, chat scroll, sidebar, theme menu, Team) |
 | team | 12 | Team view, channels, New agent wizard, agent page, per-agent workspace |
 | notifications | 13 | Bell inbox, chat replies notify only after you leave, chat-list status marks |
 | channels-contacts | 14 | Channels bot check, Contacts code verification, delivery outside Amiro (offline provider stub) |
