@@ -257,8 +257,11 @@ export const ProviderCard = memo(function ProviderCard({
       </CardHeader>
 
       <div className="relative flex w-full">
-        <CardContent className="flex min-w-0 w-full flex-col sm:flex-row text-sm max-h-[360px] overflow-hidden border-r-0 gap-4 sm:gap-0">
-          <div className="w-full sm:w-1/2 min-w-0 flex flex-col sm:pr-2 sm:border-r border-border">
+        {/* Side by side the two columns share one 360px box. Stacked on a
+            phone they can't: each column scrolls on its own instead, or the
+            model list was clipped and could not be scrolled or tapped. */}
+        <CardContent className="flex min-w-0 w-full flex-col sm:flex-row text-sm sm:max-h-[360px] sm:overflow-hidden border-r-0 gap-4 sm:gap-0">
+          <div className="w-full sm:w-1/2 min-w-0 min-h-0 max-h-48 sm:max-h-none flex flex-col sm:pr-2 sm:border-r border-border">
             <div className="flex items-center gap-2 mb-2 pt-2 pb-1 z-10">
               <Settings size={14} className="text-muted-foreground" />
               <h5 className="text-muted-foreground text-sm font-medium">
@@ -293,7 +296,7 @@ export const ProviderCard = memo(function ProviderCard({
             </div>
           </div>
 
-          <div className="w-full sm:w-1/2 min-w-0 flex flex-col sm:pl-4">
+          <div className="w-full sm:w-1/2 min-w-0 min-h-0 flex flex-col sm:pl-4">
             <div className="flex items-center gap-2 mb-4 pt-2 pb-1 z-10">
               <Box size={14} className="text-muted-foreground" />
               <h5 className="text-muted-foreground text-sm font-medium">
@@ -306,7 +309,10 @@ export const ProviderCard = memo(function ProviderCard({
               )}
             </div>
 
-            <div className="flex-1 overflow-y-auto">
+            <div
+              className="flex-1 min-h-0 max-h-80 sm:max-h-none overflow-y-auto"
+              data-testid="provider-models-scroll"
+            >
               {modelList.length > 0 ? (
                 <ModelsList
                   providerId={id}
@@ -376,14 +382,6 @@ const ModelsList = memo(
               className="font-medium text-sm break-all flex-1 min-w-0 flex items-center gap-2 hover:underline"
             >
               <span>{model}</span>
-              {isDefault && (
-                <Badge
-                  variant="secondary"
-                  className="text-[9px] px-1 py-0 h-4 bg-primary/20 text-primary"
-                >
-                  Default
-                </Badge>
-              )}
             </Link>
 
             {isDefault ? (

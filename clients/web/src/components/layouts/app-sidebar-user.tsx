@@ -25,6 +25,7 @@ import {
   Sun,
   MoonStar,
   ChevronRight,
+  ChevronDown,
   Settings,
   Shield,
 } from "lucide-react";
@@ -38,7 +39,8 @@ import { authClient } from "auth/client";
 import { useTranslations } from "next-intl";
 import useSWR from "swr";
 import { getLocaleAction } from "@/i18n/get-locale";
-import { Suspense, useCallback } from "react";
+import { Suspense, useCallback, useState } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { GithubIcon } from "ui/github-icon";
 import { useVegaPalette } from "@/hooks/use-vega-palette";
 import { BasicUser } from "app-types/user";
@@ -184,15 +186,146 @@ export function AppSidebarUserInner(props: {
   );
 }
 
-function SelectTheme() {
+/**
+ * On a phone there is no room beside the menu for a submenu: it opened off
+ * the right edge and the palettes could not be tapped. There the section
+ * opens inline instead, inside the (scrollable) menu itself.
+ */
+function InlineSection({
+  icon,
+  label,
+  hint,
+  testId,
+  children,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  hint?: string;
+  testId: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <DropdownMenuItem
+        className="flex items-center"
+        aria-expanded={open}
+        data-testid={testId}
+        onSelect={(e) => {
+          e.preventDefault();
+          setOpen((v) => !v);
+        }}
+      >
+        {icon}
+        <span className="mr-auto">{label}</span>
+        {hint && (
+          <span className="text-muted-foreground text-xs min-w-0 truncate">
+            {hint}
+          </span>
+        )}
+        <ChevronDown
+          className={cn("size-4 ml-2 transition-transform", open && "rotate-180")}
+        />
+      </DropdownMenuItem>
+      {open && <div className="ml-4 border-l pl-1">{children}</div>}
+    </>
+  );
+}
+
+function ThemeModeToggle() {
   const t = useTranslations("Layout");
+  const { theme = "light", resolvedTheme, setTheme } = useTheme();
+  // Flip what is on screen: from "System" a light/dark toggle based on the
+  // stored value went System → Light, which changed nothing on a light phone.
+  const shown = resolvedTheme === "dark" ? "dark" : "light";
+  return (
+    <DropdownMenuLabel className="text-muted-foreground w-full flex items-center">
+      <span className="text-muted-foreground text-xs mr-2 select-none">
+        {capitalizeFirstLetter(theme)}
+      </span>
+      <div className="flex-1" />
+      <button
+        type="button"
+        aria-label={t("switchLightDark")}
+        data-testid="theme-mode-toggle"
+        onClick={() => setTheme(shown === "light" ? "dark" : "light")}
+        className="cursor-pointer border rounded-full flex items-center"
+      >
+        <div
+          className={cn(
+            shown === "dark" &&
+              "bg-accent ring ring-muted-foreground/40 text-foreground",
+            "p-1 rounded-full",
+          )}
+        >
+          <MoonStar className="size-3" />
+        </div>
+        <div
+          className={cn(
+            shown === "light" &&
+              "bg-accent ring ring-muted-foreground/40 text-foreground",
+            "p-1 rounded-full",
+          )}
+        >
+          <Sun className="size-3" />
+        </div>
+      </button>
+    </DropdownMenuLabel>
+  );
+}
 
-  const { theme = "light", setTheme } = useTheme();
-
+function PaletteItems() {
   // The VegaAI palettes (app.vegaai.dev), independent of the agent colour.
   const { palette, setPalette } = useVegaPalette();
+  return (
+    <>
+      {VEGA_PALETTES.map((p) => (
+        <DropdownMenuCheckboxItem
+          key={p.id}
+          checked={palette === p.id}
+          onClick={(e) => {
+            e.preventDefault();
+            setPalette(p.id);
+          }}
+          onSelect={(e) => e.preventDefault()}
+          className="text-sm"
+          data-testid={`palette-${p.id}`}
+        >
+          <span className="flex-1">{p.label}</span>
+          {/* Window fill · action accent · muted text, as in VegaAI. */}
+          <span
+            aria-hidden="true"
+            className="palette-preview"
+            data-palette={p.id}
+          />
+        </DropdownMenuCheckboxItem>
+      ))}
+    </>
+  );
+}
+
+function SelectTheme() {
+  const t = useTranslations("Layout");
+  const isMobile = useIsMobile();
+  const { theme = "light" } = useTheme();
+  const { palette } = useVegaPalette();
   const paletteLabel =
     VEGA_PALETTES.find((p) => p.id === palette)?.label ?? "Graphite";
+  const hint = `${capitalizeFirstLetter(theme)} ${paletteLabel}`;
+
+  if (isMobile) {
+    return (
+      <InlineSection
+        icon={<Palette className="mr-2 size-4" />}
+        label={t("theme")}
+        hint={hint}
+        testId="theme-menu-toggle"
+      >
+        <ThemeModeToggle />
+        <PaletteItems />
+      </InlineSection>
+    );
+  }
 
   return (
     <DropdownMenuSub>
@@ -201,7 +334,7 @@ function SelectTheme() {
         icon={
           <>
             <span className="text-muted-foreground text-xs min-w-0 truncate">
-              {`${capitalizeFirstLetter(theme)} ${paletteLabel}`}
+              {hint}
             </span>
             <ChevronRight className="size-4 ml-2" />
           </>
@@ -211,59 +344,12 @@ function SelectTheme() {
         <span className="mr-auto">{t("theme")}</span>
       </DropdownMenuSubTrigger>
       <DropdownMenuPortal>
-        <DropdownMenuSubContent className="w-48">
-          <DropdownMenuLabel className="text-muted-foreground w-full flex items-center">
-            <span className="text-muted-foreground text-xs mr-2 select-none">
-              {capitalizeFirstLetter(theme)}
-            </span>
-            <div className="flex-1" />
-
-            <div
-              onClick={() => setTheme(theme === "light" ? "dark" : "light")}
-              className="cursor-pointer border rounded-full flex items-center"
-            >
-              <div
-                className={cn(
-                  theme === "dark" &&
-                    "bg-accent ring ring-muted-foreground/40 text-foreground",
-                  "p-1 rounded-full",
-                )}
-              >
-                <MoonStar className="size-3" />
-              </div>
-              <div
-                className={cn(
-                  theme === "light" &&
-                    "bg-accent ring ring-muted-foreground/40 text-foreground",
-                  "p-1 rounded-full",
-                )}
-              >
-                <Sun className="size-3" />
-              </div>
-            </div>
-          </DropdownMenuLabel>
-          <div className="max-h-96 overflow-y-auto">
-            {VEGA_PALETTES.map((p) => (
-              <DropdownMenuCheckboxItem
-                key={p.id}
-                checked={palette === p.id}
-                onClick={(e) => {
-                  e.preventDefault();
-                  setPalette(p.id);
-                }}
-                className="text-sm"
-                data-testid={`palette-${p.id}`}
-              >
-                <span className="flex-1">{p.label}</span>
-                {/* Window fill · action accent · muted text, as in VegaAI. */}
-                <span
-                  aria-hidden="true"
-                  className="palette-preview"
-                  data-palette={p.id}
-                />
-              </DropdownMenuCheckboxItem>
-            ))}
-          </div>
+        <DropdownMenuSubContent
+          className="w-48 max-h-(--radix-dropdown-menu-content-available-height) overflow-y-auto!"
+          collisionPadding={8}
+        >
+          <ThemeModeToggle />
+          <PaletteItems />
         </DropdownMenuSubContent>
       </DropdownMenuPortal>
     </DropdownMenuSub>
@@ -272,6 +358,7 @@ function SelectTheme() {
 
 function SelectLanguage() {
   const t = useTranslations("Layout");
+  const isMobile = useIsMobile();
   const { data: currentLocale } = useSWR(COOKIE_KEY_LOCALE, getLocaleAction, {
     fallbackData: SUPPORTED_LOCALES[0].code,
     revalidateOnFocus: false,
@@ -281,6 +368,31 @@ function SelectLanguage() {
     window.location.reload();
   }, []);
 
+  const items = SUPPORTED_LOCALES.map((locale) => (
+    <DropdownMenuCheckboxItem
+      key={locale.code}
+      checked={locale.code === currentLocale}
+      data-testid={`locale-${locale.code}`}
+      onCheckedChange={() =>
+        locale.code !== currentLocale && handleOnChange(locale.code)
+      }
+    >
+      {locale.name}
+    </DropdownMenuCheckboxItem>
+  ));
+
+  if (isMobile) {
+    return (
+      <InlineSection
+        icon={<Languages className="mr-2 size-4" />}
+        label={t("language")}
+        testId="language-menu-toggle"
+      >
+        {items}
+      </InlineSection>
+    );
+  }
+
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger>
@@ -288,21 +400,14 @@ function SelectLanguage() {
         <span>{t("language")}</span>
       </DropdownMenuSubTrigger>
       <DropdownMenuPortal>
-        <DropdownMenuSubContent className="w-48 max-h-96 overflow-y-auto">
+        <DropdownMenuSubContent
+          className="w-48 max-h-(--radix-dropdown-menu-content-available-height) overflow-y-auto!"
+          collisionPadding={8}
+        >
           <DropdownMenuLabel className="text-muted-foreground">
             {t("language")}
           </DropdownMenuLabel>
-          {SUPPORTED_LOCALES.map((locale) => (
-            <DropdownMenuCheckboxItem
-              key={locale.code}
-              checked={locale.code === currentLocale}
-              onCheckedChange={() =>
-                locale.code !== currentLocale && handleOnChange(locale.code)
-              }
-            >
-              {locale.name}
-            </DropdownMenuCheckboxItem>
-          ))}
+          {items}
         </DropdownMenuSubContent>
       </DropdownMenuPortal>
     </DropdownMenuSub>

@@ -87,7 +87,14 @@ export const SelectModel = (props: PropsWithChildren<SelectModelProps>) => {
       <PopoverContent
         className="p-0 w-[300px] sm:w-[320px]"
         align={props.align || "end"}
+        collisionPadding={8}
         data-testid="model-selector-popover"
+        onOpenAutoFocus={(e) => {
+          // On a touch screen focusing the search box pops the keyboard up,
+          // which covers most of the list. Let people scroll first; they can
+          // still tap the box to search.
+          if (window.matchMedia?.("(pointer: coarse)").matches) e.preventDefault();
+        }}
       >
         <Command
           className="rounded-lg relative shadow-md h-80"
@@ -97,7 +104,7 @@ export const SelectModel = (props: PropsWithChildren<SelectModelProps>) => {
             placeholder="search model..."
             data-testid="model-search-input"
           />
-          <CommandList className="p-2 max-h-72 overflow-y-auto">
+          <CommandList className="p-2 max-h-72 overflow-y-auto overscroll-contain">
             <CommandEmpty>No results found.</CommandEmpty>
             {providers?.map((provider, i) => (
               <Fragment key={provider.provider}>

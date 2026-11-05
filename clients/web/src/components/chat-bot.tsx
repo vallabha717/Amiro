@@ -484,6 +484,9 @@ export default function ChatBot({
   // On a phone the chat needs the whole width: a column beside it left the
   // conversation one letter wide.
   const isMobile = useIsMobile();
+  // Space between the composer and the bottom of the window. On a phone the
+  // desktop's 56px left a strip of messages scrolling under the composer.
+  const composerGap = isMobile ? 8 : 56;
 
   const hasArtifact = Boolean(
     artifacts.plan ||
@@ -1283,7 +1286,7 @@ export default function ChatBot({
                     className={
                       "flex flex-col gap-1 overflow-y-auto pt-12 z-10 [scrollbar-gutter:stable_both-edges]"
                     }
-                    style={{ paddingBottom: overlayHeight + 56 + 12 }}
+                    style={{ paddingBottom: overlayHeight + composerGap + 12 }}
                     ref={containerRef}
                     onScroll={handleScroll}
                   >
@@ -1345,10 +1348,9 @@ export default function ChatBot({
 
               <div
                 ref={overlayRef}
-                className={clsx(
-                  messages.length && "absolute bottom-14",
-                  "w-full z-10",
-                )}
+                className={clsx(messages.length && "absolute", "w-full z-10")}
+                style={messages.length ? { bottom: composerGap } : undefined}
+                data-testid="chat-composer-dock"
               >
                 <div className="max-w-3xl mx-auto relative flex justify-center items-center -top-2">
                   <ScrollToBottomButton

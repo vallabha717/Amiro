@@ -369,9 +369,11 @@ export function ConnectorsPage() {
 
   return (
     <ScrollArea className="z-40 h-full w-full">
-      <div className="mx-auto flex max-w-4xl flex-col gap-8 px-8 pb-12 pt-8" data-testid="connectors-page">
+      <div className="mx-auto flex max-w-4xl flex-col gap-8 px-4 sm:px-8 pb-12 pt-8" data-testid="connectors-page">
         <header className="flex flex-wrap items-start gap-3">
-          <div className="min-w-0 flex-1">
+          {/* Takes the whole first line on a phone so the buttons wrap below
+              instead of squeezing the description to one word per line. */}
+          <div className="min-w-0 flex-1 basis-full sm:basis-0">
             <h1 className="text-2xl font-bold">Connectors</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               Apps and MCP servers your agent can use. Everything here is available in every chat.
@@ -470,7 +472,9 @@ export function ConnectorsPage() {
                   />
                 ))}
               </div>
-              <p className="min-w-0 flex-1 text-sm text-muted-foreground">
+              {/* min-w-48: wraps onto its own line on a phone rather than
+                  shrinking to one word per line beside the logos. */}
+              <p className="min-w-48 flex-1 text-sm text-muted-foreground">
                 <span className="font-medium text-foreground">1,000+ apps in one click.</span> Gmail, Slack, GitHub,
                 Notion and more, once an admin adds the Composio key.
               </p>
