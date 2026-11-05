@@ -251,7 +251,7 @@ export default function AdminProvidersPage() {
     <>
       {particle}
       <ScrollArea className="h-full w-full z-40">
-        <div className="pt-8 flex-1 relative flex flex-col gap-4 px-8 max-w-3xl h-full mx-auto pb-8">
+        <div className="pt-8 flex-1 relative flex flex-col gap-4 px-4 sm:px-8 max-w-3xl h-full mx-auto pb-8">
           <div className="flex items-center pb-4">
             <h1 className="text-2xl font-bold flex items-center gap-2">
               {t("myProviders")}

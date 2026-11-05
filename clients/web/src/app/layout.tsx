@@ -44,11 +44,10 @@ const instrumentSerif = localFont({
 export const metadata: Metadata = {
   title: "Amiro",
   description: "Amiro is a chatbot that uses the Tools to answer questions.",
-  icons: {
-    icon: "/Vrnda_logo.svg",
-  },
+  // Tab and home-screen icons are the Vrnda leaf, linked by Next from the
+  // files in app/: icon.svg (follows light/dark), favicon.ico, apple-icon.png.
   // iPhone: Share → Add to Home Screen opens Amiro full screen, named Amiro,
-  // with app/apple-touch-icon.png. It always loads this server's screens,
+  // with app/apple-icon.png. It always loads this server's screens,
   // so it updates with the server.
   appleWebApp: {
     capable: true,
