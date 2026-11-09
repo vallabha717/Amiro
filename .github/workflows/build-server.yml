@@ -51,7 +51,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -59,7 +59,7 @@ jobs:
           workspaces: |
             backend
             runtime
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: ui
           path: clients/web/out
@@ -74,7 +74,7 @@ jobs:
           ./runtime/target/release/amiro-runtime --version
       - name: Package
         run: bash scripts/package-server.sh "${{ inputs.version || 'dev' }}" "${{ matrix.target }}" dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: amiro-server-${{ matrix.target }}
           path: dist/amiro-server-*.tar.gz
